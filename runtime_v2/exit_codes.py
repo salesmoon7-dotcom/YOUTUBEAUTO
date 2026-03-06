@@ -1,0 +1,9 @@
+from __future__ import annotations
+
+SUCCESS = 0
+CLI_USAGE = 2
+LEASE_BUSY = 10
+BROWSER_UNHEALTHY = 20
+GPT_FLOOR_FAIL = 30
+SELFTEST_FAIL = 40
+CALLBACK_FAIL = 60
