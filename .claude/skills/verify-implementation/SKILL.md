@@ -19,15 +19,27 @@ argument-hint: "[선택사항: 특정 verify 스킬 이름]"
 ## 실행 시점
 
 - 새로운 기능을 구현한 후
+- `runtime_v2` 계획/구현/디버깅 세션에서 완료를 주장하기 직전
 - Pull Request를 생성하기 전
 - 코드 리뷰 중
 - 코드베이스 규칙 준수 여부를 감사할 때
+
+## runtime_v2 Guardrails Gate
+
+- `runtime_v2` 작업에서는 이 스킬을 세션 종료 전 기본 검증 관문으로 취급합니다.
+- 실행 전 `docs/sop/SOP_runtime_v2_development_guardrails.md`를 다시 확인하고, 아래 3개 축을 최소 검증 대상으로 고정합니다.
+  1. `run_id` 정렬
+  2. `error_code` 의미 일치
+  3. `attempt/backoff` 계약 일치
+- 위 3개 중 하나라도 어긋나면 완료 주장을 중단하고, 기능 추가보다 contract/evidence drift 수정을 우선합니다.
 
 ## 실행 대상 스킬
 
 이 스킬이 순차 실행하는 검증 스킬 목록입니다. `/manage-skills`가 스킬을 생성/삭제할 때 이 목록을 자동 업데이트합니다.
 
-(아직 등록된 검증 스킬이 없습니다)
+현재 등록표는 비어 있을 수 있지만, `runtime_v2` 작업에서는 위 `runtime_v2 Guardrails Gate`를 먼저 실행한 뒤에만 하위 `verify-*` 스킬 실행 여부를 판단합니다.
+
+(아직 등록된 스킬이 없습니다)
 
 <!-- 스킬이 추가되면 아래 형식으로 등록:
 | # | 스킬 | 설명 |
@@ -41,6 +53,8 @@ argument-hint: "[선택사항: 특정 verify 스킬 이름]"
 
 위의 **실행 대상 스킬** 섹션에 나열된 스킬을 확인합니다.
 
+`runtime_v2` 작업인 경우, 먼저 `docs/sop/SOP_runtime_v2_development_guardrails.md`를 다시 확인한 뒤 검증을 시작합니다.
+
 선택적 인수가 제공된 경우, 해당 스킬만 필터링합니다.
 
 **등록된 스킬이 0개인 경우:**
@@ -48,7 +62,11 @@ argument-hint: "[선택사항: 특정 verify 스킬 이름]"
 ```markdown
 ## 구현 검증
 
-검증 스킬이 없습니다. `/manage-skills`를 실행하여 프로젝트에 맞는 검증 스킬을 생성하세요.
+하위 검증 스킬 등록은 비어 있습니다.
+
+단, `runtime_v2` 작업이면 guardrails gate(`run_id` / `error_code` / `attempt/backoff`)는 기본 검증으로 계속 수행합니다.
+
+추가 하위 검증이 필요하면 `/manage-skills`를 실행하여 프로젝트에 맞는 검증 스킬을 정렬하세요.
 ```
 
 이 경우 워크플로우를 종료합니다.
@@ -234,4 +252,5 @@ X개 수정 완료.
 | File | Purpose |
 |------|---------|
 | `.claude/skills/manage-skills/SKILL.md` | 스킬 유지보수 (이 파일의 실행 대상 스킬 목록을 관리) |
+| `docs/sop/SOP_runtime_v2_development_guardrails.md` | runtime_v2 세션 시작/종료 가드레일 |
 | `CLAUDE.md` | 프로젝트 지침 |
