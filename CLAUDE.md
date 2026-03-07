@@ -11,4 +11,6 @@
 - If context is missing, search code/docs first; ask only as last resort.
 - Keep debug code removable and clearly tagged.
 - Prefer deterministic guardrails (linters/tests/checks) over prompt-only rules.
+- For this repo, treat `docs/sop/SOP_runtime_v2_development_guardrails.md` as a default session-start invariant for `runtime_v2` planning, debugging, and implementation work.
+- Do not wait for the user to restate project guardrails; load the relevant canonical docs from `AGENTS.md` / `docs/INDEX.md` first.
 - Treat this file as a map; keep deep procedures in linked docs.
