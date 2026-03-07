@@ -1,6 +1,6 @@
 # COMPLETED
 
-- `docs/plans/2026-03-06-separate-24h-runtime-rebuild-plan.md` - runtime_v2 code and GUI implementation aligned to `system/runtime_v2/` paths
+- `docs/plans/2026-03-06-separate-24h-runtime-rebuild-plan.md` - runtime_v2 code and GUI implementation alignment 작업 완료 (후속 readiness/remediation는 `docs/TODO.md`와 최신 canonical plan에서 계속 관리)
 - `runtime_v2/control_plane.py`, `runtime_v2/supervisor.py`, `runtime_v2/cli.py` - isolated explicit mock chain execution and probe seed helper implemented
 - `runtime_v2/contracts/job_contract.py` - explicit inbox job contract constants and builder centralized
 - `runtime_v2/browser/manager.py` - browser launch now normalizes `--user-data-dir` to an absolute path so runtime_v2 fixed ports open reliably in detached selftest
