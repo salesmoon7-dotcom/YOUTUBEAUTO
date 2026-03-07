@@ -221,13 +221,51 @@ operable program or batch file.
 
 ## Current Session Verification Note
 
-- 이 문서 업데이트 시점의 fresh evidence 기준으로, 현재 세션에서는 `plain git` 검증이 아직 불가능했습니다.
+- 이 문서 업데이트 시점의 fresh evidence 기준으로, `bash` 직접 경로는 여전히 `export ...` 프리픽스 때문에 신뢰할 수 없었습니다.
+- 하지만 저장소 로컬 래퍼 `git_plain.bat` 경로로는 same-session 검증이 실제로 성공했습니다.
 - 확인 증거:
-  - `bash`로 실행한 명령이 실제 Git 실행 전 항상 `export ...` 프리픽스에서 먼저 실패함
-  - 대표 오류: `'export' is not recognized as an internal or external command, operable program or batch file.`
+  - `python "D:\YOUTUBEAUTO\scripts\git_plain.py" status --short` 성공
+  - `D:\YOUTUBEAUTO\git_plain.bat status --short` 성공
+  - `python -m py_compile "D:\YOUTUBEAUTO\scripts\git_plain.py"` 성공
+  - 아래 3개 commit이 같은 세션에서 실제 생성됨
+    1. `15f3c0b` `docs: wire runtime guardrails into verify entrypoint`
+    2. `911181d` `docs: route runtime sessions through guardrails`
+    3. `a3b03ef` `docs: define runtime readiness and guardrails`
 - 따라서 이 세션에서 확인된 사실은 아래와 같습니다.
   - Git 저장소/remote/branch 자체가 아니라 `bash -> win32 cmd.exe` 실행 경로가 문제임
-  - `plain git 실행 경로 검증`은 이 실행 계층이 복구된 이후에만 다시 시도해야 함
+  - Windows에서는 `git_plain.bat ...` 또는 `scripts/git_plain.py ...`가 재현 가능한 성공 경로임
+
+## Confirmed Successful Recovery Path
+
+- `bash` 직접 호출이 `export` 프리픽스로 오염된 세션에서는 아래 순서로 복구합니다.
+  1. `git_plain.bat status --short`
+  2. `git_plain.bat branch --show-current`
+  3. `git_plain.bat rev-parse --abbrev-ref @{upstream}`
+  4. `git_plain.bat add ...`
+  5. `git_plain.bat commit -m "..."`
+  6. `git_plain.bat status --short`
+- 즉, 이 대화 기준으로 이미 검증된 Windows 성공 경로는 `bash` 직접 Git가 아니라 저장소 로컬 plain Git 래퍼입니다.
+
+## Anti-Mistype Rule For Wrapper Commits
+
+- 아래 복구 구간에서는 명령 앞뒤에 어떤 프리픽스도 추가하지 않습니다.
+  - 금지 예: `export ...`, `set ... &&`, `$env:...;`, `cmd /c ...`, `bash -lc ...`
+- 즉, `git_plain.bat ...` 자체를 명령의 시작으로 두고 그대로 복붙합니다.
+- 특히 OpenCode 세션에서는 환경변수 보정용 프리픽스를 수동으로 붙이지 않습니다.
+
+## Exact Copy-Paste Block For The Remaining Wrapper Commit
+
+- 마지막 래퍼 묶음 commit은 아래 블록만 그대로 사용합니다.
+
+```bat
+cd /d D:\YOUTUBEAUTO
+git_plain.bat add docs/sop/SOP_git_online_commit_workflow.md git_plain.bat scripts/git_plain.py
+git_plain.bat commit -m "docs: add windows plain git wrapper workflow" -m "Provide a repo-local wrapper that runs git without shell prefixes so Windows sessions can recover from export-prefixed command failures." -m "Ultraworked with [Sisyphus](https://github.com/code-yeongyu/oh-my-opencode)" -m "Co-authored-by: Sisyphus <clio-agent@sisyphuslabs.ai>"
+git_plain.bat status --short
+git_plain.bat log -4 --oneline
+```
+
+- 위 블록은 수정하지 않고 그대로 실행하는 것을 기본값으로 삼습니다.
 
 ## Non-Goals
 
