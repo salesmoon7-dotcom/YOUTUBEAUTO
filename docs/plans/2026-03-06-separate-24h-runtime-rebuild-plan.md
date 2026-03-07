@@ -36,10 +36,10 @@
 ### Task 1: Control Plane 분리
 
 **Files:**
-- Create: `runtime/control_plane.py`
-- Create: `runtime/state_machine.py`
-- Create: `runtime/queue_store.py`
-- Create: `runtime/contracts/job_contract.py`
+- Create: `runtime_v2/control_plane.py`
+- Create: `runtime_v2/state_machine.py`
+- Create: `runtime_v2/queue_store.py`
+- Create: `runtime_v2/contracts/job_contract.py`
 
 **Acceptance Criteria:**
 - 단일 진입 함수 `run_control_loop()`가 상태 전이만 담당
@@ -49,41 +49,41 @@
 ### Task 2: Browser Plane 분리
 
 **Files:**
-- Create: `runtime/browser_supervisor.py`
-- Create: `runtime/browser_health_probe.py`
-- Create: `runtime/browser_session_registry.py`
+- Create: `runtime_v2/browser/supervisor.py`
+- Create: `runtime_v2/browser/health.py`
+- Create: `runtime_v2/browser/registry.py`
 
 **Acceptance Criteria:**
 - ChatGPT/Genspark/SeaArt/GeminiGen 세션을 포트/프로필 기준으로 registry 관리
 - 24h 유지 중 헬스 실패시에만 교체(재기동) 수행
-- health snapshot 파일 생성: `system/runtime/health/browser_health.json`
+- health snapshot 파일 생성: `system/runtime_v2/health/browser_health.json`
 
 ### Task 3: GPU Worker Gate 분리
 
 **Files:**
-- Create: `runtime/gpu_scheduler.py`
-- Create: `runtime/gpu_locks.py`
-- Create: `runtime/workers/qwen3_worker.py`
-- Create: `runtime/workers/rvc_worker.py`
-- Create: `runtime/workers/kenburns_worker.py`
+- Create: `runtime_v2/gpu_scheduler.py`
+- Create: `runtime_v2/gpu/lease.py`
+- Create: `runtime_v2/workers/qwen3_worker.py`
+- Create: `runtime_v2/workers/rvc_worker.py`
+- Create: `runtime_v2/workers/kenburns_worker.py`
 
 **Acceptance Criteria:**
 - 동일 작업군 동시 실행 0건(락 충돌 시 대기열 재삽입)
 - stale lock TTL 만료 + fencing token으로 오판락 복구
 - GPU 스케줄 로그에 `lock_acquire`, `lock_release`, `lock_expired` 이벤트 기록
-- Lock 저장소는 `system/runtime_v2/locks/{lock_key}.lock` + `system/runtime_v2/locks/{lock_key}.lease.json`로 고정
+- Lock 저장소는 `system/runtime_v2/locks/{workload}.lock` + `system/runtime_v2/locks/{workload}.lease.json`로 고정하며, 논리 키는 payload의 `lock_key`로 기록
 - Lease TTL=180초, renew interval=30초 고정(renew 실패 시 즉시 실패 후 queue 재삽입)
 - fencing token은 acquire 시 단조 증가값 발급, token 불일치 결과는 폐기+실패 처리
 
 ### Task 4: Artifact Contract 고정
 
 **Files:**
-- Create: `runtime/contracts/artifact_contract.py`
-- Create: `runtime/result_router.py`
+- Create: `runtime_v2/contracts/artifact_contract.py`
+- Create: `runtime_v2/result_router.py`
 
 **Acceptance Criteria:**
 - 이미지/동영상/VOICE 산출물은 JSON에 정의된 folder에만 저장
-- 저장 후 `result.json`에 절대경로+해시+생성시각 기록
+- 저장 후 `system/runtime_v2/evidence/result.json` latest-run snapshot에 절대경로+해시+생성시각과 최신 run metadata를 기록
 - 경로 불일치 시 즉시 실패 처리(침묵 보정 금지)
 
 ## 2) 신뢰성 규칙 (24h Stability Rules)
@@ -91,9 +91,9 @@
 ### Task 5: GPT STATUS Floor Auto-Recovery
 
 **Files:**
-- Create: `runtime/gpt_pool_monitor.py`
-- Create: `runtime/gpt_autospawn.py`
-- Create: `system/runtime/health/gpt_status.json` (runtime generated)
+- Create: `runtime_v2/gpt_pool_monitor.py`
+- Create: `runtime_v2/gpt_autospawn.py`
+- Create: `system/runtime_v2/health/gpt_status.json` (runtime generated)
 
 **Acceptance Criteria:**
 - `OK<1`이면 즉시 경고 이벤트 발행
@@ -106,9 +106,9 @@
 ### Task 6: Resume/Retry/Circuit 정책
 
 **Files:**
-- Create: `runtime/recovery_policy.py`
-- Create: `runtime/retry_budget.py`
-- Create: `runtime/circuit_breaker.py`
+- Create: `runtime_v2/recovery_policy.py`
+- Create: `runtime_v2/retry_budget.py`
+- Create: `runtime_v2/circuit_breaker.py`
 
 **Acceptance Criteria:**
 - 재시도는 지수백오프 + 작업별 예산(최대 3회)
@@ -128,12 +128,12 @@
 
 | Legacy Source | 차용 로직 | New Target | 차용 방식 | 비고 |
 |---|---|---|---|---|
-| `pipeline_common.py` | 상태 문자열 정규화, 결과 레코드 형식 | `runtime/state_machine.py` | 함수 단위 포팅 | 상태명 호환 테이블 유지 |
-| `master_manager.py` | pending row 선별 규칙(`Status` 기반) | `runtime/queue_store.py` | 규칙만 추출, 실행체인 제외 | 오케스트레이션 결합 로직은 제외 |
-| `master_manager.py` | 디버그 브라우저 헬스체크/재사용 패턴 | `runtime/browser_health_probe.py` | 헬스 판정식 재사용 | 포트/세션 registry로 일반화 |
-| `scripts/supervisor.py` | orphan 브라우저 정리, 메모리 경고, resume 쿨다운 | `runtime/browser_supervisor.py`, `runtime/recovery_policy.py` | 정책 단위 재사용 | PROTECTED_PORTS 정책 유지 |
-| `json_generator.py` | 산출물 경로 계산/검증 | `runtime/contracts/artifact_contract.py` | 계약 함수 포팅 | 이미지/동영상/VOICE 공통화 |
-| `pipeline.py` | 프로그램 실행 순서 제약(선행조건) | `runtime/control_plane.py` | 순서 제약만 이관 | 직접 호출 코드는 폐기 |
+| `pipeline_common.py` | 상태 문자열 정규화, 결과 레코드 형식 | `runtime_v2/state_machine.py` | 함수 단위 포팅 | 상태명 호환 테이블 유지 |
+| `master_manager.py` | pending row 선별 규칙(`Status` 기반) | `runtime_v2/queue_store.py` | 규칙만 추출, 실행체인 제외 | 오케스트레이션 결합 로직은 제외 |
+| `master_manager.py` | 디버그 브라우저 헬스체크/재사용 패턴 | `runtime_v2/browser/health.py` | 헬스 판정식 재사용 | 포트/세션 registry로 일반화 |
+| `scripts/supervisor.py` | orphan 브라우저 정리, 메모리 경고, resume 쿨다운 | `runtime_v2/browser/supervisor.py`, `runtime_v2/recovery_policy.py` | 정책 단위 재사용 | PROTECTED_PORTS 정책 유지 |
+| `json_generator.py` | 산출물 경로 계산/검증 | `runtime_v2/contracts/artifact_contract.py` | 계약 함수 포팅 | 이미지/동영상/VOICE 공통화 |
+| `pipeline.py` | 프로그램 실행 순서 제약(선행조건) | `runtime_v2/control_plane.py` | 순서 제약만 이관 | 직접 호출 코드는 폐기 |
 
 ### Task 7-2: 차용 우선 원칙
 
@@ -161,6 +161,15 @@
 
 ## 4) 검증 게이트 (Must Pass)
 
+### 4-1) Inbox / Chain 계약
+
+- `system/runtime_v2/inbox/` 계약은 `docs/sop/SOP_runtime_v2_inbox_contract.md`를 단일 기준으로 사용합니다.
+- feeder는 `checkpoint_key`, 로컬 경로 검증, stable file age 규칙을 통과한 입력만 queue에 넣습니다.
+- 후속 체인은 휴리스틱이 아니라 각 워커 결과 계약의 `next_jobs[]` 선언만 사용합니다.
+- chain 메타데이터(`chain_depth`, `routed_from`)는 queue, GUI, evidence에서 동일하게 보입니다.
+- idle/seeded/run/failure 전 구간에서 `system/runtime_v2/health/gui_status.json`과 `system/runtime_v2/evidence/result.json`은 같은 latest-run 의미로 함께 갱신됩니다.
+- `system/runtime_v2/evidence/result.json`은 runtime evidence latest-run snapshot이며, 워커 내부 결과 계약과 같은 이름을 쓰더라도 용도는 분리됩니다.
+
 ### 기능 게이트
 - 브라우저 24h 연속 유지(세션 살아있음) 성공
 - GPU 작업군 동시 실행 위반 0건
@@ -176,8 +185,12 @@
 
 ### 증거 파일
 - `system/runtime_v2/health/browser_health.json`
+- `system/runtime_v2/health/browser_session_registry.json`
 - `system/runtime_v2/health/gpu_scheduler_health.json`
 - `system/runtime_v2/health/gpt_status.json`
+- `system/runtime_v2/health/gui_status.json`
+- `system/runtime_v2/evidence/result.json`
+- `system/runtime_v2/evidence/control_plane_events.jsonl`
 - `system/runtime_v2/evidence/soak_24h_report.md`
 
 ## 5) 리스크와 차단책
