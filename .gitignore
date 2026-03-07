@@ -1,2 +1,95 @@
+# Python cache
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# Tool cache
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Local logs and reports
+logs/
+system/logs/
+system/reports/
+system/debug/
+
+# Runtime state and temp artifacts
+system/*
+system/config/
+system/temp/
+system/temp_excel/
+system/state/
+system/status/
+system/progress/
+system/locks/
+
+# Session/browser runtime data
+system/sessions/
+system/session_backups/
+system/geminigen_chrome_userdata/
+system/geminigen_downloads/
+runtime_v2/sessions/
+
+# Backups and archives
+backup/
+system/backup/
+pre_edit_backups/
+*.backup-*.py
+*.backup-*.md
+docs/archive/
+project_guides_full_14files_v26_sceneNumberFix/
+
+# Generated prompts/results/media
+prompts/
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.mp4
+*.wav
+*.mp3
+
+# Large local spreadsheets and html captures
+*.xlsx
+*.xls
+*.html
+*_files/
+
+# Secrets and local config overrides
+.env
+.env.*
+*.key
+*.pem
+*credentials*.json
+*token*.json
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.tmp
+nul
+
+# Local tool metadata
+.claude/
+.sisyphus/
+.omc/
+.mcp.json
+
+# Third-party/local bundles
+vendor/
+kimoring-ai-skills/
+systemtemp*.json
+scripts/system/
+scripts/**/*.bak*
+*.bak
+
+# Temporary local folders
+tmp_*/
+tmp*/
