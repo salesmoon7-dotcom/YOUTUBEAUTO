@@ -350,32 +350,70 @@ def test_geminigen_row_processing_handles_all_selected_items_for_one_row(tmp_pat
 Run: `python -m pytest tests/test_runtime_v2_stage2_contracts.py tests/test_runtime_v2_stage2_workers.py -q -k geminigen`
 Expected: 1행에서 선택된 GeminiGen item들이 모두 표준 evidence를 남김
 
-### Task 6: TTS, KenBurns, RVC Alignment Gate
+### Task 6: TTS Two-Phase Validation
 
 **Files:**
 - Verify: `runtime_v2/workers/qwen3_worker.py`
-- Verify: `runtime_v2/workers/kenburns_worker.py`
-- Verify: `runtime_v2/workers/rvc_worker.py`
 - Test: `tests/test_runtime_v2_gpu_workers.py`
 - Test: `tests/test_runtime_v2_phase2.py`
 
 **1차 목표: 1개 처리 검증**
 
 - TTS: `script text -> audio artifact`
-- KenBurns: `image/audio inputs -> video artifact`
-- RVC: `voice input -> converted voice artifact`
 
-Run: `python -m pytest tests/test_runtime_v2_gpu_workers.py -q`
-Expected: 기존 GPU worker 계약이 현재 계획과 충돌하지 않음을 확인
+Run: `python -m pytest tests/test_runtime_v2_gpu_workers.py -q -k qwen3`
+Expected: 단일 TTS item이 audio artifact를 남기고 기본 계약과 충돌하지 않음을 확인
 
 **2차 목표: 1행 처리 검증**
 
-- row 하나에서 TTS -> RVC -> KenBurns 연결이 최소 1회 재현되는지 확인합니다.
+- row 하나에서 TTS 산출이 다음 단계로 전달되는지 확인합니다.
 
 Run: `python -m pytest tests/test_runtime_v2_phase2.py -q`
-Expected: 1행 기준 phase2 체인이 표준 evidence를 남김
+Expected: 1행 기준 phase2 체인에서 TTS evidence가 남김
 
-### Task 7: Cross-Service Verification Gate
+### Task 7: KenBurns Two-Phase Validation
+
+**Files:**
+- Verify: `runtime_v2/workers/kenburns_worker.py`
+- Test: `tests/test_runtime_v2_gpu_workers.py`
+- Test: `tests/test_runtime_v2_phase2.py`
+
+**1차 목표: 1개 처리 검증**
+
+- KenBurns: `image/audio inputs -> video artifact`
+
+Run: `python -m pytest tests/test_runtime_v2_gpu_workers.py -q -k kenburns`
+Expected: 단일 KenBurns item이 video artifact를 남기고 기본 계약과 충돌하지 않음을 확인
+
+**2차 목표: 1행 처리 검증**
+
+- row 하나에서 KenBurns 산출이 row evidence와 함께 남는지 확인합니다.
+
+Run: `python -m pytest tests/test_runtime_v2_phase2.py -q`
+Expected: 1행 기준 phase2 체인에서 KenBurns evidence가 남김
+
+### Task 8: RVC Two-Phase Validation
+
+**Files:**
+- Verify: `runtime_v2/workers/rvc_worker.py`
+- Test: `tests/test_runtime_v2_gpu_workers.py`
+- Test: `tests/test_runtime_v2_phase2.py`
+
+**1차 목표: 1개 처리 검증**
+
+- RVC: `voice input -> converted voice artifact`
+
+Run: `python -m pytest tests/test_runtime_v2_gpu_workers.py -q -k rvc`
+Expected: 단일 RVC item이 converted artifact를 남기고 GPU gate와 충돌하지 않음을 확인
+
+**2차 목표: 1행 처리 검증**
+
+- row 하나에서 RVC 산출이 upstream/downstream evidence와 함께 연결되는지 확인합니다.
+
+Run: `python -m pytest tests/test_runtime_v2_phase2.py -q`
+Expected: 1행 기준 phase2 체인에서 RVC evidence가 남김
+
+### Task 9: Cross-Service Verification Gate
 
 **Files:**
 - Test: `tests/test_runtime_v2_stage2_workers.py`
@@ -412,12 +450,12 @@ Expected: `True True True`
 - 각 프로그램은 해당 단계에서 잠근 `service_artifact_path` 또는 동등한 표준 artifact evidence를 남겨야 합니다.
 - `run_id`, `error_code`, `attempt/backoff` 의미 drift가 없을 때만 다음 프로그램으로 진행합니다.
 
-### Task 8: 24h Operation Completion Gate
+### Task 10: 24h Operation Completion Gate
 
 이 단계는 개별 하부프로그램과 1행 파이프라인이 모두 닫힌 뒤에만 진행합니다.
 
 **Files:**
-- Verify: `runtime_v2/browser_supervisor.py`
+- Verify: `runtime_v2/browser/supervisor.py`
 - Verify: `runtime_v2/gpt_pool_monitor.py`
 - Verify: `runtime_v2/gpt_autospawn.py`
 - Verify: `runtime_v2/gpu/lease.py`
