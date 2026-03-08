@@ -22,8 +22,7 @@ from runtime_v2.gpu.lease import (
     write_gpu_health_payload,
 )
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
-from runtime_v2.latest_run import update_latest_run_pointers
-from runtime_v2.result_router import write_result_router
+from runtime_v2.latest_run import update_latest_run_pointers, write_runtime_snapshot
 
 
 def ensure_runtime_bootstrap(
@@ -65,30 +64,36 @@ def ensure_runtime_bootstrap(
             ),
             config.gpt_status_file,
         )
-    if _read_json(config.result_router_file) is None:
-        _ = write_result_router(
-            [],
-            config.artifact_root,
-            config.result_router_file,
+    bootstrap_debug_log = str(config.debug_log_root / f"{run_id}.jsonl")
+    if (
+        _read_json(config.result_router_file) is None
+        or _read_json(config.gui_status_file) is None
+    ):
+        gui_payload = build_gui_status_payload(
+            {"queue_status": "idle", "seeded_jobs": 0},
+            run_id=run_id,
+            mode=mode,
+            stage="idle",
+            exit_code=0,
+        )
+        write_runtime_snapshot(
+            config,
+            run_id=run_id,
+            mode=mode,
+            status="idle",
+            code="BOOTSTRAPPED",
+            debug_log=bootstrap_debug_log,
+            gui_payload=gui_payload,
+            artifacts=[],
             metadata={
                 "run_id": run_id,
                 "mode": mode,
                 "status": "idle",
                 "code": "BOOTSTRAPPED",
                 "exit_code": 0,
-                "debug_log": str(config.debug_log_root / f"{run_id}.jsonl"),
+                "debug_log": bootstrap_debug_log,
             },
-        )
-    if _read_json(config.gui_status_file) is None:
-        _ = write_gui_status(
-            build_gui_status_payload(
-                {"queue_status": "idle", "seeded_jobs": 0},
-                run_id=run_id,
-                mode=mode,
-                stage="idle",
-                exit_code=0,
-            ),
-            config.gui_status_file,
+            write_completed=_read_json(config.latest_completed_run_file) is None,
         )
     if _read_json(config.latest_active_run_file) is None:
         update_latest_run_pointers(
@@ -97,7 +102,7 @@ def ensure_runtime_bootstrap(
             mode=mode,
             status="idle",
             code="BOOTSTRAPPED",
-            debug_log=str(config.debug_log_root / f"{run_id}.jsonl"),
+            debug_log=bootstrap_debug_log,
             write_completed=_read_json(config.latest_completed_run_file) is None,
         )
     elif _read_json(config.latest_completed_run_file) is None:
@@ -107,7 +112,7 @@ def ensure_runtime_bootstrap(
             mode=mode,
             status="idle",
             code="BOOTSTRAPPED",
-            debug_log=str(config.debug_log_root / f"{run_id}.jsonl"),
+            debug_log=bootstrap_debug_log,
             write_completed=True,
         )
 

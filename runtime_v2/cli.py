@@ -31,15 +31,14 @@ from runtime_v2.debug_log import (
     summarize_runtime_result,
 )
 from runtime_v2.evidence import load_runtime_readiness
-from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
-from runtime_v2.latest_run import update_latest_run_pointers
+from runtime_v2.gui_adapter import build_gui_status_payload
+from runtime_v2.latest_run import write_runtime_snapshot
 from runtime_v2.manager import seed_excel_row
 from runtime_v2.n8n_adapter import (
     build_n8n_webhook_response,
     post_callback,
     write_mock_callback,
 )
-from runtime_v2.result_router import write_result_router
 from runtime_v2.supervisor import run_once, run_selftest
 
 
@@ -386,7 +385,6 @@ def main() -> int:
                 }
             )
         )
-        _ = write_gui_status(gui_payload, config.gui_status_file)
         _ = append_debug_event(
             debug_log,
             event="gui_status_snapshot",
@@ -396,34 +394,28 @@ def main() -> int:
                 "gui_payload": gui_payload,
             },
         )
-        if args.once or args.selftest or args.selftest_probe_child:
-            _ = write_result_router(
-                [],
-                config.artifact_root,
-                config.result_router_file,
-                metadata={
-                    "run_id": run_id,
-                    "mode": mode,
-                    "status": str(
-                        summary.get("status", result.get("status", "failed"))
-                    ),
-                    "code": code,
-                    "exit_code": exit_code,
-                    "stage": str(summary.get("stage", "")),
-                    "error_code": str(summary.get("error_code", "")),
-                    "manifest_path": str(summary.get("manifest_path", "")),
-                    "result_path": str(summary.get("result_path", "")),
-                    "debug_log": str(debug_log),
-                    "ts": now_ts(),
-                },
-            )
-        update_latest_run_pointers(
+        write_runtime_snapshot(
             config,
             run_id=run_id,
             mode=mode,
             status=str(summary.get("status", result.get("status", "failed"))),
             code=code,
             debug_log=str(debug_log),
+            gui_payload=gui_payload,
+            artifacts=[],
+            metadata={
+                "run_id": run_id,
+                "mode": mode,
+                "status": str(summary.get("status", result.get("status", "failed"))),
+                "code": code,
+                "exit_code": exit_code,
+                "stage": str(summary.get("stage", "")),
+                "error_code": str(summary.get("error_code", "")),
+                "manifest_path": str(summary.get("manifest_path", "")),
+                "result_path": str(summary.get("result_path", "")),
+                "debug_log": str(debug_log),
+                "ts": now_ts(),
+            },
             write_completed=True,
         )
 

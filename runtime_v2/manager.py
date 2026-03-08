@@ -10,14 +10,22 @@ from runtime_v2.contracts.topic_spec import snapshot_hash_for_excel_snapshot
 from runtime_v2.contracts.job_contract import build_explicit_job_contract
 from runtime_v2.excel.source import read_excel_row
 from runtime_v2.excel.selector import select_topic_spec
-from runtime_v2.excel.state_store import finalize_excel_status, merge_video_plan_to_excel
-from runtime_v2.result_router import attach_failure_summary, write_result_router
+from runtime_v2.excel.state_store import (
+    finalize_excel_status,
+    merge_video_plan_to_excel,
+)
+from runtime_v2.gui_adapter import build_gui_status_payload
+from runtime_v2.latest_run import write_runtime_snapshot
+from runtime_v2.result_router import attach_failure_summary
 from runtime_v2.workers.job_runtime import write_json_atomic
 
 
 def _safe_sheet_token(sheet_name: str) -> str:
     lowered = sheet_name.strip().lower()
-    token = "".join(character if character.isalnum() or character in {"-", "_"} else "_" for character in lowered)
+    token = "".join(
+        character if character.isalnum() or character in {"-", "_"} else "_"
+        for character in lowered
+    )
     return token or "sheet"
 
 
@@ -29,9 +37,16 @@ def seed_excel_row(
     sheet_name: str,
     row_index: int,
 ) -> dict[str, object]:
-    topic_spec = select_topic_spec(excel_path, sheet_name=sheet_name, row_index=row_index, run_id=run_id)
+    topic_spec = select_topic_spec(
+        excel_path, sheet_name=sheet_name, row_index=row_index, run_id=run_id
+    )
     if topic_spec is None:
-        return {"status": "no_work", "code": "NO_WORK", "reason_code": "no_work", "worker_launched": False}
+        return {
+            "status": "no_work",
+            "code": "NO_WORK",
+            "reason_code": "no_work",
+            "worker_launched": False,
+        }
     row_ref = str(topic_spec["row_ref"])
     snapshot_hash = str(topic_spec.get("excel_snapshot_hash", "")).strip()
     safe_sheet = _safe_sheet_token(sheet_name)
@@ -71,16 +86,31 @@ def merge_stage1_result(
     if isinstance(evidence, dict):
         expected_snapshot_hash = str(evidence.get("excel_snapshot_hash", "")).strip()
         if expected_snapshot_hash:
-            row_map = read_excel_row(excel_path, sheet_name=sheet_name, row_index=row_index)
-            current_topic = "" if row_map.get("Topic") is None else str(row_map.get("Topic", "")).strip()
-            current_status = "" if row_map.get("Status") is None else str(row_map.get("Status", "")).strip()
-            current_snapshot_hash = snapshot_hash_for_excel_snapshot(f"{current_topic}|{current_status}|{sheet_name}|{row_index}")
+            row_map = read_excel_row(
+                excel_path, sheet_name=sheet_name, row_index=row_index
+            )
+            current_topic = (
+                ""
+                if row_map.get("Topic") is None
+                else str(row_map.get("Topic", "")).strip()
+            )
+            current_status = (
+                ""
+                if row_map.get("Status") is None
+                else str(row_map.get("Status", "")).strip()
+            )
+            current_snapshot_hash = snapshot_hash_for_excel_snapshot(
+                f"{current_topic}|{current_status}|{sheet_name}|{row_index}"
+            )
             if current_snapshot_hash != expected_snapshot_hash:
                 return False
-    summary = json.dumps({
-        "topic": video_plan.get("topic", ""),
-        "story_outline": video_plan.get("story_outline", []),
-    }, ensure_ascii=True)
+    summary = json.dumps(
+        {
+            "topic": video_plan.get("topic", ""),
+            "story_outline": video_plan.get("story_outline", []),
+        },
+        ensure_ascii=True,
+    )
     return merge_video_plan_to_excel(
         excel_path,
         sheet_name=sheet_name,
@@ -100,7 +130,11 @@ def finalize_excel_row(
     final_output: str,
     reason_code: str,
 ) -> bool:
-    next_status = "Done" if completion_state == "completed" and final_output.strip() else "partial"
+    next_status = (
+        "Done"
+        if completion_state == "completed" and final_output.strip()
+        else "partial"
+    )
     return finalize_excel_status(
         excel_path,
         sheet_name=sheet_name,
@@ -126,7 +160,9 @@ def sync_final_video_result(
     completion = completion_raw if isinstance(completion_raw, dict) else {}
     completion_state = str(completion.get("state", "")).strip()
     hinted_final_output_path = str(completion.get("final_artifact_path", "")).strip()
-    final_output_enabled = bool(completion.get("final_output", False)) or bool(hinted_final_output_path)
+    final_output_enabled = bool(completion.get("final_output", False)) or bool(
+        hinted_final_output_path
+    )
     final_output_path = hinted_final_output_path if final_output_enabled else ""
     details_raw = worker_result.get("details", {})
     details = details_raw if isinstance(details_raw, dict) else {}
@@ -148,10 +184,31 @@ def sync_final_video_result(
         artifact_path = Path(final_output_path)
         if artifact_path.exists() and artifact_path.is_file():
             artifacts.append(artifact_path)
-    _ = write_result_router(
-        artifacts,
-        artifact_root,
-        config.result_router_file,
+    gui_payload = build_gui_status_payload(
+        {
+            "status": "ok" if updated else "failed",
+            "code": "OK" if updated else "EXCEL_SYNC_FAILED",
+            "queue_status": "completed" if updated else "failed",
+            "debug_log": debug_log,
+            "completion_state": completion_state,
+            "final_output": final_output_enabled,
+            "final_artifact": str(completion.get("final_artifact", "")),
+            "final_artifact_path": final_output_path,
+        },
+        run_id=run_id,
+        mode="excel_sync",
+        stage="final_video_sync",
+        exit_code=0 if updated else 1,
+    )
+    write_runtime_snapshot(
+        config,
+        run_id=run_id,
+        mode="excel_sync",
+        status="ok" if updated else "failed",
+        code="OK" if updated else "EXCEL_SYNC_FAILED",
+        debug_log=debug_log,
+        gui_payload=gui_payload,
+        artifacts=artifacts,
         metadata={
             "run_id": run_id,
             "debug_log": debug_log,
@@ -162,6 +219,8 @@ def sync_final_video_result(
             "reason_code": reason_code,
             "excel_synced": updated,
         },
+        write_completed=True,
+        artifact_root=artifact_root,
     )
     return updated
 
@@ -185,7 +244,14 @@ def write_failure_summary(
     }
     path = config.failure_summary_file
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, prefix=f"{path.stem}.", suffix=".tmp", delete=False) as handle:
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f"{path.stem}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
         handle.write(json.dumps(payload, ensure_ascii=True, indent=2))
         temp_path = Path(handle.name)
     temp_path.replace(path)
@@ -220,5 +286,30 @@ def sync_failure_result(
         },
         str(failure_path),
     )
-    _ = write_result_router([], artifact_root, config.result_router_file, metadata=metadata)
+    gui_payload = build_gui_status_payload(
+        {
+            "status": "failed",
+            "code": reason_code,
+            "queue_status": "failed",
+            "debug_log": debug_log,
+            "completion_state": "failed",
+        },
+        run_id=run_id,
+        mode="excel_sync",
+        stage="failure_summary",
+        exit_code=1,
+    )
+    write_runtime_snapshot(
+        config,
+        run_id=run_id,
+        mode="excel_sync",
+        status="failed",
+        code=reason_code,
+        debug_log=debug_log,
+        gui_payload=gui_payload,
+        artifacts=[],
+        metadata=metadata,
+        write_completed=True,
+        artifact_root=artifact_root,
+    )
     return failure_path.exists() and config.result_router_file.exists()

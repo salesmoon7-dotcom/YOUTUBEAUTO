@@ -9,8 +9,8 @@ from typing import cast
 from runtime_v2.bootstrap import ensure_runtime_bootstrap
 from runtime_v2.config import GpuWorkload, RuntimeConfig, allowed_workloads
 from runtime_v2.debug_log import append_debug_event, debug_log_path
-from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
-from runtime_v2.latest_run import update_latest_run_pointers
+from runtime_v2.gui_adapter import build_gui_status_payload
+from runtime_v2.latest_run import write_runtime_snapshot
 from runtime_v2.gpt_autospawn import apply_autospawn_decision
 from runtime_v2.gpt_pool_monitor import tick_gpt_status
 from runtime_v2.recovery_policy import CircuitState, evaluate_recovery
@@ -100,8 +100,7 @@ def run_control_loop_once(
             jobs = _load_jobs(queue_file)
             job = _next_runnable_job(jobs, now)
             if job is not None:
-                _ = _write_control_gui_status(
-                    runtime_config,
+                gui_payload = _build_control_gui_status(
                     run_id=run_id,
                     stage="seeded_queue",
                     exit_code=0,
@@ -115,10 +114,17 @@ def run_control_loop_once(
                         ),
                     },
                 )
-                _ = write_result_router(
-                    [],
-                    artifact_root,
-                    result_router_file,
+                write_runtime_snapshot(
+                    runtime_config,
+                    run_id=run_id,
+                    mode="control_loop",
+                    status="seeded",
+                    code="SEEDED_JOB",
+                    debug_log=str(
+                        debug_log_path(runtime_config.debug_log_root, run_id)
+                    ),
+                    gui_payload=gui_payload,
+                    artifacts=[],
                     metadata={
                         "run_id": run_id,
                         "mode": "control_loop",
@@ -140,6 +146,7 @@ def run_control_loop_once(
                         ),
                         "ts": round(time(), 3),
                     },
+                    write_completed=True,
                 )
                 _ = append_debug_event(
                     debug_log_path(runtime_config.debug_log_root, run_id),
@@ -156,24 +163,12 @@ def run_control_loop_once(
                         ),
                     },
                 )
-                update_latest_run_pointers(
-                    runtime_config,
-                    run_id=run_id,
-                    mode="control_loop",
-                    status="seeded",
-                    code="SEEDED_JOB",
-                    debug_log=str(
-                        debug_log_path(runtime_config.debug_log_root, run_id)
-                    ),
-                    write_completed=True,
-                )
                 return {
                     "status": "seeded",
                     "code": "SEEDED_JOB",
                     "seeded_jobs": [seeded_job.to_dict() for seeded_job in seeded_jobs],
                 }
-        _ = _write_control_gui_status(
-            runtime_config,
+        gui_payload = _build_control_gui_status(
             run_id=run_id,
             stage="idle",
             exit_code=0,
@@ -185,10 +180,15 @@ def run_control_loop_once(
                 "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
             },
         )
-        _ = write_result_router(
-            [],
-            artifact_root,
-            result_router_file,
+        write_runtime_snapshot(
+            runtime_config,
+            run_id=run_id,
+            mode="control_loop",
+            status="idle",
+            code="NO_JOB",
+            debug_log=str(debug_log_path(runtime_config.debug_log_root, run_id)),
+            gui_payload=gui_payload,
+            artifacts=[],
             metadata={
                 "run_id": run_id,
                 "mode": "control_loop",
@@ -206,6 +206,7 @@ def run_control_loop_once(
                 "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
                 "ts": round(time(), 3),
             },
+            write_completed=True,
         )
         _ = append_debug_event(
             debug_log_path(runtime_config.debug_log_root, run_id),
@@ -217,15 +218,6 @@ def run_control_loop_once(
                 "invalid_count": invalid_count,
                 "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
             },
-        )
-        update_latest_run_pointers(
-            runtime_config,
-            run_id=run_id,
-            mode="control_loop",
-            status="idle",
-            code="NO_JOB",
-            debug_log=str(debug_log_path(runtime_config.debug_log_root, run_id)),
-            write_completed=True,
         )
         return {"status": "idle", "code": "NO_JOB"}
 
@@ -438,8 +430,7 @@ def run_control_loop_once(
         "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
         "debug_log": str(control_debug_log),
     }
-    _ = _write_control_gui_status(
-        runtime_config,
+    gui_payload = _build_control_gui_status(
         run_id=run_id,
         stage=str(worker_contract.get("stage", result.get("status", "unknown"))),
         exit_code=0 if success else 1,
@@ -450,10 +441,17 @@ def run_control_loop_once(
         latest_artifacts = worker_artifacts
     elif artifact_path is not None:
         latest_artifacts = [artifact_path]
-    _ = write_result_router(
-        latest_artifacts,
-        artifact_root,
-        result_router_file,
+    write_runtime_snapshot(
+        runtime_config,
+        run_id=run_id,
+        mode="control_loop",
+        status="ok" if success else "failed",
+        code="OK"
+        if success
+        else str(worker_contract.get("error_code", result.get("code", "FAILED"))),
+        debug_log=str(control_debug_log),
+        gui_payload=gui_payload,
+        artifacts=latest_artifacts,
         metadata={
             "run_id": run_id,
             "mode": "control_loop",
@@ -497,16 +495,6 @@ def run_control_loop_once(
             "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
             "ts": round(time(), 3),
         },
-    )
-    update_latest_run_pointers(
-        runtime_config,
-        run_id=run_id,
-        mode="control_loop",
-        status="ok" if success else "failed",
-        code="OK"
-        if success
-        else str(worker_contract.get("error_code", result.get("code", "FAILED"))),
-        debug_log=str(control_debug_log),
         write_completed=True,
     )
     _ = append_debug_event(
@@ -634,22 +622,20 @@ def seed_local_jobs(config: RuntimeConfig | None = None) -> list[JobContract]:
     return seeded
 
 
-def _write_control_gui_status(
-    config: RuntimeConfig,
+def _build_control_gui_status(
     *,
     run_id: str,
     stage: str,
     exit_code: int,
     status: dict[str, object],
-) -> None:
-    payload = build_gui_status_payload(
+) -> dict[str, object]:
+    return build_gui_status_payload(
         status=status,
         run_id=run_id,
         mode="control_loop",
         stage=stage,
         exit_code=exit_code,
     )
-    _ = write_gui_status(payload, config.gui_status_file)
 
 
 def _archived_contract_counts(inbox_root: Path) -> tuple[int, int]:
