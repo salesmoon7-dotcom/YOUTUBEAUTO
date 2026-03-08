@@ -51,8 +51,8 @@ def summarize_runtime_result(result: Mapping[str, object]) -> dict[str, object]:
     job = _mapping(result.get("job"))
     recovery = _mapping(result.get("recovery"))
     payload: dict[str, object] = {
-        "status": str(resolved.get("status", result.get("status", "unknown"))),
-        "code": str(resolved.get("code", result.get("code", ""))),
+        "status": str(result.get("status", resolved.get("status", "unknown"))),
+        "code": str(result.get("code", resolved.get("code", ""))),
     }
     if job is not None:
         payload["job_id"] = str(job.get("job_id", ""))
@@ -66,14 +66,18 @@ def summarize_runtime_result(result: Mapping[str, object]) -> dict[str, object]:
         payload["result_path"] = str(worker_result.get("result_path", ""))
     else:
         payload["stage"] = str(resolved.get("stage", result.get("stage", "")))
-        payload["error_code"] = str(resolved.get("error_code", result.get("error_code", result.get("code", ""))))
+        payload["error_code"] = str(
+            resolved.get("error_code", result.get("error_code", result.get("code", "")))
+        )
     if recovery is not None:
         payload["backoff_sec"] = recovery.get("backoff_sec", 0)
         payload["recovery_action"] = str(recovery.get("action", ""))
     return payload
 
 
-def summarize_cli_report(report: Mapping[str, object], debug_log: Path) -> dict[str, object]:
+def summarize_cli_report(
+    report: Mapping[str, object], debug_log: Path
+) -> dict[str, object]:
     result = _mapping(report.get("result"))
     payload: dict[str, object] = {
         "run_id": str(report.get("run_id", "unknown")),

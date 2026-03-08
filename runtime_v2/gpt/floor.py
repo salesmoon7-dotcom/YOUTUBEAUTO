@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import math
 import tempfile
 from pathlib import Path
 from time import time
@@ -147,8 +148,18 @@ def load_gpt_status(output_file: str | Path) -> dict[str, object] | None:
 
 
 def _to_float(value: object) -> float | None:
-    if isinstance(value, (int, float, str)):
-        return float(value)
+    if isinstance(value, bool):
+        numeric = float(value)
+        return numeric if math.isfinite(numeric) else None
+    if isinstance(value, (int, float)):
+        numeric = float(value)
+        return numeric if math.isfinite(numeric) else None
+    if isinstance(value, str):
+        try:
+            numeric = float(value)
+        except ValueError:
+            return None
+        return numeric if math.isfinite(numeric) else None
     return None
 
 
@@ -156,7 +167,15 @@ def _to_int(value: object) -> int:
     if isinstance(value, bool):
         return int(value)
     if isinstance(value, (int, float, str)):
-        return int(value)
+        try:
+            numeric = float(value)
+        except ValueError:
+            return 0
+        except OverflowError:
+            return 0
+        if not math.isfinite(numeric):
+            return 0
+        return int(numeric)
     return 0
 
 
@@ -167,12 +186,18 @@ def _to_float_list(value: object) -> list[float]:
     items: list[float] = []
     for entry in raw_items:
         if isinstance(entry, bool):
-            items.append(float(entry))
+            numeric = float(entry)
+            if math.isfinite(numeric):
+                items.append(numeric)
         elif isinstance(entry, (int, float)):
-            items.append(float(entry))
+            numeric = float(entry)
+            if math.isfinite(numeric):
+                items.append(numeric)
         elif isinstance(entry, str):
             try:
-                items.append(float(entry))
+                numeric = float(entry)
             except ValueError:
                 continue
+            if math.isfinite(numeric):
+                items.append(numeric)
     return items

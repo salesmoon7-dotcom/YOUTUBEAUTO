@@ -251,6 +251,42 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
                 exit_code = main()
             self.assertEqual(exit_code, exit_codes.BROWSER_BLOCKED)
 
+    def test_main_returns_failure_exit_code_for_control_result_with_nested_ok_runtime(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            gui_status_out = str(root / "gui_status.json")
+            config = _runtime_config(root)
+            args = [
+                "runtime_v2.cli",
+                "--control-once",
+                "--gui-status-out",
+                gui_status_out,
+            ]
+            control_result = {
+                "status": "failed",
+                "code": "legacy_executor_failed",
+                "job": {"job_id": "job-1", "workload": "genspark", "status": "retry"},
+                "result": {"status": "ok", "code": "OK"},
+                "worker_result": {
+                    "status": "failed",
+                    "stage": "genspark",
+                    "error_code": "legacy_executor_failed",
+                },
+                "recovery": {"action": "retry", "backoff_sec": 30.0},
+            }
+            with (
+                patch("runtime_v2.cli._build_runtime_config", return_value=config),
+                patch("runtime_v2.cli.ensure_runtime_bootstrap"),
+                patch(
+                    "runtime_v2.cli.run_control_loop_once", return_value=control_result
+                ),
+                patch.object(sys, "argv", args),
+            ):
+                exit_code = main()
+            self.assertEqual(exit_code, exit_codes.CLI_USAGE)
+
     def test_readiness_check_reports_gpt_floor_and_latest_run_drift(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -671,6 +707,148 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
             result = run_once(
                 owner="runtime_v2",
                 run_id="run-gpt-min-ok-two",
+                config=config,
+                workload="chatgpt",
+                require_browser_healthy=False,
+                allow_runtime_side_effects=False,
+                worker_runner=lambda: {"status": "ok", "stage": "chatgpt"},
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "GPT_FLOOR_FAIL")
+
+    def test_run_once_fail_closes_when_gpt_endpoint_last_seen_at_is_invalid(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig(gpt_status_file=root / "health" / "gpt_status.json")
+            _ = write_gpt_status(
+                {
+                    "schema_version": "1.0",
+                    "runtime": "runtime_v2",
+                    "checked_at": 1.0,
+                    "ok_count": 1,
+                    "min_ok": 1,
+                    "floor_breached": False,
+                    "breach_started_at": None,
+                    "breach_sec": 0,
+                    "pending_boot": 0,
+                    "last_spawn_at": None,
+                    "spawn_fail_count": 0,
+                    "spawn_needed": False,
+                    "warning_active": False,
+                    "last_warning_at": None,
+                    "cooldown_sec": 300,
+                    "cooldown_elapsed_sec": 300,
+                    "hourly_spawn_count": 0,
+                    "spawn_history": [],
+                    "endpoints": [
+                        {
+                            "name": "default",
+                            "status": "OK",
+                            "last_seen_at": "not-a-number",
+                        }
+                    ],
+                },
+                config.gpt_status_file,
+            )
+
+            result = run_once(
+                owner="runtime_v2",
+                run_id="run-invalid-last-seen",
+                config=config,
+                workload="chatgpt",
+                require_browser_healthy=False,
+                allow_runtime_side_effects=False,
+                worker_runner=lambda: {"status": "ok", "stage": "chatgpt"},
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "GPT_FLOOR_FAIL")
+
+    def test_run_once_does_not_crash_on_invalid_gpt_numeric_fields(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig(gpt_status_file=root / "health" / "gpt_status.json")
+            _ = write_gpt_status(
+                {
+                    "schema_version": "1.0",
+                    "runtime": "runtime_v2",
+                    "checked_at": 1.0,
+                    "ok_count": 0,
+                    "min_ok": 1,
+                    "floor_breached": True,
+                    "breach_started_at": "not-a-float",
+                    "breach_sec": 10,
+                    "pending_boot": "bad-int",
+                    "last_spawn_at": "bad-float",
+                    "spawn_fail_count": "bad-int",
+                    "spawn_needed": True,
+                    "warning_active": True,
+                    "last_warning_at": 1.0,
+                    "cooldown_sec": 300,
+                    "cooldown_elapsed_sec": 10,
+                    "hourly_spawn_count": 0,
+                    "spawn_history": ["bad-float"],
+                    "endpoints": [
+                        {"name": "default", "status": "FAILED", "last_seen_at": 1.0}
+                    ],
+                },
+                config.gpt_status_file,
+            )
+
+            result = run_once(
+                owner="runtime_v2",
+                run_id="run-invalid-gpt-numbers",
+                config=config,
+                workload="chatgpt",
+                require_browser_healthy=False,
+                allow_runtime_side_effects=False,
+                worker_runner=lambda: {"status": "ok", "stage": "chatgpt"},
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "GPT_FLOOR_FAIL")
+
+    def test_run_once_fail_closes_on_non_finite_gpt_numeric_fields(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig(gpt_status_file=root / "health" / "gpt_status.json")
+            _ = write_gpt_status(
+                {
+                    "schema_version": "1.0",
+                    "runtime": "runtime_v2",
+                    "checked_at": 1.0,
+                    "ok_count": 0,
+                    "min_ok": 1,
+                    "floor_breached": True,
+                    "breach_started_at": float("nan"),
+                    "breach_sec": 10,
+                    "pending_boot": float("inf"),
+                    "last_spawn_at": float("inf"),
+                    "spawn_fail_count": float("nan"),
+                    "spawn_needed": True,
+                    "warning_active": True,
+                    "last_warning_at": 1.0,
+                    "cooldown_sec": 300,
+                    "cooldown_elapsed_sec": 10,
+                    "hourly_spawn_count": 0,
+                    "spawn_history": [float("nan"), float("inf")],
+                    "endpoints": [
+                        {
+                            "name": "default",
+                            "status": "OK",
+                            "last_seen_at": float("inf"),
+                        }
+                    ],
+                },
+                config.gpt_status_file,
+            )
+
+            result = run_once(
+                owner="runtime_v2",
+                run_id="run-non-finite-gpt-numbers",
                 config=config,
                 workload="chatgpt",
                 require_browser_healthy=False,

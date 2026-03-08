@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import math
 import threading
 from time import time
 from typing import cast
@@ -58,11 +59,21 @@ def _runtime_gpt_endpoints(
                 "FAILED" if force_gpt_fail else str(typed_entry.get("status", "FAILED"))
             )
             last_seen_raw = typed_entry.get("last_seen_at", time())
-            last_seen_at = (
-                float(last_seen_raw)
-                if isinstance(last_seen_raw, (int, float, str))
-                else time()
-            )
+            last_seen_at = 0.0
+            if isinstance(last_seen_raw, bool):
+                last_seen_at = float(last_seen_raw)
+            elif isinstance(last_seen_raw, (int, float)):
+                last_seen_at = float(last_seen_raw)
+            elif isinstance(last_seen_raw, str):
+                try:
+                    parsed_last_seen = float(last_seen_raw)
+                    last_seen_at = (
+                        parsed_last_seen if math.isfinite(parsed_last_seen) else 0.0
+                    )
+                except ValueError:
+                    last_seen_at = 0.0
+            if not math.isfinite(last_seen_at):
+                last_seen_at = 0.0
             endpoints.append(
                 GptEndpoint(
                     name=str(typed_entry.get("name", "default")),

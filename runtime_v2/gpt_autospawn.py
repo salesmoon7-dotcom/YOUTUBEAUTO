@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from time import time
 from typing import cast
@@ -15,28 +16,53 @@ def _coerce_float_list(value: object) -> list[float]:
     items: list[float] = []
     for entry in raw_items:
         if isinstance(entry, bool):
-            items.append(float(entry))
+            numeric = float(entry)
+            if math.isfinite(numeric):
+                items.append(numeric)
         elif isinstance(entry, (int, float)):
-            items.append(float(entry))
+            numeric = float(entry)
+            if math.isfinite(numeric):
+                items.append(numeric)
         elif isinstance(entry, str):
             try:
-                items.append(float(entry))
+                numeric = float(entry)
             except ValueError:
                 continue
+            if math.isfinite(numeric):
+                items.append(numeric)
     return items
 
 
 def _coerce_float(value: object) -> float | None:
     if isinstance(value, bool):
-        return float(value)
+        numeric = float(value)
+        return numeric if math.isfinite(numeric) else None
     if isinstance(value, (int, float)):
-        return float(value)
+        numeric = float(value)
+        return numeric if math.isfinite(numeric) else None
     if isinstance(value, str):
         try:
-            return float(value)
+            numeric = float(value)
         except ValueError:
             return None
+        return numeric if math.isfinite(numeric) else None
     return None
+
+
+def _coerce_int(value: object, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float, str)):
+        try:
+            numeric = float(value)
+        except ValueError:
+            return default
+        except OverflowError:
+            return default
+        if not math.isfinite(numeric):
+            return default
+        return int(numeric)
+    return default
 
 
 def apply_autospawn_decision(
@@ -76,9 +102,12 @@ def apply_autospawn_decision(
         status["hourly_spawn_count"] = len(spawn_history)
         status["last_spawn_blocked_reason"] = "hourly_limit"
         _ = write_gpt_status(status, status_file)
-        return {"spawned": False, "reason": "hourly_limit", "hourly_spawn_count": len(spawn_history)}
-    pending_boot_value = status.get("pending_boot", 0)
-    pending_boot = int(pending_boot_value) if isinstance(pending_boot_value, (int, float, str)) else 0
+        return {
+            "spawned": False,
+            "reason": "hourly_limit",
+            "hourly_spawn_count": len(spawn_history),
+        }
+    pending_boot = _coerce_int(status.get("pending_boot", 0))
     status["pending_boot"] = pending_boot + 1
     status["last_spawn_at"] = now
     spawn_history.append(now)
