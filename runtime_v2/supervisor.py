@@ -44,9 +44,9 @@ def _runtime_gpt_endpoints(
     allow_default_ok_status: bool = True,
 ) -> list[GptEndpoint]:
     loaded_status = load_gpt_status(config.gpt_status_file)
-    loaded_endpoints_raw: object = (
-        [] if loaded_status is None else loaded_status.get("endpoints", [])
-    )
+    if loaded_status is None:
+        return []
+    loaded_endpoints_raw: object = loaded_status.get("endpoints", [])
     endpoints: list[GptEndpoint] = []
     if isinstance(loaded_endpoints_raw, list):
         raw_endpoints = cast(list[object], loaded_endpoints_raw)
@@ -72,10 +72,9 @@ def _runtime_gpt_endpoints(
             )
     if endpoints:
         return endpoints
-    endpoint_status = (
-        "FAILED" if force_gpt_fail or not allow_default_ok_status else "OK"
-    )
-    return [GptEndpoint(name="default", status=endpoint_status, last_seen_at=time())]
+    if not allow_default_ok_status or force_gpt_fail:
+        return [GptEndpoint(name="default", status="FAILED", last_seen_at=time())]
+    return []
 
 
 def _required_browser_summary(

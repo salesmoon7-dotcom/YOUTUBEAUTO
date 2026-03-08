@@ -521,6 +521,98 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
         start_browser.assert_not_called()
         tick_browser.assert_not_called()
 
+    def test_run_once_fail_closes_when_side_effect_path_has_no_gpt_status(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig(gpt_status_file=root / "health" / "gpt_status.json")
+            browser_tick_result: dict[str, object] = {
+                "run_id": "run-side-effects-missing-gpt",
+                "runtime": "runtime_v2",
+                "sessions": [],
+            }
+
+            with (
+                patch("runtime_v2.supervisor.BrowserManager.start") as start_browser,
+                patch(
+                    "runtime_v2.supervisor.BrowserSupervisor.tick",
+                    return_value=browser_tick_result,
+                ) as tick_browser,
+            ):
+                result = run_once(
+                    owner="runtime_v2",
+                    run_id="run-side-effects-missing-gpt",
+                    config=config,
+                    workload="chatgpt",
+                    require_browser_healthy=False,
+                    allow_runtime_side_effects=True,
+                    worker_runner=lambda: {"status": "ok", "stage": "chatgpt"},
+                )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "GPT_FLOOR_FAIL")
+        start_browser.assert_called_once()
+        tick_browser.assert_called_once()
+
+    def test_run_once_fail_closes_when_side_effect_path_only_has_stale_gpt_ok(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig(gpt_status_file=root / "health" / "gpt_status.json")
+            _ = write_gpt_status(
+                {
+                    "schema_version": "1.0",
+                    "runtime": "runtime_v2",
+                    "checked_at": 1.0,
+                    "ok_count": 1,
+                    "min_ok": 1,
+                    "floor_breached": False,
+                    "breach_started_at": None,
+                    "breach_sec": 0,
+                    "pending_boot": 0,
+                    "last_spawn_at": None,
+                    "spawn_fail_count": 0,
+                    "spawn_needed": False,
+                    "warning_active": False,
+                    "last_warning_at": None,
+                    "cooldown_sec": 300,
+                    "cooldown_elapsed_sec": 300,
+                    "hourly_spawn_count": 0,
+                    "spawn_history": [],
+                    "endpoints": [
+                        {"name": "default", "status": "OK", "last_seen_at": 1.0}
+                    ],
+                },
+                config.gpt_status_file,
+            )
+            browser_tick_result: dict[str, object] = {
+                "run_id": "run-side-effects-stale-gpt",
+                "runtime": "runtime_v2",
+                "sessions": [],
+            }
+
+            with (
+                patch("runtime_v2.supervisor.BrowserManager.start") as start_browser,
+                patch(
+                    "runtime_v2.supervisor.BrowserSupervisor.tick",
+                    return_value=browser_tick_result,
+                ) as tick_browser,
+            ):
+                result = run_once(
+                    owner="runtime_v2",
+                    run_id="run-side-effects-stale-gpt",
+                    config=config,
+                    workload="chatgpt",
+                    require_browser_healthy=False,
+                    allow_runtime_side_effects=True,
+                    worker_runner=lambda: {"status": "ok", "stage": "chatgpt"},
+                )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "GPT_FLOOR_FAIL")
+        start_browser.assert_called_once()
+        tick_browser.assert_called_once()
+
     def test_selftest_probe_child_keeps_run_id_aligned_across_outputs(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             probe_root = Path(tmp_dir) / "probe"
