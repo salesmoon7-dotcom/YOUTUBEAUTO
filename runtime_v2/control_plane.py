@@ -11,6 +11,7 @@ from runtime_v2.config import GpuWorkload, RuntimeConfig, allowed_workloads
 from runtime_v2.debug_log import append_debug_event, debug_log_path
 from runtime_v2.gui_adapter import build_gui_status_payload
 from runtime_v2.latest_run import write_runtime_snapshot
+from runtime_v2.agent_browser.evidence import build_agent_browser_evidence
 from runtime_v2.gpt_autospawn import apply_autospawn_decision
 from runtime_v2.gpt_pool_monitor import tick_gpt_status
 from runtime_v2.recovery_policy import CircuitState, evaluate_recovery
@@ -29,6 +30,13 @@ from runtime_v2.stage2.genspark_worker import run_genspark_job
 from runtime_v2.stage2.seaart_worker import run_seaart_job
 from runtime_v2.stage3.render_worker import run_render_job
 from runtime_v2.worker_registry import update_worker_state
+from runtime_v2.workers.agent_browser_worker import (
+    run_agent_browser_verify_job,
+    run_agent_browser_verify_safe_mode_job,
+)
+from runtime_v2.workers.dev_implement_worker import run_dev_implement_job
+from runtime_v2.workers.dev_plan_worker import run_dev_plan_job
+from runtime_v2.workers.dev_replan_worker import run_dev_replan_job
 from runtime_v2.workers.kenburns_worker import run_kenburns_job
 from runtime_v2.workers.qwen3_worker import run_qwen3_job
 from runtime_v2.workers.rvc_worker import run_rvc_job
@@ -80,11 +88,6 @@ def run_control_loop_once(
     )
     artifact_root = getattr(
         runtime_config, "artifact_root", Path("system/runtime_v2/artifacts")
-    )
-    result_router_file = getattr(
-        runtime_config,
-        "result_router_file",
-        Path("system/runtime_v2/evidence/result.json"),
     )
     jobs = _load_jobs(queue_file)
     _recover_stale_running_jobs(
@@ -245,6 +248,20 @@ def run_control_loop_once(
                 allow_mock_chain=runtime_config.allow_mock_chain,
             ),
         }
+    elif (
+        job.workload == "agent_browser_verify"
+        and not allow_runtime_side_effects
+        and bool(job.payload.get("allow_in_safe_mode", False))
+    ):
+        result = {
+            "status": "ok",
+            "code": "OK",
+            "workload": job.workload,
+            "worker_result": run_agent_browser_verify_safe_mode_job(
+                job,
+                runtime_config.artifact_root,
+            ),
+        }
     else:
         result = run_gated(
             owner=owner,
@@ -276,6 +293,7 @@ def run_control_loop_once(
     completion = _mapping_from_obj(worker_contract.get("completion", {}))
     accepted_count, invalid_count = _archived_contract_counts(runtime_config.input_root)
     seeded_downstream: list[JobContract] = []
+    success = result.get("status") == "ok" and worker_ok
     if result.get("status") == "ok" and worker_ok:
         seeded_downstream = _seed_declared_next_jobs(
             queue_file,
@@ -304,9 +322,25 @@ def run_control_loop_once(
                     },
                     events_file,
                 )
-    success = result.get("status") == "ok" and worker_ok
+    elif not success:
+        failure_next_jobs = worker_contract.get("next_jobs", [])
+        if not isinstance(failure_next_jobs, list) or not failure_next_jobs:
+            failure_next_jobs = _agent_browser_failure_next_jobs(job)
+        if isinstance(failure_next_jobs, list) and failure_next_jobs:
+            seeded_downstream = _seed_declared_next_jobs(
+                queue_file,
+                jobs,
+                {"next_jobs": failure_next_jobs},
+                parent_job=job,
+                events_file=events_file,
+                run_id=run_id,
+            )
+    agent_browser_terminal_block = bool(
+        job.workload == "agent_browser_verify" and result.get("status") == "blocked"
+    )
     blocked_failure = bool(
         not success
+        and not agent_browser_terminal_block
         and (
             result.get("status") == "blocked"
             or str(worker_contract.get("status", "")) == "blocked"
@@ -316,7 +350,9 @@ def run_control_loop_once(
         job,
         success=bool(success),
         blocked=blocked_failure,
-        retryable=bool(worker_contract.get("retryable", False)),
+        retryable=False
+        if agent_browser_terminal_block
+        else bool(worker_contract.get("retryable", False)),
         config=runtime_config,
     )
     next_status = _next_status_for_recovery(recovery)
@@ -439,6 +475,9 @@ def run_control_loop_once(
             else str(completion.get("final_artifact_path", "")),
             "completion": {} if completion is None else completion,
             "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
+            "browser_evidence": build_agent_browser_evidence(worker_contract)
+            if job.workload == "agent_browser_verify"
+            else {},
             "ts": round(time(), 3),
         },
         write_completed=True,
@@ -1284,6 +1323,19 @@ def _run_worker(
             run_id=str(job.payload.get("run_id", job.job_id)),
         )
         return result
+    if job.workload == "agent_browser_verify":
+        result = run_agent_browser_verify_job(
+            job,
+            artifact_root,
+            registry_file=resolved_registry_file,
+        )
+        _ = update_worker_state(
+            resolved_registry_file,
+            workload=job.workload,
+            state="idle",
+            run_id=str(job.payload.get("run_id", job.job_id)),
+        )
+        return result
     if job.workload == "render":
         result = run_render_job(job, artifact_root)
         _ = update_worker_state(
@@ -1313,6 +1365,37 @@ def _run_worker(
         return result
     if job.workload == "qwen3_tts":
         result = run_qwen3_job(job, artifact_root=artifact_root)
+        _ = update_worker_state(
+            resolved_registry_file,
+            workload=job.workload,
+            state="idle",
+            run_id=str(job.payload.get("run_id", job.job_id)),
+        )
+        return result
+    if job.workload == "dev_plan":
+        result = run_dev_plan_job(job, artifact_root)
+        _ = update_worker_state(
+            resolved_registry_file,
+            workload=job.workload,
+            state="idle",
+            run_id=str(job.payload.get("run_id", job.job_id)),
+        )
+        return result
+    if job.workload == "dev_implement":
+        result = run_dev_implement_job(
+            job,
+            artifact_root=artifact_root,
+            config=RuntimeConfig.from_root(artifact_root.parent),
+        )
+        _ = update_worker_state(
+            resolved_registry_file,
+            workload=job.workload,
+            state="idle",
+            run_id=str(job.payload.get("run_id", job.job_id)),
+        )
+        return result
+    if job.workload == "dev_replan":
+        result = run_dev_replan_job(job, artifact_root)
         _ = update_worker_state(
             resolved_registry_file,
             workload=job.workload,
@@ -1742,6 +1825,42 @@ def _worker_artifact_paths(worker_result: dict[str, object]) -> list[Path]:
         if isinstance(entry, str) and entry.strip():
             artifact_paths.append(Path(entry))
     return artifact_paths
+
+
+def _agent_browser_failure_next_jobs(
+    parent_job: JobContract,
+) -> list[dict[str, object]]:
+    if parent_job.workload != "agent_browser_verify":
+        return []
+    if not bool(parent_job.payload.get("replan_on_failure", False)):
+        return []
+    raw_verification = parent_job.payload.get("verification", [])
+    verification = (
+        cast(list[object], raw_verification)
+        if isinstance(raw_verification, list)
+        else []
+    )
+    raw_browser_checks = parent_job.payload.get("browser_checks", [])
+    browser_checks = (
+        cast(list[object], raw_browser_checks)
+        if isinstance(raw_browser_checks, list)
+        else []
+    )
+    return [
+        build_explicit_job_contract(
+            job_id=f"dev-replan-{parent_job.job_id}",
+            workload="dev_replan",
+            checkpoint_key=f"derived:dev_replan:{parent_job.job_id}",
+            payload={
+                "run_id": str(parent_job.payload.get("run_id", "")).strip(),
+                "verification": verification,
+                "browser_checks": browser_checks,
+                "replan_payload": parent_job.payload.get("replan_payload", {}),
+            },
+            chain_step=_to_int(parent_job.payload.get("chain_depth", 0)) + 1,
+            parent_job_id=parent_job.job_id,
+        )
+    ]
 
 
 def _write_worker_artifact(

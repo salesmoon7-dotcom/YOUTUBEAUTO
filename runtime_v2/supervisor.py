@@ -181,6 +181,28 @@ def run_once(
     allow_runtime_side_effects: bool = True,
 ) -> dict[str, object]:
     runtime_config = config or RuntimeConfig()
+    if workload == "agent_browser_verify" and not allow_runtime_side_effects:
+        return {
+            "status": "blocked",
+            "code": "BROWSER_BLOCKED",
+            "workload": workload,
+            "worker_result": {
+                "status": "failed",
+                "stage": "runtime_preflight",
+                "error_code": "BROWSER_BLOCKED",
+                "retryable": True,
+                "next_jobs": [],
+                "completion": {"state": "blocked", "final_output": False},
+                "details": {"reason": "browser_side_effects_disabled"},
+            },
+            "browser": {
+                "run_id": run_id,
+                "runtime": "runtime_v2",
+                "sessions": [],
+                "side_effects_skipped": True,
+            },
+            "browser_sessions": [],
+        }
     browser_runtime: dict[str, object]
     if allow_runtime_side_effects:
         browser = BrowserManager()
