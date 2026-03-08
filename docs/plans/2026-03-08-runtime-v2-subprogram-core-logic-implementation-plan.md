@@ -186,7 +186,7 @@ next_jobs, _ = route_video_plan(video_plan)
   - 포함: browser health, GPT floor, GPU lock, latest-run/result evidence의 운영 안정성
   - 제외: 개별 하부프로그램의 최초 happy-path 구현
 
-이 구조는 `row = item 반복 + 최소 묶음 제어`라는 현재 가정 위에 서 있습니다. 만약 특정 서비스의 row가 집계/공유 상태/교차 검증을 더 강하게 요구하면, 2차 목표는 `1행 최소 집계 1종 검증`까지만 잠급니다.
+이 구조는 `row = item 반복 + 최소 묶음 제어`라는 현재 가정 위에 서 있습니다. 만약 특정 서비스의 row가 집계/공유 상태/교차 검증을 더 강하게 요구하면, 2차 목표는 `1행 최소 집계 1종 검증`까지만 잠그고, 그 즉시 동일 세션의 새 기능 추가를 중단한 뒤 canonical plan 기준의 아키텍처 재검토로 승격합니다.
 
 ## Commit Rule Per Task
 
