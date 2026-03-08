@@ -11,7 +11,7 @@
 
 - 디버깅을 쉽게 하려면 상태와 증거가 한 점으로 모여야 합니다.
 - 파이프라인을 단순하게 유지하려면 의미 결정권도 한 점으로 모여야 합니다.
-- 따라서 `runtime_v2`는 `관측 기반`, `단일 writer`, `단일 failure contract`, `단일 legacy adapter`를 기본 원칙으로 유지합니다.
+- 따라서 `runtime_v2`는 `관측 기반`, `단일 writer`, `단일 failure contract`, `단일 reference adapter`를 기본 원칙으로 유지합니다.
 
 ## Session-Start Obligations
 
@@ -35,7 +35,7 @@
 - latest-run snapshot의 writer는 하나만 둡니다. 최종 latest 의미는 control plane이 소유합니다.
 - 같은 failure axis는 한 이름, 한 의미만 가집니다. browser/gpt/gpu/worker가 같은 blocked를 다르게 기록하면 안 됩니다.
 - worker는 자기 결과만 반환하고, 재시도/blocked/backoff 정책은 상위 orchestration에서만 결정합니다.
-- 레거시 호출은 adapter 경로 하나로만 통과시키고, 직접 분산 호출을 늘리지 않습니다.
+- 외부 참고 호출은 adapter 경로 하나로만 통과시키고, 직접 분산 호출을 늘리지 않습니다.
 - fail-open보다 fail-closed를 우선합니다. 판단 불가면 진행보다 보류/차단을 선택합니다.
 
 ## 10 Mandatory Session Rules
@@ -47,7 +47,7 @@
 5. latest-run 결과가 두 파일에서 다른 의미로 남으면 기능 작업보다 `evidence drift` 수정이 우선입니다.
 6. `status`, `error_code`, `completion.state`는 contract 필드로만 해석하고 임의 파생 의미를 늘리지 않습니다.
 7. blocked 상태는 `hold` 또는 `fixed backoff` 중 하나로만 처리하고 즉시 재루프를 만들지 않습니다.
-8. 레거시 기능은 `호출 경로`, `안전장치`, `evidence/test` 3개가 함께 있을 때만 carryover로 인정합니다.
+8. 외부 참고 기능은 `호출 경로`, `안전장치`, `evidence/test` 3개가 함께 있을 때만 carryover로 인정합니다.
 9. 디버그를 위해 임시 예외 분기나 fallback OK를 추가하지 않습니다. 필요하면 evidence를 늘리고 owner 레이어에서 고칩니다.
 10. 한 세션에서 하나의 logical change만 수행하고, drift가 보이면 새 기능보다 아키텍처 재검토를 우선합니다.
 
@@ -56,14 +56,14 @@
 - Control plane: 최종 판정, queue 상태, latest snapshot writer의 단일 owner
 - Health plane: browser/gpt/gpu 상태 관측과 raw health 반환만 담당
 - Worker plane: artifact/result contract만 반환, 정책 결정 금지
-- Legacy adapter plane: 레거시 스크립트 호출과 근거 필드 표준화만 담당
+- Reference adapter plane: 외부 참고 스크립트 호출과 근거 필드 표준화만 담당
 
 ## Drift Escalation Triggers
 
 - 동일 failure axis 분기가 manager/supervisor/control_plane에 중복으로 늘어날 때
 - latest-run evidence가 같은 실행을 서로 다른 의미로 기록할 때
 - blocked semantics가 browser/gpt/gpu/worker 축마다 달라질 때
-- 레거시 carryover가 호출만 있고 안전장치/evidence 없이 누적될 때
+- 외부 참고 carryover가 호출만 있고 안전장치/evidence 없이 누적될 때
 - 1행 smoke 전제 조건이 문서나 코드에서 다르게 적힐 때
 
 - 위 항목 중 하나라도 보이면, 계속 땜질하지 말고 canonical plan 기준으로 아키텍처 재검토로 승격합니다.
