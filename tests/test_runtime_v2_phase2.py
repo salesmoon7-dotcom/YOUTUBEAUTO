@@ -19,7 +19,6 @@ from runtime_v2 import exit_codes
 from runtime_v2.cli import exit_code_from_status, main
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
-from runtime_v2.latest_run import load_joined_latest_run
 from runtime_v2.gpu.lease import LeaseStore, lease_key_for_workload
 from runtime_v2.n8n_adapter import build_n8n_webhook_response, post_callback
 from runtime_v2.gpt.floor import write_gpt_status
@@ -574,88 +573,11 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
                     )
                 ),
             )
-            latest_join = load_joined_latest_run(
-                RuntimeConfig(
-                    gui_status_file=probe_root / "health" / "gui_status.json",
-                    result_router_file=probe_root / "evidence" / "result.json",
-                    control_plane_events_file=probe_root
-                    / "evidence"
-                    / "control_plane_events.jsonl",
-                    latest_active_run_file=probe_root / "latest_active_run.json",
-                    latest_completed_run_file=probe_root / "latest_completed_run.json",
-                ),
-                completed=True,
-            )
-
             run_id = str(probe_result["run_id"])
             result_metadata = cast(dict[object, object], result_snapshot["metadata"])
             self.assertEqual(str(gui_status["run_id"]), run_id)
             self.assertEqual(str(result_metadata["run_id"]), run_id)
             self.assertEqual(str(browser_health["run_id"]), run_id)
-            self.assertFalse(bool(latest_join["out_of_sync"]))
-            latest_pointer = cast(dict[object, object], latest_join["pointer"])
-            self.assertEqual(str(latest_pointer["run_id"]), run_id)
-
-    def test_latest_join_flags_out_of_sync_when_gui_and_result_run_ids_diverge(
-        self,
-    ) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
-            root = Path(tmp_dir)
-            config = RuntimeConfig(
-                gui_status_file=root / "health" / "gui_status.json",
-                result_router_file=root / "evidence" / "result.json",
-                control_plane_events_file=root
-                / "evidence"
-                / "control_plane_events.jsonl",
-                latest_active_run_file=root / "latest_active_run.json",
-                latest_completed_run_file=root / "latest_completed_run.json",
-            )
-            config.gui_status_file.parent.mkdir(parents=True, exist_ok=True)
-            config.result_router_file.parent.mkdir(parents=True, exist_ok=True)
-            config.control_plane_events_file.parent.mkdir(parents=True, exist_ok=True)
-            config.latest_completed_run_file.parent.mkdir(parents=True, exist_ok=True)
-            _ = config.control_plane_events_file.write_text("", encoding="utf-8")
-            _ = write_gui_status(
-                build_gui_status_payload(
-                    {"status": "failed", "code": "BROWSER_UNHEALTHY"},
-                    run_id="gui-run",
-                    mode="control_loop",
-                    stage="finished",
-                    exit_code=1,
-                ),
-                config.gui_status_file,
-            )
-            _ = config.result_router_file.write_text(
-                json.dumps(
-                    {
-                        "schema_version": "1.0",
-                        "runtime": "runtime_v2",
-                        "checked_at": 1.0,
-                        "artifacts": [],
-                        "metadata": {"run_id": "result-run", "code": "GPT_FLOOR_FAIL"},
-                    },
-                    ensure_ascii=True,
-                ),
-                encoding="utf-8",
-            )
-            _ = config.latest_completed_run_file.write_text(
-                json.dumps(
-                    {
-                        "schema_version": "1.0",
-                        "runtime": "runtime_v2",
-                        "checked_at": 1.0,
-                        "run_id": "result-run",
-                    },
-                    ensure_ascii=True,
-                ),
-                encoding="utf-8",
-            )
-
-            latest_join = load_joined_latest_run(config, completed=True)
-
-        self.assertTrue(bool(latest_join["out_of_sync"]))
-        reasons = cast(list[object], latest_join["reasons"])
-        self.assertIn("gui_run_id_mismatch", [str(reason) for reason in reasons])
 
     def test_control_once_detached_propagates_seed_mock_chain_flag(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

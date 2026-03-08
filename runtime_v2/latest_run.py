@@ -83,8 +83,12 @@ def load_joined_latest_run(
         config.latest_completed_run_file if completed else config.latest_active_run_file
     )
     pointer = _read_json(pointer_file)
-    gui_payload = _read_json(config.gui_status_file)
-    result_payload = _read_json(config.result_router_file)
+    gui_payload = _read_json(
+        _path_from_pointer(pointer, "gui_status_path", config.gui_status_file)
+    )
+    result_payload = _read_json(
+        _path_from_pointer(pointer, "result_path", config.result_router_file)
+    )
     result_metadata = None
     if result_payload is not None:
         raw_metadata = result_payload.get("metadata")
@@ -126,3 +130,14 @@ def _read_json(path: Path) -> dict[str, object] | None:
         return None
     typed_payload = cast(dict[object, object], raw_payload)
     return {str(raw_key): raw_value for raw_key, raw_value in typed_payload.items()}
+
+
+def _path_from_pointer(
+    pointer: dict[str, object] | None, field_name: str, fallback: Path
+) -> Path:
+    if pointer is None:
+        return fallback
+    raw_value = str(pointer.get(field_name, "")).strip()
+    if not raw_value:
+        return fallback
+    return Path(raw_value)
