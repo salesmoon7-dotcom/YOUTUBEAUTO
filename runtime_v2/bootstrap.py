@@ -6,11 +6,23 @@ from typing import cast
 
 from runtime_v2.browser.health import build_browser_health_payload, write_browser_health
 from runtime_v2.browser.manager import default_browser_sessions
-from runtime_v2.browser.registry import build_browser_registry_payload, write_browser_registry
+from runtime_v2.browser.registry import (
+    build_browser_registry_payload,
+    write_browser_registry,
+)
 from runtime_v2.config import GpuWorkload, RuntimeConfig
-from runtime_v2.gpt.floor import build_gpt_status_payload, load_gpt_status, write_gpt_status
-from runtime_v2.gpu.lease import Lease, build_gpu_health_payload, write_gpu_health_payload
+from runtime_v2.gpt.floor import (
+    build_gpt_status_payload,
+    load_gpt_status,
+    write_gpt_status,
+)
+from runtime_v2.gpu.lease import (
+    Lease,
+    build_gpu_health_payload,
+    write_gpu_health_payload,
+)
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
+from runtime_v2.latest_run import update_latest_run_pointers
 from runtime_v2.result_router import write_result_router
 
 
@@ -25,15 +37,21 @@ def ensure_runtime_bootstrap(
     _ensure_state_files(config)
     _normalize_gpu_health_snapshot(config, workload)
     _normalize_gui_status_snapshot(config)
-    default_sessions = [session.to_dict(healthy=False) for session in default_browser_sessions()]
+    default_sessions = [
+        session.to_dict(healthy=False) for session in default_browser_sessions()
+    ]
     if _read_json(config.browser_health_file) is None:
         _ = write_browser_health(
-            build_browser_health_payload(default_sessions, runtime="runtime_v2", run_id=run_id),
+            build_browser_health_payload(
+                default_sessions, runtime="runtime_v2", run_id=run_id
+            ),
             config.browser_health_file,
         )
     if _read_json(config.browser_registry_file) is None:
         _ = write_browser_registry(
-            build_browser_registry_payload(default_sessions, runtime="runtime_v2", run_id=run_id),
+            build_browser_registry_payload(
+                default_sessions, runtime="runtime_v2", run_id=run_id
+            ),
             config.browser_registry_file,
         )
     if load_gpt_status(config.gpt_status_file) is None:
@@ -72,6 +90,15 @@ def ensure_runtime_bootstrap(
             ),
             config.gui_status_file,
         )
+    update_latest_run_pointers(
+        config,
+        run_id=run_id,
+        mode=mode,
+        status="idle",
+        code="BOOTSTRAPPED",
+        debug_log=str(config.debug_log_root / f"{run_id}.jsonl"),
+        write_completed=True,
+    )
 
 
 def _ensure_runtime_directories(config: RuntimeConfig) -> None:
@@ -101,6 +128,8 @@ def _ensure_runtime_directories(config: RuntimeConfig) -> None:
         config.queue_store_file.parent,
         config.feeder_state_file.parent,
         config.result_router_file.parent,
+        config.latest_active_run_file.parent,
+        config.latest_completed_run_file.parent,
         config.failure_summary_file.parent,
         config.worker_registry_file.parent,
     ]
@@ -117,15 +146,21 @@ def _ensure_state_files(config: RuntimeConfig) -> None:
         _ = config.feeder_state_file.write_text("{}", encoding="utf-8")
 
 
-def _normalize_gpu_health_snapshot(config: RuntimeConfig, workload: GpuWorkload) -> None:
+def _normalize_gpu_health_snapshot(
+    config: RuntimeConfig, workload: GpuWorkload
+) -> None:
     payload = _read_json(config.lease_file)
     if payload is None:
         _ = write_gpu_health_payload(
-            build_gpu_health_payload(workload, lock_key=f"lock:{workload}", lease=None, event="idle"),
+            build_gpu_health_payload(
+                workload, lock_key=f"lock:{workload}", lease=None, event="idle"
+            ),
             config.lease_file,
         )
         return
-    has_schema = isinstance(payload.get("schema_version"), str) and isinstance(payload.get("checked_at"), (int, float))
+    has_schema = isinstance(payload.get("schema_version"), str) and isinstance(
+        payload.get("checked_at"), (int, float)
+    )
     if has_schema:
         return
     lease_payload = None
@@ -137,7 +172,9 @@ def _normalize_gpu_health_snapshot(config: RuntimeConfig, workload: GpuWorkload)
     normalized = build_gpu_health_payload(
         normalized_workload,
         lock_key=lock_key or f"lock:{normalized_workload}",
-        lease=None if lease_payload is None else Lease.from_dict(_lease_like_payload(lease_payload)),
+        lease=None
+        if lease_payload is None
+        else Lease.from_dict(_lease_like_payload(lease_payload)),
         event="normalized_legacy_snapshot" if lease_payload is not None else "idle",
     )
     _ = write_gpu_health_payload(normalized, config.lease_file)
@@ -147,7 +184,9 @@ def _normalize_gui_status_snapshot(config: RuntimeConfig) -> None:
     payload = _read_json(config.gui_status_file)
     if payload is None:
         return
-    has_schema = isinstance(payload.get("schema_version"), str) and isinstance(payload.get("checked_at"), (int, float))
+    has_schema = isinstance(payload.get("schema_version"), str) and isinstance(
+        payload.get("checked_at"), (int, float)
+    )
     if has_schema:
         return
     status_payload = _coerce_mapping(payload.get("status", {}))
