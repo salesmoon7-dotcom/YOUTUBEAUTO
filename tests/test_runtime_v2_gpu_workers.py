@@ -74,6 +74,35 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(details["execution_mode"], "native_only")
         self.assertEqual(details["model_name"], "voice-model-a")
 
+    def test_qwen3_worker_requires_adapter_command_to_create_fresh_output(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            image_path = root / "image.png"
+            output_path = root / "speech.wav"
+            _ = image_path.write_bytes(b"png")
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = output_path.write_bytes(b"stale")
+            job = JobContract(
+                job_id="qwen-job-stale-output",
+                workload="qwen3_tts",
+                payload={
+                    "script_text": "hello world",
+                    "image_path": str(image_path.resolve()),
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "adapter_command": [sys.executable, "-c", "pass"],
+                },
+            )
+
+            result = run_qwen3_job(job, artifact_root=artifact_root)
+
+        completion = cast(dict[object, object], result["completion"])
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "stale_service_artifact_path")
+        self.assertEqual(completion["state"], "failed")
+        self.assertFalse(bool(completion["final_output"]))
+
     def test_rvc_worker_processes_one_item_via_explicit_adapter_command(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -154,7 +183,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(len(next_jobs), 0)
         completion = cast(dict[object, object], result["completion"])
         details = cast(dict[object, object], result["details"])
-        self.assertEqual(completion["state"], "blocked")
+        self.assertEqual(completion["state"], "failed")
         self.assertFalse(bool(completion["final_output"]))
         self.assertEqual(details["model_name"], "voice-model-a")
         self.assertEqual(details["execution_mode"], "native_only")

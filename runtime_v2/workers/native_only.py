@@ -70,5 +70,5 @@ def native_not_implemented_result(
         error_code=f"native_{workload}_not_implemented",
         retryable=False,
         details=details_payload,
-        completion={"state": "blocked", "final_output": False},
+        completion={"state": "failed", "final_output": False},
     )

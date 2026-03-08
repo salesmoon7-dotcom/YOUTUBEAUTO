@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from typing import cast
 
 from runtime_v2.contracts.job_contract import JobContract
+from runtime_v2.workers.external_process import run_verified_adapter_command
 from runtime_v2.workers.job_runtime import (
     finalize_worker_result,
     prepare_workspace,
@@ -35,6 +35,7 @@ def run_rvc_job(
             artifacts=[],
             error_code="missing_source_path",
             retryable=False,
+            completion={"state": "failed", "final_output": False},
         )
     model_name = str(job.payload.get("model_name", "")).strip()
     if not model_name:
@@ -45,6 +46,7 @@ def run_rvc_job(
             artifacts=[],
             error_code="missing_model_name",
             retryable=False,
+            completion={"state": "failed", "final_output": False},
         )
 
     project_root = workspace / "project"
@@ -66,44 +68,29 @@ def run_rvc_job(
     if isinstance(adapter_command_raw, list) and adapter_command_raw:
         adapter_command_items = cast(list[object], adapter_command_raw)
         adapter_command = [str(item) for item in adapter_command_items]
-        completed = subprocess.run(
-            adapter_command,
-            cwd=str(workspace),
-            capture_output=True,
-            text=True,
-            check=False,
+        adapter_result = run_verified_adapter_command(
+            workspace,
+            adapter_command=adapter_command,
+            service_artifact_path=str(job.payload.get("service_artifact_path", "")),
+            adapter_error_code="rvc_adapter_failed",
         )
-        stdout_path = workspace / "adapter_stdout.log"
-        stderr_path = workspace / "adapter_stderr.log"
-        _ = stdout_path.write_text(completed.stdout, encoding="utf-8")
-        _ = stderr_path.write_text(completed.stderr, encoding="utf-8")
-        if completed.returncode != 0:
+        stdout_path = Path(str(adapter_result["stdout_path"]))
+        stderr_path = Path(str(adapter_result["stderr_path"]))
+        if not bool(adapter_result.get("ok", False)):
             return finalize_worker_result(
                 workspace,
                 status="failed",
                 stage="rvc_adapter",
                 artifacts=[source_copy, request_file, stdout_path, stderr_path],
-                error_code="rvc_adapter_failed",
+                error_code=str(adapter_result.get("error_code", "rvc_adapter_failed")),
                 retryable=False,
-                details={"returncode": completed.returncode, "model_name": model_name},
-                completion={"state": "blocked", "final_output": False},
+                details={
+                    **cast(dict[str, object], adapter_result.get("details", {})),
+                    "model_name": model_name,
+                },
+                completion={"state": "failed", "final_output": False},
             )
-
-        service_artifact_path = str(
-            job.payload.get("service_artifact_path", "")
-        ).strip()
-        verified_output = resolve_local_input(service_artifact_path)
-        if verified_output is None:
-            return finalize_worker_result(
-                workspace,
-                status="failed",
-                stage="rvc_verify_output",
-                artifacts=[source_copy, request_file, stdout_path, stderr_path],
-                error_code="missing_service_artifact_path",
-                retryable=False,
-                details={"model_name": model_name},
-                completion={"state": "blocked", "final_output": False},
-            )
+        verified_output = Path(str(adapter_result["output_path"]))
 
         return finalize_worker_result(
             workspace,
