@@ -281,6 +281,27 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                 self.assertEqual(result["status"], "ok")
                 self.assertTrue(output_path.exists())
 
+    def test_genspark_worker_requires_adapter_command_to_create_fresh_output(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = root / "exports" / "genspark-stale.png"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = output_path.write_bytes(b"stale")
+            job = _stage2_job("genspark")
+            job.payload["service_artifact_path"] = str(output_path)
+            job.payload["adapter_command"] = [sys.executable, "-c", "pass"]
+
+            result = run_genspark_job(job, artifact_root)
+
+        completion = cast(dict[str, object], result["completion"])
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "stale_service_artifact_path")
+        self.assertEqual(completion["state"], "failed")
+        self.assertFalse(bool(completion["final_output"]))
+
     def test_seaart_worker_processes_one_item_via_explicit_adapter_command(
         self,
     ) -> None:
@@ -391,7 +412,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                 self.assertFalse(output_path.exists())
                 self.assertFalse(result.get("next_jobs", []))
                 completion = cast(dict[str, object], result["completion"])
-                self.assertEqual(completion["state"], "blocked")
+                self.assertEqual(completion["state"], "failed")
                 self.assertFalse(bool(completion["final_output"]))
 
     def test_stage2_row_processing_keeps_browser_worker_items_blocked_for_one_row(
@@ -520,7 +541,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             (root / "artifacts" / "genspark" / "genspark-job-1" / "D").exists()
         )
 
-    def test_stage2_failure_keeps_completion_blocked(self) -> None:
+    def test_stage2_failure_marks_completion_failed(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             job = _stage2_job("genspark")
@@ -530,7 +551,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
 
         completion = cast(dict[str, object], result["completion"])
         self.assertEqual(result["status"], "failed")
-        self.assertEqual(completion["state"], "blocked")
+        self.assertEqual(completion["state"], "failed")
         self.assertFalse(bool(completion["final_output"]))
 
     def test_stage2_jobs_dispatch_to_resident_workers(self) -> None:
