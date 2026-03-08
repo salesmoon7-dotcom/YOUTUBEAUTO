@@ -9,7 +9,7 @@ from typing import cast
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.bootstrap import ensure_runtime_bootstrap
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
-from runtime_v2.latest_run import load_joined_latest_run
+from runtime_v2.latest_run import load_joined_latest_run, write_runtime_snapshot
 
 
 def _latest_run_config(root: Path) -> RuntimeConfig:
@@ -23,6 +23,49 @@ def _latest_run_config(root: Path) -> RuntimeConfig:
 
 
 class RuntimeV2LatestRunTests(unittest.TestCase):
+    def test_only_single_runtime_api_updates_latest_and_result_snapshots(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _latest_run_config(root)
+            config.control_plane_events_file.parent.mkdir(parents=True, exist_ok=True)
+            _ = config.control_plane_events_file.write_text("", encoding="utf-8")
+
+            gui_payload = build_gui_status_payload(
+                {"status": "ok", "code": "OK", "queue_status": "completed"},
+                run_id="runtime-run-1",
+                mode="control_loop",
+                stage="finished",
+                exit_code=0,
+            )
+            artifact_path = root / "artifacts" / "result.mp4"
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = artifact_path.write_bytes(b"mp4")
+
+            _ = write_runtime_snapshot(
+                config,
+                run_id="runtime-run-1",
+                mode="control_loop",
+                status="ok",
+                code="OK",
+                debug_log=str(root / "debug.jsonl"),
+                gui_payload=gui_payload,
+                artifacts=[artifact_path],
+                metadata={"run_id": "runtime-run-1", "code": "OK"},
+                write_completed=True,
+                artifact_root=root,
+            )
+
+            latest_join = load_joined_latest_run(config, completed=True)
+
+        self.assertFalse(bool(latest_join["out_of_sync"]))
+        pointer = cast(dict[object, object], latest_join["pointer"])
+        gui_status = cast(dict[object, object], latest_join["gui_status"])
+        result_metadata = cast(dict[object, object], latest_join["result_metadata"])
+        self.assertEqual(str(pointer["run_id"]), "runtime-run-1")
+        self.assertEqual(str(gui_status["run_id"]), "runtime-run-1")
+        self.assertEqual(str(result_metadata["run_id"]), "runtime-run-1")
+        self.assertEqual(str(result_metadata["code"]), "OK")
+
     def test_load_joined_latest_run_uses_pointer_specific_paths(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

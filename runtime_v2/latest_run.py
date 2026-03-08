@@ -7,6 +7,8 @@ from time import time
 from typing import cast
 
 from runtime_v2.config import RuntimeConfig
+from runtime_v2.gui_adapter import write_gui_status
+from runtime_v2.result_router import write_result_router
 
 
 def build_latest_run_pointer(
@@ -74,6 +76,38 @@ def update_latest_run_pointers(
     _ = write_latest_run_pointer(pointer, config.latest_active_run_file)
     if write_completed:
         _ = write_latest_run_pointer(pointer, config.latest_completed_run_file)
+
+
+def write_runtime_snapshot(
+    config: RuntimeConfig,
+    *,
+    run_id: str,
+    mode: str,
+    status: str,
+    code: str,
+    debug_log: str,
+    gui_payload: dict[str, object],
+    artifacts: list[Path],
+    metadata: dict[str, object],
+    write_completed: bool,
+    artifact_root: Path | None = None,
+) -> None:
+    _ = write_gui_status(gui_payload, config.gui_status_file)
+    _ = write_result_router(
+        artifacts,
+        config.artifact_root if artifact_root is None else artifact_root,
+        config.result_router_file,
+        metadata=metadata,
+    )
+    update_latest_run_pointers(
+        config,
+        run_id=run_id,
+        mode=mode,
+        status=status,
+        code=code,
+        debug_log=debug_log,
+        write_completed=write_completed,
+    )
 
 
 def load_joined_latest_run(
