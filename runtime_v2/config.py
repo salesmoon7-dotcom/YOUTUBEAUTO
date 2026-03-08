@@ -6,8 +6,10 @@ from typing import Literal
 
 
 GpuWorkload = Literal["qwen3_tts", "rvc", "kenburns"]
-BrowserWorkload = Literal["chatgpt", "genspark", "seaart", "geminigen", "canva"]
-LocalWorkload = Literal["render"]
+BrowserWorkload = Literal[
+    "chatgpt", "genspark", "seaart", "geminigen", "canva", "agent_browser_verify"
+]
+LocalWorkload = Literal["render", "dev_plan", "dev_implement", "dev_replan"]
 WorkloadName = Literal[
     "qwen3_tts",
     "rvc",
@@ -17,6 +19,10 @@ WorkloadName = Literal[
     "seaart",
     "geminigen",
     "canva",
+    "agent_browser_verify",
+    "dev_plan",
+    "dev_implement",
+    "dev_replan",
     "render",
 ]
 WorkloadKind = Literal["gpu", "browser", "local"]
@@ -31,6 +37,10 @@ WORKLOAD_KINDS: dict[WorkloadName, WorkloadKind] = {
     "seaart": "browser",
     "geminigen": "browser",
     "canva": "browser",
+    "agent_browser_verify": "browser",
+    "dev_plan": "local",
+    "dev_implement": "local",
+    "dev_replan": "local",
     "render": "local",
 }
 
@@ -43,6 +53,10 @@ WORKLOAD_BROWSER_SERVICES: dict[WorkloadName, tuple[str, ...]] = {
     "seaart": ("seaart",),
     "geminigen": ("geminigen",),
     "canva": ("canva",),
+    "agent_browser_verify": (),
+    "dev_plan": (),
+    "dev_implement": (),
+    "dev_replan": (),
     "render": (),
 }
 

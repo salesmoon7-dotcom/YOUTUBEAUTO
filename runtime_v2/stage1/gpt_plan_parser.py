@@ -95,3 +95,20 @@ def build_topic_spec_from_gpt_response(
     payload = extract_stage1_gpt_plan_json(response_text)
     parsed_plan = parse_stage1_gpt_plan(payload)
     return map_stage1_plan_to_topic_spec(topic_spec, parsed_plan)
+
+
+def extract_dev_loop_plan_json(response_text: str) -> dict[str, object]:
+    match = _JSON_FENCE_PATTERN.search(response_text)
+    if match is None:
+        raise ValueError("missing_dev_loop_json_fence")
+    payload_obj = cast(object, json.loads(match.group(1)))
+    if not isinstance(payload_obj, dict):
+        raise ValueError("invalid_dev_loop_plan_json")
+    payload = cast(dict[object, object], payload_obj)
+    return {str(key): value for key, value in payload.items()}
+
+
+def parse_dev_loop_plan(payload: dict[str, object]) -> dict[str, object]:
+    from runtime_v2.contracts.dev_loop_plan import parse_dev_loop_plan as _parse
+
+    return _parse(payload)
