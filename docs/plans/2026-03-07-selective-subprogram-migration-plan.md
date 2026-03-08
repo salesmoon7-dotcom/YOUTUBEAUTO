@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** `D:\YOUTUBE_AUTO`의 브라우저/GPU 하부프로그램에서 꼭 필요한 장점만 선별해 `D:\YOUTUBEAUTO`의 `runtime_v2`에 이식하되, 새 프로그램은 디버깅이 쉽고 파이프라인이 단순하며 레거시의 장점만 유지하도록 만듭니다.
+**Goal:** 외부 참고 저장소의 브라우저/GPU 하부프로그램에서 꼭 필요한 장점만 선별해 `D:\YOUTUBEAUTO`의 `runtime_v2`에 이식하되, 새 프로그램은 디버깅이 쉽고 파이프라인이 단순하며 참고 구현의 장점만 유지하도록 만듭니다.
 
-**Architecture:** 신규 프로그램의 단일 진실은 `runtime_v2/`와 `system/runtime_v2/`의 계약입니다. 레거시에서는 거대 오케스트레이션을 버리고, 세션 재사용 규칙, 감시형 subprocess, 아티팩트 계약, GPU 게이트 같은 정책/함수 단위만 추출하여 Control Plane -> Browser Plane -> GPU Leaf Worker -> Evidence Plane 구조 안에만 재배치합니다.
+**Architecture:** 신규 프로그램의 단일 진실은 `runtime_v2/`와 `system/runtime_v2/`의 계약입니다. 외부 참고에서는 거대 오케스트레이션을 버리고, 세션 재사용 규칙, 감시형 subprocess, 아티팩트 계약, GPU 게이트 같은 정책/함수 단위만 추출하여 Control Plane -> Browser Plane -> GPU Leaf Worker -> Evidence Plane 구조 안에만 재배치합니다.
 
 **Tech Stack:** Python 3.13, `runtime_v2`, JSON contract/evidence, file lease/lock, FFmpeg, PowerShell TTS, browser registry/health, `unittest`, `python -m py_compile`
 
@@ -17,30 +17,30 @@
 3. **디버깅 우선:** 실패는 침묵 보정하지 않고 `debug_log`, `result.json`, `gui_status.json`, `control_plane_events.jsonl` 증거를 남긴 뒤 hard-fail 합니다.
 4. **브라우저는 세션 인프라로만 이식:** 브라우저 로직은 job별 직접 실행기가 아니라 `registry`, `health`, `manager`, `probe` 정책으로 이식합니다.
 5. **GPU는 leaf worker로만 이식:** GPU/미디어 프로그램은 모두 `runtime_v2/workers/*.py`와 `external_process.py` 뒤에 숨기고, control plane이 세부 명령을 직접 다루지 않게 합니다.
-6. **선별 기준 3개:** 새 기능이 `디버깅 용이성`, `파이프라인 단순성`, `레거시 장점 유지`를 동시에 만족하지 못하면 이식하지 않습니다.
+6. **선별 기준 3개:** 새 기능이 `디버깅 용이성`, `파이프라인 단순성`, `외부 참고 장점 유지`를 동시에 만족하지 못하면 이식하지 않습니다.
 7. **`run_id` 단일성 유지:** browser/GPU/GPT/GUI/result snapshot은 control tick 기준 `run_id`를 공유하고, `job_id`는 별도 추적 필드로만 사용합니다.
 8. **계획 정본 경로 고정:** 저장소 기준 계획 정본은 `docs/plans/`이고, `.sisyphus/plans/`는 리뷰용 미러로만 사용합니다.
 
 ## 1) Approach Options
 
-### Option A: 레거시 흐름 직접 포팅
+### Option A: 외부 참고 흐름 직접 포팅
 - 장점: 초기 체감 속도는 빠를 수 있습니다.
 - 단점: 복잡도와 디버깅 실패 패턴까지 같이 이식됩니다.
 - 판정: **금지**
 
-### Option B: 레거시를 서브프로세스로 감싸는 어댑터 중심 방식
+### Option B: 외부 참고를 서브프로세스로 감싸는 어댑터 중심 방식
 - 장점: 단기 연결은 쉽습니다.
 - 단점: 새 프로그램 안에 블랙박스가 남고, debug/evidence 일관성이 깨집니다.
 - 판정: **비상 백업용으로만 허용**
 
 ### Option C: 정책/계약/leaf worker만 선택 이식
-- 장점: 새 프로그램의 경계를 유지하면서 레거시 장점만 흡수할 수 있습니다.
+- 장점: 새 프로그램의 경계를 유지하면서 외부 참고 장점만 흡수할 수 있습니다.
 - 단점: 기능별 선별과 계약화 작업이 필요합니다.
 - 판정: **권장안**
 
-## 2) Legacy Reuse Matrix
+## 2) Reference Reuse Matrix
 
-| Legacy Source | 가져올 것 | 버릴 것 | New Target |
+| Reference Source | 가져올 것 | 버릴 것 | New Target |
 |---|---|---|---|
 | `pipeline_common.py` | 상태 전이 표준, 결과 정규화 개념 | 대형 파이프라인 결합 가정 | `runtime_v2/state_machine.py`, `runtime_v2/result_router.py` |
 | `json_generator.py` | 경로 계산/검증 규칙, atomic JSON 작성 패턴 | 엑셀/채널 결합 로직 | `runtime_v2/contracts/artifact_contract.py`, `runtime_v2/result_router.py` |
@@ -55,7 +55,7 @@
 
 ### 유지/축소 이식 후보
 
-| 기능 후보 | 레거시 장점 | 적용 방식 | 단일 책임 소유자 | 디버깅 근거 |
+| 기능 후보 | 외부 참고 장점 | 적용 방식 | 단일 책임 소유자 | 디버깅 근거 |
 |---|---|---|---|---|
 | 디버그 포트 고정 세션 | 브라우저 세션 재사용과 attach 안정성 | 포트/프로필/서비스 기본값을 세션 객체에 고정 | `runtime_v2/browser/manager.py` | `browser_session_registry.json` |
 | 절대경로 프로필 디렉터리 | 세션 경로 혼선 방지 | profile_dir을 항상 절대경로로 정규화 | `runtime_v2/browser/manager.py` | registry snapshot의 `profile_dir` |
@@ -70,7 +70,7 @@
 
 | 버릴 기능 | 버리는 이유 | 금지 방식 | 대체 경계 |
 |---|---|---|---|
-| 거대 Selenium 작업 흐름 | 새 프로그램을 다시 레거시처럼 복잡하게 만듦 | `chatgpt_automation.py`류 직접 포팅 금지 | browser plane은 세션 인프라만 담당 |
+| 거대 Selenium 작업 흐름 | 새 프로그램을 다시 외부 참고처럼 복잡하게 만듦 | `chatgpt_automation.py`류 직접 포팅 금지 | browser plane은 세션 인프라만 담당 |
 | 엑셀 직접 갱신/상태 보정 | 파이프라인 단순성과 증거 일관성을 깨뜨림 | browser code에서 외부 상태 저장 금지 | control plane + evidence 계약 |
 | 서비스별 특수 예외 누적 | 디버깅이 어려워지고 분기 폭증 | browser module에 서비스별 하드코딩 예외 추가 금지 | 공통 health/registry/restart 정책 |
 | 브라우저 내부에서 job 실행 | control plane 경계를 무너뜨림 | browser module에서 worker/job routing 금지 | control plane의 `next_jobs[]`만 사용 |
@@ -102,7 +102,7 @@
 ```md
 - control plane이 브라우저/GPU 명령 세부를 직접 호출하면 실패
 - 증거 파일 없이 자동 보정하면 실패
-- 레거시 write 경로 접근이 생기면 실패
+- 외부 참고 write 경로 접근이 생기면 실패
 ```
 
 **Step 2: 문서 반영 후 드리프트 확인**
@@ -116,7 +116,7 @@ Expected: compile success
 
 ```md
 - control plane이 `run_gated` 외에 브라우저/GPU 세부를 직접 호출하지 않는다
-- 레거시 경로 write가 없다
+- 외부 참고 경로 write가 없다
 - worker 계약 생성이 단일 함수로 통일된다
 - evidence 없이 자동 보정하지 않는다
 ```
@@ -159,7 +159,7 @@ return replace_session
 Run: `python -m unittest tests.test_runtime_v2_browser_plane -v`
 Expected: PASS
 
-### Task 3: 감시형 subprocess 래퍼를 레거시 장점만 남기도록 강화
+### Task 3: 감시형 subprocess 래퍼를 외부 참고 장점만 남기도록 강화
 
 **Files:**
 - Modify: `runtime_v2/workers/external_process.py`
@@ -358,7 +358,7 @@ python -m compileall -q runtime_v2
 
 ## 7) Done Definition
 
-1. 새 프로그램이 레거시보다 디버깅이 쉬워졌다고 evidence 파일만으로 설명 가능합니다.
+1. 새 프로그램이 외부 참고보다 디버깅이 쉬워졌다고 evidence 파일만으로 설명 가능합니다.
 2. 새 프로그램의 제어 흐름을 `control_plane.py`와 워커 계약만 읽고 이해할 수 있습니다.
-3. 레거시의 장점은 유지되지만, 레거시의 거대 오케스트레이션과 암묵적 보정은 사라집니다.
-4. Oracle과 Momus 검토에서 “레거시 복잡도 재유입” 경고가 남지 않습니다.
+3. 외부 참고의 장점은 유지되지만, 외부 참고의 거대 오케스트레이션과 암묵적 보정은 사라집니다.
+4. Oracle과 Momus 검토에서 “외부 참고 복잡도 재유입” 경고가 남지 않습니다.

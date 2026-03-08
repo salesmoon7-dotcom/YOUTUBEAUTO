@@ -29,7 +29,7 @@
 **충돌 방지 규칙:**
 - 기존 `runtime/`, `system/runtime/`, 기존 디버그 포트와 공유 금지
 - 브라우저 프로필 디렉터리도 `runtime_v2/sessions/*`로 분리
-- 신규 프로그램은 레거시 파일을 수정하지 않고 read-only 참조만 허용
+- 신규 프로그램은 외부 참고 파일을 수정하지 않고 read-only 참조만 허용
 
 ## 1) 모듈 경계 (New Program Boundaries)
 
@@ -115,7 +115,7 @@
 - 동일 원인 5회 연속 실패 시 회로 차단 후 운영 알림
 - resume는 체크포인트 기반(진행 중 작업 idempotent 재진입)
 
-## 3) 마이그레이션 전략 (Legacy -> New)
+## 3) 마이그레이션 전략 (Reference -> New)
 
 ### Task 7: 핵심 로직 차용 목록 고정
 
@@ -126,7 +126,7 @@
 
 ### Task 7-1: 차용 우선 매트릭스 (개발시간 단축용)
 
-| Legacy Source | 차용 로직 | New Target | 차용 방식 | 비고 |
+| Reference Source | 차용 로직 | New Target | 차용 방식 | 비고 |
 |---|---|---|---|---|
 | `pipeline_common.py` | 상태 문자열 정규화, 결과 레코드 형식 | `runtime_v2/state_machine.py` | 함수 단위 포팅 | 상태명 호환 테이블 유지 |
 | `master_manager.py` | pending row 선별 규칙(`Status` 기반) | `runtime_v2/queue_store.py` | 규칙만 추출, 실행체인 제외 | 오케스트레이션 결합 로직은 제외 |
@@ -151,13 +151,13 @@
 1. **Phase A (1주):** 차용 매트릭스 상위 3개(`pipeline_common`, `supervisor`, `json_generator`) 우선 포팅 + dry-run
 2. **Phase B (1주):** GPU 스케줄러/락 도입, 중복 실행 0건 확인
 3. **Phase C (1주):** GPT floor 자동복구 + 24h soak test
-4. **Phase D (1주):** 신규 시스템 본전환, 레거시는 read-only 모드
+4. **Phase D (1주):** 신규 시스템 본전환, 외부 참고는 read-only 모드
 
 **Phase Exit Criteria:**
 - Phase A Exit: `control_loop_dryrun_report.md` PASS + 상태 전이 JSONL 회귀 테스트 PASS
 - Phase B Exit: `system/runtime_v2/health/gpu_scheduler_health.json` 기준 24h `duplicate_run=0`
 - Phase C Exit: `system/runtime_v2/evidence/soak_24h_report.md` 기준 `gpt_floor_breach_over_120s=0` 및 `MTTR p95 <= 120s`
-- Phase D Exit: 레거시 write 경로 접근 0건(감사 로그 기준) + 운영 체크리스트 PASS
+- Phase D Exit: 외부 참고 write 경로 접근 0건(감사 로그 기준) + 운영 체크리스트 PASS
 
 ## 4) 검증 게이트 (Must Pass)
 

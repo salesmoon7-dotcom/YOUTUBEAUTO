@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** `D:\YOUTUBE_AUTO`에서 이미 구현된 `엑셀 Topic 입력 -> GPT 파싱/프롬프트 생성 -> 엑셀 저장 -> JSON 계약 운영 -> stage2 이미지/비디오 -> 최종 동영상` 개념을 `D:\YOUTUBEAUTO`의 `runtime_v2`에 이식하되, 새 프로그램은 디버깅이 쉽고 파이프라인이 단순한 구조를 유지합니다.
+**Goal:** 외부 참고 저장소에서 이미 검증된 `엑셀 Topic 입력 -> GPT 파싱/프롬프트 생성 -> 엑셀 저장 -> JSON 계약 운영 -> stage2 이미지/비디오 -> 최종 동영상` 개념을 `D:\YOUTUBEAUTO`의 `runtime_v2`에 이식하되, 새 프로그램은 디버깅이 쉽고 파이프라인이 단순한 구조를 유지합니다.
 
-**Architecture:** 새 프로그램의 단일 진실은 `runtime_v2/`와 `system/runtime_v2/`의 계약 파일입니다. 레거시의 강점은 `manager-only Excel writer`, `transition gate`, `runner evidence`에서만 추출하고, 거대 오케스트레이션/브라우저 직접 제어/엑셀 직접 수정은 버립니다. 전체 흐름은 `Supervisor -> Manager -> Subprograms -> Evidence/GUI Plane` 계층으로 고정하며, 실제 데이터 체인은 `Excel Bridge -> TopicSpec -> VideoPlan -> RenderSpec -> Final Evidence`의 단일 JSON 체인만 허용합니다. 단, 모든 하부프로그램은 잡이 없어도 프로세스/세션이 살아 있는 `24h resident worker`를 기본 운영 모델로 사용하고, Manager는 해당 resident worker에 JSON job만 공급합니다.
+**Architecture:** 새 프로그램의 단일 진실은 `runtime_v2/`와 `system/runtime_v2/`의 계약 파일입니다. 외부 참고의 강점은 `manager-only Excel writer`, `transition gate`, `runner evidence`에서만 추출하고, 거대 오케스트레이션/브라우저 직접 제어/엑셀 직접 수정은 버립니다. 전체 흐름은 `Supervisor -> Manager -> Subprograms -> Evidence/GUI Plane` 계층으로 고정하며, 실제 데이터 체인은 `Excel Bridge -> TopicSpec -> VideoPlan -> RenderSpec -> Final Evidence`의 단일 JSON 체인만 허용합니다. 단, 모든 하부프로그램은 잡이 없어도 프로세스/세션이 살아 있는 `24h resident worker`를 기본 운영 모델로 사용하고, Manager는 해당 resident worker에 JSON job만 공급합니다.
 
 **Tech Stack:** Python 3.13, `openpyxl`, JSON/JSONL contracts, `runtime_v2`, browser session registry/health, ffmpeg, existing `qwen3_tts/rvc/kenburns` workers, `unittest`, `python -m compileall`
 
@@ -14,7 +14,7 @@
 
 1. 현재 `runtime_v2`는 `txt` 또는 `.job.json` 입력에서 `qwen3_tts -> rvc -> kenburns` 체인만 지원합니다.
 2. 현재 `runtime_v2`에는 `4 머니.xlsx` 같은 엑셀 파일을 읽어 `Topic` 기준으로 Stage1 GPT를 시드하는 코드가 없습니다.
-3. 현재 `runtime_v2`에는 레거시의 `chatgpt_pending`, `manager-owned-excel`, `merge_chatgpt_json_results`, `save_prompt_json`, `save_geminigen_json`, `Thumb OK/Voice OK/Done` 상태 전이 개념이 없습니다.
+3. 현재 `runtime_v2`에는 외부 참고의 `chatgpt_pending`, `manager-owned-excel`, `merge_chatgpt_json_results`, `save_prompt_json`, `save_geminigen_json`, `Thumb OK/Voice OK/Done` 상태 전이 개념이 없습니다.
 4. 따라서 사용자 관점의 실전 테스트(`엑셀 1행 Topic -> 최종 동영상`)는 아직 불가능합니다.
 
 ## 1) 최상위 대원칙 (Hard Gates)
@@ -26,7 +26,7 @@
 5. **계층 분리 고정**: `Supervisor`는 24시간 자동화/복구/정책의 최종 관리자이고, `Manager`는 엑셀 브리지/상태 전이/파이프라인 orchestration의 단일 주체이며, 하부프로그램은 입력 JSON을 받아 결과 JSON만 돌려줍니다.
 6. **Excel은 가장자리에서 한 번만 변환**: 엑셀 row는 Manager가 최초 1회 `TopicSpec` JSON으로 고정하고, 이후 단계는 엑셀을 다시 참조하지 않습니다.
 7. **JSON 계약 최소화**: 하부프로그램 간 전달은 문자열 인자 대신 `topic_spec.json`, `video_plan.json`, `render_spec.json`, `runner_result.json`, `result.json`만 사용합니다.
-8. **레거시 포팅 단위 제한**: 함수/정책/계약만 차용합니다. `pipeline.py`, `master_manager.py`, `chatgpt_automation.py` 전체 이식은 금지합니다.
+8. **외부 참고 포팅 단위 제한**: 함수/정책/계약만 차용합니다. `pipeline.py`, `master_manager.py`, `chatgpt_automation.py` 전체 이식은 금지합니다.
 9. **stage2 포함**: 이번 계획은 Stage1 GPT까지만이 아니라, Stage2 이미지/비디오/썸네일/최종 렌더 경로까지 포함합니다.
 10. **RenderSpec 단일 writer**: `render_spec.json`은 Manager만 생성/병합/갱신합니다. Stage2/Stage3 worker는 `runner_result.json`만 기록합니다.
 11. **Manager는 기존 control plane 위에 얇게 올립니다**: 새 `manager.py`는 엑셀 브리지와 상태 전이를 담당하고, 실제 job queue 실행/`next_jobs[]` 해석은 기존 `runtime_v2/control_plane.py`를 재사용합니다.
@@ -47,12 +47,12 @@
 
 ## 2) 접근안
 
-### Option A: 레거시 full pipeline 직접 복제
+### Option A: 외부 참고 full pipeline 직접 복제
 - 장점: 초기 실행 체감은 빠를 수 있습니다.
 - 단점: 디버깅 난이도와 복잡도가 그대로 재유입됩니다.
 - 판정: **금지**
 
-### Option B: 레거시를 어댑터 프로세스로 감싸 새 프로그램에서 호출
+### Option B: 외부 참고를 어댑터 프로세스로 감싸 새 프로그램에서 호출
 - 장점: 단기 연결은 쉽습니다.
 - 단점: 새 프로그램이 블랙박스 의존 구조가 되어 파이프라인 단순성이 깨집니다.
 - 판정: **비상 우회용만 허용**
@@ -62,9 +62,9 @@
 - 단점: 상위 plane을 새로 설계해야 합니다.
 - 판정: **권장안**
 
-## 3) Legacy Reuse Map (실제 차용 대상)
+## 3) Reference Reuse Map (실제 차용 대상)
 
-| Legacy Source | 가져올 개념 | 버릴 개념 | New Target |
+| Reference Source | 가져올 개념 | 버릴 개념 | New Target |
 |---|---|---|---|
 | `data_access.py` | 채널별 엑셀 read 단일 경로, `Topic/Status` 스냅샷 | 전역 캐시 결합 | `runtime_v2/excel/source.py` |
 | `master_manager.py::check_pending_work` | `Topic`/`Status` 기반 pending 분류 | 모든 상태를 한 파일에서 직접 관리 | `runtime_v2/excel/selector.py`, `runtime_v2/excel/state_store.py` |
@@ -630,7 +630,7 @@ python -m compileall -q runtime_v2 tests
 
 ## 9) Done Definition
 
-1. 사용자가 `4 머니.xlsx` 1행 Topic을 선택하면, 새 프로그램이 레거시처럼 GPT부터 최종 동영상까지 같은 개념으로 실행됩니다.
-2. 그러나 내부 구조는 레거시보다 단순해서, 각 단계의 입력/출력/실패 원인을 계약 파일과 evidence로 바로 찾을 수 있습니다.
+1. 사용자가 `4 머니.xlsx` 1행 Topic을 선택하면, 새 프로그램이 외부 참고처럼 GPT부터 최종 동영상까지 같은 개념으로 실행됩니다.
+2. 그러나 내부 구조는 외부 참고보다 단순해서, 각 단계의 입력/출력/실패 원인을 계약 파일과 evidence로 바로 찾을 수 있습니다.
 3. stage2까지 포함한 전체 흐름이 `Excel Bridge -> TopicSpec -> VideoPlan -> RenderSpec -> Final` 직선 체인으로 설명 가능합니다.
 4. Oracle과 Momus 검토에서 “디버깅 어려움” 또는 “파이프라인 복잡도 재유입” 차단 이슈가 남지 않습니다.
