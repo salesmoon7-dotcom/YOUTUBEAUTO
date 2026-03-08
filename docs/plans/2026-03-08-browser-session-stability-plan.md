@@ -73,6 +73,7 @@
 - `isolated`
   - 허용 조건: `main()` 재진입, `probe_root` 기반 evidence 생성, local `HTTPServer`/thread 사용, browser launch contract 검증, temp/isolated root 쓰기
   - 채팅 세션에서는 개별 테스트만 순차 실행합니다. 대묶음 실행은 금지합니다.
+  - 단, 현재 wrapper 증거상 파일 단위 `python -m pytest tests/test_runtime_v2_browser_plane.py -q` 같은 단일 명령도 중단될 수 있으므로, 채팅에서는 파일 전체가 아니라 테스트 케이스 단위로 더 잘게 나눠 실행합니다.
 - `manual`
   - 판정 조건: 기본 `system/runtime_v2/` 경로 사용, 실제 `ensure_runtime_bootstrap()`/`run_selftest()`/`run_control_loop_once()` 운영 경로 진입, real browser launch, detached child contract 자체, live Stage 5 evidence 의존
   - 채팅 세션에서는 실행 금지입니다. 별도 통제 환경 또는 detached/probe root로만 다룹니다.
@@ -129,6 +130,7 @@
 
 - 1. 채팅 세션에서는 `safe`만 기본 검증으로 실행합니다.
 - 2. `isolated`는 한 번에 하나씩만 실행하고, 각 테스트는 temp root 또는 `probe_root`를 사용해야 합니다.
+- 2-1. 채팅 세션에서는 `isolated`라도 파일 단위 전체 실행은 피하고, `::test_name` 수준의 단일 케이스만 실행합니다.
 - 3. `manual`은 채팅 세션에서 실행하지 않습니다. 실제 검증이 필요하면 별도 셸/세션에서 detached 또는 운영자 통제 하에 수행합니다.
 - 4. `safe` 통과 전에는 `isolated`와 `manual`로 내려가지 않습니다.
 - 5. `isolated` 실패 시 원인 추적은 `probe_result.json`, `browser_health.json`, `result.json`, `control_plane_events.jsonl` 순으로 고정합니다.
@@ -198,7 +200,7 @@
 - 현재 미준비/미확인 세션:
   - `C:/chrome_canva` (로그인 페이지)
   - `C:/edge_debug` (Genspark, about:blank)
-- `runtime_v2/sessions/geminigen-primary` (about:blank, 그리고 외부 참고 구현은 UC Browser 사용)
+- `D:/YOUTUBE_AUTO/system/geminigen_chrome_userdata` (about:blank, UC Browser profile override applied)
 - 최신 Stage 5 latest-run evidence:
   - `system/runtime_v2/evidence/result.json` → `code=GPT_FLOOR_FAIL`
   - 즉 현재 latest blocker는 브라우저만이 아니라 GPT floor도 포함합니다.

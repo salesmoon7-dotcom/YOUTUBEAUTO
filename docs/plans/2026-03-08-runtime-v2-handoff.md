@@ -109,7 +109,9 @@ CONTEXT FOR CONTINUATION
   - long foreground unittest runs from the chat tool
   - parallel unittest runs in the same chat turn
   - paths that combine browser launch, detached subprocess creation, ensure_runtime_bootstrap, GPT status tick, or autospawn side effects
+- Additional confirmation from the current session: even a single file-level `python -m pytest tests/test_runtime_v2_browser_plane.py -q` invocation was interrupted by the chat/tool wrapper, so the risk is not limited to parallel execution.
 - Do not resume by running multiple file-level unittest commands in parallel from chat. That is the pattern that got interrupted repeatedly.
+- Treat file-level test execution from chat as `isolated/manual-risk`, not `safe`, even when run one command at a time.
 - In the new session, first continue from the existing dirty worktree rather than redoing exploration.
 - Recommended execution order in the new session:
   - 1. Read docs/plans/2026-03-08-browser-session-stability-plan.md and this handoff.
