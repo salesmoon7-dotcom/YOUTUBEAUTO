@@ -227,7 +227,7 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
             _ = config.control_plane_events_file.write_text("", encoding="utf-8")
             _ = write_gui_status(
                 build_gui_status_payload(
-                    {"status": "failed", "code": "legacy_executor_failed"},
+                    {"status": "failed", "code": "native_genspark_not_implemented"},
                     run_id="existing-run",
                     mode="control_loop",
                     stage="finished",
@@ -244,7 +244,7 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
                         "artifacts": [],
                         "metadata": {
                             "run_id": "existing-run",
-                            "code": "legacy_executor_failed",
+                            "code": "native_genspark_not_implemented",
                         },
                     },
                     ensure_ascii=True,
@@ -260,7 +260,7 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
                         "run_id": "existing-run",
                         "mode": "control_loop",
                         "status": "failed",
-                        "code": "legacy_executor_failed",
+                        "code": "native_genspark_not_implemented",
                         "gui_status_path": str(config.gui_status_file),
                         "result_path": str(config.result_router_file),
                     },

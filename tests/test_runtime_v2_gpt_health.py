@@ -21,11 +21,11 @@ class RuntimeV2GptHealthTests(unittest.TestCase):
                 "event": "run_finished",
                 "mode": "control_once",
                 "status": "failed",
-                "code": "legacy_executor_failed",
+                "code": "native_genspark_not_implemented",
                 "exit_code": 1,
                 "result": {
                     "status": "failed",
-                    "code": "legacy_executor_failed",
+                    "code": "native_genspark_not_implemented",
                     "job": {
                         "job_id": "job-1",
                         "workload": "genspark",
@@ -35,7 +35,7 @@ class RuntimeV2GptHealthTests(unittest.TestCase):
                     "worker_result": {
                         "status": "failed",
                         "stage": "genspark",
-                        "error_code": "legacy_executor_failed",
+                        "error_code": "native_genspark_not_implemented",
                     },
                     "recovery": {"action": "retry", "backoff_sec": 30.0},
                 },
@@ -44,8 +44,8 @@ class RuntimeV2GptHealthTests(unittest.TestCase):
         )
 
         self.assertEqual(summary["status"], "failed")
-        self.assertEqual(summary["code"], "legacy_executor_failed")
-        self.assertEqual(summary["error_code"], "legacy_executor_failed")
+        self.assertEqual(summary["code"], "native_genspark_not_implemented")
+        self.assertEqual(summary["error_code"], "native_genspark_not_implemented")
 
     def test_apply_autospawn_decision_handles_non_finite_status_fields(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
