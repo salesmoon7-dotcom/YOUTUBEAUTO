@@ -44,6 +44,7 @@
   - 한 번에 도구 1개만 사용
   - pytest는 테스트 케이스 단위로만 실행
   - 파일 단위/대묶음 검증은 채팅 세션 밖 또는 더 안정적인 실행 경로로 미룹니다
+  - 실브라우저 relaunch/recovery 명령은 채팅 세션에서 직접 실행하지 않고 detached/수동 경로로 미룹니다
 
 ## Non-Negotiable Guardrails
 
