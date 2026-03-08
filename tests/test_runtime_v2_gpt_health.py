@@ -11,6 +11,7 @@ from runtime_v2.debug_log import summarize_cli_report
 from runtime_v2.gpt.floor import write_gpt_status
 from runtime_v2.gpt_autospawn import apply_autospawn_decision
 from runtime_v2.gpt_pool_monitor import monitor_gpt_pool, tick_gpt_status
+from runtime_v2.supervisor import gpt_endpoints_from_browser_runtime
 
 
 class RuntimeV2GptHealthTests(unittest.TestCase):
@@ -171,6 +172,19 @@ class RuntimeV2GptHealthTests(unittest.TestCase):
         self.assertIsInstance(endpoints, list)
         typed_endpoints = cast(list[dict[str, object]], endpoints)
         self.assertEqual(str(typed_endpoints[0]["status"]), "OK")
+
+    def test_supervisor_only_counts_chatgpt_session_for_gpt_floor(self) -> None:
+        endpoints = gpt_endpoints_from_browser_runtime(
+            {
+                "sessions": [
+                    {"service": "genspark", "group": "llm", "healthy": True},
+                    {"service": "geminigen", "group": "llm", "healthy": True},
+                ]
+            },
+            force_gpt_fail=False,
+        )
+
+        self.assertEqual(endpoints, [])
 
 
 if __name__ == "__main__":

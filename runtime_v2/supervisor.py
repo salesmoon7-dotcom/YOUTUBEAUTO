@@ -120,8 +120,7 @@ def _gpt_endpoints_from_browser_runtime(
     endpoints: list[GptEndpoint] = []
     for entry in sessions:
         service = str(entry.get("service", "")).strip()
-        group = str(entry.get("group", "")).strip().lower()
-        if service != "chatgpt" and group != "llm":
+        if service != "chatgpt":
             continue
         healthy = bool(entry.get("healthy", False)) and not force_gpt_fail
         endpoints.append(
@@ -132,6 +131,14 @@ def _gpt_endpoints_from_browser_runtime(
             )
         )
     return endpoints
+
+
+def gpt_endpoints_from_browser_runtime(
+    browser_runtime: dict[str, object], *, force_gpt_fail: bool
+) -> list[GptEndpoint]:
+    return _gpt_endpoints_from_browser_runtime(
+        browser_runtime, force_gpt_fail=force_gpt_fail
+    )
 
 
 def run_gated(
