@@ -5,7 +5,8 @@
   - 대상: `runtime_v2/gpt_pool_monitor.py`, `runtime_v2/gpt_autospawn.py`, `runtime_v2/gpt/floor.py`
 - 2순위: latest-run evidence join 규칙 고정
   - 대상: `runtime_v2/control_plane.py`, `runtime_v2/result_router.py`, `runtime_v2/gui_adapter.py`, `runtime_v2/supervisor.py`
-- 3순위: browser canonical ownership / stale-busy-unknown recovery 규칙 고정
+- 3순위: browser canonical ownership / stale-busy-unknown recovery 규칙 유지 및 후속 drift 감시
+  - 현재 상태: browser/login recovery 완료, 외부 프로필 경로 및 manager ownership 복구 후 최종 검증 run `browser-verify-final-1772978011`에서 5개 브라우저 모두 healthy 확인
   - 대상: `runtime_v2/browser/manager.py`, `runtime_v2/browser/supervisor.py`
 - 4순위: blocked/backoff semantics 재정의
   - 목표: `worker_error_code` 공백 제거, browser/gpu/worker blocked 계약 일치, 즉시 재루프 금지

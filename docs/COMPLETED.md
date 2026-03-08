@@ -11,3 +11,4 @@
 - `system/runtime_v2_probe/control-idle-run-01/`, `system/runtime_v2_probe/mock-chain-run-05/` - detached control smoke evidence confirms run-id aligned idle/latest-run snapshots and absolute browser profile paths under probe roots
 - `docs/sop/SOP_runtime_v2_detached_soak_readiness.md` - detached smoke evidence를 soak/실운영 준비 체크리스트로 분리
 - `runtime_v2_manager_gui.py` - Result 패널에서 `유휴`와 `최종완료`를 분리해 latest-run idle 상태와 final artifact 완료 상태를 더 직관적으로 표시
+- `runtime_v2/browser/manager.py`, `tests/test_runtime_v2_browser_plane.py`, `docs/plans/2026-03-08-browser-session-stability-plan.md`, `docs/plans/2026-03-08-runtime-v2-handoff.md` - browser/login recovery 완료, 외부 프로필 경로 복구 및 최종 검증 run `browser-verify-final-1772978011` 기준 5개 브라우저 모두 healthy 확인

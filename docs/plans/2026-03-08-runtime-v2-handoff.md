@@ -19,7 +19,7 @@ USER REQUESTS (AS-IS)
 
 GOAL
 ----
-새 세션에서 채팅창 중단을 피하는 실행 방식으로 runtime_v2 remediation을 이어가고, 현재 dirty worktree의 runtime_v2/test 변경을 검증·정리·커밋·푸시까지 마무리합니다.
+채팅창 중단을 피하는 실행 방식으로 runtime_v2 browser/login recovery를 끝까지 검증·정리·커밋·푸시하고, 최종 운영 증거까지 문서화합니다.
 
 WORK COMPLETED
 --------------
@@ -58,16 +58,15 @@ WORK COMPLETED
 CURRENT STATE
 -------------
 - Branch is main and upstream is origin/main.
-- Browser/login recovery code and docs are already committed and pushed to `origin/main`.
-- Working tree is expected to be clean after the final docs sync for this handoff update.
-- Final browser verification evidence now supersedes the earlier interrupted dirty-worktree state.
+- Browser/login recovery code and docs are committed and pushed to `origin/main`.
+- Working tree is clean at the end of this handoff.
+- Final browser verification evidence supersedes the earlier interrupted dirty-worktree state.
 - Chat interruption pattern remains active when running large or parallel unittest invocations from this chat session.
 
 PENDING TASKS
 -------------
-- Finish the in-progress todo: 필요한 코드 수정 및 오류 추적 경로 보강.
-- For browser/login recovery, no implementation todo remains in this handoff.
-- Remaining runtime_v2 work is outside this browser/login fix scope: GPT floor, latest-run evidence, and blocked/backoff semantics still require separate follow-up.
+- Browser/login recovery handoff itself has no remaining implementation or documentation todo.
+- Remaining runtime_v2 work is outside this handoff scope: GPT floor, latest-run evidence, and blocked/backoff semantics still require separate follow-up under canonical plans.
 
 KEY FILES
 ---------
@@ -107,11 +106,5 @@ CONTEXT FOR CONTINUATION
 - Additional confirmation from the current session: even a single file-level `python -m pytest tests/test_runtime_v2_browser_plane.py -q` invocation was interrupted by the chat/tool wrapper, so the risk is not limited to parallel execution.
 - Do not resume by running multiple file-level unittest commands in parallel from chat. That is the pattern that got interrupted repeatedly.
 - Treat file-level test execution from chat as `isolated/manual-risk`, not `safe`, even when run one command at a time.
-- In the new session, first continue from the existing dirty worktree rather than redoing exploration.
-- Recommended execution order in the new session:
-  - 1. Read docs/plans/2026-03-08-browser-session-stability-plan.md and this handoff.
-  - 2. Re-run focused serial tests only, starting with the files that changed most recently.
-  - 3. If full file-level runs are needed, prefer an external shell or a fresh session and run them one file at a time.
-  - 4. After tests stabilize, run runtime_v2 guardrail verification against run_id, error_code, and attempt/backoff semantics.
-  - 5. Then create an atomic commit plan for the remaining dirty runtime_v2/test changes and push.
-- Practical warning: the next session should assume that chat interruption is an execution-environment limitation, not automatic evidence of new code breakage. Verify that distinction before changing code.
+- Practical warning: the next session should assume that chat interruption is an execution-environment limitation, not automatic evidence of new code breakage.
+- If a future session resumes broader runtime_v2 remediation, start from the canonical plan and current clean branch state rather than this handoff's earlier dirty-worktree narrative.
