@@ -158,7 +158,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                 completion = cast(dict[str, object], result["completion"])
                 self.assertEqual(completion["state"], "blocked")
 
-    def test_stage2_worker_fails_closed_when_legacy_executor_result_is_missing(
+    def test_stage2_worker_fails_closed_when_native_worker_is_missing(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

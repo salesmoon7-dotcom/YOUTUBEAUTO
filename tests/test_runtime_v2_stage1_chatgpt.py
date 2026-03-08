@@ -31,7 +31,7 @@ def _topic_spec(
 
 
 class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
-    def test_stage1_ignores_legacy_channel_and_builds_native_video_plan(self) -> None:
+    def test_stage1_ignores_channel_hint_and_builds_native_video_plan(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             workspace = root / "workspace"
@@ -48,7 +48,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         evidence = cast(dict[str, object], video_plan["evidence"])
         self.assertEqual(evidence["source"], "chatgpt_runner")
 
-    def test_stage1_channel_hint_does_not_require_legacy_rows_json(self) -> None:
+    def test_stage1_channel_hint_does_not_require_external_rows_json(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             workspace = root / "workspace"

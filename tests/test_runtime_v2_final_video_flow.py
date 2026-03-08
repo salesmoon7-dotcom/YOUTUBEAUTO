@@ -43,7 +43,7 @@ def _read_status_row(path: Path) -> dict[str, object]:
 def _write_render_fixture(
     root: Path, *, final_name: str = "render_final.mp4"
 ) -> tuple[Path, Path, Path]:
-    render_folder = root / "legacy_render"
+    render_folder = root / "render_workspace"
     video_dir = render_folder / "video"
     output_dir = render_folder / "output"
     video_dir.mkdir(parents=True, exist_ok=True)
@@ -97,7 +97,7 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "missing_render_inputs")
 
-    def test_render_worker_calls_legacy_executor_and_stages_output_from_result_json(
+    def test_render_worker_blocks_without_native_render_implementation(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -119,7 +119,7 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         self.assertEqual(result["stage"], "render")
         self.assertEqual(result["error_code"], "native_render_not_implemented")
 
-    def test_render_worker_fails_closed_when_legacy_result_json_is_invalid(
+    def test_render_worker_reports_native_only_boundary(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
