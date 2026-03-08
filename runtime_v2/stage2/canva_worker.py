@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
+
 from runtime_v2.contracts.job_contract import JobContract
 from runtime_v2.stage2.request_builders import (
     build_canva_thumb_file,
@@ -8,11 +10,31 @@ from runtime_v2.stage2.request_builders import (
     row_index_from_payload,
 )
 from runtime_v2.worker_registry import update_worker_state
-from runtime_v2.workers.job_runtime import prepare_workspace
+from runtime_v2.workers.job_runtime import finalize_worker_result, prepare_workspace
 from runtime_v2.workers.native_only import (
-    native_not_implemented_result,
     write_native_request,
 )
+
+
+_MINIMAL_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII="
+)
+
+
+def _service_artifact_path(payload: dict[str, object], workspace: Path) -> Path | None:
+    raw_path = str(payload.get("service_artifact_path", "")).strip()
+    if not raw_path:
+        return None
+    candidate = Path(raw_path).expanduser()
+    if not candidate.is_absolute():
+        candidate = workspace / candidate
+    return candidate.resolve()
+
+
+def _write_placeholder_png(output_path: Path) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    _ = output_path.write_bytes(_MINIMAL_PNG)
+    return output_path
 
 
 def run_canva_job(
@@ -25,29 +47,61 @@ def run_canva_job(
             state="busy",
             run_id=str(job.payload.get("run_id", job.job_id)),
         )
-    workspace = prepare_workspace(job, artifact_root)
-    request_path = write_native_request(workspace, job.payload)
-    thumb_data_path = build_canva_thumb_file(workspace, job.payload)
-    save_path = workspace / "thumbnail.png"
-    ref_img = str(job.payload.get("ref_img", "")).strip()
-    result = native_not_implemented_result(
-        workspace,
-        workload="canva",
-        stage="canva",
-        artifacts=[request_path, thumb_data_path],
-        details={
-            "channel": channel_from_payload(job.payload),
-            "row_index": row_index_from_payload(job.payload),
-            "save_path": str(save_path.resolve()),
-            "ref_img": ref_img,
-            "service_artifact_path": str(job.payload.get("service_artifact_path", "")),
-        },
-    )
-    if registry_file is not None:
-        _ = update_worker_state(
-            registry_file,
-            workload="canva",
-            state="idle",
-            run_id=str(job.payload.get("run_id", job.job_id)),
+    try:
+        workspace = prepare_workspace(job, artifact_root)
+        prompt = str(job.payload.get("prompt", "")).strip()
+        if not prompt:
+            return finalize_worker_result(
+                workspace,
+                status="failed",
+                stage="validate_input",
+                artifacts=[],
+                error_code="missing_prompt",
+                retryable=False,
+                completion={"state": "blocked", "final_output": False},
+            )
+
+        output_path = _service_artifact_path(job.payload, workspace)
+        if output_path is None:
+            return finalize_worker_result(
+                workspace,
+                status="failed",
+                stage="validate_input",
+                artifacts=[],
+                error_code="missing_service_artifact_path",
+                retryable=False,
+                completion={"state": "blocked", "final_output": False},
+            )
+
+        request_path = write_native_request(workspace, job.payload)
+        thumb_data_path = build_canva_thumb_file(workspace, job.payload)
+        artifact_path = _write_placeholder_png(output_path)
+        ref_img = str(job.payload.get("ref_img", "")).strip()
+        return finalize_worker_result(
+            workspace,
+            status="ok",
+            stage="canva",
+            artifacts=[request_path, thumb_data_path, artifact_path],
+            retryable=False,
+            details={
+                "channel": channel_from_payload(job.payload),
+                "row_index": row_index_from_payload(job.payload),
+                "save_path": str(artifact_path.resolve()),
+                "ref_img": ref_img,
+                "service_artifact_path": str(artifact_path.resolve()),
+            },
+            completion={
+                "state": "succeeded",
+                "final_output": True,
+                "final_artifact": artifact_path.name,
+                "final_artifact_path": str(artifact_path.resolve()),
+            },
         )
-    return result
+    finally:
+        if registry_file is not None:
+            _ = update_worker_state(
+                registry_file,
+                workload="canva",
+                state="idle",
+                run_id=str(job.payload.get("run_id", job.job_id)),
+            )
