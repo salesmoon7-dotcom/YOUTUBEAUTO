@@ -27,7 +27,9 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
     def test_exit_code_mapping_includes_callback_fail(self) -> None:
         self.assertEqual(exit_code_from_status("OK"), exit_codes.SUCCESS)
         self.assertEqual(exit_code_from_status("GPU_LEASE_BUSY"), exit_codes.LEASE_BUSY)
-        self.assertEqual(exit_code_from_status("CALLBACK_FAIL"), exit_codes.CALLBACK_FAIL)
+        self.assertEqual(
+            exit_code_from_status("CALLBACK_FAIL"), exit_codes.CALLBACK_FAIL
+        )
         self.assertEqual(exit_code_from_status("UNKNOWN"), exit_codes.CLI_USAGE)
 
     def test_n8n_payload_preserves_required_schema(self) -> None:
@@ -84,7 +86,9 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
                 mode="once",
                 exit_code=0,
             )
-            result = post_callback(payload, timeout_sec=0.2, max_attempts=3, backoff_sec=0.01)
+            result = post_callback(
+                payload, timeout_sec=0.2, max_attempts=3, backoff_sec=0.01
+            )
             self.assertTrue(result["ok"])
             self.assertEqual(result["attempts"], 3)
             self.assertEqual(result["status_code"], 202)
@@ -168,7 +172,12 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
                 lease_file=root / "gpu_scheduler_health.json",
                 gui_status_file=root / "gui_status.json",
             )
-            once = run_once(owner="runtime_v2", run_id="run-1", config=config)
+            once = run_once(
+                owner="runtime_v2",
+                run_id="run-1",
+                config=config,
+                allow_runtime_side_effects=False,
+            )
             self.assertEqual(once["code"], "OK")
             self.assertTrue(config.lease_file.exists())
 
@@ -196,7 +205,9 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
             self.assertIn("injected_browser_fail", check_names)
             self.assertIn("injected_gpt_fail", check_names)
 
-    def test_run_once_uses_existing_gpt_status_source_instead_of_fake_ok_endpoint(self) -> None:
+    def test_run_once_uses_existing_gpt_status_source_instead_of_fake_ok_endpoint(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             config = RuntimeConfig(gpt_status_file=root / "health" / "gpt_status.json")
@@ -220,7 +231,9 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
                     "cooldown_elapsed_sec": 10,
                     "hourly_spawn_count": 0,
                     "spawn_history": [],
-                    "endpoints": [{"name": "default", "status": "FAILED", "last_seen_at": 1.0}],
+                    "endpoints": [
+                        {"name": "default", "status": "FAILED", "last_seen_at": 1.0}
+                    ],
                 },
                 config.gpt_status_file,
             )
@@ -231,11 +244,57 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
                 config=config,
                 workload="chatgpt",
                 require_browser_healthy=False,
+                allow_runtime_side_effects=False,
                 worker_runner=lambda: {"status": "ok", "stage": "chatgpt"},
             )
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["code"], "GPT_FLOOR_FAIL")
+
+    def test_run_once_side_effect_free_mode_skips_browser_bootstrap(self) -> None:
+        with (
+            patch("runtime_v2.supervisor.BrowserManager.start") as start_browser,
+            patch("runtime_v2.supervisor.BrowserSupervisor.tick") as tick_browser,
+        ):
+            result = run_once(
+                owner="runtime_v2",
+                run_id="run-no-side-effects",
+                config=RuntimeConfig(),
+                require_browser_healthy=False,
+                allow_runtime_side_effects=False,
+                worker_runner=lambda: {"status": "ok", "stage": "unit"},
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["code"], "OK")
+        start_browser.assert_not_called()
+        tick_browser.assert_not_called()
+
+    def test_run_once_side_effect_free_mode_fail_closes_when_gpt_status_is_missing(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig(gpt_status_file=root / "health" / "gpt_status.json")
+
+            with (
+                patch("runtime_v2.supervisor.BrowserManager.start") as start_browser,
+                patch("runtime_v2.supervisor.BrowserSupervisor.tick") as tick_browser,
+            ):
+                result = run_once(
+                    owner="runtime_v2",
+                    run_id="run-no-gpt-status",
+                    config=config,
+                    workload="chatgpt",
+                    require_browser_healthy=False,
+                    allow_runtime_side_effects=False,
+                    worker_runner=lambda: {"status": "ok", "stage": "chatgpt"},
+                )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "GPT_FLOOR_FAIL")
+        start_browser.assert_not_called()
+        tick_browser.assert_not_called()
 
     def test_selftest_probe_child_keeps_run_id_aligned_across_outputs(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -247,17 +306,48 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
                 str(probe_root),
             ]
             with (
-                patch("runtime_v2.browser.manager._probe_local_port", return_value=True),
-                patch("runtime_v2.browser.manager._launch_debug_browser", return_value=True),
+                patch(
+                    "runtime_v2.browser.manager._probe_local_port", return_value=True
+                ),
+                patch(
+                    "runtime_v2.browser.manager._launch_debug_browser",
+                    return_value=True,
+                ),
                 patch.object(sys, "argv", args),
             ):
                 exit_code = main()
 
             self.assertEqual(exit_code, exit_codes.SUCCESS)
-            probe_result = cast(dict[object, object], json.loads((probe_root / "probe_result.json").read_text(encoding="utf-8")))
-            gui_status = cast(dict[object, object], json.loads((probe_root / "health" / "gui_status.json").read_text(encoding="utf-8")))
-            result_snapshot = cast(dict[object, object], json.loads((probe_root / "evidence" / "result.json").read_text(encoding="utf-8")))
-            browser_health = cast(dict[object, object], json.loads((probe_root / "health" / "browser_health.json").read_text(encoding="utf-8")))
+            probe_result = cast(
+                dict[object, object],
+                json.loads(
+                    (probe_root / "probe_result.json").read_text(encoding="utf-8")
+                ),
+            )
+            gui_status = cast(
+                dict[object, object],
+                json.loads(
+                    (probe_root / "health" / "gui_status.json").read_text(
+                        encoding="utf-8"
+                    )
+                ),
+            )
+            result_snapshot = cast(
+                dict[object, object],
+                json.loads(
+                    (probe_root / "evidence" / "result.json").read_text(
+                        encoding="utf-8"
+                    )
+                ),
+            )
+            browser_health = cast(
+                dict[object, object],
+                json.loads(
+                    (probe_root / "health" / "browser_health.json").read_text(
+                        encoding="utf-8"
+                    )
+                ),
+            )
 
             run_id = str(probe_result["run_id"])
             result_metadata = cast(dict[object, object], result_snapshot["metadata"])
@@ -279,14 +369,16 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
                 patch.object(sys, "argv", args),
                 patch("runtime_v2.cli.subprocess.Popen") as popen,
             ):
-                popen.return_value.pid = 12345
+                popen.return_value.configure_mock(pid=12345)
                 exit_code = main()
 
             self.assertEqual(exit_code, exit_codes.SUCCESS)
-            called_command = popen.call_args.args[0]
+            called_command = cast(list[object], popen.call_args.args[0])
             self.assertIn("--seed-mock-chain", called_command)
 
-    def test_control_once_probe_child_seed_mock_chain_runs_to_final_output(self) -> None:
+    def test_control_once_probe_child_seed_mock_chain_runs_to_final_output(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             probe_root = Path(tmp_dir) / "probe"
             args = [
@@ -301,17 +393,35 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
                 exit_code = main()
 
             self.assertEqual(exit_code, exit_codes.SUCCESS)
-            probe_result = cast(dict[object, object], json.loads((probe_root / "probe_result.json").read_text(encoding="utf-8")))
-            result_snapshot = cast(dict[object, object], json.loads((probe_root / "evidence" / "result.json").read_text(encoding="utf-8")))
+            probe_result = cast(
+                dict[object, object],
+                json.loads(
+                    (probe_root / "probe_result.json").read_text(encoding="utf-8")
+                ),
+            )
+            result_snapshot = cast(
+                dict[object, object],
+                json.loads(
+                    (probe_root / "evidence" / "result.json").read_text(
+                        encoding="utf-8"
+                    )
+                ),
+            )
             result_metadata = cast(dict[object, object], result_snapshot["metadata"])
             events_path = probe_root / "evidence" / "control_plane_events.jsonl"
-            event_lines = [line for line in events_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            event_lines = [
+                line
+                for line in events_path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
             self.assertTrue(event_lines)
             final_event = cast(dict[object, object], json.loads(event_lines[-1]))
 
             self.assertEqual(str(probe_result["status"]), "ok")
             self.assertEqual(str(probe_result["code"]), "OK")
-            self.assertEqual(str(result_metadata["run_id"]), str(probe_result["run_id"]))
+            self.assertEqual(
+                str(result_metadata["run_id"]), str(probe_result["run_id"])
+            )
             self.assertEqual(str(result_metadata["completion_state"]), "completed")
             self.assertTrue(bool(result_metadata["final_output"]))
             self.assertEqual(str(final_event.get("event", "")), "job_summary")

@@ -37,9 +37,16 @@ from runtime_v2.worker_registry import stalled_workloads
 WorkerRunner = Callable[[], dict[str, object]]
 
 
-def _runtime_gpt_endpoints(config: RuntimeConfig, *, force_gpt_fail: bool) -> list[GptEndpoint]:
+def _runtime_gpt_endpoints(
+    config: RuntimeConfig,
+    *,
+    force_gpt_fail: bool,
+    allow_default_ok_status: bool = True,
+) -> list[GptEndpoint]:
     loaded_status = load_gpt_status(config.gpt_status_file)
-    loaded_endpoints_raw: object = [] if loaded_status is None else loaded_status.get("endpoints", [])
+    loaded_endpoints_raw: object = (
+        [] if loaded_status is None else loaded_status.get("endpoints", [])
+    )
     endpoints: list[GptEndpoint] = []
     if isinstance(loaded_endpoints_raw, list):
         raw_endpoints = cast(list[object], loaded_endpoints_raw)
@@ -47,9 +54,15 @@ def _runtime_gpt_endpoints(config: RuntimeConfig, *, force_gpt_fail: bool) -> li
             if not isinstance(entry, dict):
                 continue
             typed_entry = cast(dict[object, object], entry)
-            status = "FAILED" if force_gpt_fail else str(typed_entry.get("status", "FAILED"))
+            status = (
+                "FAILED" if force_gpt_fail else str(typed_entry.get("status", "FAILED"))
+            )
             last_seen_raw = typed_entry.get("last_seen_at", time())
-            last_seen_at = float(last_seen_raw) if isinstance(last_seen_raw, (int, float, str)) else time()
+            last_seen_at = (
+                float(last_seen_raw)
+                if isinstance(last_seen_raw, (int, float, str))
+                else time()
+            )
             endpoints.append(
                 GptEndpoint(
                     name=str(typed_entry.get("name", "default")),
@@ -59,18 +72,25 @@ def _runtime_gpt_endpoints(config: RuntimeConfig, *, force_gpt_fail: bool) -> li
             )
     if endpoints:
         return endpoints
-    endpoint_status = "FAILED" if force_gpt_fail else "OK"
+    endpoint_status = (
+        "FAILED" if force_gpt_fail or not allow_default_ok_status else "OK"
+    )
     return [GptEndpoint(name="default", status=endpoint_status, last_seen_at=time())]
 
 
-def _required_browser_summary(browser_runtime: dict[str, object], required_services: tuple[str, ...]) -> dict[str, object]:
+def _required_browser_summary(
+    browser_runtime: dict[str, object], required_services: tuple[str, ...]
+) -> dict[str, object]:
     if not required_services:
         return {"all_healthy": True, "unhealthy_services": [], "blocked_services": []}
     sessions = _as_browser_sessions(browser_runtime.get("sessions"))
     unhealthy: list[str] = []
     blocked: list[str] = []
     for service in required_services:
-        matched = next((entry for entry in sessions if str(entry.get("service", "")) == service), None)
+        matched = next(
+            (entry for entry in sessions if str(entry.get("service", "")) == service),
+            None,
+        )
         if matched is None or not bool(matched.get("healthy", False)):
             unhealthy.append(service)
             status = "" if matched is None else str(matched.get("status", ""))
@@ -94,6 +114,7 @@ def run_gated(
     run_id: str = "unknown",
     config: RuntimeConfig | None = None,
     workload: WorkloadName = "qwen3_tts",
+    allow_runtime_side_effects: bool = True,
 ) -> dict[str, object]:
     return run_once(
         owner=owner,
@@ -105,6 +126,7 @@ def run_gated(
         config=config,
         workload=workload,
         worker_runner=execute,
+        allow_runtime_side_effects=allow_runtime_side_effects,
     )
 
 
@@ -118,29 +140,48 @@ def run_once(
     config: RuntimeConfig | None = None,
     workload: WorkloadName = "qwen3_tts",
     worker_runner: WorkerRunner | None = None,
+    allow_runtime_side_effects: bool = True,
 ) -> dict[str, object]:
     runtime_config = config or RuntimeConfig()
-    browser = BrowserManager()
-    browser.start()
-    browser_supervisor = BrowserSupervisor(browser)
-    tick_browser = cast(Callable[..., dict[str, object]], browser_supervisor.tick)
-    browser_runtime = tick_browser(
-        registry_file=runtime_config.browser_registry_file,
-        health_file=runtime_config.browser_health_file,
-        events_file=runtime_config.control_plane_events_file,
-        run_id=run_id,
-        force_unhealthy_service="chatgpt" if force_browser_fail else None,
-        recover_unhealthy=not force_browser_fail,
-        restart_threshold=1,
-        cooldown_sec=0,
-    )
+    browser_runtime: dict[str, object]
+    if allow_runtime_side_effects:
+        browser = BrowserManager()
+        browser.start()
+        browser_supervisor = BrowserSupervisor(browser)
+        tick_browser = cast(Callable[..., dict[str, object]], browser_supervisor.tick)
+        browser_runtime = tick_browser(
+            registry_file=runtime_config.browser_registry_file,
+            health_file=runtime_config.browser_health_file,
+            events_file=runtime_config.control_plane_events_file,
+            run_id=run_id,
+            force_unhealthy_service="chatgpt" if force_browser_fail else None,
+            recover_unhealthy=not force_browser_fail,
+            restart_threshold=1,
+            cooldown_sec=0,
+        )
+    else:
+        browser_runtime = cast(
+            dict[str, object],
+            {
+                "run_id": run_id,
+                "runtime": "runtime_v2",
+                "sessions": [],
+                "side_effects_skipped": True,
+            },
+        )
     browser_sessions = _as_browser_sessions(browser_runtime.get("sessions"))
-    browser_summary = _required_browser_summary(browser_runtime, required_browser_services(workload))
+    browser_summary = _required_browser_summary(
+        browser_runtime, required_browser_services(workload)
+    )
     lease_key = f"lock:{workload}"
     gpu_workload: GpuWorkload | None = None
     if workload_requires_gpu_lease(workload):
         gpu_workload = cast(GpuWorkload, workload)
-    store = None if gpu_workload is None else (lease_store or lease_store_for_workload(runtime_config, gpu_workload))
+    store = (
+        None
+        if gpu_workload is None
+        else (lease_store or lease_store_for_workload(runtime_config, gpu_workload))
+    )
     lease = None
     if gpu_workload is not None:
         lease_key = lease_key_for_workload(gpu_workload)
@@ -153,7 +194,9 @@ def run_once(
         )
         if lease is None:
             snapshot = store.snapshot(lease_key)
-            _persist_gpu_health_runtime_state(runtime_config, gpu_workload, lease_key, snapshot, event="lock_busy")
+            _persist_gpu_health_runtime_state(
+                runtime_config, gpu_workload, lease_key, snapshot, event="lock_busy"
+            )
             return {
                 "status": "failed",
                 "code": "GPU_LEASE_BUSY",
@@ -166,9 +209,17 @@ def run_once(
 
     try:
         if gpu_workload is not None and lease is not None:
-            _persist_gpu_health_runtime_state(runtime_config, gpu_workload, lease_key, lease, event="lock_acquire")
-        if require_browser_healthy and workload_requires_browser_health(workload) and not bool(browser_summary.get("all_healthy", False)):
-            blocked_services = cast(list[object], browser_summary.get("blocked_services", []))
+            _persist_gpu_health_runtime_state(
+                runtime_config, gpu_workload, lease_key, lease, event="lock_acquire"
+            )
+        if (
+            require_browser_healthy
+            and workload_requires_browser_health(workload)
+            and not bool(browser_summary.get("all_healthy", False))
+        ):
+            blocked_services = cast(
+                list[object], browser_summary.get("blocked_services", [])
+            )
             blocked = [str(service) for service in blocked_services]
             if blocked:
                 return {
@@ -207,7 +258,11 @@ def run_once(
                 },
             }
 
-        endpoints = _runtime_gpt_endpoints(runtime_config, force_gpt_fail=force_gpt_fail)
+        endpoints = _runtime_gpt_endpoints(
+            runtime_config,
+            force_gpt_fail=force_gpt_fail,
+            allow_default_ok_status=allow_runtime_side_effects,
+        )
         gpt_status = _persist_gpt_runtime_state(endpoints, runtime_config)
         floor_count = ok_count(endpoints)
         floor_ok = floor_count >= 1
@@ -262,7 +317,9 @@ def run_once(
         return runtime_result
     finally:
         if gpu_workload is not None and store is not None and lease is not None:
-            _persist_gpu_health_runtime_state(runtime_config, gpu_workload, lease_key, lease, event="lock_release")
+            _persist_gpu_health_runtime_state(
+                runtime_config, gpu_workload, lease_key, lease, event="lock_release"
+            )
             _ = store.release(lease_key, owner, token=lease.token)
 
 
@@ -288,7 +345,9 @@ def _run_worker_with_lease_heartbeat(
         finally:
             done.set()
 
-    thread = threading.Thread(target=_target, name=f"runtime_v2-{workload}-{lease.run_id}", daemon=True)
+    thread = threading.Thread(
+        target=_target, name=f"runtime_v2-{workload}-{lease.run_id}", daemon=True
+    )
     thread.start()
     renew_interval = max(1.0, float(config.renew_interval_sec))
     current_lease = lease
@@ -303,7 +362,9 @@ def _run_worker_with_lease_heartbeat(
         )
         if renewed is None:
             renew_failed = True
-            _persist_gpu_health_runtime_state(config, workload, lease_key, current_lease, event="renew_failed")
+            _persist_gpu_health_runtime_state(
+                config, workload, lease_key, current_lease, event="renew_failed"
+            )
             break
         current_lease = renewed
 
@@ -355,8 +416,6 @@ def _as_browser_sessions(value: object) -> list[dict[str, object]]:
                 session[str(raw_key)] = item[raw_key]
             sessions.append(session)
     return sessions
-
-
 
 
 def _persist_gpt_runtime_state(
