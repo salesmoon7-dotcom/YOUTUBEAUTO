@@ -12,6 +12,7 @@ from runtime_v2.browser.manager import (
     BrowserManager,
     BrowserSession,
     _launch_debug_browser,
+    _manager_owns_browser,
     _refresh_session_ready_marker,
     _start_url_for_service,
     acquire_profile_lock,
@@ -161,11 +162,13 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                         "sessions": {
                             "edge_debug": "C:/edge_debug",
                             "seaart_chrome": "C:/chrome_seaart",
+                            "geminigen_chrome_userdata": "D:/profiles/geminigen",
                             "canva_chrome": "C:/chrome_canva",
                         },
                         "ports": {
                             "genspark_edge": 9230,
                             "seaart_chrome": 9225,
+                            "geminigen_uc": 9556,
                             "canva_chrome": 9227,
                         },
                     },
@@ -196,12 +199,16 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         )
         self.assertEqual(
             session_map["geminigen"].profile_dir,
-            str((Path("runtime_v2") / "sessions" / "geminigen-primary").resolve()),
+            str(Path("D:/profiles/geminigen").resolve()),
         )
+        self.assertEqual(session_map["geminigen"].port, 9556)
 
     def test_geminigen_uses_uc_browser_contract(self) -> None:
         session = default_browser_sessions_by_service()["geminigen"]
         self.assertEqual(session.browser_family, "uc")
+
+    def test_manager_owns_geminigen_browser_session(self) -> None:
+        self.assertTrue(_manager_owns_browser("geminigen"))
 
     def test_refresh_session_ready_marker_creates_marker_for_ready_tab(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -713,7 +720,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
     def test_profile_storage_policy_reports_in_project_vs_external_paths(self) -> None:
         policy = build_profile_storage_report()
         self.assertEqual(policy["chatgpt"]["location_type"], "project_subfolder")
-        self.assertEqual(policy["seaart"]["location_type"], "project_subfolder")
+        self.assertEqual(policy["seaart"]["location_type"], "external")
 
     def test_supervisor_reconciles_registry_sessions_with_code_defaults(self) -> None:
         registry_session = BrowserSession(

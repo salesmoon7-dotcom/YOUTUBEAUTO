@@ -205,6 +205,7 @@ def _browser_session_defaults() -> list[tuple[str, str, int, str]]:
     overrides = {
         "genspark": ("genspark_edge", "edge_debug"),
         "seaart": ("seaart_chrome", "seaart_chrome"),
+        "geminigen": ("geminigen_uc", "geminigen_chrome_userdata"),
         "canva": ("canva_chrome", "canva_chrome"),
     }
     for service, (port_key, session_key) in overrides.items():
@@ -938,4 +939,4 @@ def _resolve_browser_executable(service: str) -> Path | None:
 
 
 def _manager_owns_browser(service: str) -> bool:
-    return service != "geminigen"
+    return True
