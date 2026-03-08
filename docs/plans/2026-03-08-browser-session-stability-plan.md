@@ -63,6 +63,95 @@
 - 이 규칙은 운영 경로의 의미를 바꾸기 위한 것이 아니라, `safe` 테스트가 외부 bootstrap 없이 반복 가능하도록 만드는 최소 안정화 조치입니다.
 - 여기서 `allow_runtime_side_effects=False`는 완전한 무기록 dry-run이 아니라, browser start/bootstrap/autospawn 같은 외부 side effect를 건너뛰는 test path입니다. canonical latest 경로를 쓰지 않으려면 반드시 격리된 `RuntimeConfig` 또는 probe root를 함께 사용합니다.
 
+## Test Tier Execution Contract
+
+- 현재부터 `runtime_v2` 테스트는 `무엇을 검증하느냐`보다 `외부 side effect를 밟느냐` 기준으로 `safe`, `isolated`, `manual` 3계층으로 운영합니다.
+- `safe`
+  - 허용 조건: `allow_runtime_side_effects=False`, 순수 helper/contract/evidence 조합, temp root 사용, 실제 browser launch/detached spawn/bootstrap/autospawn 없음
+  - `cli.main()` 재진입, `_launch_debug_browser()` 호출, detached contract 검증은 patch 유무와 관계없이 포함하지 않습니다.
+  - 채팅 세션에서 반복 실행 가능한 기본 검증 경로입니다.
+- `isolated`
+  - 허용 조건: `main()` 재진입, `probe_root` 기반 evidence 생성, local `HTTPServer`/thread 사용, browser launch contract 검증, temp/isolated root 쓰기
+  - 채팅 세션에서는 개별 테스트만 순차 실행합니다. 대묶음 실행은 금지합니다.
+- `manual`
+  - 판정 조건: 기본 `system/runtime_v2/` 경로 사용, 실제 `ensure_runtime_bootstrap()`/`run_selftest()`/`run_control_loop_once()` 운영 경로 진입, real browser launch, detached child contract 자체, live Stage 5 evidence 의존
+  - 채팅 세션에서는 실행 금지입니다. 별도 통제 환경 또는 detached/probe root로만 다룹니다.
+
+## Current Test Tier Map
+
+- `tests/test_runtime_v2_phase2.py`
+  - `safe`
+    - `test_exit_code_mapping_includes_callback_fail`
+    - `test_n8n_payload_preserves_required_schema`
+    - `test_gui_status_write_is_atomic_json`
+    - `test_stale_lease_is_recovered_from_persisted_file`
+    - `test_run_once_uses_existing_gpt_status_source_instead_of_fake_ok_endpoint`
+    - `test_run_once_side_effect_free_mode_skips_browser_bootstrap`
+    - `test_run_once_side_effect_free_mode_fail_closes_when_gpt_status_is_missing`
+    - `test_latest_join_flags_out_of_sync_when_gui_and_result_run_ids_diverge`
+  - `isolated`
+    - `test_post_callback_retries_until_success` (`HTTPServer` + `threading.Thread`)
+    - `test_selftest_probe_child_keeps_run_id_aligned_across_outputs` (`main()` 재진입 + `probe_root`)
+    - `test_control_once_probe_child_seed_mock_chain_runs_to_final_output` (`main()` 재진입 + `probe_root` + control loop evidence)
+  - `manual`
+    - `test_main_returns_callback_fail_when_post_fails` (`main()` + default runtime bootstrap + non-probe canonical path)
+    - `test_run_once_and_selftest_use_persistent_paths` (`run_selftest()`가 실제 side-effect 경로를 밟음)
+    - `test_control_once_detached_propagates_seed_mock_chain_flag` (`DETACHED_PROCESS` 계약 축 자체가 채팅 세션 최상위 리스크)
+- `tests/test_runtime_v2_browser_plane.py`
+  - `safe`
+    - inventory/start-url/profile-policy helper 검증 전부
+    - `acquire_profile_lock` stale/busy/unknown 계약 테스트 전부
+    - `_refresh_session_ready_marker` login/ready marker 테스트 전부
+  - `isolated`
+    - `_launch_debug_browser` 계열 전부 (`subprocess.Popen`이 patch되어도 launch contract 자체를 검증함)
+    - `BrowserSupervisor.tick()` / `run_once()` 계약 테스트 중 browser 상태/launch path patch에 의존하는 케이스
+    - `test_supervisor_recovers_only_unhealthy_session` (repo 하위 `runtime_v2/sessions/*`에 ready marker 기록)
+    - `test_stage5_latest_run_has_interpretable_failure_or_success_evidence` (live latest evidence 해석 의존)
+  - `manual`
+    - 현재 파일에는 없음. 단, patch를 제거해 real browser/process를 만지는 순간 즉시 `manual`로 승격합니다.
+
+## Entry Path Tier Map
+
+- `safe`
+  - `run_once(... allow_runtime_side_effects=False)`
+  - 향후 `run_control_loop_once(... allow_runtime_side_effects=False)`가 들어오면 같은 tier에 포함
+- `isolated`
+  - `main()` with `--selftest-probe-child` or `--control-once-probe-child` and explicit `--probe-root`
+  - `_launch_debug_browser()` / browser supervisor contract tests with patched launch/port/tab hooks
+- `manual`
+  - `main()` with `--once`, `--selftest`, `--control-once`, `--excel-once` on default paths
+  - `main()` with `--control-once-detached` / `--selftest-detached`
+  - `_spawn_detached_probe()` contract tests even when `subprocess.Popen` is patched
+  - `_launch_debug_browser()` without patched `subprocess.Popen`
+- 파일별 분류표에 아직 적지 않은 테스트라도, `main()`, `run_once()`, `run_control_loop_once()`를 browser workload와 함께 호출하면서 `allow_runtime_side_effects=False`, `probe_root`, patch 격리를 명시하지 않으면 기본값은 `manual`로 간주합니다.
+
+## Execution Order (Current Rule)
+
+- 1. 채팅 세션에서는 `safe`만 기본 검증으로 실행합니다.
+- 2. `isolated`는 한 번에 하나씩만 실행하고, 각 테스트는 temp root 또는 `probe_root`를 사용해야 합니다.
+- 3. `manual`은 채팅 세션에서 실행하지 않습니다. 실제 검증이 필요하면 별도 셸/세션에서 detached 또는 운영자 통제 하에 수행합니다.
+- 4. `safe` 통과 전에는 `isolated`와 `manual`로 내려가지 않습니다.
+- 5. `isolated` 실패 시 원인 추적은 `probe_result.json`, `browser_health.json`, `result.json`, `control_plane_events.jsonl` 순으로 고정합니다.
+
+## Test Failure Trace Method
+
+- `safe`에서 오류가 나면
+  - 호출 진입점을 먼저 확인합니다. `run_once(... allow_runtime_side_effects=False)` 또는 pure helper만 탔는지 봅니다.
+  - 그다음 temp root 기준으로 `gpt_status.json`, `gui_status.json`, latest pointer를 같은 `run_id`로 묶어 확인합니다.
+  - 여기서 browser/bootstrap/autospawn 흔적이 보이면 test tier 오분류로 간주하고 `isolated` 또는 `manual`로 즉시 승격합니다.
+- `isolated`에서 오류가 나면
+  - `probe_result.json` -> `browser_health.json` -> `result.json` -> `control_plane_events.jsonl` -> debug log 순서로 고정 추적합니다.
+  - `run_id`, `code`, `status`, `completion_state`, `action`, `action_result`를 한 묶음으로 읽고, 어느 레이어에서 의미가 갈라졌는지 찾습니다.
+  - local `HTTPServer`, patched launch, `probe_root` 증거가 없으면 격리 조건 위반으로 보고 실행 방식을 먼저 수정합니다.
+- `manual`에서 오류가 나면
+  - 채팅 세션 안에서 재시도하지 않습니다.
+  - `system/runtime_v2/health/*`, `system/runtime_v2/evidence/*`, `system/runtime_v2/logs/<run_id>.jsonl`를 같은 실행 단위로 묶어 확인합니다.
+  - detached child, live browser, canonical profile lock이 얽힌 경우에는 `busy|stale|unknown` 판정과 `BROWSER_BLOCKED|BROWSER_UNHEALTHY|GPT_FLOOR_FAIL` 의미 일치부터 먼저 검토합니다.
+- 공통 규칙
+  - 오류 추적의 목표는 fallback 추가가 아니라 single owner 레이어를 찾는 것입니다.
+  - 같은 문제를 `manager/supervisor/control_plane`에서 동시에 보정하지 않습니다.
+  - `run_id`, `error_code`, `attempt/backoff` 중 하나라도 어긋나면 기능 수정 전에 contract drift부터 정리합니다.
+
 ## Error Trace Method
 
 - 오류가 나면 증상만 보지 말고 아래 4층으로 추적합니다.

@@ -13,3 +13,4 @@
   - 기준: 실제 호출 경로 + 안전장치 + evidence/test 동시 확인
 - 위 5개가 닫힌 뒤에만 `1행 smoke` 준비 완료 판정을 수행합니다.
 - `soak_24h_report.md`를 채우는 운영 실행은 위 readiness gate 통과 후 최종 단계에서만 진행합니다.
+- 테스트 실행은 `docs/plans/2026-03-08-browser-session-stability-plan.md`의 `Test Tier Execution Contract`를 따릅니다. 채팅 세션 기본 검증은 `safe`만 허용하고, `isolated`는 개별 실행, `manual`은 채팅 세션 밖에서만 다룹니다.
