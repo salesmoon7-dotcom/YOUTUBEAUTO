@@ -31,6 +31,15 @@
   - `attempt/backoff` 계약 일치
 - 위 3개 중 하나라도 틀리면, 세션 종료보다 contract/evidence drift 수정이 우선입니다.
 
+### Growth Gate Bundle
+
+- 성장 단계 기본 검증은 아래 4개를 함께 유지합니다.
+  - static diagnostics / compile check
+  - targeted pytest bundle
+  - `verify-implementation`
+  - readiness regression
+- `24h`는 이 번들의 즉시 완료 기준이 아니라 later soak stage로 유지합니다.
+
 ## Non-Negotiable Guardrails
 
 - 관측되지 않은 정상은 정상으로 취급하지 않습니다. `unknown`, 빈 상태, 누락 상태를 `OK`로 합성하지 않습니다.
