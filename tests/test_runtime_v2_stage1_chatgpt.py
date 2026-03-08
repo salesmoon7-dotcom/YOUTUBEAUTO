@@ -7,10 +7,15 @@ from pathlib import Path
 from typing import cast
 from unittest.mock import patch
 
-from runtime_v2.stage1.chatgpt_runner import build_video_plan_from_topic_spec, run_stage1_chatgpt_job
+from runtime_v2.stage1.chatgpt_runner import (
+    build_video_plan_from_topic_spec,
+    run_stage1_chatgpt_job,
+)
 
 
-def _topic_spec(*, topic: str = "Bridge topic", channel: int | None = None) -> dict[str, object]:
+def _topic_spec(
+    *, topic: str = "Bridge topic", channel: int | None = None
+) -> dict[str, object]:
     payload: dict[str, object] = {
         "contract": "topic_spec",
         "contract_version": "1.0",
@@ -26,97 +31,35 @@ def _topic_spec(*, topic: str = "Bridge topic", channel: int | None = None) -> d
 
 
 class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
-    def test_stage1_runs_legacy_chatgpt_executor_and_normalizes_rows_result(self) -> None:
+    def test_stage1_ignores_legacy_channel_and_builds_native_video_plan(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             workspace = root / "workspace"
             workspace.mkdir(parents=True, exist_ok=True)
-            legacy_root = root / "legacy"
-            script_path = legacy_root / "scripts" / "chatgpt_automation.py"
-            script_path.parent.mkdir(parents=True, exist_ok=True)
-            _ = script_path.write_text("# test legacy script\n", encoding="utf-8")
-            rows_dir = legacy_root / "system" / "chatgpt_rows"
-            rows_dir.mkdir(parents=True, exist_ok=True)
-            _ = (workspace / "legacy_executor_result.json").write_text(
-                json.dumps({"exit_code": 0, "summary": {"processed": 1}}, ensure_ascii=True),
-                encoding="utf-8",
+            result = run_stage1_chatgpt_job(
+                _topic_spec(channel=4),
+                workspace,
+                debug_log="logs/stage1-run-1.jsonl",
             )
-            _ = (rows_dir / "chatgpt_rows_ch4.json").write_text(
-                json.dumps(
-                    {
-                        "channel": 4,
-                        "rows": [
-                            {
-                                "row_index": 0,
-                                "topic": "Bridge topic",
-                                "status": "OK",
-                                "fields": {
-                                    "Title": "Legacy title",
-                                    "Voice": "Line one\nLine two",
-                                    "#01": "scene one",
-                                    "#02": "scene two",
-                                },
-                            }
-                        ],
-                    },
-                    ensure_ascii=True,
-                ),
-                encoding="utf-8",
-            )
-
-            with patch("runtime_v2.stage1.chatgpt_runner.LEGACY_ROOT", legacy_root):
-                with patch("runtime_v2.stage1.chatgpt_runner.run_external_process") as run_external_process:
-                    run_external_process.return_value = {
-                        "exit_code": 0,
-                        "stdout": "ok",
-                        "stderr": "",
-                        "timed_out": False,
-                    }
-                    result = run_stage1_chatgpt_job(
-                        _topic_spec(channel=4),
-                        workspace,
-                        debug_log="logs/stage1-run-1.jsonl",
-                    )
 
         self.assertEqual(result["status"], "ok")
-        run_external_process.assert_called_once()
         details = cast(dict[str, object], result["details"])
         video_plan = cast(dict[str, object], details["video_plan"])
-        scene_plan = cast(list[dict[str, object]], video_plan["scene_plan"])
-        self.assertEqual([str(item["prompt"]) for item in scene_plan], ["scene one", "scene two"])
         evidence = cast(dict[str, object], video_plan["evidence"])
-        self.assertEqual(evidence["source"], "legacy_chatgpt_executor")
+        self.assertEqual(evidence["source"], "chatgpt_runner")
 
-    def test_stage1_fails_closed_when_legacy_executor_does_not_write_rows_json(self) -> None:
+    def test_stage1_channel_hint_does_not_require_legacy_rows_json(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             workspace = root / "workspace"
             workspace.mkdir(parents=True, exist_ok=True)
-            legacy_root = root / "legacy"
-            script_path = legacy_root / "scripts" / "chatgpt_automation.py"
-            script_path.parent.mkdir(parents=True, exist_ok=True)
-            _ = script_path.write_text("# test legacy script\n", encoding="utf-8")
-            _ = (workspace / "legacy_executor_result.json").write_text(
-                json.dumps({"exit_code": 0, "summary": {"processed": 1}}, ensure_ascii=True),
-                encoding="utf-8",
+            result = run_stage1_chatgpt_job(
+                _topic_spec(channel=4),
+                workspace,
+                debug_log="logs/stage1-run-1.jsonl",
             )
 
-            with patch("runtime_v2.stage1.chatgpt_runner.LEGACY_ROOT", legacy_root):
-                with patch("runtime_v2.stage1.chatgpt_runner.run_external_process") as run_external_process:
-                    run_external_process.return_value = {
-                        "exit_code": 0,
-                        "stdout": "ok",
-                        "stderr": "",
-                        "timed_out": False,
-                    }
-                    result = run_stage1_chatgpt_job(
-                        _topic_spec(channel=4),
-                        workspace,
-                        debug_log="logs/stage1-run-1.jsonl",
-                    )
-
-        self.assertEqual(result["status"], "failed")
-        self.assertEqual(result["error_code"], "missing_legacy_rows_result")
+        self.assertEqual(result["status"], "ok")
 
     def test_stage1_builds_video_plan_from_topic_spec(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -161,7 +104,9 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             workspace = Path(tmp_dir)
 
-            video_plan = build_video_plan_from_topic_spec(_topic_spec(topic="Money flow"), workspace)
+            video_plan = build_video_plan_from_topic_spec(
+                _topic_spec(topic="Money flow"), workspace
+            )
 
         self.assertEqual(video_plan["reason_code"], "ok")
         scene_plan = cast(list[dict[str, object]], video_plan["scene_plan"])
@@ -180,13 +125,17 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             )
 
             result_path = Path(cast(str, result["result_path"]))
-            result_payload = cast(dict[str, object], json.loads(result_path.read_text(encoding="utf-8")))
+            result_payload = cast(
+                dict[str, object], json.loads(result_path.read_text(encoding="utf-8"))
+            )
             details = cast(dict[str, object], result_payload["details"])
             stage1_result = cast(dict[str, object], details["stage1_result"])
 
         self.assertEqual(stage1_result["run_id"], "stage1-run-1")
         self.assertEqual(stage1_result["debug_log"], "logs/stage1-run-1.jsonl")
-        self.assertTrue(str(stage1_result["video_plan_path"]).endswith("video_plan.json"))
+        self.assertTrue(
+            str(stage1_result["video_plan_path"]).endswith("video_plan.json")
+        )
         self.assertTrue(str(stage1_result["result_path"]).endswith("result.json"))
 
     def test_stage1_result_contains_downstream_seed_data(self) -> None:
@@ -200,7 +149,9 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             )
 
             result_path = Path(cast(str, result["result_path"]))
-            result_payload = cast(dict[str, object], json.loads(result_path.read_text(encoding="utf-8")))
+            result_payload = cast(
+                dict[str, object], json.loads(result_path.read_text(encoding="utf-8"))
+            )
             details = cast(dict[str, object], result_payload["details"])
             stage1_result = cast(dict[str, object], details["stage1_result"])
             next_jobs = cast(list[object], stage1_result["next_jobs"])
@@ -219,7 +170,10 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             workspace = Path(tmp_dir)
 
-            with patch("runtime_v2.stage1.chatgpt_runner.route_video_plan", side_effect=ValueError("route_failed")):
+            with patch(
+                "runtime_v2.stage1.chatgpt_runner.route_video_plan",
+                side_effect=ValueError("route_failed"),
+            ):
                 result = run_stage1_chatgpt_job(
                     _topic_spec(),
                     workspace,
@@ -233,7 +187,9 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertEqual(stage1_result["status"], "error")
         self.assertEqual(stage1_result["reason_code"], "route_failed")
 
-    def test_stage1_builds_scene_plan_from_input_shape_not_fixed_placeholder_count(self) -> None:
+    def test_stage1_builds_scene_plan_from_input_shape_not_fixed_placeholder_count(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             workspace = Path(tmp_dir)
             topic_spec = _topic_spec(topic="Scene split topic")
@@ -255,13 +211,17 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertEqual(len(scene_plan), 3)
         self.assertEqual(voice_plan["scene_count"], 3)
 
-    def test_voice_plan_records_mapping_source_and_fails_closed_on_mismatch(self) -> None:
+    def test_voice_plan_records_mapping_source_and_fails_closed_on_mismatch(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             workspace = Path(tmp_dir)
             topic_spec = _topic_spec()
             topic_spec["voice_groups"] = [{"scene_index": 1, "voice": "narration"}]
 
-            result = run_stage1_chatgpt_job(topic_spec, workspace, debug_log="logs/stage1-run-1.jsonl")
+            result = run_stage1_chatgpt_job(
+                topic_spec, workspace, debug_log="logs/stage1-run-1.jsonl"
+            )
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "artifact_invalid")
@@ -272,7 +232,9 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             topic_spec = _topic_spec()
             topic_spec["voice_groups"] = ["bad", "shape"]
 
-            result = run_stage1_chatgpt_job(topic_spec, workspace, debug_log="logs/stage1-run-1.jsonl")
+            result = run_stage1_chatgpt_job(
+                topic_spec, workspace, debug_log="logs/stage1-run-1.jsonl"
+            )
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "artifact_invalid")
