@@ -464,6 +464,74 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertEqual(str(latest_metadata["worker_error_code"]), "GPT_FLOOR_FAIL")
         self.assertEqual(str(latest_metadata["completion_state"]), "blocked")
 
+    def test_control_plane_uses_retryable_not_completion_state_for_retry_decision(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            seed_control_job(
+                JobContract(
+                    job_id="qwen-native-failed-job",
+                    workload="qwen3_tts",
+                    checkpoint_key="seed:qwen-native-failed-job",
+                    payload={"script_text": "hello", "chain_depth": 0},
+                ),
+                config=config,
+            )
+
+            runtime_result: dict[str, object] = {
+                "status": "ok",
+                "code": "OK",
+                "worker_result": {
+                    "status": "failed",
+                    "stage": "qwen3_tts",
+                    "error_code": "native_qwen3_tts_not_implemented",
+                    "retryable": False,
+                    "next_jobs": [],
+                    "completion": {"state": "blocked", "final_output": False},
+                },
+            }
+
+            with patch(
+                "runtime_v2.control_plane.run_gated", return_value=runtime_result
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-native-failed",
+                )
+
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            job_payload = next(
+                item
+                for item in queue_items
+                if str(item["job_id"]) == "qwen-native-failed-job"
+            )
+            latest_result = cast(
+                dict[str, object],
+                json.loads(config.result_router_file.read_text(encoding="utf-8")),
+            )
+            latest_metadata = cast(dict[str, object], latest_result["metadata"])
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "native_qwen3_tts_not_implemented")
+        self.assertEqual(str(job_payload["status"]), "failed")
+        self.assertEqual(int(cast(int, job_payload["attempts"])), 1)
+        self.assertEqual(float(cast(float, latest_metadata["backoff_sec"])), 0.0)
+        self.assertEqual(
+            str(latest_metadata["worker_error_code"]),
+            "native_qwen3_tts_not_implemented",
+        )
+
     def test_control_plane_event_log_keeps_control_run_id_on_events_and_transitions(
         self,
     ) -> None:
@@ -525,6 +593,59 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 for entry in job_entries
             )
         )
+
+    def test_runtime_control_path_rejects_mock_chain_without_explicit_probe_or_debug_mode(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            seed_control_job(
+                JobContract(
+                    job_id="qwen-mock-runtime-job",
+                    workload="qwen3_tts",
+                    checkpoint_key="seed:qwen-mock-runtime-job",
+                    payload={
+                        "script_text": "hello",
+                        "chain_depth": 0,
+                        "mock_chain": True,
+                    },
+                ),
+                config=config,
+            )
+
+            with (
+                patch(
+                    "runtime_v2.control_plane._run_mock_chain_worker",
+                    side_effect=AssertionError("mock chain must stay probe-only"),
+                ),
+                patch(
+                    "runtime_v2.control_plane.run_gated",
+                    return_value={"status": "failed", "code": "BROWSER_UNHEALTHY"},
+                ),
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2", config=config, run_id="control-run-no-mock"
+                )
+
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            job_payload = next(
+                item
+                for item in queue_items
+                if str(item["job_id"]) == "qwen-mock-runtime-job"
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "BROWSER_UNHEALTHY")
+        self.assertEqual(str(job_payload["status"]), "retry")
 
     def test_control_plane_side_effect_free_mode_skips_bootstrap_and_gpt_ticks(
         self,

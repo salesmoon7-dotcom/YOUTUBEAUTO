@@ -187,7 +187,7 @@ def main() -> int:
     ):
         return exit_codes.CLI_USAGE
     if args.seed_mock_chain and not (
-        args.control_once or args.control_once_detached or args.control_once_probe_child
+        args.control_once_detached or args.control_once_probe_child
     ):
         return exit_codes.CLI_USAGE
     if args.excel_once and args.row_index < 0:
@@ -225,7 +225,7 @@ def main() -> int:
             sheet_name=args.sheet_name,
             row_index=args.row_index,
         )
-    if args.seed_mock_chain and (args.control_once or args.control_once_probe_child):
+    if args.seed_mock_chain and args.control_once_probe_child:
         _ = seed_mock_chain_probe(config.input_root)
 
     debug_log = debug_log_path(config.debug_log_root, run_id)
@@ -413,6 +413,10 @@ def main() -> int:
                 "error_code": str(summary.get("error_code", "")),
                 "manifest_path": str(summary.get("manifest_path", "")),
                 "result_path": str(summary.get("result_path", "")),
+                "completion_state": str(summary.get("completion_state", "")),
+                "final_output": bool(summary.get("final_output", False)),
+                "final_artifact": str(summary.get("final_artifact", "")),
+                "final_artifact_path": str(summary.get("final_artifact_path", "")),
                 "debug_log": str(debug_log),
                 "ts": now_ts(),
             },
@@ -499,7 +503,11 @@ def _build_runtime_config(args: CliArgs) -> RuntimeConfig:
         or args.readiness_check
     ):
         root = _probe_root_path(args.probe_root)
-        return RuntimeConfig.from_root(root)
+        return RuntimeConfig.from_root(root).replace(
+            allow_mock_chain=bool(
+                args.seed_mock_chain and args.control_once_probe_child
+            )
+        )
     return RuntimeConfig(
         lease_file=Path("system/runtime_v2/health/gpu_scheduler_health.json"),
         gui_status_file=Path(args.gui_status_out),

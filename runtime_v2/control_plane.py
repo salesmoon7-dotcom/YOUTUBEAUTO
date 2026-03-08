@@ -230,7 +230,9 @@ def run_control_loop_once(
         running_record["chain_depth"] = _to_int(job.payload.get("chain_depth", 0))
         _ = _append_transition_record(running_record, events_file, run_id=run_id)
 
-    mock_chain = _mock_chain_enabled(job)
+    mock_chain = _mock_chain_enabled(
+        job, allow_mock_chain=runtime_config.allow_mock_chain
+    )
     if mock_chain:
         result: dict[str, object] = {
             "status": "ok",
@@ -240,6 +242,7 @@ def run_control_loop_once(
                 job,
                 runtime_config.artifact_root,
                 registry_file=runtime_config.worker_registry_file,
+                allow_mock_chain=runtime_config.allow_mock_chain,
             ),
         }
     else:
@@ -249,6 +252,7 @@ def run_control_loop_once(
                 job,
                 runtime_config.artifact_root,
                 registry_file=runtime_config.worker_registry_file,
+                allow_mock_chain=runtime_config.allow_mock_chain,
             ),
             workload=job.workload,
             config=runtime_config,
@@ -365,13 +369,15 @@ def run_control_loop_once(
         not success
         and (
             result.get("status") == "blocked"
-            or (
-                completion is not None and str(completion.get("state", "")) == "blocked"
-            )
+            or str(worker_contract.get("status", "")) == "blocked"
         )
     )
     recovery = _evaluate_recovery(
-        job, success=bool(success), blocked=blocked_failure, config=runtime_config
+        job,
+        success=bool(success),
+        blocked=blocked_failure,
+        retryable=bool(worker_contract.get("retryable", False)),
+        config=runtime_config,
     )
     next_status = _next_status_for_recovery(recovery)
     backoff_sec = _to_float(recovery.get("backoff_sec", 0), 0.0)
@@ -1218,6 +1224,7 @@ def _evaluate_recovery(
     *,
     success: bool,
     blocked: bool = False,
+    retryable: bool = True,
     config: RuntimeConfig,
 ) -> dict[str, object]:
     circuit = CircuitState(
@@ -1234,6 +1241,10 @@ def _evaluate_recovery(
             ),
             "circuit_open": False,
         }
+    if not success and not retryable:
+        job.payload["failure_count"] = circuit.failure_count
+        job.payload["circuit_opened_at"] = circuit.opened_at
+        return {"action": "failed", "backoff_sec": 0, "circuit_open": False}
     recovery = evaluate_recovery(job.attempts, success=success, circuit=circuit)
     if not success and recovery.get("action") == "retry":
         if not within_retry_budget(job.attempts, config.max_retry_attempts):
@@ -1253,8 +1264,9 @@ def _run_worker(
     artifact_root: Path | None = None,
     *,
     registry_file: Path | None = None,
+    allow_mock_chain: bool = False,
 ) -> dict[str, object]:
-    if _mock_chain_enabled(job):
+    if _mock_chain_enabled(job, allow_mock_chain=allow_mock_chain):
         if artifact_root is None:
             artifact_root = Path("system/runtime_v2/artifacts")
         return _run_mock_chain_worker(job, artifact_root)
@@ -1491,8 +1503,8 @@ def _run_mock_chain_worker(job: JobContract, artifact_root: Path) -> dict[str, o
     return kenburns_result
 
 
-def _mock_chain_enabled(job: JobContract) -> bool:
-    return bool(job.payload.get("mock_chain", False))
+def _mock_chain_enabled(job: JobContract, *, allow_mock_chain: bool) -> bool:
+    return allow_mock_chain and bool(job.payload.get("mock_chain", False))
 
 
 def _build_mock_chain_job(
@@ -1696,7 +1708,7 @@ def _worker_result_contract(worker_result: dict[str, object]) -> dict[str, objec
                 "retryable": False,
                 "result_path": str(result_path.resolve()),
                 "next_jobs": [],
-                "completion": {"state": "blocked", "final_output": False},
+                "completion": {"state": "failed", "final_output": False},
                 "details": {"debug_log": str(worker_result.get("debug_log", ""))},
             }
         try:
@@ -1711,7 +1723,7 @@ def _worker_result_contract(worker_result: dict[str, object]) -> dict[str, objec
                 "retryable": False,
                 "result_path": str(result_path.resolve()),
                 "next_jobs": [],
-                "completion": {"state": "blocked", "final_output": False},
+                "completion": {"state": "failed", "final_output": False},
                 "details": {"debug_log": str(worker_result.get("debug_log", ""))},
             }
         except json.JSONDecodeError:
@@ -1722,7 +1734,7 @@ def _worker_result_contract(worker_result: dict[str, object]) -> dict[str, objec
                 "retryable": False,
                 "result_path": str(result_path.resolve()),
                 "next_jobs": [],
-                "completion": {"state": "blocked", "final_output": False},
+                "completion": {"state": "failed", "final_output": False},
                 "details": {"debug_log": str(worker_result.get("debug_log", ""))},
             }
         payload = _mapping_from_obj(raw_payload)
@@ -1735,7 +1747,7 @@ def _worker_result_contract(worker_result: dict[str, object]) -> dict[str, objec
             "retryable": False,
             "result_path": str(result_path.resolve()),
             "next_jobs": [],
-            "completion": {"state": "blocked", "final_output": False},
+            "completion": {"state": "failed", "final_output": False},
             "details": {"debug_log": str(worker_result.get("debug_log", ""))},
         }
     return worker_result

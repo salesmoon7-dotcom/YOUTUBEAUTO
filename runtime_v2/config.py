@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as dataclass_replace
 from pathlib import Path
 from typing import Literal
 
@@ -112,6 +112,10 @@ class RuntimeConfig:
     callback_max_attempts: int = 3
     callback_backoff_sec: float = 0.5
     blocked_backoff_sec: float = 30.0
+    allow_mock_chain: bool = False
+
+    def replace(self, **changes: object) -> "RuntimeConfig":
+        return dataclass_replace(self, **changes)
 
     @classmethod
     def from_root(cls, root: Path) -> "RuntimeConfig":

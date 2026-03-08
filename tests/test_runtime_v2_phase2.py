@@ -938,6 +938,23 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
             called_command = cast(list[object], popen.call_args.args[0])
             self.assertIn("--seed-mock-chain", called_command)
 
+    def test_mock_chain_requires_explicit_probe_or_debug_mode(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            probe_root = Path(tmp_dir) / "probe"
+            args = [
+                "runtime_v2.cli",
+                "--control-once",
+                "--seed-mock-chain",
+                "--probe-root",
+                str(probe_root),
+            ]
+
+            with patch.object(sys, "argv", args):
+                exit_code = main()
+
+        self.assertEqual(exit_code, exit_codes.CLI_USAGE)
+        self.assertFalse((probe_root / "probe_result.json").exists())
+
     def test_control_once_probe_child_seed_mock_chain_runs_to_final_output(
         self,
     ) -> None:

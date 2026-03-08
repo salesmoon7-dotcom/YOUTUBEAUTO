@@ -64,6 +64,14 @@ def summarize_runtime_result(result: Mapping[str, object]) -> dict[str, object]:
         payload["error_code"] = str(worker_result.get("error_code", ""))
         payload["manifest_path"] = str(worker_result.get("manifest_path", ""))
         payload["result_path"] = str(worker_result.get("result_path", ""))
+        completion = _mapping(worker_result.get("completion"))
+        if completion is not None:
+            payload["completion_state"] = str(completion.get("state", ""))
+            payload["final_output"] = bool(completion.get("final_output", False))
+            payload["final_artifact"] = str(completion.get("final_artifact", ""))
+            payload["final_artifact_path"] = str(
+                completion.get("final_artifact_path", "")
+            )
     else:
         payload["stage"] = str(resolved.get("stage", result.get("stage", "")))
         payload["error_code"] = str(
