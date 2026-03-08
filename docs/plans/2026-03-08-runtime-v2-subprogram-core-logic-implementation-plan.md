@@ -10,7 +10,7 @@
 
 **Reference Boundary:** `D:\YOUTUBE_AUTO`의 기존 구현은 핵심 기능을 이해하기 위한 참고 입력만 제공합니다. `runtime_v2`는 자체 계약과 자체 adapter를 기준으로 재구성하며, 참고 저장소의 모듈/클래스/함수/상태모델을 직접 재사용, 포팅, 호출하지 않습니다.
 
-**Tech Stack:** Python 3.13, `runtime_v2`, browser manager/supervisor, JSON contracts, file-based evidence, existing `tests/test_runtime_v2_stage1_chatgpt.py`, `tests/test_runtime_v2_stage2_workers.py`, `tests/test_runtime_v2_stage2_contracts.py`
+**Tech Stack:** Python 3.13, `runtime_v2`, browser manager/supervisor, JSON contracts, file-based evidence, existing `tests/test_runtime_v2_stage1_chatgpt.py`, `tests/test_runtime_v2_stage2_workers.py`, `tests/test_runtime_v2_stage2_contracts.py`, `tests/test_runtime_v2_gpu_workers.py`, `tests/test_runtime_v2_phase2.py`, `tests/test_runtime_v2_control_plane_chain.py`
 
 ---
 
