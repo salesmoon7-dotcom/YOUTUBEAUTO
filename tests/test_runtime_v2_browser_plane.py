@@ -28,13 +28,13 @@ from runtime_v2.supervisor import run_once
 
 
 class RuntimeV2BrowserPlaneTests(unittest.TestCase):
-    def test_browser_inventory_matches_runtime_and_legacy_contracts(self) -> None:
+    def test_browser_inventory_matches_runtime_browser_contracts(self) -> None:
         inventory = build_browser_inventory()
         self.assertIn("geminigen", inventory)
         self.assertEqual(inventory["geminigen"]["browser"], "uc")
         self.assertEqual(inventory["genspark"]["browser"], "edge")
 
-    def test_service_start_urls_follow_legacy_defaults(self) -> None:
+    def test_service_start_urls_follow_runtime_defaults(self) -> None:
         self.assertEqual(_start_url_for_service("chatgpt"), "https://chatgpt.com/")
         self.assertEqual(_start_url_for_service("genspark"), "https://www.genspark.ai/")
         self.assertEqual(
@@ -150,7 +150,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertFalse(bool(second["locked"]))
         self.assertEqual(str(second["lock_state"]), "busy")
 
-    def test_default_browser_sessions_uses_legacy_port_and_profile_overrides(
+    def test_default_browser_sessions_uses_runtime_port_and_profile_overrides(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -176,7 +176,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
 
             with patch.dict(
                 os.environ,
-                {"RUNTIME_V2_LEGACY_APP_CONFIG": str(config_path.resolve())},
+                {"RUNTIME_V2_APP_CONFIG": str(config_path.resolve())},
                 clear=False,
             ):
                 sessions = BrowserManager().sessions
@@ -196,10 +196,10 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         )
         self.assertEqual(
             session_map["geminigen"].profile_dir,
-            str(Path("D:/YOUTUBE_AUTO/system/geminigen_chrome_userdata").resolve()),
+            str((Path("runtime_v2") / "sessions" / "geminigen-primary").resolve()),
         )
 
-    def test_geminigen_uses_uc_browser_contract_from_legacy(self) -> None:
+    def test_geminigen_uses_uc_browser_contract(self) -> None:
         session = default_browser_sessions_by_service()["geminigen"]
         self.assertEqual(session.browser_family, "uc")
 
@@ -713,7 +713,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
     def test_profile_storage_policy_reports_in_project_vs_external_paths(self) -> None:
         policy = build_profile_storage_report()
         self.assertEqual(policy["chatgpt"]["location_type"], "project_subfolder")
-        self.assertEqual(policy["seaart"]["location_type"], "external")
+        self.assertEqual(policy["seaart"]["location_type"], "project_subfolder")
 
     def test_supervisor_reconciles_registry_sessions_with_code_defaults(self) -> None:
         registry_session = BrowserSession(

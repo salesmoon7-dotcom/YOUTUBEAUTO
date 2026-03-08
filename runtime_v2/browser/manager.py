@@ -33,9 +33,10 @@ LOGIN_URL_PATTERNS: dict[str, tuple[str, ...]] = {
     "canva": ("/login", "loginredirect", "accounts.google.com"),
 }
 
-LEGACY_APP_CONFIG = Path("D:/YOUTUBE_AUTO/system/config/app_config.json")
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
-LEGACY_ROOT = Path("D:/YOUTUBE_AUTO").resolve()
+RUNTIME_APP_CONFIG = (
+    WORKSPACE_ROOT / "system" / "runtime_v2" / "config" / "app_config.json"
+)
 
 
 @dataclass(slots=True)
@@ -147,15 +148,15 @@ def _to_float(value: object, default: float = 0.0) -> float:
     return default
 
 
-def _legacy_app_config_path() -> Path:
-    override = os.environ.get("RUNTIME_V2_LEGACY_APP_CONFIG", "").strip()
+def _runtime_app_config_path() -> Path:
+    override = os.environ.get("RUNTIME_V2_APP_CONFIG", "").strip()
     if override:
         return Path(override)
-    return LEGACY_APP_CONFIG
+    return RUNTIME_APP_CONFIG
 
 
-def _load_legacy_app_config() -> dict[str, object]:
-    config_path = _legacy_app_config_path()
+def _load_runtime_app_config() -> dict[str, object]:
+    config_path = _runtime_app_config_path()
     if not config_path.exists() or not config_path.is_file():
         return {}
     try:
@@ -188,7 +189,7 @@ def _browser_session_defaults() -> list[tuple[str, str, int, str]]:
         "geminigen": (
             "llm",
             9555,
-            str((LEGACY_ROOT / "system" / "geminigen_chrome_userdata").resolve()),
+            str((Path("runtime_v2") / "sessions" / "geminigen-primary").resolve()),
         ),
         "canva": (
             "design",
@@ -196,9 +197,9 @@ def _browser_session_defaults() -> list[tuple[str, str, int, str]]:
             str((Path("runtime_v2") / "sessions" / "canva-primary").resolve()),
         ),
     }
-    legacy_config = _load_legacy_app_config()
-    ports_raw = legacy_config.get("ports", {})
-    sessions_raw = legacy_config.get("sessions", {})
+    runtime_config = _load_runtime_app_config()
+    ports_raw = runtime_config.get("ports", {})
+    sessions_raw = runtime_config.get("sessions", {})
     ports = ports_raw if isinstance(ports_raw, dict) else {}
     session_dirs = sessions_raw if isinstance(sessions_raw, dict) else {}
     overrides = {
