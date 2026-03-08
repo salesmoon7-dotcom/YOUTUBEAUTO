@@ -3,8 +3,8 @@
 ## 1) Session Entry Point
 
 - Workdir: `D:/YOUTUBEAUTO`
-- This is the correct repo for current work. Do not switch to `D:/YOUTUBE_AUTO`.
-- `D:/YOUTUBE_AUTO` is a different repository with different `.git/config` and no `runtime_v2/` tree.
+- This is the correct repo for current work. Do not switch to the separate reference repository.
+- The separate reference repository has different `.git/config` and no `runtime_v2/` tree.
 
 ## 2) What Was Actually Changed
 
@@ -40,7 +40,7 @@
 ## 4) Oracle-Backed Conclusions
 
 - Prior Oracle review: current scope is commit-coherent if real n8n POST is excluded.
-- Path-difference Oracle review: `D:/YOUTUBEAUTO` and `D:/YOUTUBE_AUTO` are different repos; runtime_v2 work belongs only to `D:/YOUTUBEAUTO`.
+- Path-difference Oracle review: the current repo and the separate reference repo are different repos; runtime_v2 work belongs only to `D:/YOUTUBEAUTO`.
 - Git-timing Oracle review: commit should be done only after minimal verification commands and `git status` can run in a clean command session.
 
 ## 5) Vendor / Kimoring Validation State
@@ -79,8 +79,8 @@
 
 ## 8) Do Not Do
 
-- Do not copy `.git` from `D:/YOUTUBE_AUTO` into `D:/YOUTUBEAUTO`.
-- Do not move this work into `D:/YOUTUBE_AUTO`.
+- Do not copy `.git` from the separate reference repo into `D:/YOUTUBEAUTO`.
+- Do not move this work into the separate reference repo.
 - Do not claim full Phase2 completion; real n8n POST is still excluded.
 - Do not change GUI/n8n payload contract keys documented in the prior handoff.
 - Do not commit without first capturing fresh command evidence in a clean session.

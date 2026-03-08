@@ -2,11 +2,11 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task.
 
-**Goal:** `runtime_v2`를 실제 1행 smoke를 시작해도 되는 상태까지 정리합니다. 범위는 브라우저 세션 안정화뿐 아니라 GPT floor, latest-run evidence 일관성, blocked/backoff 계약, 레거시 기능 이행 확인, 패치 누적형 복잡화 방지 기준까지 포함하며, 24시간 검증은 개발 최종 단계에서만 별도로 진행합니다.
+**Goal:** `runtime_v2`를 실제 1행 smoke를 시작해도 되는 상태까지 정리합니다. 범위는 브라우저 세션 안정화뿐 아니라 GPT floor, latest-run evidence 일관성, blocked/backoff 계약, 외부 참고 기능 이행 확인, 패치 누적형 복잡화 방지 기준까지 포함하며, 24시간 검증은 개발 최종 단계에서만 별도로 진행합니다.
 
-**Architecture:** 이 문서를 `runtime_v2` 1행 smoke 진입 전 remediation의 단일 canonical plan으로 사용합니다. 브라우저 관련 변경은 `runtime_v2/browser/`를 단일 제어면으로 두고, manager는 브라우저 프로세스/프로필/포트만 관리하며 supervisor는 health/recovery만 담당합니다. 여기에 GPT floor, evidence join, blocked/backoff, 레거시 carryover 점검을 같은 stop/go 체계 안에 묶어 1행 smoke 전 readiness gate로 운영합니다.
+**Architecture:** 이 문서를 `runtime_v2` 1행 smoke 진입 전 remediation의 단일 canonical plan으로 사용합니다. 브라우저 관련 변경은 `runtime_v2/browser/`를 단일 제어면으로 두고, manager는 브라우저 프로세스/프로필/포트만 관리하며 supervisor는 health/recovery만 담당합니다. 여기에 GPT floor, evidence join, blocked/backoff, 외부 참고 carryover 점검을 같은 stop/go 체계 안에 묶어 1행 smoke 전 readiness gate로 운영합니다.
 
-**Tech Stack:** Python `unittest`, `runtime_v2` browser manager/supervisor, legacy `master_manager.py` / `sub_runners.py` / `scripts/geminigen_automation.py`, Chrome/Edge/UC Browser, CDP `/json`, filelock-style profile locking, detached probe, Stage 5 smoke evidence.
+**Tech Stack:** Python `unittest`, `runtime_v2` browser manager/supervisor, external reference implementations for browser handling, Chrome/Edge/UC Browser, CDP `/json`, filelock-style profile locking, detached probe, Stage 5 smoke evidence.
 
 ---
 
@@ -24,7 +24,7 @@
 2. `result.json`, `gui_status.json`, `control_plane_events.jsonl`의 latest-run 의미가 완전히 단일화되지 않아, 실패 원인 축을 한 번에 판정하기 어렵습니다.
 3. 브라우저 profile lock이 stale recovery에는 진전이 있었지만, canonical profile 단일 writer 보장이 아직 완전히 닫히지 않았습니다.
 4. blocked job의 `queued`/`backoff`/`failed` 계약이 원인 축별로 완전히 정리되지 않아 장시간 재시도 누적 위험이 남아 있습니다.
-5. 레거시 하부 기능 호출은 연결됐지만, 레거시의 `실제 안전장치 묶음`까지 전부 이행된 것은 아닙니다.
+5. 외부 참고 하부 기능 호출은 연결됐지만, 외부 참고의 `실제 안전장치 묶음`까지 전부 이행된 것은 아닙니다.
 6. 계획 문서와 테스트 파일/운영 evidence 사이에 일부 drift가 있어, 준비 완료로 오판할 위험이 있습니다.
 
 ## 1-Row Smoke Go/No-Go Rule
@@ -36,12 +36,12 @@
   3. browser canonical profile ownership / recovery contract 고정
   4. blocked/backoff semantics 고정
 
-## Legacy Carryover Decision Rule
+## Reference Carryover Decision Rule
 
-- 레거시 기능은 `이름만 대응`이면 이행으로 보지 않습니다.
+- 외부 참고 기능은 `이름만 대응`이면 이행으로 보지 않습니다.
 - 아래 3가지를 모두 만족해야 `적용됨`으로 판정합니다.
   1. runtime_v2에서 실제 호출 경로가 존재함
-  2. 레거시의 핵심 안전장치(login check / session reuse / fail-closed)가 같이 존재함
+  2. 외부 참고의 핵심 안전장치(login check / session reuse / fail-closed)가 같이 존재함
   3. 최신 evidence나 테스트에서 그 계약을 읽을 수 있음
 
 ## Patchwork Risk Rule
@@ -50,7 +50,7 @@
   1. 동일 failure axis를 처리하는 분기가 manager/supervisor/control_plane에 중복으로 늘어남
   2. latest-run evidence가 같은 실패를 서로 다른 의미로 기록함
   3. blocked semantics가 축(browser/gpu/worker)마다 다르게 drift함
-  4. 레거시 carryover가 실제 호출만 있고 안전장치가 빠진 상태로 누적됨
+  4. 외부 참고 carryover가 실제 호출만 있고 안전장치가 빠진 상태로 누적됨
   5. 1행 smoke 전제 조건이 문서마다 다르게 적힘
 
 ## Immediate Stabilization Rule
@@ -171,7 +171,7 @@
 2. latest-run evidence join 규칙 고정
 3. browser canonical ownership / stale-busy-unknown recovery 규칙 고정
 4. blocked/backoff semantics 재정의
-5. legacy carryover 적용/미적용 표 확정
+5. reference carryover 적용/미적용 표 확정
 6. 이 5개가 닫힌 뒤에만 1행 smoke 준비 완료 판정을 수행
 
 ## Scope Lock
@@ -191,25 +191,25 @@
 
 ## Current Evidence Snapshot
 
-- 현재 `runtime_v2/browser/manager.py`는 browser start URL, legacy port/profile alignment, live tab 기반 `session_ready.json` 생성까지 일부 반영되어 있습니다.
+- 현재 `runtime_v2/browser/manager.py`는 browser start URL, runtime-owned port/profile alignment, live tab 기반 `session_ready.json` 생성까지 일부 반영되어 있습니다.
 - 현재 확인된 ready marker:
   - `runtime_v2/sessions/chatgpt-primary/session_ready.json`
   - `C:/chrome_seaart/session_ready.json`
 - 현재 미준비/미확인 세션:
   - `C:/chrome_canva` (로그인 페이지)
   - `C:/edge_debug` (Genspark, about:blank)
-  - `runtime_v2/sessions/geminigen-primary` (about:blank, 그리고 레거시는 UC Browser 사용)
+- `runtime_v2/sessions/geminigen-primary` (about:blank, 그리고 외부 참고 구현은 UC Browser 사용)
 - 최신 Stage 5 latest-run evidence:
   - `system/runtime_v2/evidence/result.json` → `code=GPT_FLOOR_FAIL`
   - 즉 현재 latest blocker는 브라우저만이 아니라 GPT floor도 포함합니다.
 
-## Browser Program Inventory (Current + Legacy)
+## Browser Program Inventory (Current + Reference)
 
 - 현재 `runtime_v2`
   - `runtime_v2/browser/manager.py` — ChatGPT/GenSpark/SeaArt/GeminiGen/Canva 브라우저 프로세스, profile, port, ready marker 관리
   - `runtime_v2/browser/supervisor.py` — browser health snapshot/recovery
   - `runtime_v2/supervisor.py` — workload gate에서 browser health 사용
-- 레거시 `D:/YOUTUBE_AUTO`
+- 외부 참고 저장소
   - `master_manager.py` — ChatGPT/Edge/SeaArt/Canva 브라우저 디버그 세션 기동
   - `sub_runners.py` — `run_genspark_automation`, `run_seaart_automation`, `run_canva_automation`에서 로그인 사전 체크 + 브라우저 재사용
   - `scripts/geminigen_automation.py` — UC(undetected-chromedriver) 기반, `system/geminigen_chrome_userdata` 세션 유지/복구/백업
@@ -217,10 +217,10 @@
 
 ## Structural Risks To Address
 
-1. `runtime_v2`와 레거시가 브라우저/프로필 관리 책임을 나눠 가져 충돌하기 쉬움
+1. `runtime_v2`와 외부 참고 구현이 브라우저/프로필 관리 책임을 나눠 가져 충돌하기 쉬움
 2. 같은 profile을 여러 프로세스가 동시에 열 수 있는 구조가 남아 있음
-3. GeminiGen은 레거시에서 UC Browser를 전제로 하는데 현재 `runtime_v2`는 Chrome 계열 일반 경로만 가정함
-4. 현재 profile 저장 위치가 `runtime_v2/sessions/*`와 레거시 `C:/...`, `system/geminigen_chrome_userdata`로 분산돼 있음
+3. GeminiGen은 외부 참고 구현에서 UC Browser를 전제로 하는데 현재 `runtime_v2`는 이를 자체 경로로 고정해야 함
+4. 현재 profile 저장 위치가 `runtime_v2/sessions/*`와 외부 설정 경로로 분산될 수 있음
 5. Stage 5는 browser health뿐 아니라 GPT floor도 통과해야 하므로 브라우저 계획과 smoke 검증 계획을 분리해서 써야 함
 6. `browser_session_registry.json`이 사실상 단일 세션 기준선 역할을 하므로 누락/드리프트를 먼저 막지 않으면 24시간 운영에서 세션 소유권이 흔들릴 수 있음
 7. Chrome 136+ 계열은 default data directory에 대한 remote debugging 정책이 강화되어, custom `--user-data-dir`를 강제하지 않으면 디버그 연결이 무시될 수 있음
@@ -231,15 +231,15 @@
 - 권장안(계획 기본안)
   - 브라우저별 canonical profile을 1개만 둡니다.
   - manager만 canonical profile을 직접 엽니다.
-  - worker/legacy adapter는 canonical profile을 직접 열지 않고 manager가 띄운 디버그 포트만 사용합니다.
+- worker/direct adapter는 canonical profile을 직접 열지 않고 manager가 띄운 디버그 포트만 사용합니다.
   - `session_ready.json`는 live CDP 기반으로만 갱신합니다.
   - profile 복사본이 필요할 때만 `chrome_session_backup.py`와 같은 잠금 기반 snapshot/copy 경로를 사용합니다.
   - default 브라우저 데이터 디렉터리가 아니라 서비스별 전용 `--user-data-dir`만 사용합니다.
   - registry에 기록된 세션만 supervisor가 복구 대상으로 인정하고, 수동 로그인 필요 상태는 재기동 루프로 숨기지 않습니다.
 - 대안 1: 모든 브라우저를 프로젝트 하위 `runtime_v2/sessions/`로 통합
   - 장점: 운영 경로 단순화
-  - 단점: 레거시와 경로 충돌 가능, GeminiGen UC 세션 이행 작업 필요
-- 대안 2: 레거시 canonical profile 경로를 유지하고 `runtime_v2`는 포트/health/controller만 담당
+- 단점: 외부 참고 경로와 충돌 가능, GeminiGen UC 세션 이행 작업 필요
+- 대안 2: 외부 canonical profile 경로를 유지하고 `runtime_v2`는 포트/health/controller만 담당
   - 장점: 가장 짧은 안정화 경로
   - 단점: 경로가 분산되고 관리 문서화가 더 중요
 - 추천: 대안 2부터 적용 후, 24h 안정화가 확인되면 대안 1로 통합 여부를 재평가합니다.
@@ -248,7 +248,7 @@
 
 - `supervisor가 브라우저 상태를 확인하고, 오류면 복구한 뒤, 가능한 경우 다음 작업을 계속 진행하는 로직`은 이 프로그램의 핵심 기능으로 취급합니다.
 - 이유:
-  - 레거시도 CDP 기반 로그인/세션 확인 후 실패를 감지하고 중단 또는 재사용 결정을 했습니다. (`D:/YOUTUBE_AUTO/sub_runners.py`의 `_check_login_via_cdp`)
+- 외부 참고 구현도 CDP 기반 로그인/세션 확인 후 실패를 감지하고 중단 또는 재사용 결정을 했습니다. (참고 구현의 `_check_login_via_cdp`)
   - 현행 `runtime_v2`도 이미 browser manager/supervisor/control gate 구조를 따로 둔 만큼, 브라우저 확인/복구는 부가 기능이 아니라 control plane의 핵심 책임입니다.
   - 수동 종료, 로그인 만료, stale lock, 포트 down 같은 브라우저 축 오류를 복구하지 못하면 Stage 5 단건 smoke도, 24h 운영도 신뢰할 수 없습니다.
 
@@ -363,15 +363,15 @@
 **Files:**
 - Modify: `docs/plans/2026-03-08-browser-session-stability-plan.md`
 - Modify: `runtime_v2/browser/manager.py`
-- Read: `D:/YOUTUBE_AUTO/master_manager.py`
-- Read: `D:/YOUTUBE_AUTO/sub_runners.py`
-- Read: `D:/YOUTUBE_AUTO/scripts/geminigen_automation.py`
-- Read: `D:/YOUTUBE_AUTO/scripts/chrome_session_backup.py`
+- Read: separate reference repo `master_manager.py`
+- Read: separate reference repo `sub_runners.py`
+- Read: separate reference repo `scripts/geminigen_automation.py`
+- Read: separate reference repo `scripts/chrome_session_backup.py`
 
 **Step 1: Write the failing test**
 
 ```python
-def test_browser_inventory_matches_runtime_and_legacy_contracts():
+def test_browser_inventory_matches_runtime_browser_contracts():
     inventory = build_browser_inventory()
     assert "geminigen" in inventory
     assert inventory["geminigen"]["browser"] == "uc"
@@ -390,7 +390,7 @@ def build_browser_inventory() -> dict[str, dict[str, object]]:
         "chatgpt": {"browser": "chrome", "profile": "runtime_v2/sessions/chatgpt-primary"},
         "genspark": {"browser": "edge", "profile": "C:/edge_debug"},
         "seaart": {"browser": "chrome", "profile": "C:/chrome_seaart"},
-        "geminigen": {"browser": "uc", "profile": "D:/YOUTUBE_AUTO/system/geminigen_chrome_userdata"},
+"geminigen": {"browser": "uc", "profile": "runtime_v2/sessions/geminigen-primary"},
         "canva": {"browser": "chrome", "profile": "C:/chrome_canva"},
     }
 ```
@@ -465,13 +465,13 @@ git commit -m "feat: add manual login launcher flow"
 - Modify: `runtime_v2/browser/manager.py`
 - Modify: `runtime_v2/config.py`
 - Modify: `runtime_v2/workers` or GeminiGen entry path selected by current architecture
-- Read: `D:/YOUTUBE_AUTO/scripts/geminigen_automation.py`
+- Read: separate reference repo `scripts/geminigen_automation.py`
 - Test: `tests/test_runtime_v2_browser_plane.py`
 
 **Step 1: Write the failing test**
 
 ```python
-def test_geminigen_uses_uc_browser_contract_from_legacy():
+def test_geminigen_uses_uc_browser_contract():
     session = default_browser_sessions_by_service()["geminigen"]
     assert session.browser_family == "uc"
 ```
@@ -510,7 +510,7 @@ git commit -m "feat: align geminigen to uc browser contract"
 - Modify: `runtime_v2/browser/manager.py`
 - Modify: `runtime_v2/browser/supervisor.py`
 - Modify: `runtime_v2/cli.py`
-- Read: `D:/YOUTUBE_AUTO/scripts/chrome_session_backup.py`
+- Read: separate reference repo `scripts/chrome_session_backup.py`
 - Test: `tests/test_runtime_v2_browser_plane.py`
 
 **Step 1: Write the failing test**
@@ -741,7 +741,7 @@ git commit -m "test: capture stage5 latest-run evidence"
 - 브라우저 외 비브라우저 워커 최적화
 - GPT floor 자체 복구 로직 구현
 - 24h soak 자동 실행기 전체 구현
-- 레거시 전면 제거
+- 외부 참고 전면 제거
 
 ## Oracle / Vendor Notes
 
@@ -750,7 +750,7 @@ git commit -m "test: capture stage5 latest-run evidence"
   - `browser_session_registry.json` 드리프트와 profile collision을 계획 1순위 리스크로 다룰 것
   - stale lock recovery가 `control-once`처럼 PID가 바뀌는 운영 방식과 충돌하지 않는지 검토할 것
   - `busy_lock`과 `stale_lock`을 supervisor가 다르게 해석하는지 검토할 것
-  - GeminiGen UC Browser 전환이 실제 레거시 근거와 맞는지
+  - GeminiGen UC Browser 전환이 실제 외부 참고 근거와 맞는지
   - ready marker가 false-positive를 만들지 않는지
   - Stage 5 smoke 해석에서 browser/GPT 축을 분리했는지
 - Vendor 확인 게이트:
