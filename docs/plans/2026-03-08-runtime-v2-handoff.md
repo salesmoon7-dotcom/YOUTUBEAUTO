@@ -63,10 +63,10 @@ CURRENT STATE
 - Final browser verification evidence supersedes the earlier interrupted dirty-worktree state.
 - Chat interruption pattern remains active when running large or parallel unittest invocations from this chat session.
 
-PENDING TASKS
--------------
-- Browser/login recovery handoff itself has no remaining implementation or documentation todo.
-- Remaining runtime_v2 work is outside this handoff scope: GPT floor, latest-run evidence, and blocked/backoff semantics still require separate follow-up under canonical plans.
+HANDOFF STATUS
+--------------
+- Complete: browser/login recovery handoff itself has no remaining implementation or documentation todo.
+- Broader runtime_v2 follow-up is tracked separately in `docs/TODO.md`; it is not a pending item inside this handoff.
 
 KEY FILES
 ---------
