@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -66,6 +67,292 @@ def _video_plan(asset_root: str) -> dict[str, object]:
 
 
 class RuntimeV2Stage2WorkerTests(unittest.TestCase):
+    def test_geminigen_worker_processes_one_item_via_explicit_adapter_command(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = root / "exports" / "geminigen-scene-01.mp4"
+            job = _stage2_job("geminigen")
+            job.payload["service_artifact_path"] = str(output_path)
+            job.payload["adapter_command"] = [
+                sys.executable,
+                "-c",
+                (
+                    "from pathlib import Path; "
+                    f"p=Path(r'{str(output_path)}'); "
+                    "p.parent.mkdir(parents=True, exist_ok=True); "
+                    "p.write_bytes(b'mp4')"
+                ),
+            ]
+
+            result = run_geminigen_job(job, artifact_root)
+
+            workspace = artifact_root / "geminigen" / job.job_id
+            self.assertEqual(result["status"], "ok")
+            self.assertTrue(output_path.exists())
+            self.assertTrue((workspace / "request.json").exists())
+            self.assertTrue((workspace / "native_geminigen.json").exists())
+            self.assertTrue((workspace / "adapter_stdout.log").exists())
+            self.assertTrue((workspace / "adapter_stderr.log").exists())
+            completion = cast(dict[str, object], result["completion"])
+            self.assertEqual(completion["state"], "succeeded")
+            self.assertTrue(bool(completion["final_output"]))
+
+    def test_geminigen_row_processing_handles_all_items_for_one_row_via_adapter_command(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            jobs, _ = build_stage2_jobs(_video_plan(tmp_dir))
+            geminigen_jobs = [
+                cast(dict[str, object], job["job"])
+                for job in jobs
+                if cast(dict[str, object], job["job"])["worker"] == "geminigen"
+            ]
+
+            self.assertTrue(geminigen_jobs)
+            for index, job_payload in enumerate(geminigen_jobs, start=1):
+                payload = cast(dict[str, object], job_payload["payload"])
+                output_path = root / "exports" / f"geminigen-row-{index:02d}.mp4"
+                payload["service_artifact_path"] = str(output_path)
+                payload["adapter_command"] = [
+                    sys.executable,
+                    "-c",
+                    (
+                        "from pathlib import Path; "
+                        f"p=Path(r'{str(output_path)}'); "
+                        "p.parent.mkdir(parents=True, exist_ok=True); "
+                        "p.write_bytes(b'mp4')"
+                    ),
+                ]
+                contract = JobContract(
+                    job_id=str(job_payload["job_id"]),
+                    workload="geminigen",
+                    checkpoint_key=str(job_payload["checkpoint_key"]),
+                    payload=payload,
+                )
+
+                result = run_geminigen_job(contract, root / "artifacts")
+
+                self.assertEqual(result["status"], "ok")
+                self.assertTrue(output_path.exists())
+
+    def test_canva_worker_processes_one_item_via_explicit_adapter_command(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = root / "exports" / "canva-thumb-01.png"
+            job = _stage2_job("canva")
+            job.payload["service_artifact_path"] = str(output_path)
+            job.payload["adapter_command"] = [
+                sys.executable,
+                "-c",
+                (
+                    "from pathlib import Path; "
+                    f"p=Path(r'{str(output_path)}'); "
+                    "p.parent.mkdir(parents=True, exist_ok=True); "
+                    "p.write_bytes(b'png')"
+                ),
+            ]
+
+            result = run_canva_job(job, artifact_root)
+
+            workspace = artifact_root / "canva" / job.job_id
+            self.assertEqual(result["status"], "ok")
+            self.assertTrue(output_path.exists())
+            self.assertTrue((workspace / "request.json").exists())
+            self.assertTrue((workspace / "thumb_data.json").exists())
+            self.assertTrue((workspace / "adapter_stdout.log").exists())
+            self.assertTrue((workspace / "adapter_stderr.log").exists())
+            completion = cast(dict[str, object], result["completion"])
+            self.assertEqual(completion["state"], "succeeded")
+            self.assertTrue(bool(completion["final_output"]))
+
+    def test_canva_row_processing_handles_all_items_for_one_row_via_adapter_command(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            jobs, _ = build_stage2_jobs(_video_plan(tmp_dir))
+            canva_jobs = [
+                cast(dict[str, object], job["job"])
+                for job in jobs
+                if cast(dict[str, object], job["job"])["worker"] == "canva"
+            ]
+
+            self.assertTrue(canva_jobs)
+            for index, job_payload in enumerate(canva_jobs, start=1):
+                payload = cast(dict[str, object], job_payload["payload"])
+                output_path = root / "exports" / f"canva-row-{index:02d}.png"
+                payload["service_artifact_path"] = str(output_path)
+                payload["adapter_command"] = [
+                    sys.executable,
+                    "-c",
+                    (
+                        "from pathlib import Path; "
+                        f"p=Path(r'{str(output_path)}'); "
+                        "p.parent.mkdir(parents=True, exist_ok=True); "
+                        "p.write_bytes(b'png')"
+                    ),
+                ]
+                contract = JobContract(
+                    job_id=str(job_payload["job_id"]),
+                    workload="canva",
+                    checkpoint_key=str(job_payload["checkpoint_key"]),
+                    payload=payload,
+                )
+
+                result = run_canva_job(contract, root / "artifacts")
+
+                self.assertEqual(result["status"], "ok")
+                self.assertTrue(output_path.exists())
+
+    def test_genspark_worker_processes_one_item_via_explicit_adapter_command(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = root / "exports" / "genspark-scene-01.png"
+            job = _stage2_job("genspark")
+            job.payload["service_artifact_path"] = str(output_path)
+            job.payload["adapter_command"] = [
+                sys.executable,
+                "-c",
+                (
+                    "from pathlib import Path; "
+                    f"p=Path(r'{str(output_path)}'); "
+                    "p.parent.mkdir(parents=True, exist_ok=True); "
+                    "p.write_bytes(b'png')"
+                ),
+            ]
+
+            result = run_genspark_job(job, artifact_root)
+
+            workspace = artifact_root / "genspark" / job.job_id
+            self.assertEqual(result["status"], "ok")
+            self.assertTrue(output_path.exists())
+            self.assertTrue((workspace / "request.json").exists())
+            self.assertTrue((workspace / "native_prompt.json").exists())
+            self.assertTrue((workspace / "adapter_stdout.log").exists())
+            self.assertTrue((workspace / "adapter_stderr.log").exists())
+            completion = cast(dict[str, object], result["completion"])
+            self.assertEqual(completion["state"], "succeeded")
+            self.assertTrue(bool(completion["final_output"]))
+
+    def test_genspark_row_processing_handles_all_items_for_one_row_via_adapter_command(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            jobs, _ = build_stage2_jobs(_video_plan(tmp_dir))
+            genspark_jobs = [
+                cast(dict[str, object], job["job"])
+                for job in jobs
+                if cast(dict[str, object], job["job"])["worker"] == "genspark"
+            ]
+
+            self.assertTrue(genspark_jobs)
+            for index, job_payload in enumerate(genspark_jobs, start=1):
+                payload = cast(dict[str, object], job_payload["payload"])
+                output_path = root / "exports" / f"genspark-row-{index:02d}.png"
+                payload["service_artifact_path"] = str(output_path)
+                payload["adapter_command"] = [
+                    sys.executable,
+                    "-c",
+                    (
+                        "from pathlib import Path; "
+                        f"p=Path(r'{str(output_path)}'); "
+                        "p.parent.mkdir(parents=True, exist_ok=True); "
+                        "p.write_bytes(b'png')"
+                    ),
+                ]
+                contract = JobContract(
+                    job_id=str(job_payload["job_id"]),
+                    workload="genspark",
+                    checkpoint_key=str(job_payload["checkpoint_key"]),
+                    payload=payload,
+                )
+
+                result = run_genspark_job(contract, root / "artifacts")
+
+                self.assertEqual(result["status"], "ok")
+                self.assertTrue(output_path.exists())
+
+    def test_seaart_worker_processes_one_item_via_explicit_adapter_command(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = root / "exports" / "seaart-scene-01.png"
+            job = _stage2_job("seaart")
+            job.payload["service_artifact_path"] = str(output_path)
+            job.payload["adapter_command"] = [
+                sys.executable,
+                "-c",
+                (
+                    "from pathlib import Path; "
+                    f"p=Path(r'{str(output_path)}'); "
+                    "p.parent.mkdir(parents=True, exist_ok=True); "
+                    "p.write_bytes(b'png')"
+                ),
+            ]
+
+            result = run_seaart_job(job, artifact_root)
+
+            workspace = artifact_root / "seaart" / job.job_id
+            self.assertEqual(result["status"], "ok")
+            self.assertTrue(output_path.exists())
+            self.assertTrue((workspace / "request.json").exists())
+            self.assertTrue((workspace / "native_prompt.json").exists())
+            self.assertTrue((workspace / "adapter_stdout.log").exists())
+            self.assertTrue((workspace / "adapter_stderr.log").exists())
+            completion = cast(dict[str, object], result["completion"])
+            self.assertEqual(completion["state"], "succeeded")
+            self.assertTrue(bool(completion["final_output"]))
+
+    def test_seaart_row_processing_handles_all_items_for_one_row_via_adapter_command(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            jobs, _ = build_stage2_jobs(_video_plan(tmp_dir))
+            seaart_jobs = [
+                cast(dict[str, object], job["job"])
+                for job in jobs
+                if cast(dict[str, object], job["job"])["worker"] == "seaart"
+            ]
+
+            self.assertTrue(seaart_jobs)
+            for index, job_payload in enumerate(seaart_jobs, start=1):
+                payload = cast(dict[str, object], job_payload["payload"])
+                output_path = root / "exports" / f"seaart-row-{index:02d}.png"
+                payload["service_artifact_path"] = str(output_path)
+                payload["adapter_command"] = [
+                    sys.executable,
+                    "-c",
+                    (
+                        "from pathlib import Path; "
+                        f"p=Path(r'{str(output_path)}'); "
+                        "p.parent.mkdir(parents=True, exist_ok=True); "
+                        "p.write_bytes(b'png')"
+                    ),
+                ]
+                contract = JobContract(
+                    job_id=str(job_payload["job_id"]),
+                    workload="seaart",
+                    checkpoint_key=str(job_payload["checkpoint_key"]),
+                    payload=payload,
+                )
+
+                result = run_seaart_job(contract, root / "artifacts")
+
+                self.assertEqual(result["status"], "ok")
+                self.assertTrue(output_path.exists())
+
     def test_stage2_browser_workers_fail_closed_until_native_implementation_exists(
         self,
     ) -> None:
@@ -76,7 +363,6 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                 "genspark",
                 "native_prompt.json",
             ),
-            (run_seaart_job, _stage2_job("seaart"), "seaart", "native_prompt.json"),
             (
                 run_geminigen_job,
                 _stage2_job("geminigen"),
