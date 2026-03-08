@@ -11,6 +11,8 @@
 
 - 디버깅을 쉽게 하려면 상태와 증거가 한 점으로 모여야 합니다.
 - 파이프라인을 단순하게 유지하려면 의미 결정권도 한 점으로 모여야 합니다.
+- `runtime_v2` 파이프라인은 처음부터 견고하고 효율적으로 설계되어야 합니다. 여기서 효율은 처리량 최적화가 아니라, `의미 결정권`, `증거 흐름`, `실패 계약`이 단순하고 일관되어 검증이 빠르고 drift가 누적되지 않는 상태를 뜻합니다.
+- 새 기능이나 서비스 추가로 `owner 경계`, `writer 수`, `failure axis 이름/의미`, `evidence 경로/포맷`이 늘어나거나 갈라지면, 구현 진행보다 아키텍처 재검토로 승격하는 것을 기본값으로 삼습니다.
 - 따라서 `runtime_v2`는 `관측 기반`, `단일 writer`, `단일 failure contract`, `단일 reference adapter`를 기본 원칙으로 유지합니다.
 
 ## Session-Start Obligations
@@ -49,7 +51,7 @@
 7. blocked 상태는 `hold` 또는 `fixed backoff` 중 하나로만 처리하고 즉시 재루프를 만들지 않습니다.
 8. 외부 참고 기능은 `호출 경로`, `안전장치`, `evidence/test` 3개가 함께 있을 때만 carryover로 인정합니다.
 9. 디버그를 위해 임시 예외 분기나 fallback OK를 추가하지 않습니다. 필요하면 evidence를 늘리고 owner 레이어에서 고칩니다.
-10. 한 세션에서 하나의 logical change만 수행하고, drift가 보이면 새 기능보다 아키텍처 재검토를 우선합니다.
+10. 한 세션에서 하나의 logical change만 수행하고, drift가 보이면 새 기능보다 아키텍처 재검토를 우선합니다. 효율/견고성 저하(분기 증가, 중복 writer, 계약 의미 확장, 증거 포맷 난립) 징후도 동일한 drift로 취급합니다.
 
 ## Required Working Model
 

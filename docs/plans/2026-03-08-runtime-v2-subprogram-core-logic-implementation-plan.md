@@ -4,7 +4,7 @@
 
 **Goal:** `runtime_v2`의 하부프로그램 핵심 로직을 `gpt -> seaart -> genspark -> canva -> geminigen -> tts -> kenburns -> rvc` 순서로 하나씩 구현해, 먼저 1개 처리와 1행 처리를 검증하고, 파이프라인 완료 뒤에는 24시간 가동 완성 단계로 확장합니다.
 
-**Architecture:** 각 프로그램의 core logic는 `입력 계약 검증 -> 단일 실행 adapter 호출 -> 산출물 존재 검증 -> 표준 worker_result 반환`까지만 포함합니다. 재시도, backoff, 로그인 복구, queue 정책, latest-run writer는 상위 owner가 계속 소유하며, 워커는 fail-closed와 관측 가능한 evidence만 보장합니다.
+**Architecture:** 각 프로그램의 core logic는 `입력 계약 검증 -> 단일 실행 adapter 호출 -> 산출물 존재 검증 -> 표준 worker_result 반환`까지만 포함합니다. 재시도, backoff, 로그인 복구, queue 정책, latest-run writer는 상위 owner가 계속 소유하며, 워커는 fail-closed와 관측 가능한 evidence만 보장합니다. 각 하부프로그램 구현은 `단일 owner`, `단일 writer`, `단일 failure contract`, `단일 adapter`를 깨는 확장을 금지하는 견고/효율 품질 게이트를 통과해야 합니다.
 
 **Document Status:** 이 문서는 구현 완료 보고가 아니라 실행 계획입니다. 아래 task/command/expected 항목은 앞으로 검증할 절차이며, 실제 완료 판정은 각 단계의 코드 변경과 명령 증거가 확인된 뒤에만 내립니다.
 
@@ -82,6 +82,8 @@
 2. 단일 실행 경로 호출 (서비스별 core function 1개)
 3. 기대 산출물 파일 존재/확장자 검증
 4. `worker_result` 표준 필드와 workspace evidence 기록
+
+Core logic의 효율 기준은 per-item 경로가 항상 `입력 검증 -> 단일 adapter 호출 -> 산출물/증거(상수 개수) 검증 -> 표준 worker_result`를 넘지 않는 것입니다. 스캔, 집계, 정책 결정, 의미 보정은 상위 owner에 고정합니다.
 
 아래는 core logic에 포함하지 않습니다.
 
@@ -210,6 +212,7 @@ next_jobs, _ = route_video_plan(video_plan)
 
 - 각 Task의 1차 목표 또는 2차 목표를 통과한 뒤에는 바로 그 범위만 커밋합니다.
 - 기본 커밋 템플릿은 저장소 스타일을 따라 `semantic + english`로 유지합니다.
+- 각 Task를 시작하기 전에는 이번 변경이 `owner 경계`, `writer 수`, `failure axis`, `evidence 포맷`을 늘리거나 갈라놓지 않는지 먼저 확인하고, 흔들리면 구현보다 아키텍처 재검토를 우선합니다.
 - 예시:
   - `git add tests/test_runtime_v2_stage2_workers.py runtime_v2/stage2/seaart_worker.py`
   - `git commit -m "feat: prove seaart single-item path"`
