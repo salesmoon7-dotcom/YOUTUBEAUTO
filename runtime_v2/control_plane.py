@@ -286,69 +286,9 @@ def run_control_loop_once(
             run_id=run_id,
         )
         if worker_artifacts:
-            _ = write_result_router(
-                worker_artifacts,
-                artifact_root,
-                result_router_file,
-                metadata={
-                    "job_id": job.job_id,
-                    "workload": job.workload,
-                    "chain_depth": _to_int(job.payload.get("chain_depth", 0)),
-                    "routed_from": str(job.payload.get("routed_from", "")),
-                    "next_jobs_count": next_jobs_count,
-                    "routed_count": len(seeded_downstream),
-                    "worker_status": str(worker_contract.get("status", "")),
-                    "worker_stage": str(worker_contract.get("stage", "")),
-                    "worker_error_code": str(worker_contract.get("error_code", "")),
-                    "completion_state": ""
-                    if completion is None
-                    else str(completion.get("state", "")),
-                    "final_output": False
-                    if completion is None
-                    else bool(completion.get("final_output", False)),
-                    "final_artifact": ""
-                    if completion is None
-                    else str(completion.get("final_artifact", "")),
-                    "final_artifact_path": ""
-                    if completion is None
-                    else str(completion.get("final_artifact_path", "")),
-                    "completion": {} if completion is None else completion,
-                    "ts": round(time(), 3),
-                },
-            )
             artifact_path = worker_artifacts[0]
         else:
             artifact_path = _write_worker_artifact(job, worker_result, artifact_root)
-            _ = write_result_router(
-                [artifact_path],
-                artifact_root,
-                result_router_file,
-                metadata={
-                    "job_id": job.job_id,
-                    "workload": job.workload,
-                    "chain_depth": _to_int(job.payload.get("chain_depth", 0)),
-                    "routed_from": str(job.payload.get("routed_from", "")),
-                    "next_jobs_count": next_jobs_count,
-                    "routed_count": len(seeded_downstream),
-                    "worker_status": str(worker_contract.get("status", "")),
-                    "worker_stage": str(worker_contract.get("stage", "")),
-                    "worker_error_code": str(worker_contract.get("error_code", "")),
-                    "completion_state": ""
-                    if completion is None
-                    else str(completion.get("state", "")),
-                    "final_output": False
-                    if completion is None
-                    else bool(completion.get("final_output", False)),
-                    "final_artifact": ""
-                    if completion is None
-                    else str(completion.get("final_artifact", "")),
-                    "final_artifact_path": ""
-                    if completion is None
-                    else str(completion.get("final_artifact_path", "")),
-                    "completion": {} if completion is None else completion,
-                    "ts": round(time(), 3),
-                },
-            )
         if seeded_downstream:
             for downstream_job in seeded_downstream:
                 _ = _append_transition_record(

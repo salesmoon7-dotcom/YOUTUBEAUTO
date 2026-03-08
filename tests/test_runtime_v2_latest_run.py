@@ -5,8 +5,11 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import cast
+from unittest.mock import patch
 
 from runtime_v2.config import RuntimeConfig
+from runtime_v2.control_plane import run_control_loop_once, seed_control_job
+from runtime_v2.contracts.job_contract import JobContract
 from runtime_v2.bootstrap import ensure_runtime_bootstrap
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
 from runtime_v2.latest_run import load_joined_latest_run, write_runtime_snapshot
@@ -65,6 +68,68 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
         self.assertEqual(str(gui_status["run_id"]), "runtime-run-1")
         self.assertEqual(str(result_metadata["run_id"]), "runtime-run-1")
         self.assertEqual(str(result_metadata["code"]), "OK")
+
+    def test_control_plane_uses_runtime_snapshot_api_without_direct_result_router_write(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig.from_root(root)
+            seed_control_job(
+                JobContract(
+                    job_id="single-writer-job",
+                    workload="qwen3_tts",
+                    checkpoint_key="seed:single-writer-job",
+                    payload={"script_text": "hello", "chain_depth": 0},
+                ),
+                config=config,
+            )
+            runtime_result: dict[str, object] = {
+                "status": "ok",
+                "code": "OK",
+                "worker_result": {
+                    "status": "ok",
+                    "stage": "synthesize_audio",
+                    "error_code": "",
+                    "retryable": False,
+                    "artifacts": [],
+                    "next_jobs": [],
+                    "completion": {
+                        "state": "completed",
+                        "final_output": True,
+                        "final_artifact": "speech.wav",
+                        "final_artifact_path": str(
+                            root
+                            / "artifacts"
+                            / "qwen3_tts"
+                            / "single-writer-job"
+                            / "speech.wav"
+                        ),
+                    },
+                },
+            }
+
+            with (
+                patch(
+                    "runtime_v2.control_plane.run_gated", return_value=runtime_result
+                ),
+                patch(
+                    "runtime_v2.control_plane.write_result_router",
+                    side_effect=AssertionError(
+                        "control_plane must not write result_router directly"
+                    ),
+                ),
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-single-writer",
+                )
+
+            joined = load_joined_latest_run(config, completed=True)
+
+        self.assertEqual(str(result["status"]), "ok")
+        self.assertFalse(bool(joined["out_of_sync"]))
 
     def test_load_joined_latest_run_uses_pointer_specific_paths(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
