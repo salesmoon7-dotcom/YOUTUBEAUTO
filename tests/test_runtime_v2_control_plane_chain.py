@@ -13,29 +13,17 @@ from runtime_v2.control_plane import run_control_loop_once, seed_control_job
 from runtime_v2.latest_run import load_joined_latest_run
 
 
+def _runtime_config(root: Path) -> RuntimeConfig:
+    return RuntimeConfig.from_root(root)
+
+
 class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
     def test_control_plane_runs_chatgpt_job_and_seeds_stage2_jobs_with_same_run_id(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
-            config = RuntimeConfig(
-                lease_file=root / "health" / "gpu_scheduler_health.json",
-                lock_root=root / "locks",
-                gui_status_file=root / "health" / "gui_status.json",
-                browser_health_file=root / "health" / "browser_health.json",
-                browser_registry_file=root / "health" / "browser_session_registry.json",
-                gpt_status_file=root / "health" / "gpt_status.json",
-                control_plane_events_file=root
-                / "evidence"
-                / "control_plane_events.jsonl",
-                queue_store_file=root / "state" / "job_queue.json",
-                feeder_state_file=root / "state" / "feeder_state.json",
-                artifact_root=root / "artifacts",
-                input_root=root / "inbox",
-                result_router_file=root / "evidence" / "result.json",
-                debug_log_root=root / "logs",
-            )
+            config = _runtime_config(root)
             topic_spec: dict[str, object] = {
                 "contract": "topic_spec",
                 "contract_version": "1.0",
@@ -102,26 +90,25 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertEqual(render_payload["run_id"], "chatgpt-run-1")
         self.assertEqual(render_payload["row_ref"], "Sheet1!row1")
 
+    def test_runtime_config_from_root_keeps_latest_pointers_inside_temp_root(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+
+        self.assertEqual(
+            config.latest_active_run_file, root.resolve() / "latest_active_run.json"
+        )
+        self.assertEqual(
+            config.latest_completed_run_file,
+            root.resolve() / "latest_completed_run.json",
+        )
+
     def test_control_plane_routes_declared_next_jobs_from_worker_result(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
-            config = RuntimeConfig(
-                lease_file=root / "health" / "gpu_scheduler_health.json",
-                lock_root=root / "locks",
-                gui_status_file=root / "health" / "gui_status.json",
-                browser_health_file=root / "health" / "browser_health.json",
-                browser_registry_file=root / "health" / "browser_session_registry.json",
-                gpt_status_file=root / "health" / "gpt_status.json",
-                control_plane_events_file=root
-                / "evidence"
-                / "control_plane_events.jsonl",
-                queue_store_file=root / "state" / "job_queue.json",
-                feeder_state_file=root / "state" / "feeder_state.json",
-                artifact_root=root / "artifacts",
-                input_root=root / "inbox",
-                result_router_file=root / "evidence" / "result.json",
-                debug_log_root=root / "logs",
-            )
+            config = _runtime_config(root)
             seed_control_job(
                 JobContract(
                     job_id="qwen-job",
@@ -185,23 +172,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
-            config = RuntimeConfig(
-                lease_file=root / "health" / "gpu_scheduler_health.json",
-                lock_root=root / "locks",
-                gui_status_file=root / "health" / "gui_status.json",
-                browser_health_file=root / "health" / "browser_health.json",
-                browser_registry_file=root / "health" / "browser_session_registry.json",
-                gpt_status_file=root / "health" / "gpt_status.json",
-                control_plane_events_file=root
-                / "evidence"
-                / "control_plane_events.jsonl",
-                queue_store_file=root / "state" / "job_queue.json",
-                feeder_state_file=root / "state" / "feeder_state.json",
-                artifact_root=root / "artifacts",
-                input_root=root / "inbox",
-                result_router_file=root / "evidence" / "result.json",
-                debug_log_root=root / "logs",
-            )
+            config = _runtime_config(root)
             seed_control_job(
                 JobContract(
                     job_id="qwen-job",
@@ -273,23 +244,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
     def test_control_plane_debug_log_uses_control_run_id_not_job_id(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
-            config = RuntimeConfig(
-                lease_file=root / "health" / "gpu_scheduler_health.json",
-                lock_root=root / "locks",
-                gui_status_file=root / "health" / "gui_status.json",
-                browser_health_file=root / "health" / "browser_health.json",
-                browser_registry_file=root / "health" / "browser_session_registry.json",
-                gpt_status_file=root / "health" / "gpt_status.json",
-                control_plane_events_file=root
-                / "evidence"
-                / "control_plane_events.jsonl",
-                queue_store_file=root / "state" / "job_queue.json",
-                feeder_state_file=root / "state" / "feeder_state.json",
-                artifact_root=root / "artifacts",
-                input_root=root / "inbox",
-                result_router_file=root / "evidence" / "result.json",
-                debug_log_root=root / "logs",
-            )
+            config = _runtime_config(root)
             seed_control_job(
                 JobContract(
                     job_id="qwen-job",
@@ -348,23 +303,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
-            config = RuntimeConfig(
-                lease_file=root / "health" / "gpu_scheduler_health.json",
-                lock_root=root / "locks",
-                gui_status_file=root / "health" / "gui_status.json",
-                browser_health_file=root / "health" / "browser_health.json",
-                browser_registry_file=root / "health" / "browser_session_registry.json",
-                gpt_status_file=root / "health" / "gpt_status.json",
-                control_plane_events_file=root
-                / "evidence"
-                / "control_plane_events.jsonl",
-                queue_store_file=root / "state" / "job_queue.json",
-                feeder_state_file=root / "state" / "feeder_state.json",
-                artifact_root=root / "artifacts",
-                input_root=root / "inbox",
-                result_router_file=root / "evidence" / "result.json",
-                debug_log_root=root / "logs",
-            )
+            config = _runtime_config(root)
             seed_control_job(
                 JobContract(
                     job_id="chatgpt-blocked-job",
@@ -418,23 +357,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
-            config = RuntimeConfig(
-                lease_file=root / "health" / "gpu_scheduler_health.json",
-                lock_root=root / "locks",
-                gui_status_file=root / "health" / "gui_status.json",
-                browser_health_file=root / "health" / "browser_health.json",
-                browser_registry_file=root / "health" / "browser_session_registry.json",
-                gpt_status_file=root / "health" / "gpt_status.json",
-                control_plane_events_file=root
-                / "evidence"
-                / "control_plane_events.jsonl",
-                queue_store_file=root / "state" / "job_queue.json",
-                feeder_state_file=root / "state" / "feeder_state.json",
-                artifact_root=root / "artifacts",
-                input_root=root / "inbox",
-                result_router_file=root / "evidence" / "result.json",
-                debug_log_root=root / "logs",
-            )
+            config = _runtime_config(root)
             seed_control_job(
                 JobContract(
                     job_id="chatgpt-unhealthy-job",
@@ -491,23 +414,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
-            config = RuntimeConfig(
-                lease_file=root / "health" / "gpu_scheduler_health.json",
-                lock_root=root / "locks",
-                gui_status_file=root / "health" / "gui_status.json",
-                browser_health_file=root / "health" / "browser_health.json",
-                browser_registry_file=root / "health" / "browser_session_registry.json",
-                gpt_status_file=root / "health" / "gpt_status.json",
-                control_plane_events_file=root
-                / "evidence"
-                / "control_plane_events.jsonl",
-                queue_store_file=root / "state" / "job_queue.json",
-                feeder_state_file=root / "state" / "feeder_state.json",
-                artifact_root=root / "artifacts",
-                input_root=root / "inbox",
-                result_router_file=root / "evidence" / "result.json",
-                debug_log_root=root / "logs",
-            )
+            config = _runtime_config(root)
             seed_control_job(
                 JobContract(
                     job_id="chatgpt-gpt-floor-job",
@@ -562,23 +469,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
-            config = RuntimeConfig(
-                lease_file=root / "health" / "gpu_scheduler_health.json",
-                lock_root=root / "locks",
-                gui_status_file=root / "health" / "gui_status.json",
-                browser_health_file=root / "health" / "browser_health.json",
-                browser_registry_file=root / "health" / "browser_session_registry.json",
-                gpt_status_file=root / "health" / "gpt_status.json",
-                control_plane_events_file=root
-                / "evidence"
-                / "control_plane_events.jsonl",
-                queue_store_file=root / "state" / "job_queue.json",
-                feeder_state_file=root / "state" / "feeder_state.json",
-                artifact_root=root / "artifacts",
-                input_root=root / "inbox",
-                result_router_file=root / "evidence" / "result.json",
-                debug_log_root=root / "logs",
-            )
+            config = _runtime_config(root)
             seed_control_job(
                 JobContract(
                     job_id="qwen-run-id-job",
@@ -640,23 +531,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
-            config = RuntimeConfig(
-                lease_file=root / "health" / "gpu_scheduler_health.json",
-                lock_root=root / "locks",
-                gui_status_file=root / "health" / "gui_status.json",
-                browser_health_file=root / "health" / "browser_health.json",
-                browser_registry_file=root / "health" / "browser_session_registry.json",
-                gpt_status_file=root / "health" / "gpt_status.json",
-                control_plane_events_file=root
-                / "evidence"
-                / "control_plane_events.jsonl",
-                queue_store_file=root / "state" / "job_queue.json",
-                feeder_state_file=root / "state" / "feeder_state.json",
-                artifact_root=root / "artifacts",
-                input_root=root / "inbox",
-                result_router_file=root / "evidence" / "result.json",
-                debug_log_root=root / "logs",
-            )
+            config = _runtime_config(root)
             seed_control_job(
                 JobContract(
                     job_id="qwen-side-effect-free-job",

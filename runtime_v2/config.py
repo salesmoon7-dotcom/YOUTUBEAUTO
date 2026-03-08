@@ -112,3 +112,30 @@ class RuntimeConfig:
     callback_max_attempts: int = 3
     callback_backoff_sec: float = 0.5
     blocked_backoff_sec: float = 30.0
+
+    @classmethod
+    def from_root(cls, root: Path) -> "RuntimeConfig":
+        resolved_root = root.resolve()
+        return cls(
+            lease_file=resolved_root / "health" / "gpu_scheduler_health.json",
+            lock_root=resolved_root / "locks",
+            gui_status_file=resolved_root / "health" / "gui_status.json",
+            browser_health_file=resolved_root / "health" / "browser_health.json",
+            browser_registry_file=resolved_root
+            / "health"
+            / "browser_session_registry.json",
+            gpt_status_file=resolved_root / "health" / "gpt_status.json",
+            control_plane_events_file=resolved_root
+            / "evidence"
+            / "control_plane_events.jsonl",
+            queue_store_file=resolved_root / "state" / "job_queue.json",
+            feeder_state_file=resolved_root / "state" / "feeder_state.json",
+            artifact_root=resolved_root / "artifacts",
+            input_root=resolved_root / "inbox",
+            result_router_file=resolved_root / "evidence" / "result.json",
+            latest_active_run_file=resolved_root / "latest_active_run.json",
+            latest_completed_run_file=resolved_root / "latest_completed_run.json",
+            failure_summary_file=resolved_root / "evidence" / "failure_summary.json",
+            debug_log_root=resolved_root / "logs",
+            worker_registry_file=resolved_root / "health" / "worker_registry.json",
+        )
