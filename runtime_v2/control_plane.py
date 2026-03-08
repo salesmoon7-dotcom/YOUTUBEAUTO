@@ -16,7 +16,11 @@ from runtime_v2.recovery_policy import CircuitState, evaluate_recovery
 from runtime_v2.result_router import write_result_router
 from runtime_v2.retry_budget import next_backoff_sec, within_retry_budget
 from runtime_v2.queue_store import QueueStore
-from runtime_v2.state_machine import append_transition_record, can_transition, transition_record
+from runtime_v2.state_machine import (
+    append_transition_record,
+    can_transition,
+    transition_record,
+)
 from runtime_v2.stage1.chatgpt_runner import run_stage1_chatgpt_job
 from runtime_v2.stage2.canva_worker import run_canva_job
 from runtime_v2.stage2.geminigen_worker import run_geminigen_job
@@ -35,6 +39,7 @@ from runtime_v2.contracts.job_contract import (
     workload_from_value,
 )
 from runtime_v2.supervisor import run_gated
+
 ALLOWED_WORKLOADS = set(allowed_workloads())
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 MEDIA_EXTENSIONS = {".wav", ".mp3", ".flac", ".mp4", ".mov", ".mkv", ".avi"}
@@ -44,19 +49,37 @@ MAX_CONTRACT_BYTES = 262144
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_id: str = "control_loop") -> dict[str, object]:
+def run_control_loop_once(
+    owner: str,
+    config: RuntimeConfig | None = None,
+    run_id: str = "control_loop",
+    *,
+    allow_runtime_side_effects: bool = True,
+) -> dict[str, object]:
     runtime_config = config or RuntimeConfig()
-    ensure_runtime_bootstrap(runtime_config, workload="qwen3_tts", run_id="control-bootstrap", mode="control_loop")
-    _ = tick_gpt_status(runtime_config.gpt_status_file, runtime_config)
-    _ = apply_autospawn_decision(runtime_config.gpt_status_file, runtime_config)
+    if allow_runtime_side_effects:
+        ensure_runtime_bootstrap(
+            runtime_config,
+            workload="qwen3_tts",
+            run_id="control-bootstrap",
+            mode="control_loop",
+        )
+        _ = tick_gpt_status(runtime_config.gpt_status_file, runtime_config)
+        _ = apply_autospawn_decision(runtime_config.gpt_status_file, runtime_config)
     now = time()
-    queue_file = getattr(runtime_config, "queue_store_file", Path("system/runtime_v2/state/job_queue.json"))
+    queue_file = getattr(
+        runtime_config,
+        "queue_store_file",
+        Path("system/runtime_v2/state/job_queue.json"),
+    )
     events_file = getattr(
         runtime_config,
         "control_plane_events_file",
         Path("system/runtime_v2/evidence/control_plane_events.jsonl"),
     )
-    artifact_root = getattr(runtime_config, "artifact_root", Path("system/runtime_v2/artifacts"))
+    artifact_root = getattr(
+        runtime_config, "artifact_root", Path("system/runtime_v2/artifacts")
+    )
     result_router_file = getattr(
         runtime_config,
         "result_router_file",
@@ -66,7 +89,9 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
     _recover_stale_running_jobs(queue_file, jobs, now, runtime_config, events_file)
     job = _next_runnable_job(jobs, now)
     if job is None:
-        accepted_count, invalid_count = _archived_contract_counts(runtime_config.input_root)
+        accepted_count, invalid_count = _archived_contract_counts(
+            runtime_config.input_root
+        )
         seeded_jobs = seed_local_jobs(runtime_config)
         if seeded_jobs:
             jobs = _load_jobs(queue_file)
@@ -82,14 +107,16 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
                         "queue_status": "seeded",
                         "accepted_count": accepted_count,
                         "invalid_count": invalid_count,
-                        "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
+                        "invalid_reason": _invalid_reason_summary(
+                            runtime_config.input_root
+                        ),
                     },
                 )
                 _ = write_result_router(
                     [],
                     artifact_root,
                     result_router_file,
-                metadata={
+                    metadata={
                         "run_id": run_id,
                         "mode": "control_loop",
                         "status": "seeded",
@@ -98,12 +125,16 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
                         "workload": "",
                         "success": True,
                         "exit_code": 0,
-                        "debug_log": str(debug_log_path(runtime_config.debug_log_root, run_id)),
+                        "debug_log": str(
+                            debug_log_path(runtime_config.debug_log_root, run_id)
+                        ),
                         "queue_status": "seeded",
                         "seeded_jobs": len(seeded_jobs),
                         "accepted_count": accepted_count,
                         "invalid_count": invalid_count,
-                        "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
+                        "invalid_reason": _invalid_reason_summary(
+                            runtime_config.input_root
+                        ),
                         "ts": round(time(), 3),
                     },
                 )
@@ -112,10 +143,14 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
                     event="control_loop_seeded",
                     payload={
                         "run_id": run_id,
-                        "seeded_jobs": [seeded_job.to_dict() for seeded_job in seeded_jobs],
+                        "seeded_jobs": [
+                            seeded_job.to_dict() for seeded_job in seeded_jobs
+                        ],
                         "accepted_count": accepted_count,
                         "invalid_count": invalid_count,
-                        "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
+                        "invalid_reason": _invalid_reason_summary(
+                            runtime_config.input_root
+                        ),
                     },
                 )
                 return {
@@ -186,24 +221,37 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
             "status": "ok",
             "code": "OK",
             "workload": job.workload,
-            "worker_result": _run_worker(job, runtime_config.artifact_root, registry_file=runtime_config.worker_registry_file),
+            "worker_result": _run_worker(
+                job,
+                runtime_config.artifact_root,
+                registry_file=runtime_config.worker_registry_file,
+            ),
         }
     else:
         result = run_gated(
             owner=owner,
-            execute=lambda: _run_worker(job, runtime_config.artifact_root, registry_file=runtime_config.worker_registry_file),
+            execute=lambda: _run_worker(
+                job,
+                runtime_config.artifact_root,
+                registry_file=runtime_config.worker_registry_file,
+            ),
             workload=job.workload,
             config=runtime_config,
             run_id=run_id,
             require_browser_healthy=True,
+            allow_runtime_side_effects=allow_runtime_side_effects,
         )
     worker_result = _worker_result_from_runtime(result)
     artifact_path: Path | None = None
     worker_contract = _worker_result_contract(worker_result)
     worker_artifacts = _worker_artifact_paths(worker_contract)
     worker_ok = _worker_succeeded(worker_contract)
-    worker_manifest_path = str(worker_contract.get("manifest_path", worker_result.get("manifest_path", "")))
-    worker_result_path = str(worker_contract.get("result_path", worker_result.get("result_path", "")))
+    worker_manifest_path = str(
+        worker_contract.get("manifest_path", worker_result.get("manifest_path", ""))
+    )
+    worker_result_path = str(
+        worker_contract.get("result_path", worker_result.get("result_path", ""))
+    )
     next_jobs_entries = _next_jobs_entries(worker_contract)
     next_jobs_count = len(next_jobs_entries)
     completion = _mapping_from_obj(worker_contract.get("completion", {}))
@@ -232,10 +280,18 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
                     "worker_status": str(worker_contract.get("status", "")),
                     "worker_stage": str(worker_contract.get("stage", "")),
                     "worker_error_code": str(worker_contract.get("error_code", "")),
-                    "completion_state": "" if completion is None else str(completion.get("state", "")),
-                    "final_output": False if completion is None else bool(completion.get("final_output", False)),
-                    "final_artifact": "" if completion is None else str(completion.get("final_artifact", "")),
-                    "final_artifact_path": "" if completion is None else str(completion.get("final_artifact_path", "")),
+                    "completion_state": ""
+                    if completion is None
+                    else str(completion.get("state", "")),
+                    "final_output": False
+                    if completion is None
+                    else bool(completion.get("final_output", False)),
+                    "final_artifact": ""
+                    if completion is None
+                    else str(completion.get("final_artifact", "")),
+                    "final_artifact_path": ""
+                    if completion is None
+                    else str(completion.get("final_artifact_path", "")),
                     "completion": {} if completion is None else completion,
                     "ts": round(time(), 3),
                 },
@@ -257,10 +313,18 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
                     "worker_status": str(worker_contract.get("status", "")),
                     "worker_stage": str(worker_contract.get("stage", "")),
                     "worker_error_code": str(worker_contract.get("error_code", "")),
-                    "completion_state": "" if completion is None else str(completion.get("state", "")),
-                    "final_output": False if completion is None else bool(completion.get("final_output", False)),
-                    "final_artifact": "" if completion is None else str(completion.get("final_artifact", "")),
-                    "final_artifact_path": "" if completion is None else str(completion.get("final_artifact_path", "")),
+                    "completion_state": ""
+                    if completion is None
+                    else str(completion.get("state", "")),
+                    "final_output": False
+                    if completion is None
+                    else bool(completion.get("final_output", False)),
+                    "final_artifact": ""
+                    if completion is None
+                    else str(completion.get("final_artifact", "")),
+                    "final_artifact_path": ""
+                    if completion is None
+                    else str(completion.get("final_artifact_path", "")),
                     "completion": {} if completion is None else completion,
                     "ts": round(time(), 3),
                 },
@@ -273,7 +337,9 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
                         "previous_status": "declared",
                         "status": "queued",
                         "routed_from": job.job_id,
-                        "chain_depth": _to_int(downstream_job.payload.get("chain_depth", 0)),
+                        "chain_depth": _to_int(
+                            downstream_job.payload.get("chain_depth", 0)
+                        ),
                         "ts": round(time(), 3),
                     },
                     events_file,
@@ -283,10 +349,14 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
         not success
         and (
             result.get("status") == "blocked"
-            or (completion is not None and str(completion.get("state", "")) == "blocked")
+            or (
+                completion is not None and str(completion.get("state", "")) == "blocked"
+            )
         )
     )
-    recovery = _evaluate_recovery(job, success=bool(success), blocked=blocked_failure, config=runtime_config)
+    recovery = _evaluate_recovery(
+        job, success=bool(success), blocked=blocked_failure, config=runtime_config
+    )
     next_status = _next_status_for_recovery(recovery)
     backoff_sec = _to_float(recovery.get("backoff_sec", 0), 0.0)
 
@@ -295,7 +365,9 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
         job.status = next_status
         job.attempts += 0 if success or blocked_failure else 1
         if next_status == "retry":
-            next_attempt_at = round(now + _to_float(recovery.get("backoff_sec", 0), 0.0), 3)
+            next_attempt_at = round(
+                now + _to_float(recovery.get("backoff_sec", 0), 0.0), 3
+            )
             job.payload["next_attempt_at"] = next_attempt_at
         else:
             _ = job.payload.pop("next_attempt_at", None)
@@ -308,7 +380,9 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
     control_debug_log = debug_log_path(runtime_config.debug_log_root, run_id)
     gui_status: dict[str, object] = {
         "status": "ok" if success else "failed",
-        "code": "OK" if success else str(worker_contract.get("error_code", result.get("code", "FAILED"))),
+        "code": "OK"
+        if success
+        else str(worker_contract.get("error_code", result.get("code", "FAILED"))),
         "queue_status": job.status,
         "job_id": job.job_id,
         "workload": job.workload,
@@ -316,15 +390,25 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
         "next_jobs_count": next_jobs_count,
         "routed_count": len(seeded_downstream),
         "chain_depth": _to_int(job.payload.get("chain_depth", 0)),
-        "worker_stage": str(worker_contract.get("stage", result.get("status", "unknown"))),
+        "worker_stage": str(
+            worker_contract.get("stage", result.get("status", "unknown"))
+        ),
         "worker_error_code": str(worker_contract.get("error_code", "")),
         "manifest_path": worker_manifest_path,
         "result_path": worker_result_path,
         "backoff_sec": backoff_sec,
-        "completion_state": "" if completion is None else str(completion.get("state", "")),
-        "final_output": False if completion is None else bool(completion.get("final_output", False)),
-        "final_artifact": "" if completion is None else str(completion.get("final_artifact", "")),
-        "final_artifact_path": "" if completion is None else str(completion.get("final_artifact_path", "")),
+        "completion_state": ""
+        if completion is None
+        else str(completion.get("state", "")),
+        "final_output": False
+        if completion is None
+        else bool(completion.get("final_output", False)),
+        "final_artifact": ""
+        if completion is None
+        else str(completion.get("final_artifact", "")),
+        "final_artifact_path": ""
+        if completion is None
+        else str(completion.get("final_artifact_path", "")),
         "accepted_count": accepted_count,
         "invalid_count": invalid_count,
         "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
@@ -350,7 +434,9 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
             "run_id": run_id,
             "mode": "control_loop",
             "status": "ok" if success else "failed",
-            "code": "OK" if success else str(worker_contract.get("error_code", result.get("code", "FAILED"))),
+            "code": "OK"
+            if success
+            else str(worker_contract.get("error_code", result.get("code", "FAILED"))),
             "job_id": job.job_id,
             "workload": job.workload,
             "success": bool(success),
@@ -360,7 +446,9 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
             "accepted_count": accepted_count,
             "invalid_count": invalid_count,
             "worker_status": str(worker_contract.get("status", "")),
-            "worker_stage": str(worker_contract.get("stage", result.get("status", "unknown"))),
+            "worker_stage": str(
+                worker_contract.get("stage", result.get("status", "unknown"))
+            ),
             "worker_error_code": str(worker_contract.get("error_code", "")),
             "manifest_path": worker_manifest_path,
             "result_path": worker_result_path,
@@ -369,10 +457,18 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
             "chain_depth": _to_int(job.payload.get("chain_depth", 0)),
             "next_jobs_count": next_jobs_count,
             "routed_count": len(seeded_downstream),
-            "completion_state": "" if completion is None else str(completion.get("state", "")),
-            "final_output": False if completion is None else bool(completion.get("final_output", False)),
-            "final_artifact": "" if completion is None else str(completion.get("final_artifact", "")),
-            "final_artifact_path": "" if completion is None else str(completion.get("final_artifact_path", "")),
+            "completion_state": ""
+            if completion is None
+            else str(completion.get("state", "")),
+            "final_output": False
+            if completion is None
+            else bool(completion.get("final_output", False)),
+            "final_artifact": ""
+            if completion is None
+            else str(completion.get("final_artifact", "")),
+            "final_artifact_path": ""
+            if completion is None
+            else str(completion.get("final_artifact_path", "")),
             "completion": {} if completion is None else completion,
             "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
             "ts": round(time(), 3),
@@ -405,7 +501,9 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
             "workload": job.workload,
             "queue_status": job.status,
             "success": bool(success),
-            "worker_stage": str(worker_contract.get("stage", result.get("status", "unknown"))),
+            "worker_stage": str(
+                worker_contract.get("stage", result.get("status", "unknown"))
+            ),
             "worker_error_code": str(worker_contract.get("error_code", "")),
             "attempts": job.attempts,
             "backoff_sec": backoff_sec,
@@ -414,10 +512,18 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
             "routed_count": len(seeded_downstream),
             "chain_depth": _to_int(job.payload.get("chain_depth", 0)),
             "routed_from": str(job.payload.get("routed_from", "")),
-            "completion_state": "" if completion is None else str(completion.get("state", "")),
-            "final_output": False if completion is None else bool(completion.get("final_output", False)),
-            "final_artifact": "" if completion is None else str(completion.get("final_artifact", "")),
-            "final_artifact_path": "" if completion is None else str(completion.get("final_artifact_path", "")),
+            "completion_state": ""
+            if completion is None
+            else str(completion.get("state", "")),
+            "final_output": False
+            if completion is None
+            else bool(completion.get("final_output", False)),
+            "final_artifact": ""
+            if completion is None
+            else str(completion.get("final_artifact", "")),
+            "final_artifact_path": ""
+            if completion is None
+            else str(completion.get("final_artifact_path", "")),
             "manifest_path": worker_manifest_path,
             "result_path": worker_result_path,
         },
@@ -425,7 +531,9 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
     )
     return {
         "status": "ok" if success else "failed",
-        "code": "OK" if success else str(worker_contract.get("error_code", result.get("code", "FAILED"))),
+        "code": "OK"
+        if success
+        else str(worker_contract.get("error_code", result.get("code", "FAILED"))),
         "job": job.to_dict(),
         "result": result,
         "worker_result": worker_result,
@@ -437,7 +545,11 @@ def run_control_loop_once(owner: str, config: RuntimeConfig | None = None, run_i
 
 def seed_control_job(job: JobContract, config: RuntimeConfig | None = None) -> None:
     runtime_config = config or RuntimeConfig()
-    queue_file = getattr(runtime_config, "queue_store_file", Path("system/runtime_v2/state/job_queue.json"))
+    queue_file = getattr(
+        runtime_config,
+        "queue_store_file",
+        Path("system/runtime_v2/state/job_queue.json"),
+    )
     jobs = _load_jobs(queue_file)
     _ = _upsert_job(queue_file, jobs, job)
 
@@ -453,22 +565,34 @@ def seed_local_jobs(config: RuntimeConfig | None = None) -> list[JobContract]:
     for job in _discover_explicit_contract_jobs(runtime_config, known_keys):
         _ = queue_store.upsert(job)
         known_keys.add(job.checkpoint_key)
-        feeder_state[job.checkpoint_key] = {"job_id": job.job_id, "created_at": job.created_at}
+        feeder_state[job.checkpoint_key] = {
+            "job_id": job.job_id,
+            "created_at": job.created_at,
+        }
         seeded.append(job)
     for job in _discover_qwen_jobs(runtime_config, known_keys):
         _ = queue_store.upsert(job)
         known_keys.add(job.checkpoint_key)
-        feeder_state[job.checkpoint_key] = {"job_id": job.job_id, "created_at": job.created_at}
+        feeder_state[job.checkpoint_key] = {
+            "job_id": job.job_id,
+            "created_at": job.created_at,
+        }
         seeded.append(job)
     for job in _discover_kenburns_jobs(runtime_config, known_keys):
         _ = queue_store.upsert(job)
         known_keys.add(job.checkpoint_key)
-        feeder_state[job.checkpoint_key] = {"job_id": job.job_id, "created_at": job.created_at}
+        feeder_state[job.checkpoint_key] = {
+            "job_id": job.job_id,
+            "created_at": job.created_at,
+        }
         seeded.append(job)
     for job in _discover_rvc_jobs(runtime_config, known_keys):
         _ = queue_store.upsert(job)
         known_keys.add(job.checkpoint_key)
-        feeder_state[job.checkpoint_key] = {"job_id": job.job_id, "created_at": job.created_at}
+        feeder_state[job.checkpoint_key] = {
+            "job_id": job.job_id,
+            "created_at": job.created_at,
+        }
         seeded.append(job)
     _ = _save_feeder_state(runtime_config.feeder_state_file, feeder_state)
     return seeded
@@ -482,7 +606,13 @@ def _write_control_gui_status(
     exit_code: int,
     status: dict[str, object],
 ) -> None:
-    payload = build_gui_status_payload(status=status, run_id=run_id, mode="control_loop", stage=stage, exit_code=exit_code)
+    payload = build_gui_status_payload(
+        status=status,
+        run_id=run_id,
+        mode="control_loop",
+        stage=stage,
+        exit_code=exit_code,
+    )
     _ = write_gui_status(payload, config.gui_status_file)
 
 
@@ -498,7 +628,11 @@ def _archived_contract_count(root: Path) -> int:
     if not root.exists():
         return 0
     exact = list(root.glob("*.job.json"))
-    legacy = [path for path in root.glob("*.job.*.json") if not path.name.endswith(".reason.json")]
+    legacy = [
+        path
+        for path in root.glob("*.job.*.json")
+        if not path.name.endswith(".reason.json")
+    ]
     return len(exact) + len(legacy)
 
 
@@ -506,7 +640,11 @@ def _invalid_reason_summary(inbox_root: Path) -> str:
     invalid_root = inbox_root / "invalid"
     if not invalid_root.exists():
         return ""
-    reason_files = sorted(invalid_root.glob("*.reason.json"), key=lambda path: path.stat().st_mtime, reverse=True)
+    reason_files = sorted(
+        invalid_root.glob("*.reason.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
     if not reason_files:
         return ""
     latest = reason_files[0]
@@ -522,13 +660,17 @@ def _invalid_reason_summary(inbox_root: Path) -> str:
     return f"{code}:{message}" if message else code
 
 
-def _discover_explicit_contract_jobs(config: RuntimeConfig, known_keys: set[str]) -> list[JobContract]:
+def _discover_explicit_contract_jobs(
+    config: RuntimeConfig, known_keys: set[str]
+) -> list[JobContract]:
     inbox_root = config.input_root
     if not inbox_root.exists():
         return []
     jobs: list[JobContract] = []
     for contract_file in sorted(inbox_root.rglob("*.job.json")):
-        if not contract_file.is_file() or not _is_stable_file(contract_file, age_sec=config.stable_file_age_sec):
+        if not contract_file.is_file() or not _is_stable_file(
+            contract_file, age_sec=config.stable_file_age_sec
+        ):
             continue
         if _is_explicit_contract_archived(inbox_root, contract_file):
             continue
@@ -545,7 +687,9 @@ def _discover_explicit_contract_jobs(config: RuntimeConfig, known_keys: set[str]
             continue
         explicit_job, invalid_reason = _job_from_explicit_contract(contract_file)
         if explicit_job is None:
-            _ = _archive_explicit_contract(inbox_root, contract_file, accepted=False, invalid_reason=invalid_reason)
+            _ = _archive_explicit_contract(
+                inbox_root, contract_file, accepted=False, invalid_reason=invalid_reason
+            )
             continue
         if explicit_job.checkpoint_key in known_keys:
             _ = _archive_explicit_contract(inbox_root, contract_file, accepted=True)
@@ -555,16 +699,29 @@ def _discover_explicit_contract_jobs(config: RuntimeConfig, known_keys: set[str]
     return jobs
 
 
-def _job_from_explicit_contract(contract_file: Path) -> tuple[JobContract | None, dict[str, object] | None]:
+def _job_from_explicit_contract(
+    contract_file: Path,
+) -> tuple[JobContract | None, dict[str, object] | None]:
     try:
         if contract_file.stat().st_size > MAX_CONTRACT_BYTES:
-            return None, {"code": "contract_too_large", "message": "explicit contract exceeds size limit"}
-        raw_payload = cast(object, json.loads(contract_file.read_text(encoding="utf-8")))
+            return None, {
+                "code": "contract_too_large",
+                "message": "explicit contract exceeds size limit",
+            }
+        raw_payload = cast(
+            object, json.loads(contract_file.read_text(encoding="utf-8"))
+        )
     except (OSError, json.JSONDecodeError):
-        return None, {"code": "invalid_json", "message": "explicit contract is not valid JSON"}
+        return None, {
+            "code": "invalid_json",
+            "message": "explicit contract is not valid JSON",
+        }
     payload = _mapping_from_obj(raw_payload)
     if payload is None:
-        return None, {"code": "invalid_contract", "message": "explicit contract root must be object"}
+        return None, {
+            "code": "invalid_contract",
+            "message": "explicit contract root must be object",
+        }
     return _job_from_explicit_payload(payload, source_hint=str(contract_file))
 
 
@@ -576,7 +733,10 @@ def _job_from_explicit_payload(
     if str(payload.get("contract", "")) != EXPLICIT_CONTRACT_NAME:
         return None, {"code": "invalid_contract", "message": "contract name mismatch"}
     if str(payload.get("contract_version", "")) != EXPLICIT_CONTRACT_VERSION:
-        return None, {"code": "invalid_contract_version", "message": "unsupported contract_version"}
+        return None, {
+            "code": "invalid_contract_version",
+            "message": "unsupported contract_version",
+        }
     if bool(payload.get("local_only", False)) is not True:
         return None, {"code": "not_local_only", "message": "local_only must be true"}
     raw_job = payload.get("job")
@@ -584,7 +744,9 @@ def _job_from_explicit_payload(
     if job_block is None:
         return None, {"code": "missing_job", "message": "job block missing"}
     job_id = str(job_block.get("job_id", "")).strip()
-    workload = workload_from_value(job_block.get("worker", job_block.get("workload", "")))
+    workload = workload_from_value(
+        job_block.get("worker", job_block.get("workload", ""))
+    )
     if not job_id or workload is None or workload not in ALLOWED_WORKLOADS:
         return None, {"code": "invalid_job", "message": "job_id or workload invalid"}
     typed_payload: dict[str, object] = {}
@@ -611,19 +773,32 @@ def _job_from_explicit_payload(
     raw_chain = payload.get("chain")
     chain_block = _mapping_from_obj(raw_chain)
     if chain_block is not None:
-        typed_payload["chain_depth"] = _to_int(chain_block.get("step", chain_block.get("chain_depth", 0)))
+        typed_payload["chain_depth"] = _to_int(
+            chain_block.get("step", chain_block.get("chain_depth", 0))
+        )
         parent_job_id = str(chain_block.get("parent_job_id", "")).strip()
         if parent_job_id:
             typed_payload["routed_from"] = parent_job_id
     if not _payload_paths_are_local(typed_payload):
-        return None, {"code": "non_local_path", "message": "payload paths must stay inside workspace"}
+        return None, {
+            "code": "non_local_path",
+            "message": "payload paths must stay inside workspace",
+        }
     checkpoint_key = str(job_block.get("checkpoint_key", f"explicit:{source_hint}"))
-    return JobContract(job_id=job_id, workload=workload, checkpoint_key=checkpoint_key, payload=typed_payload), None
+    return JobContract(
+        job_id=job_id,
+        workload=workload,
+        checkpoint_key=checkpoint_key,
+        payload=typed_payload,
+    ), None
 
 
 def _is_explicit_contract_archived(inbox_root: Path, contract_file: Path) -> bool:
     archived_roots = {inbox_root / "accepted", inbox_root / "invalid"}
-    return any(root == contract_file.parent or root in contract_file.parents for root in archived_roots)
+    return any(
+        root == contract_file.parent or root in contract_file.parents
+        for root in archived_roots
+    )
 
 
 def _is_allowed_explicit_contract_path(inbox_root: Path, contract_file: Path) -> bool:
@@ -654,7 +829,10 @@ def _archive_explicit_contract(
     archive_root.mkdir(parents=True, exist_ok=True)
     target = archive_root / contract_file.name
     if target.exists():
-        target = archive_root / f"{contract_file.name.removesuffix('.job.json')}.{int(time())}.job.json"
+        target = (
+            archive_root
+            / f"{contract_file.name.removesuffix('.job.json')}.{int(time())}.job.json"
+        )
     _ = contract_file.replace(target)
     if invalid_reason is not None:
         reason_file = target.with_suffix(target.suffix + ".reason.json")
@@ -683,7 +861,9 @@ def _next_status_for_recovery(recovery: dict[str, object]) -> str:
     return "failed"
 
 
-def _discover_qwen_jobs(config: RuntimeConfig, known_keys: set[str]) -> list[JobContract]:
+def _discover_qwen_jobs(
+    config: RuntimeConfig, known_keys: set[str]
+) -> list[JobContract]:
     inbox = config.input_root / "qwen3_tts"
     image_inbox = config.input_root / "kenburns"
     if not inbox.exists():
@@ -699,7 +879,9 @@ def _discover_qwen_jobs(config: RuntimeConfig, known_keys: set[str]) -> list[Job
         if not script_text:
             continue
         payload: dict[str, object] = {"script_text": script_text}
-        image_path = _matching_image_path(image_inbox, text_file.stem, age_sec=config.stable_file_age_sec)
+        image_path = _matching_image_path(
+            image_inbox, text_file.stem, age_sec=config.stable_file_age_sec
+        )
         if image_path is not None:
             payload["image_path"] = str(image_path.resolve())
         if not _payload_paths_are_local(payload):
@@ -715,13 +897,18 @@ def _discover_qwen_jobs(config: RuntimeConfig, known_keys: set[str]) -> list[Job
     return jobs
 
 
-def _discover_kenburns_jobs(config: RuntimeConfig, known_keys: set[str]) -> list[JobContract]:
+def _discover_kenburns_jobs(
+    config: RuntimeConfig, known_keys: set[str]
+) -> list[JobContract]:
     inbox = config.input_root / "kenburns"
     if not inbox.exists():
         return []
     jobs: list[JobContract] = []
     for source_file in sorted(inbox.iterdir()):
-        if not source_file.is_file() or source_file.suffix.lower() not in IMAGE_EXTENSIONS:
+        if (
+            not source_file.is_file()
+            or source_file.suffix.lower() not in IMAGE_EXTENSIONS
+        ):
             continue
         if not _is_stable_file(source_file, age_sec=config.stable_file_age_sec):
             continue
@@ -733,13 +920,19 @@ def _discover_kenburns_jobs(config: RuntimeConfig, known_keys: set[str]) -> list
                 job_id=f"kenburns-{source_file.stem}",
                 workload="kenburns",
                 checkpoint_key=checkpoint_key,
-                payload={"source_path": str(source_file.resolve()), "duration_sec": 8, "chain_depth": 0},
+                payload={
+                    "source_path": str(source_file.resolve()),
+                    "duration_sec": 8,
+                    "chain_depth": 0,
+                },
             )
         )
     return jobs
 
 
-def _discover_rvc_jobs(config: RuntimeConfig, known_keys: set[str]) -> list[JobContract]:
+def _discover_rvc_jobs(
+    config: RuntimeConfig, known_keys: set[str]
+) -> list[JobContract]:
     source_root = config.input_root / "rvc" / "source"
     audio_root = config.input_root / "rvc" / "audio"
     if not source_root.exists():
@@ -747,7 +940,10 @@ def _discover_rvc_jobs(config: RuntimeConfig, known_keys: set[str]) -> list[JobC
     jobs: list[JobContract] = []
     audio_candidates = _audio_map(audio_root)
     for source_file in sorted(source_root.iterdir()):
-        if not source_file.is_file() or source_file.suffix.lower() not in MEDIA_EXTENSIONS:
+        if (
+            not source_file.is_file()
+            or source_file.suffix.lower() not in MEDIA_EXTENSIONS
+        ):
             continue
         if not _is_stable_file(source_file, age_sec=config.stable_file_age_sec):
             continue
@@ -776,7 +972,10 @@ def _audio_map(audio_root: Path) -> dict[str, Path]:
         return {}
     mapping: dict[str, Path] = {}
     for audio_file in sorted(audio_root.iterdir()):
-        if not audio_file.is_file() or audio_file.suffix.lower() not in MEDIA_EXTENSIONS:
+        if (
+            not audio_file.is_file()
+            or audio_file.suffix.lower() not in MEDIA_EXTENSIONS
+        ):
             continue
         mapping[audio_file.stem] = audio_file
     return mapping
@@ -787,7 +986,11 @@ def _matching_image_path(image_root: Path, stem: str, *, age_sec: int) -> Path |
         return None
     for extension in sorted(IMAGE_EXTENSIONS):
         candidate = image_root / f"{stem}{extension}"
-        if candidate.exists() and candidate.is_file() and _is_stable_file(candidate, age_sec=age_sec):
+        if (
+            candidate.exists()
+            and candidate.is_file()
+            and _is_stable_file(candidate, age_sec=age_sec)
+        ):
             return candidate
     return None
 
@@ -907,12 +1110,18 @@ def _recover_stale_running_jobs(
         age_sec = max(0.0, now - _to_float(job.updated_at, now))
         if age_sec < stale_sec:
             continue
-        recovery_action = "retry" if within_retry_budget(job.attempts, config.max_retry_attempts) else "failed"
+        recovery_action = (
+            "retry"
+            if within_retry_budget(job.attempts, config.max_retry_attempts)
+            else "failed"
+        )
         previous_status = job.status
         job.status = recovery_action
         job.attempts += 1
         if recovery_action == "retry":
-            job.payload["next_attempt_at"] = round(now + next_backoff_sec(job.attempts), 3)
+            job.payload["next_attempt_at"] = round(
+                now + next_backoff_sec(job.attempts), 3
+            )
         else:
             _ = job.payload.pop("next_attempt_at", None)
         changed = True
@@ -990,7 +1199,10 @@ def _evaluate_recovery(
     recovery = evaluate_recovery(job.attempts, success=success, circuit=circuit)
     if not success and recovery.get("action") == "retry":
         if not within_retry_budget(job.attempts, config.max_retry_attempts):
-            recovery = cast(dict[str, object], {"action": "failed", "backoff_sec": 0, "circuit_open": False})
+            recovery = cast(
+                dict[str, object],
+                {"action": "failed", "backoff_sec": 0, "circuit_open": False},
+            )
         else:
             recovery["backoff_sec"] = next_backoff_sec(job.attempts)
     job.payload["failure_count"] = circuit.failure_count
@@ -998,15 +1210,27 @@ def _evaluate_recovery(
     return recovery
 
 
-def _run_worker(job: JobContract, artifact_root: Path | None = None, *, registry_file: Path | None = None) -> dict[str, object]:
+def _run_worker(
+    job: JobContract,
+    artifact_root: Path | None = None,
+    *,
+    registry_file: Path | None = None,
+) -> dict[str, object]:
     if _mock_chain_enabled(job):
         if artifact_root is None:
             artifact_root = Path("system/runtime_v2/artifacts")
         return _run_mock_chain_worker(job, artifact_root)
     if artifact_root is None:
         artifact_root = Path("system/runtime_v2/artifacts")
-    resolved_registry_file = registry_file or Path("system/runtime_v2/health/worker_registry.json")
-    _ = update_worker_state(resolved_registry_file, workload=job.workload, state="busy", run_id=str(job.payload.get("run_id", job.job_id)))
+    resolved_registry_file = registry_file or Path(
+        "system/runtime_v2/health/worker_registry.json"
+    )
+    _ = update_worker_state(
+        resolved_registry_file,
+        workload=job.workload,
+        state="busy",
+        run_id=str(job.payload.get("run_id", job.job_id)),
+    )
     if job.workload == "chatgpt":
         workspace = artifact_root / job.workload / job.job_id
         workspace.mkdir(parents=True, exist_ok=True)
@@ -1014,40 +1238,96 @@ def _run_worker(job: JobContract, artifact_root: Path | None = None, *, registry
         result = run_stage1_chatgpt_job(
             topic_spec,
             workspace,
-            debug_log=str(debug_log_path(Path("system/runtime_v2/logs"), str(job.payload.get("run_id", job.job_id)))),
+            debug_log=str(
+                debug_log_path(
+                    Path("system/runtime_v2/logs"),
+                    str(job.payload.get("run_id", job.job_id)),
+                )
+            ),
         )
-        _ = update_worker_state(resolved_registry_file, workload=job.workload, state="idle", run_id=str(job.payload.get("run_id", job.job_id)))
+        _ = update_worker_state(
+            resolved_registry_file,
+            workload=job.workload,
+            state="idle",
+            run_id=str(job.payload.get("run_id", job.job_id)),
+        )
         return result
     if job.workload == "genspark":
-        result = run_genspark_job(job, artifact_root, registry_file=resolved_registry_file)
-        _ = update_worker_state(resolved_registry_file, workload=job.workload, state="idle", run_id=str(job.payload.get("run_id", job.job_id)))
+        result = run_genspark_job(
+            job, artifact_root, registry_file=resolved_registry_file
+        )
+        _ = update_worker_state(
+            resolved_registry_file,
+            workload=job.workload,
+            state="idle",
+            run_id=str(job.payload.get("run_id", job.job_id)),
+        )
         return result
     if job.workload == "seaart":
-        result = run_seaart_job(job, artifact_root, registry_file=resolved_registry_file)
-        _ = update_worker_state(resolved_registry_file, workload=job.workload, state="idle", run_id=str(job.payload.get("run_id", job.job_id)))
+        result = run_seaart_job(
+            job, artifact_root, registry_file=resolved_registry_file
+        )
+        _ = update_worker_state(
+            resolved_registry_file,
+            workload=job.workload,
+            state="idle",
+            run_id=str(job.payload.get("run_id", job.job_id)),
+        )
         return result
     if job.workload == "geminigen":
-        result = run_geminigen_job(job, artifact_root, registry_file=resolved_registry_file)
-        _ = update_worker_state(resolved_registry_file, workload=job.workload, state="idle", run_id=str(job.payload.get("run_id", job.job_id)))
+        result = run_geminigen_job(
+            job, artifact_root, registry_file=resolved_registry_file
+        )
+        _ = update_worker_state(
+            resolved_registry_file,
+            workload=job.workload,
+            state="idle",
+            run_id=str(job.payload.get("run_id", job.job_id)),
+        )
         return result
     if job.workload == "canva":
         result = run_canva_job(job, artifact_root, registry_file=resolved_registry_file)
-        _ = update_worker_state(resolved_registry_file, workload=job.workload, state="idle", run_id=str(job.payload.get("run_id", job.job_id)))
+        _ = update_worker_state(
+            resolved_registry_file,
+            workload=job.workload,
+            state="idle",
+            run_id=str(job.payload.get("run_id", job.job_id)),
+        )
         return result
     if job.workload == "render":
         result = run_render_job(job, artifact_root)
-        _ = update_worker_state(resolved_registry_file, workload=job.workload, state="idle", run_id=str(job.payload.get("run_id", job.job_id)))
+        _ = update_worker_state(
+            resolved_registry_file,
+            workload=job.workload,
+            state="idle",
+            run_id=str(job.payload.get("run_id", job.job_id)),
+        )
         return result
     if job.workload == "rvc":
         result = run_rvc_job(job, artifact_root=artifact_root)
-        _ = update_worker_state(resolved_registry_file, workload=job.workload, state="idle", run_id=str(job.payload.get("run_id", job.job_id)))
+        _ = update_worker_state(
+            resolved_registry_file,
+            workload=job.workload,
+            state="idle",
+            run_id=str(job.payload.get("run_id", job.job_id)),
+        )
         return result
     if job.workload == "kenburns":
         result = run_kenburns_job(job, artifact_root=artifact_root)
-        _ = update_worker_state(resolved_registry_file, workload=job.workload, state="idle", run_id=str(job.payload.get("run_id", job.job_id)))
+        _ = update_worker_state(
+            resolved_registry_file,
+            workload=job.workload,
+            state="idle",
+            run_id=str(job.payload.get("run_id", job.job_id)),
+        )
         return result
     result = run_qwen3_job(job, artifact_root=artifact_root)
-    _ = update_worker_state(resolved_registry_file, workload=job.workload, state="idle", run_id=str(job.payload.get("run_id", job.job_id)))
+    _ = update_worker_state(
+        resolved_registry_file,
+        workload=job.workload,
+        state="idle",
+        run_id=str(job.payload.get("run_id", job.job_id)),
+    )
     return result
 
 
@@ -1056,7 +1336,9 @@ def _run_mock_chain_worker(job: JobContract, artifact_root: Path) -> dict[str, o
     mock_root.mkdir(parents=True, exist_ok=True)
     chain_depth = _to_int(job.payload.get("chain_depth", 0))
     if job.workload == "qwen3_tts":
-        audio_path = _write_mock_file(mock_root / f"{job.job_id}.wav", f"mock qwen audio for {job.job_id}\n")
+        audio_path = _write_mock_file(
+            mock_root / f"{job.job_id}.wav", f"mock qwen audio for {job.job_id}\n"
+        )
         next_jobs = [
             _build_mock_chain_job(
                 job_id=f"rvc-{job.job_id}",
@@ -1065,7 +1347,12 @@ def _run_mock_chain_worker(job: JobContract, artifact_root: Path) -> dict[str, o
                 payload={
                     "source_path": str(audio_path),
                     "mock_chain": True,
-                    **({"image_path": str(job.payload.get('image_path', ''))} if isinstance(job.payload.get("image_path"), str) and str(job.payload.get("image_path", "")).strip() else {}),
+                    **(
+                        {"image_path": str(job.payload.get("image_path", ""))}
+                        if isinstance(job.payload.get("image_path"), str)
+                        and str(job.payload.get("image_path", "")).strip()
+                        else {}
+                    ),
                 },
                 chain_depth=chain_depth + 1,
                 parent_job_id=job.job_id,
@@ -1085,11 +1372,15 @@ def _run_mock_chain_worker(job: JobContract, artifact_root: Path) -> dict[str, o
                 "final_artifact_path": "",
             },
         }
-        result_path = _write_mock_result_file(mock_root / f"{job.job_id}.result.json", qwen_result)
+        result_path = _write_mock_result_file(
+            mock_root / f"{job.job_id}.result.json", qwen_result
+        )
         qwen_result["result_path"] = str(result_path)
         return qwen_result
     if job.workload == "rvc":
-        audio_path = _write_mock_file(mock_root / f"{job.job_id}.wav", f"mock rvc audio for {job.job_id}\n")
+        audio_path = _write_mock_file(
+            mock_root / f"{job.job_id}.wav", f"mock rvc audio for {job.job_id}\n"
+        )
         next_jobs: list[dict[str, object]] = []
         image_path = job.payload.get("image_path")
         if isinstance(image_path, str) and image_path.strip():
@@ -1122,10 +1413,14 @@ def _run_mock_chain_worker(job: JobContract, artifact_root: Path) -> dict[str, o
                 "final_artifact_path": "",
             },
         }
-        result_path = _write_mock_result_file(mock_root / f"{job.job_id}.result.json", rvc_result)
+        result_path = _write_mock_result_file(
+            mock_root / f"{job.job_id}.result.json", rvc_result
+        )
         rvc_result["result_path"] = str(result_path)
         return rvc_result
-    video_path = _write_mock_file(mock_root / f"{job.job_id}.mp4", f"mock kenburns video for {job.job_id}\n")
+    video_path = _write_mock_file(
+        mock_root / f"{job.job_id}.mp4", f"mock kenburns video for {job.job_id}\n"
+    )
     kenburns_result: dict[str, object] = {
         "status": "ok",
         "stage": "mock_chain_kenburns",
@@ -1140,7 +1435,9 @@ def _run_mock_chain_worker(job: JobContract, artifact_root: Path) -> dict[str, o
             "final_artifact_path": str(video_path),
         },
     }
-    result_path = _write_mock_result_file(mock_root / f"{job.job_id}.result.json", kenburns_result)
+    result_path = _write_mock_result_file(
+        mock_root / f"{job.job_id}.result.json", kenburns_result
+    )
     kenburns_result["result_path"] = str(result_path)
     return kenburns_result
 
@@ -1224,7 +1521,9 @@ def _seed_declared_next_jobs(
         if not isinstance(entry, dict):
             continue
         raw_entry = cast(dict[object, object], entry)
-        typed_entry: dict[str, object] = {str(key): value for key, value in raw_entry.items()}
+        typed_entry: dict[str, object] = {
+            str(key): value for key, value in raw_entry.items()
+        }
         next_job = _job_from_declared_next_entry(typed_entry)
         if next_job is None:
             _ = _append_control_event(
@@ -1237,7 +1536,11 @@ def _seed_declared_next_jobs(
                 events_file,
             )
             continue
-        next_depth = _to_int(next_job.payload.get("chain_depth", _to_int(parent_job.payload.get("chain_depth", 0)) + 1))
+        next_depth = _to_int(
+            next_job.payload.get(
+                "chain_depth", _to_int(parent_job.payload.get("chain_depth", 0)) + 1
+            )
+        )
         if next_depth > MAX_CHAIN_DEPTH:
             _ = _append_control_event(
                 {
@@ -1317,7 +1620,9 @@ def _seed_declared_next_jobs(
 
 
 def _job_from_declared_next_entry(entry: dict[str, object]) -> JobContract | None:
-    parsed_job, _ = _job_from_explicit_payload(entry, source_hint=f"declared:{entry.get('job', {})}")
+    parsed_job, _ = _job_from_explicit_payload(
+        entry, source_hint=f"declared:{entry.get('job', {})}"
+    )
     return parsed_job
 
 
@@ -1337,7 +1642,9 @@ def _worker_result_contract(worker_result: dict[str, object]) -> dict[str, objec
                 "details": {"debug_log": str(worker_result.get("debug_log", ""))},
             }
         try:
-            raw_payload = cast(object, json.loads(result_path.read_text(encoding="utf-8")))
+            raw_payload = cast(
+                object, json.loads(result_path.read_text(encoding="utf-8"))
+            )
         except OSError:
             return {
                 "status": "failed",
