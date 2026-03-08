@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,42 @@ from runtime_v2.workers.rvc_worker import run_rvc_job
 
 
 class RuntimeV2GpuWorkerTests(unittest.TestCase):
+    def test_qwen3_worker_processes_one_item_via_explicit_adapter_command(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            image_path = root / "image.png"
+            output_path = root / "speech.wav"
+            _ = image_path.write_bytes(b"png")
+            job = JobContract(
+                job_id="qwen-job-success",
+                workload="qwen3_tts",
+                payload={
+                    "script_text": "hello world",
+                    "image_path": str(image_path.resolve()),
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "adapter_command": [
+                        sys.executable,
+                        "-c",
+                        (
+                            "from pathlib import Path; "
+                            f"p=Path(r'{str(output_path)}'); "
+                            "p.parent.mkdir(parents=True, exist_ok=True); "
+                            "p.write_bytes(b'wav')"
+                        ),
+                    ],
+                },
+            )
+
+            result = run_qwen3_job(job, artifact_root=artifact_root)
+
+            self.assertEqual(result["status"], "ok")
+            self.assertTrue(output_path.exists())
+            completion = cast(dict[object, object], result["completion"])
+            self.assertEqual(completion["state"], "succeeded")
+            self.assertTrue(bool(completion["final_output"]))
+
     def test_qwen3_worker_emits_rvc_next_job_contract(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -36,6 +73,44 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         details = cast(dict[object, object], result["details"])
         self.assertEqual(details["execution_mode"], "native_only")
         self.assertEqual(details["model_name"], "voice-model-a")
+
+    def test_rvc_worker_processes_one_item_via_explicit_adapter_command(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            source_path = root / "source.flac"
+            image_path = root / "image.png"
+            output_path = root / "converted.wav"
+            _ = source_path.write_bytes(b"flac")
+            _ = image_path.write_bytes(b"png")
+            job = JobContract(
+                job_id="rvc-job-success",
+                workload="rvc",
+                payload={
+                    "source_path": str(source_path.resolve()),
+                    "image_path": str(image_path.resolve()),
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "adapter_command": [
+                        sys.executable,
+                        "-c",
+                        (
+                            "from pathlib import Path; "
+                            f"p=Path(r'{str(output_path)}'); "
+                            "p.parent.mkdir(parents=True, exist_ok=True); "
+                            "p.write_bytes(b'wav')"
+                        ),
+                    ],
+                },
+            )
+
+            result = run_rvc_job(job, artifact_root=artifact_root)
+
+            self.assertEqual(result["status"], "ok")
+            self.assertTrue(output_path.exists())
+            completion = cast(dict[object, object], result["completion"])
+            self.assertEqual(completion["state"], "succeeded")
+            self.assertTrue(bool(completion["final_output"]))
 
     def test_rvc_worker_requires_model_name_for_conversion_contract(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
