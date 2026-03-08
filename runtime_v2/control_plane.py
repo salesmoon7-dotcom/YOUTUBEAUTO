@@ -10,6 +10,7 @@ from runtime_v2.bootstrap import ensure_runtime_bootstrap
 from runtime_v2.config import GpuWorkload, RuntimeConfig, allowed_workloads
 from runtime_v2.debug_log import append_debug_event, debug_log_path
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
+from runtime_v2.latest_run import update_latest_run_pointers
 from runtime_v2.gpt_autospawn import apply_autospawn_decision
 from runtime_v2.gpt_pool_monitor import tick_gpt_status
 from runtime_v2.recovery_policy import CircuitState, evaluate_recovery
@@ -86,7 +87,9 @@ def run_control_loop_once(
         Path("system/runtime_v2/evidence/result.json"),
     )
     jobs = _load_jobs(queue_file)
-    _recover_stale_running_jobs(queue_file, jobs, now, runtime_config, events_file)
+    _recover_stale_running_jobs(
+        queue_file, jobs, now, runtime_config, events_file, run_id=run_id
+    )
     job = _next_runnable_job(jobs, now)
     if job is None:
         accepted_count, invalid_count = _archived_contract_counts(
@@ -153,6 +156,17 @@ def run_control_loop_once(
                         ),
                     },
                 )
+                update_latest_run_pointers(
+                    runtime_config,
+                    run_id=run_id,
+                    mode="control_loop",
+                    status="seeded",
+                    code="SEEDED_JOB",
+                    debug_log=str(
+                        debug_log_path(runtime_config.debug_log_root, run_id)
+                    ),
+                    write_completed=True,
+                )
                 return {
                     "status": "seeded",
                     "code": "SEEDED_JOB",
@@ -204,6 +218,15 @@ def run_control_loop_once(
                 "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
             },
         )
+        update_latest_run_pointers(
+            runtime_config,
+            run_id=run_id,
+            mode="control_loop",
+            status="idle",
+            code="NO_JOB",
+            debug_log=str(debug_log_path(runtime_config.debug_log_root, run_id)),
+            write_completed=True,
+        )
         return {"status": "idle", "code": "NO_JOB"}
 
     previous_status = job.status
@@ -213,7 +236,7 @@ def run_control_loop_once(
         running_record = transition_record(job.job_id, previous_status, job.status)
         running_record["routed_from"] = str(job.payload.get("routed_from", ""))
         running_record["chain_depth"] = _to_int(job.payload.get("chain_depth", 0))
-        _ = append_transition_record(running_record, events_file)
+        _ = _append_transition_record(running_record, events_file, run_id=run_id)
 
     mock_chain = _mock_chain_enabled(job)
     if mock_chain:
@@ -264,6 +287,7 @@ def run_control_loop_once(
             worker_contract,
             parent_job=job,
             events_file=events_file,
+            run_id=run_id,
         )
         if worker_artifacts:
             _ = write_result_router(
@@ -375,7 +399,7 @@ def run_control_loop_once(
         completed_record = transition_record(job.job_id, previous_status, job.status)
         completed_record["routed_from"] = str(job.payload.get("routed_from", ""))
         completed_record["chain_depth"] = _to_int(job.payload.get("chain_depth", 0))
-        _ = append_transition_record(completed_record, events_file)
+        _ = _append_transition_record(completed_record, events_file, run_id=run_id)
 
     control_debug_log = debug_log_path(runtime_config.debug_log_root, run_id)
     gui_status: dict[str, object] = {
@@ -474,6 +498,17 @@ def run_control_loop_once(
             "ts": round(time(), 3),
         },
     )
+    update_latest_run_pointers(
+        runtime_config,
+        run_id=run_id,
+        mode="control_loop",
+        status="ok" if success else "failed",
+        code="OK"
+        if success
+        else str(worker_contract.get("error_code", result.get("code", "FAILED"))),
+        debug_log=str(control_debug_log),
+        write_completed=True,
+    )
     _ = append_debug_event(
         control_debug_log,
         event="control_loop_result",
@@ -528,6 +563,7 @@ def run_control_loop_once(
             "result_path": worker_result_path,
         },
         events_file,
+        run_id=run_id,
     )
     return {
         "status": "ok" if success else "failed",
@@ -855,7 +891,7 @@ def _next_status_for_recovery(recovery: dict[str, object]) -> str:
     if action == "completed":
         return "completed"
     if action == "blocked":
-        return "queued"
+        return "retry"
     if action == "retry":
         return "retry"
     return "failed"
@@ -1101,6 +1137,8 @@ def _recover_stale_running_jobs(
     now: float,
     config: RuntimeConfig,
     events_file: Path,
+    *,
+    run_id: str = "",
 ) -> None:
     stale_sec = max(1, int(config.running_stale_sec))
     changed = False
@@ -1135,11 +1173,12 @@ def _recover_stale_running_jobs(
                 "attempts": job.attempts,
             },
             events_file,
+            run_id=run_id,
         )
         transition = transition_record(job.job_id, previous_status, job.status)
         transition["routed_from"] = str(job.payload.get("routed_from", ""))
         transition["chain_depth"] = _to_int(job.payload.get("chain_depth", 0))
-        _ = append_transition_record(transition, events_file)
+        _ = _append_transition_record(transition, events_file, run_id=run_id)
     if changed:
         _ = _save_jobs(queue_file, jobs)
 
@@ -1171,14 +1210,21 @@ def _upsert_job(queue_file: Path, jobs: list[JobContract], job: JobContract) -> 
     return _save_jobs(queue_file, jobs)
 
 
-def _append_transition_record(record: dict[str, object], output_file: Path) -> Path:
-    return append_transition_record(record, output_file)
+def _append_transition_record(
+    record: dict[str, object], output_file: Path, *, run_id: str = ""
+) -> Path:
+    payload = dict(record)
+    if run_id:
+        _ = payload.setdefault("run_id", run_id)
+    return append_transition_record(payload, output_file)
 
 
-def _append_control_event(record: dict[str, object], output_file: Path) -> Path:
+def _append_control_event(
+    record: dict[str, object], output_file: Path, *, run_id: str = ""
+) -> Path:
     payload = dict(record)
     _ = payload.setdefault("ts", round(time(), 3))
-    return _append_transition_record(payload, output_file)
+    return _append_transition_record(payload, output_file, run_id=run_id)
 
 
 def _evaluate_recovery(
@@ -1195,7 +1241,13 @@ def _evaluate_recovery(
     if blocked:
         job.payload["failure_count"] = circuit.failure_count
         job.payload["circuit_opened_at"] = circuit.opened_at
-        return {"action": "blocked", "backoff_sec": 0, "circuit_open": False}
+        return {
+            "action": "blocked",
+            "backoff_sec": max(
+                1.0, float(getattr(config, "blocked_backoff_sec", 30.0))
+            ),
+            "circuit_open": False,
+        }
     recovery = evaluate_recovery(job.attempts, success=success, circuit=circuit)
     if not success and recovery.get("action") == "retry":
         if not within_retry_budget(job.attempts, config.max_retry_attempts):
@@ -1501,6 +1553,8 @@ def _seed_declared_next_jobs(
     worker_result: dict[str, object],
     parent_job: JobContract,
     events_file: Path,
+    *,
+    run_id: str,
 ) -> list[JobContract]:
     typed_next_jobs = _next_jobs_entries(worker_result)
     if len(typed_next_jobs) > MAX_NEXT_JOBS:
@@ -1513,6 +1567,7 @@ def _seed_declared_next_jobs(
                 "max_count": MAX_NEXT_JOBS,
             },
             events_file,
+            run_id=run_id,
         )
         return []
     seeded: list[JobContract] = []
@@ -1534,6 +1589,7 @@ def _seed_declared_next_jobs(
                     "entry": typed_entry,
                 },
                 events_file,
+                run_id=run_id,
             )
             continue
         next_depth = _to_int(
@@ -1552,6 +1608,7 @@ def _seed_declared_next_jobs(
                     "max_depth": MAX_CHAIN_DEPTH,
                 },
                 events_file,
+                run_id=run_id,
             )
             continue
         expected_run_id = str(parent_job.payload.get("run_id", "")).strip()
@@ -1568,6 +1625,7 @@ def _seed_declared_next_jobs(
                         "current_run_id": current_run_id,
                     },
                     events_file,
+                    run_id=run_id,
                 )
                 continue
             next_job.payload["run_id"] = expected_run_id
@@ -1585,6 +1643,7 @@ def _seed_declared_next_jobs(
                         "current_row_ref": current_row_ref,
                     },
                     events_file,
+                    run_id=run_id,
                 )
                 continue
             next_job.payload["row_ref"] = expected_row_ref
@@ -1599,6 +1658,7 @@ def _seed_declared_next_jobs(
                     "reason": "non_local_payload",
                 },
                 events_file,
+                run_id=run_id,
             )
             continue
         if next_job.job_id in known_job_ids:
@@ -1610,6 +1670,7 @@ def _seed_declared_next_jobs(
                     "reason": "duplicate_job_id",
                 },
                 events_file,
+                run_id=run_id,
             )
             continue
         jobs.append(next_job)

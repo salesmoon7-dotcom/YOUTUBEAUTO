@@ -10,6 +10,7 @@ from unittest.mock import patch
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.contracts.job_contract import JobContract, build_explicit_job_contract
 from runtime_v2.control_plane import run_control_loop_once, seed_control_job
+from runtime_v2.latest_run import load_joined_latest_run
 
 
 class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
@@ -342,7 +343,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertEqual(str(control_entries[0]["run_id"]), "control-run-1")
         self.assertEqual(str(control_entries[0]["job_id"]), "qwen-job")
 
-    def test_control_plane_keeps_browser_blocked_job_queued_without_consuming_attempt(
+    def test_control_plane_holds_browser_blocked_job_with_fixed_backoff(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -399,11 +400,18 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 for item in queue_items
                 if str(item["job_id"]) == "chatgpt-blocked-job"
             )
+            latest_result = cast(
+                dict[str, object],
+                json.loads(config.result_router_file.read_text(encoding="utf-8")),
+            )
+            latest_metadata = cast(dict[str, object], latest_result["metadata"])
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["code"], "BROWSER_BLOCKED")
-        self.assertEqual(str(job_payload["status"]), "queued")
+        self.assertEqual(str(job_payload["status"]), "retry")
         self.assertEqual(int(cast(int, job_payload["attempts"])), 0)
+        self.assertGreater(float(cast(float, latest_metadata["backoff_sec"])), 0.0)
+        self.assertEqual(str(latest_metadata["completion_state"]), "blocked")
 
     def test_control_plane_retries_browser_unhealthy_runtime_preflight_with_backoff(
         self,
@@ -467,6 +475,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 json.loads(config.result_router_file.read_text(encoding="utf-8")),
             )
             latest_metadata = cast(dict[str, object], latest_result["metadata"])
+            latest_join = load_joined_latest_run(config, completed=True)
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["code"], "BROWSER_UNHEALTHY")
@@ -475,8 +484,9 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertGreater(float(cast(float, latest_metadata["backoff_sec"])), 0.0)
         self.assertEqual(str(latest_metadata["worker_error_code"]), "BROWSER_UNHEALTHY")
         self.assertEqual(str(latest_metadata["completion_state"]), "failed")
+        self.assertFalse(bool(latest_join["out_of_sync"]))
 
-    def test_control_plane_keeps_gpt_floor_failure_blocked_without_consuming_attempt(
+    def test_control_plane_holds_gpt_floor_failure_with_fixed_backoff(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -541,11 +551,89 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["code"], "GPT_FLOOR_FAIL")
-        self.assertEqual(str(job_payload["status"]), "queued")
+        self.assertEqual(str(job_payload["status"]), "retry")
         self.assertEqual(int(cast(int, job_payload["attempts"])), 0)
-        self.assertEqual(float(cast(float, latest_metadata["backoff_sec"])), 0.0)
+        self.assertGreater(float(cast(float, latest_metadata["backoff_sec"])), 0.0)
         self.assertEqual(str(latest_metadata["worker_error_code"]), "GPT_FLOOR_FAIL")
         self.assertEqual(str(latest_metadata["completion_state"]), "blocked")
+
+    def test_control_plane_event_log_keeps_control_run_id_on_events_and_transitions(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig(
+                lease_file=root / "health" / "gpu_scheduler_health.json",
+                lock_root=root / "locks",
+                gui_status_file=root / "health" / "gui_status.json",
+                browser_health_file=root / "health" / "browser_health.json",
+                browser_registry_file=root / "health" / "browser_session_registry.json",
+                gpt_status_file=root / "health" / "gpt_status.json",
+                control_plane_events_file=root
+                / "evidence"
+                / "control_plane_events.jsonl",
+                queue_store_file=root / "state" / "job_queue.json",
+                feeder_state_file=root / "state" / "feeder_state.json",
+                artifact_root=root / "artifacts",
+                input_root=root / "inbox",
+                result_router_file=root / "evidence" / "result.json",
+                debug_log_root=root / "logs",
+            )
+            seed_control_job(
+                JobContract(
+                    job_id="qwen-run-id-job",
+                    workload="qwen3_tts",
+                    checkpoint_key="seed:qwen-run-id-job",
+                    payload={"script_text": "hello", "chain_depth": 0},
+                ),
+                config=config,
+            )
+
+            runtime_result: dict[str, object] = {
+                "status": "ok",
+                "code": "OK",
+                "worker_result": {
+                    "status": "ok",
+                    "stage": "synthesize_audio",
+                    "error_code": "",
+                    "retryable": False,
+                    "next_jobs": [],
+                    "completion": {"state": "succeeded", "final_output": True},
+                },
+            }
+
+            with patch(
+                "runtime_v2.control_plane.run_gated", return_value=runtime_result
+            ):
+                _ = run_control_loop_once(
+                    owner="runtime_v2", config=config, run_id="control-run-events"
+                )
+
+            raw_entries = [
+                json.loads(line)
+                for line in config.control_plane_events_file.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+                if line.strip()
+            ]
+            entries = [
+                cast(dict[object, object], entry)
+                for entry in raw_entries
+                if isinstance(entry, dict)
+            ]
+
+        job_entries = [
+            entry
+            for entry in entries
+            if str(entry.get("job_id", "")) == "qwen-run-id-job"
+        ]
+        self.assertTrue(job_entries)
+        self.assertTrue(
+            all(
+                str(entry.get("run_id", "")) == "control-run-events"
+                for entry in job_entries
+            )
+        )
 
     def test_control_plane_side_effect_free_mode_skips_bootstrap_and_gpt_ticks(
         self,
