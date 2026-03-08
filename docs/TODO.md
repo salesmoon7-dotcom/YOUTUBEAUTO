@@ -1,7 +1,6 @@
 # TODO
 
 - 현재 canonical plan 기준 판정은 `No-Go`입니다. `1행 smoke`와 soak/실운영 진입 전에 아래 remediation이 먼저 닫혀야 합니다.
-- 하부프로그램 핵심 로직 구현 계획은 `docs/plans/2026-03-08-runtime-v2-subprogram-core-logic-implementation-plan.md`를 기준으로 `gpt -> seaart -> genspark -> canva -> geminigen` 순서로 진행합니다.
 - 1순위: `GPT floor` 복구 기준과 latest health 신뢰성 고정
   - 대상: `runtime_v2/gpt_pool_monitor.py`, `runtime_v2/gpt_autospawn.py`, `runtime_v2/gpt/floor.py`
 - 2순위: browser canonical ownership / stale-busy-unknown recovery 규칙 유지 및 후속 drift 감시

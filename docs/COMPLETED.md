@@ -1,5 +1,6 @@
 # COMPLETED
 
+- `docs/plans/2026-03-08-runtime-v2-subprogram-core-logic-implementation-plan.md` - runtime_v2 subprogram core logic plan(Task 1~9) 완료; GPT ingest/stage1 planner audit, stage1 GPT JSON parser/validator/mapper, service evidence contracts, cross-service verification gate를 정리했고 fresh verification bundle(stage1/stage2/control/phase2/py_compile)까지 통과
 - `docs/plans/2026-03-09-runtime-v2-architecture-robustness-review-plan.md` - runtime_v2 robustness remediation(Task 1~7) 완료; single writer/failure contract/adapter boundary/mock isolation/growth gate를 정리했고 fresh verification bundle(`75 passed` pytest + py_compile)까지 통과
 - `docs/plans/2026-03-06-separate-24h-runtime-rebuild-plan.md` - runtime_v2 code and GUI implementation alignment 작업 완료 (후속 readiness/remediation는 `docs/TODO.md`와 최신 canonical plan에서 계속 관리)
 - `runtime_v2/control_plane.py`, `runtime_v2/supervisor.py`, `runtime_v2/cli.py` - isolated explicit mock chain execution and probe seed helper implemented
