@@ -66,55 +66,49 @@ def _video_plan(asset_root: str) -> dict[str, object]:
 
 
 class RuntimeV2Stage2WorkerTests(unittest.TestCase):
-    def test_stage2_browser_workers_process_one_item_and_write_artifacts(self) -> None:
+    def test_stage2_browser_workers_fail_closed_until_native_implementation_exists(
+        self,
+    ) -> None:
         cases = [
             (
                 run_genspark_job,
                 _stage2_job("genspark"),
                 "genspark",
                 "native_prompt.json",
-                ".png",
             ),
-            (
-                run_seaart_job,
-                _stage2_job("seaart"),
-                "seaart",
-                "native_prompt.json",
-                ".png",
-            ),
+            (run_seaart_job, _stage2_job("seaart"), "seaart", "native_prompt.json"),
             (
                 run_geminigen_job,
                 _stage2_job("geminigen"),
                 "geminigen",
                 "native_geminigen.json",
-                ".mp4",
             ),
-            (run_canva_job, _stage2_job("canva"), "canva", "thumb_data.json", ".png"),
+            (run_canva_job, _stage2_job("canva"), "canva", "thumb_data.json"),
         ]
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
-            for runner, job, workload, request_artifact, suffix in cases:
-                output_path = root / "exports" / f"{workload}-scene-01{suffix}"
+            for runner, job, workload, request_artifact in cases:
+                output_path = root / "exports" / f"{workload}-scene-01.out"
                 job.payload["service_artifact_path"] = str(output_path)
 
                 result = runner(job, artifact_root)
 
                 workspace = artifact_root / workload / job.job_id
-                self.assertEqual(result["status"], "ok")
+                self.assertEqual(result["status"], "failed")
+                self.assertEqual(
+                    result["error_code"], f"native_{workload}_not_implemented"
+                )
                 self.assertEqual(result["stage"], workload)
-                self.assertTrue(output_path.exists())
                 self.assertTrue((workspace / "request.json").exists())
                 self.assertTrue((workspace / request_artifact).exists())
+                self.assertFalse(output_path.exists())
                 self.assertFalse(result.get("next_jobs", []))
                 completion = cast(dict[str, object], result["completion"])
-                self.assertEqual(completion["state"], "succeeded")
-                self.assertTrue(bool(completion["final_output"]))
-                self.assertEqual(
-                    completion["final_artifact_path"], str(output_path.resolve())
-                )
+                self.assertEqual(completion["state"], "blocked")
+                self.assertFalse(bool(completion["final_output"]))
 
-    def test_stage2_row_processing_handles_all_browser_worker_items_for_one_row(
+    def test_stage2_row_processing_keeps_browser_worker_items_blocked_for_one_row(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -149,9 +143,13 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                 else:
                     result = run_canva_job(contract, root / "artifacts")
 
-                self.assertEqual(result["status"], "ok")
+                self.assertEqual(result["status"], "failed")
+                self.assertEqual(
+                    str(result["error_code"]),
+                    f"native_{worker_name}_not_implemented",
+                )
                 artifact_path = Path(str(payload["service_artifact_path"]))
-                self.assertTrue(artifact_path.exists())
+                self.assertFalse(artifact_path.exists())
 
     def test_stage2_worker_fails_closed_when_prompt_is_missing(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -165,7 +163,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "missing_prompt")
 
-    def test_genspark_worker_records_service_artifact_details_on_success(self) -> None:
+    def test_genspark_worker_records_native_only_details(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             registry_file = root / "health" / "worker_registry.json"
@@ -176,12 +174,14 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                 job, root / "artifacts", registry_file=registry_file
             )
 
-        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "native_genspark_not_implemented")
         details = cast(dict[str, object], result["details"])
+        self.assertEqual(str(details["execution_mode"]), "native_only")
         self.assertEqual(
-            details["service_artifact_path"],
-            str((root / "shared" / "output.png").resolve()),
+            details["service_artifact_path"], str(root / "shared" / "output.png")
         )
+        self.assertFalse(registry_file.exists())
 
     def test_stage2_worker_uses_json_input_only_and_returns_runner_result(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -212,7 +212,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             request_payload = cast(dict[object, object], request_payload_raw)
             payload_object = cast(dict[object, object], request_payload["payload"])
 
-        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["status"], "failed")
         self.assertEqual(result["stage"], "genspark")
         self.assertEqual(str(payload_object["row_ref"]), "Sheet1!row1")
         self.assertNotIn("excel_path", json.dumps(request_payload, ensure_ascii=True))
@@ -229,7 +229,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                 job, root / "artifacts", registry_file=registry_file
             )
 
-        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["status"], "failed")
         self.assertFalse(
             (root / "artifacts" / "genspark" / "genspark-job-1" / "D").exists()
         )
@@ -271,7 +271,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                 self.fail("registry payload is not an object")
             registry_payload = cast(dict[object, object], registry_payload_raw)
 
-        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["status"], "failed")
         self.assertIn("genspark", registry_payload)
         registry_entry = cast(dict[object, object], registry_payload["genspark"])
         self.assertEqual(str(registry_entry["state"]), "idle")
