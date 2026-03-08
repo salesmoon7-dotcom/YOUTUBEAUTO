@@ -113,6 +113,27 @@ def _required_browser_summary(
     }
 
 
+def _gpt_endpoints_from_browser_runtime(
+    browser_runtime: dict[str, object], *, force_gpt_fail: bool
+) -> list[GptEndpoint]:
+    sessions = _as_browser_sessions(browser_runtime.get("sessions"))
+    endpoints: list[GptEndpoint] = []
+    for entry in sessions:
+        service = str(entry.get("service", "")).strip()
+        group = str(entry.get("group", "")).strip().lower()
+        if service != "chatgpt" and group != "llm":
+            continue
+        healthy = bool(entry.get("healthy", False)) and not force_gpt_fail
+        endpoints.append(
+            GptEndpoint(
+                name=service or "default",
+                status="OK" if healthy else "FAILED",
+                last_seen_at=float(time()),
+            )
+        )
+    return endpoints
+
+
 def run_gated(
     owner: str,
     execute: WorkerRunner,
@@ -268,11 +289,15 @@ def run_once(
                 },
             }
 
-        endpoints = _runtime_gpt_endpoints(
-            runtime_config,
-            force_gpt_fail=force_gpt_fail,
-            allow_default_ok_status=allow_runtime_side_effects,
+        endpoints = _gpt_endpoints_from_browser_runtime(
+            browser_runtime, force_gpt_fail=force_gpt_fail
         )
+        if not endpoints:
+            endpoints = _runtime_gpt_endpoints(
+                runtime_config,
+                force_gpt_fail=force_gpt_fail,
+                allow_default_ok_status=allow_runtime_side_effects,
+            )
         gpt_status = _persist_gpt_runtime_state(endpoints, runtime_config)
         floor_count = ok_count(endpoints)
         floor_ok = floor_count >= runtime_config.gpt_floor_min_ok
