@@ -66,6 +66,10 @@
 ## Test Tier Execution Contract
 
 - 현재부터 `runtime_v2` 테스트는 `무엇을 검증하느냐`보다 `외부 side effect를 밟느냐` 기준으로 `safe`, `isolated`, `manual` 3계층으로 운영합니다.
+- 채팅/UI interruption이 발생하면 즉시 `interrupt-safe` 실행 모드로 전환합니다.
+  - 병렬 도구 호출 금지
+  - pytest는 `::test_name` 단위 단건 실행만 허용
+  - 한 번에 도구 1개만 사용하고, 긴 출력/파일 단위 대묶음 실행은 피합니다
 - `safe`
   - 허용 조건: `allow_runtime_side_effects=False`, 순수 helper/contract/evidence 조합, temp root 사용, 실제 browser launch/detached spawn/bootstrap/autospawn 없음
   - `cli.main()` 재진입, `_launch_debug_browser()` 호출, detached contract 검증은 patch 유무와 관계없이 포함하지 않습니다.
