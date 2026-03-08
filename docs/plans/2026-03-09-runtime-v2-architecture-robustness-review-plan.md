@@ -340,6 +340,24 @@ legacy strength -> current gap -> compensation in runtime_v2
 - direct import/porting은 금지
 - temporary compensation removal gate를 명시
 
+**Locked legacy compensation matrix**
+
+| Legacy strength | Current runtime_v2 gap | Allowed compensation in runtime_v2 |
+|---|---|---|
+| ChatGPT path had broader row-level parsing/mapping/merge evidence | `runtime_v2` GPT는 아직 `topic_spec -> stage1 planner` 중심이며 full parser/mapping parity가 아님 | parity comparison, evidence diff, explicit backlog split만 허용하고 legacy parser import/call은 금지 |
+| Legacy flow exposed clear incident narratives for browser/bootstrap failures | `runtime_v2`는 service coverage는 더 좁지만 control/evidence contracts를 먼저 잠그는 단계 | root-cause taxonomy and reporting format만 문서/테스트에 반영하고 legacy retry/branch structure는 재도입하지 않음 |
+| Legacy parser stabilization work centralized overwrite/merge/status rules | `runtime_v2`는 service별 worker는 있지만 일부 merge/parity semantics는 아직 문서 선행 단계 | single contract wording과 deterministic verification gate로 흡수하고 last-write/fallback policy는 직접 포팅하지 않음 |
+| Legacy code accumulated broad real-world edge coverage | `runtime_v2` coverage는 아직 선택된 happy path와 fail-closed regression 위주 | reference-only gap list와 targeted pytest bundle로 보완하고, compensation은 제거 조건이 문서화된 임시 장치로만 유지 |
+
+**Temporary compensation removal gate**
+
+- 임시 보정은 `reference-only comparison`, `extra evidence logging`, `targeted regression`처럼 owner 경계를 늘리지 않는 형태만 허용합니다.
+- 임시 보정이 새 상태 필드, 새 retry branch, 새 writer, legacy 직접 호출 중 하나라도 요구하면 허용하지 않고 companion robustness task로 되돌립니다.
+- 각 임시 보정은 아래 3개가 모두 있을 때만 유지할 수 있습니다.
+  - 제거 조건이 명시된 backlog 또는 plan task
+  - 대응하는 regression/evidence command
+  - 종료 후 삭제할 owner/file 범위
+
 **Step 3: 관련 canonical wording을 정리합니다**
 
 Run: `python -c "from pathlib import Path; p=Path(r'D:\YOUTUBEAUTO\docs\plans\2026-03-09-runtime-v2-architecture-robustness-review-plan.md'); print(p.exists())"`
