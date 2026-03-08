@@ -613,6 +613,74 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
         start_browser.assert_called_once()
         tick_browser.assert_called_once()
 
+    def test_run_once_fail_closes_when_gpt_status_json_is_invalid(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig(gpt_status_file=root / "health" / "gpt_status.json")
+            config.gpt_status_file.parent.mkdir(parents=True, exist_ok=True)
+            _ = config.gpt_status_file.write_text("{invalid json", encoding="utf-8")
+
+            result = run_once(
+                owner="runtime_v2",
+                run_id="run-invalid-gpt-json",
+                config=config,
+                workload="chatgpt",
+                require_browser_healthy=False,
+                allow_runtime_side_effects=False,
+                worker_runner=lambda: {"status": "ok", "stage": "chatgpt"},
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "GPT_FLOOR_FAIL")
+
+    def test_run_once_uses_configured_gpt_floor_min_ok_threshold(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig(
+                gpt_status_file=root / "health" / "gpt_status.json",
+                gpt_floor_min_ok=2,
+            )
+            _ = write_gpt_status(
+                {
+                    "schema_version": "1.0",
+                    "runtime": "runtime_v2",
+                    "checked_at": 1.0,
+                    "ok_count": 1,
+                    "min_ok": 2,
+                    "floor_breached": True,
+                    "breach_started_at": 1.0,
+                    "breach_sec": 10,
+                    "pending_boot": 0,
+                    "last_spawn_at": None,
+                    "spawn_fail_count": 0,
+                    "spawn_needed": False,
+                    "warning_active": True,
+                    "last_warning_at": 1.0,
+                    "cooldown_sec": 300,
+                    "cooldown_elapsed_sec": 10,
+                    "hourly_spawn_count": 0,
+                    "spawn_history": [],
+                    "endpoints": [
+                        {"name": "first", "status": "OK", "last_seen_at": 1.0e12},
+                        {"name": "second", "status": "FAILED", "last_seen_at": 1.0e12},
+                    ],
+                },
+                config.gpt_status_file,
+            )
+
+            result = run_once(
+                owner="runtime_v2",
+                run_id="run-gpt-min-ok-two",
+                config=config,
+                workload="chatgpt",
+                require_browser_healthy=False,
+                allow_runtime_side_effects=False,
+                worker_runner=lambda: {"status": "ok", "stage": "chatgpt"},
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "GPT_FLOOR_FAIL")
+
     def test_selftest_probe_child_keeps_run_id_aligned_across_outputs(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             probe_root = Path(tmp_dir) / "probe"

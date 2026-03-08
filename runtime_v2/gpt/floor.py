@@ -19,7 +19,9 @@ class GptEndpoint:
 
 def ok_count(endpoints: list[GptEndpoint], fresh_sec: int = 60) -> int:
     now = time()
-    return sum(1 for e in endpoints if e.status == "OK" and now - e.last_seen_at <= fresh_sec)
+    return sum(
+        1 for e in endpoints if e.status == "OK" and now - e.last_seen_at <= fresh_sec
+    )
 
 
 def build_gpt_status_payload(
@@ -61,17 +63,25 @@ def build_gpt_status_payload(
     if floor_breached and breach_started_at is not None:
         effective_breach_sec = max(0, int(now - breach_started_at))
 
-    effective_last_spawn_at = last_spawn_at if last_spawn_at is not None else previous_last_spawn_at
+    effective_last_spawn_at = (
+        last_spawn_at if last_spawn_at is not None else previous_last_spawn_at
+    )
     cooldown_elapsed = cooldown_sec
     if effective_last_spawn_at is not None:
         cooldown_elapsed = max(0, int(now - effective_last_spawn_at))
 
-    effective_pending_boot = pending_boot if pending_boot != 0 else previous_pending_boot
+    effective_pending_boot = (
+        pending_boot if pending_boot != 0 else previous_pending_boot
+    )
     effective_spawn_fail_count = (
         spawn_fail_count if spawn_fail_count != 0 else previous_spawn_fail_count
     )
-    recent_spawn_history = [entry for entry in previous_spawn_history if now - entry <= 3600]
-    spawn_needed = should_spawn(current_ok_count, effective_breach_sec, cooldown_elapsed)
+    recent_spawn_history = [
+        entry for entry in previous_spawn_history if now - entry <= 3600
+    ]
+    spawn_needed = should_spawn(
+        current_ok_count, effective_breach_sec, cooldown_elapsed
+    )
     return {
         "schema_version": "1.0",
         "runtime": runtime,
@@ -123,7 +133,10 @@ def load_gpt_status(output_file: str | Path) -> dict[str, object] | None:
     path = Path(output_file)
     if not path.exists():
         return None
-    raw_payload = cast(object, json.loads(path.read_text(encoding="utf-8")))
+    try:
+        raw_payload = cast(object, json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError):
+        return None
     if not isinstance(raw_payload, dict):
         return None
     payload = cast(dict[object, object], raw_payload)

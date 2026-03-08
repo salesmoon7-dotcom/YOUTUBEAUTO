@@ -264,7 +264,7 @@ def run_once(
         )
         gpt_status = _persist_gpt_runtime_state(endpoints, runtime_config)
         floor_count = ok_count(endpoints)
-        floor_ok = floor_count >= 1
+        floor_ok = floor_count >= runtime_config.gpt_floor_min_ok
         lease_payload = None if lease is None else lease.to_dict()
         if workload_requires_gpt_floor(workload) and not floor_ok:
             return {
