@@ -25,7 +25,7 @@
   2. latest-run evidence join 규칙
   3. browser canonical profile ownership 계약
   4. blocked/backoff semantics 공통 정의
-  5. legacy carryover 적용/미적용 판정 기준
+  5. reference carryover 적용/미적용 판정 기준
 
 ## Blocker Map
 

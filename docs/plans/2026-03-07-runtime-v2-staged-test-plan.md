@@ -36,7 +36,7 @@
 ## Scope
 
 - 포함: `runtime_v2/`, `system/runtime_v2/`, `system/runtime_v2_probe/` 기준 테스트
-- 제외: 레거시 `runtime/`, `system/runtime/` 직접 수정/검증
+- 제외: 외부 참고 `runtime/`, `system/runtime/` 직접 수정/검증
 - 원칙:
   - 하부 워커는 Excel 직접 접근 금지
   - Manager만 Excel row와 final status를 갱신
@@ -52,7 +52,7 @@
 - Python 실행 가능
 - `runtime_v2` import 가능
 - `system/runtime_v2/` 쓰기 가능
-- 레거시 경로 쓰기 흔적 없음
+- 외부 참고 경로 쓰기 흔적 없음
 - probe 경로와 운영 경로를 분리해도 로컬 테스트가 통과함
 - `run_once()`/`run_control_loop_once()`의 `safe` 경로가 browser start/bootstrap/autospawn 없이 동작함
 
