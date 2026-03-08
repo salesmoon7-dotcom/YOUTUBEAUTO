@@ -53,6 +53,29 @@
   4. 레거시 carryover가 실제 호출만 있고 안전장치가 빠진 상태로 누적됨
   5. 1행 smoke 전제 조건이 문서마다 다르게 적힘
 
+## Immediate Stabilization Rule
+
+- 채팅/CLI 세션 불안정의 현재 최우선 원인 축은 `run_once()`/`run_control_loop_once()`가 순수 검증 경로에서도 브라우저 start, detached spawn, bootstrap, GPT tick 같은 운영 side effect를 바로 밟는 구조입니다.
+- 따라서 다음 구현 순서는 canonical remediation 전체를 대체하지 않고, 그 앞에 붙는 `safe test path stabilization`로 고정합니다.
+  1. `run_once()`에 테스트 전용 side-effect-free 경로를 추가해 Stage 0/로컬 계약 테스트에서 browser start를 밟지 않게 함
+  2. `run_control_loop_once()`에 pure control contract 경로를 추가해 bootstrap/GPT autospawn을 Stage 0에서 분리함
+  3. 위 두 경로를 `safe` test tier로 고정한 뒤에만 browser ownership / blocked semantics remediation을 계속함
+- 이 규칙은 운영 경로의 의미를 바꾸기 위한 것이 아니라, `safe` 테스트가 외부 bootstrap 없이 반복 가능하도록 만드는 최소 안정화 조치입니다.
+- 여기서 `allow_runtime_side_effects=False`는 완전한 무기록 dry-run이 아니라, browser start/bootstrap/autospawn 같은 외부 side effect를 건너뛰는 test path입니다. canonical latest 경로를 쓰지 않으려면 반드시 격리된 `RuntimeConfig` 또는 probe root를 함께 사용합니다.
+
+## Error Trace Method
+
+- 오류가 나면 증상만 보지 말고 아래 4층으로 추적합니다.
+  1. entry layer: `runtime_v2/cli.py`, `runtime_v2/control_plane.py`, `runtime_v2/supervisor.py`
+  2. health layer: `browser_health.json`, `gpt_status.json`, `gpu_scheduler_health.json`
+  3. latest-run layer: `result.json`, `gui_status.json`, `control_plane_events.jsonl`
+  4. per-run layer: `system/runtime_v2/logs/<run_id>.jsonl`, 필요 시 `failure_summary.json`
+- 추적 기본 순서:
+  - 같은 `run_id`가 4층에서 일치하는지 먼저 확인
+  - `code`, `worker_error_code`, `completion_state`, `backoff_sec`를 같은 failure axis로 묶어 확인
+  - 브라우저 축이면 `status`, `lock_state`, `action`, `action_result`를 같이 읽음
+- 오류 추적의 목적은 새 fallback을 추가하는 것이 아니라, single owner 레이어를 찾고 그 한 곳만 고치는 것입니다.
+
 ## Unified Remediation Order
 
 1. `GPT floor` 복구 기준과 latest health 신뢰성 고정

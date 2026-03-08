@@ -26,6 +26,13 @@
   4. blocked/backoff semantics가 browser/gpu/worker 축에서 서로 다르게 해석됨
   5. canonical plan의 `No-Go` 판정이 아직 해제되지 않음
 
+### Exception For Stage 0 Safe Path
+
+- 단, Stage 0은 `safe` test path 안정화 검증을 위해 예외적으로 먼저 실행할 수 있습니다.
+- 이 예외는 운영 readiness를 주장하기 위한 것이 아니라, `run_once()`/`run_control_loop_once()`가 브라우저 start, detached spawn, bootstrap, GPT tick 같은 운영 side effect 없이도 순수 계약 테스트를 통과하는지 확인하기 위한 것입니다.
+- 따라서 Stage 0 `safe` 경로에서는 운영 브라우저/GPT 상태를 readiness gate로 해석하지 않고, `side-effect-free path가 실제로 부작용을 건너뛰는지`만 확인합니다.
+- 여기서 `allow_runtime_side_effects=False`는 완전한 dry-run이 아닙니다. 운영 canonical 경로를 건드리지 않으려면 임시 `RuntimeConfig` 또는 probe root를 같이 써야 하며, GPT 상태가 없으면 fail-closed로 실패해야 합니다.
+
 ## Scope
 
 - 포함: `runtime_v2/`, `system/runtime_v2/`, `system/runtime_v2_probe/` 기준 테스트
@@ -47,6 +54,7 @@
 - `system/runtime_v2/` 쓰기 가능
 - 레거시 경로 쓰기 흔적 없음
 - probe 경로와 운영 경로를 분리해도 로컬 테스트가 통과함
+- `run_once()`/`run_control_loop_once()`의 `safe` 경로가 browser start/bootstrap/autospawn 없이 동작함
 
 **명령:**
 ```bash
@@ -69,6 +77,7 @@ python -m unittest tests.test_runtime_v2_excel_bridge tests.test_runtime_v2_stag
 - compileall 성공
 - 전체 로컬 회귀 테스트 성공
 - 수정 파일 LSP 에러 0건
+- `safe` 경로 검증 테스트가 `BrowserManager.start`, detached child, bootstrap, GPT tick을 호출하지 않음을 증명
 
 **중단 조건:**
 - 여기서 실패하면 detached/probe/실서비스 테스트로 넘어가지 않음
@@ -379,3 +388,10 @@ python -m runtime_v2.cli --once
 - `failure_summary_path`:
 - `probe_root`:
 - `root_cause_axis`: browser / gpu / gpt / contract / excel / stage2 / render
+
+## 오류 추적 순서
+
+1. `result.json`, `gui_status.json`, `control_plane_events.jsonl`의 latest-run `run_id`를 먼저 맞춥니다.
+2. 같은 `run_id`의 `system/runtime_v2/logs/<run_id>.jsonl`를 읽어 entry layer 이벤트를 확인합니다.
+3. 브라우저 축이면 `browser_health.json`, GPT 축이면 `gpt_status.json`, GPU 축이면 `gpu_scheduler_health.json`으로 내려갑니다.
+4. `code`, `worker_error_code`, `completion_state`, `backoff_sec`가 서로 다른 의미로 drift하면 테스트 실패보다 계약 수정이 우선입니다.
