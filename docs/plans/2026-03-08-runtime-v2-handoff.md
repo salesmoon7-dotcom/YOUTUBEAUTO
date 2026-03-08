@@ -41,38 +41,33 @@ WORK COMPLETED
   - tests.test_runtime_v2_control_plane_chain.RuntimeV2ControlPlaneChainTests.test_control_plane_side_effect_free_mode_skips_bootstrap_and_gpt_ticks
   - tests.test_runtime_v2_phase2.RuntimeV2Phase2Tests.test_selftest_probe_child_keeps_run_id_aligned_across_outputs
   - python -m unittest tests.test_runtime_v2_control_plane_chain ran 8 tests OK
+- I completed the browser/login recovery work, committed it, and pushed it with these commits:
+  - `9da59d7` `fix: restore external browser session ownership`
+  - `d52b8fe` `docs: tighten chat-safe browser verification guidance`
+- I verified the final browser recovery state with runtime evidence:
+  - `system/runtime_v2/health/browser_health.json` → `run_id=browser-verify-final-1772978011`
+  - `healthy_count=5`, `unhealthy_count=0`, `availability_percent=100.0`
+  - all five browser services were `running + healthy`
+  - recovered external profile paths in live registry/health:
+    - `genspark` → `C:/edge_debug`
+    - `seaart` → `C:/chrome_seaart`
+    - `geminigen` → `D:/YOUTUBE_AUTO/system/geminigen_chrome_userdata`
+    - `canva` → `C:/chrome_canva`
+  - all five debug ports `9222/9333/9444/9555/9666` were open
 
 CURRENT STATE
 -------------
 - Branch is main and upstream is origin/main.
-- Documentation handoff work is already pushed, but the active runtime_v2 code/test changes are still uncommitted.
-- Current uncommitted files are:
-  - runtime_v2/bootstrap.py
-  - runtime_v2/browser/manager.py
-  - runtime_v2/cli.py
-  - runtime_v2/config.py
-  - runtime_v2/control_plane.py
-  - runtime_v2/latest_run.py
-  - tests/test_runtime_v2_browser_plane.py
-  - tests/test_runtime_v2_control_plane_chain.py
-  - tests/test_runtime_v2_phase2.py
-- LSP status before interruption:
-  - runtime_v2/latest_run.py, runtime_v2/config.py, runtime_v2/bootstrap.py, runtime_v2/control_plane.py, tests/test_runtime_v2_phase2.py, tests/test_runtime_v2_control_plane_chain.py had no diagnostics.
-  - runtime_v2/cli.py, runtime_v2/browser/manager.py, tests/test_runtime_v2_browser_plane.py still had basedpyright warnings, but no blocking syntax errors were found from the edits I made.
+- Browser/login recovery code and docs are already committed and pushed to `origin/main`.
+- Working tree is expected to be clean after the final docs sync for this handoff update.
+- Final browser verification evidence now supersedes the earlier interrupted dirty-worktree state.
 - Chat interruption pattern remains active when running large or parallel unittest invocations from this chat session.
 
 PENDING TASKS
 -------------
 - Finish the in-progress todo: 필요한 코드 수정 및 오류 추적 경로 보강.
-- Run runtime_v2 guardrail verification for the dirty runtime_v2/test work, especially run_id alignment, error_code meaning alignment, and attempt/backoff contract alignment.
-- Re-run the remaining test coverage in a new session or external shell using strict serial execution, not parallel batches.
-- Build an atomic commit plan for the dirty runtime_v2/test files, then commit and push.
-- Current todo state was effectively:
-  - completed: 현재 runtime_v2 변경 상태와 계획 대비 남은 구현 범위 수집
-  - completed: safe/control/browser/latest_run 관련 실패 재현 및 원인 축 고정
-  - in_progress: 필요한 코드 수정 및 오류 추적 경로 보강
-  - pending: runtime_v2 guardrail 기준 검증 및 테스트 실행
-  - pending: 원자 단위 커밋 계획 수립 후 commit/push
+- For browser/login recovery, no implementation todo remains in this handoff.
+- Remaining runtime_v2 work is outside this browser/login fix scope: GPT floor, latest-run evidence, and blocked/backoff semantics still require separate follow-up.
 
 KEY FILES
 ---------

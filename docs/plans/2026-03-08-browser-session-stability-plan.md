@@ -193,14 +193,19 @@
 
 ## Current Evidence Snapshot
 
-- 현재 `runtime_v2/browser/manager.py`는 browser start URL, runtime-owned port/profile alignment, live tab 기반 `session_ready.json` 생성까지 일부 반영되어 있습니다.
-- 현재 확인된 ready marker:
-  - `runtime_v2/sessions/chatgpt-primary/session_ready.json`
-  - `C:/chrome_seaart/session_ready.json`
-- 현재 미준비/미확인 세션:
-  - `C:/chrome_canva` (로그인 페이지)
-  - `C:/edge_debug` (Genspark, about:blank)
-- `D:/YOUTUBE_AUTO/system/geminigen_chrome_userdata` (about:blank, UC Browser profile override applied)
+- 현재 `runtime_v2/browser/manager.py`는 browser start URL, runtime-owned port/profile alignment, external profile override, live tab 기반 `session_ready.json` 생성까지 반영되어 있습니다.
+- 최종 검증 run:
+  - `system/runtime_v2/health/browser_health.json` → `run_id=browser-verify-final-1772978011`
+  - `healthy_count=5`, `unhealthy_count=0`, `availability_percent=100.0`
+- 최종 healthy 세션:
+  - `chatgpt` → `D:/YOUTUBEAUTO/runtime_v2/sessions/chatgpt-primary` on `9222`
+  - `genspark` → `C:/edge_debug` on `9333`
+  - `seaart` → `C:/chrome_seaart` on `9444`
+  - `geminigen` → `D:/YOUTUBE_AUTO/system/geminigen_chrome_userdata` on `9555`
+  - `canva` → `C:/chrome_canva` on `9666`
+- 운영 확인 사항:
+  - 다섯 debug port(`9222/9333/9444/9555/9666`)가 모두 open 상태였습니다.
+  - non-GPT 브라우저 로그인 세션 단절 이슈는 외부 profile override 복구 후 재기동/재관측으로 해소되었습니다.
 - 최신 Stage 5 latest-run evidence:
   - `system/runtime_v2/evidence/result.json` → `code=GPT_FLOOR_FAIL`
   - 즉 현재 latest blocker는 브라우저만이 아니라 GPT floor도 포함합니다.
