@@ -15,6 +15,57 @@ from runtime_v2.supervisor import gpt_endpoints_from_browser_runtime
 
 
 class RuntimeV2GptHealthTests(unittest.TestCase):
+    def test_tick_gpt_status_fail_closes_when_browser_health_is_missing_after_previous_ok(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            status_file = root / "health" / "gpt_status.json"
+            browser_health_file = root / "health" / "browser_health.json"
+            config = RuntimeConfig(
+                gpt_status_file=status_file,
+                browser_health_file=browser_health_file,
+                gpt_floor_min_ok=1,
+            )
+            _ = write_gpt_status(
+                {
+                    "schema_version": "1.0",
+                    "runtime": "runtime_v2",
+                    "checked_at": 1.0,
+                    "ok_count": 1,
+                    "min_ok": 1,
+                    "floor_breached": False,
+                    "breach_started_at": None,
+                    "breach_sec": 0,
+                    "pending_boot": 0,
+                    "last_spawn_at": None,
+                    "spawn_fail_count": 0,
+                    "spawn_needed": False,
+                    "warning_active": False,
+                    "last_warning_at": None,
+                    "cooldown_sec": 300,
+                    "cooldown_elapsed_sec": 300,
+                    "hourly_spawn_count": 0,
+                    "spawn_history": [],
+                    "endpoints": [
+                        {
+                            "name": "chatgpt",
+                            "status": "OK",
+                            "last_seen_at": round(time(), 3),
+                        }
+                    ],
+                },
+                status_file,
+            )
+
+            result = tick_gpt_status(status_file, config)
+
+        self.assertEqual(result["ok_count"], 0)
+        self.assertTrue(bool(result["floor_breached"]))
+        endpoints = result["endpoints"]
+        self.assertIsInstance(endpoints, list)
+        self.assertEqual(len(cast(list[dict[str, object]], endpoints)), 0)
+
     def test_summarize_cli_report_preserves_top_level_failure_code(self) -> None:
         summary = summarize_cli_report(
             {
@@ -172,6 +223,55 @@ class RuntimeV2GptHealthTests(unittest.TestCase):
         self.assertIsInstance(endpoints, list)
         typed_endpoints = cast(list[dict[str, object]], endpoints)
         self.assertEqual(str(typed_endpoints[0]["status"]), "OK")
+
+    def test_tick_gpt_status_clears_pending_boot_after_floor_recovers(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            status_file = root / "health" / "gpt_status.json"
+            browser_health_file = root / "health" / "browser_health.json"
+            fresh_seen_at = round(time(), 3)
+            config = RuntimeConfig(
+                gpt_status_file=status_file,
+                browser_health_file=browser_health_file,
+                gpt_floor_min_ok=1,
+            )
+            browser_health_file.parent.mkdir(parents=True, exist_ok=True)
+            _ = write_gpt_status(
+                {
+                    "schema_version": "1.0",
+                    "runtime": "runtime_v2",
+                    "checked_at": 1.0,
+                    "ok_count": 0,
+                    "min_ok": 1,
+                    "floor_breached": True,
+                    "breach_started_at": 1.0,
+                    "breach_sec": 300,
+                    "pending_boot": 2,
+                    "last_spawn_at": fresh_seen_at - 10,
+                    "spawn_fail_count": 0,
+                    "spawn_needed": True,
+                    "warning_active": True,
+                    "last_warning_at": 1.0,
+                    "cooldown_sec": 300,
+                    "cooldown_elapsed_sec": 10,
+                    "hourly_spawn_count": 1,
+                    "spawn_history": [fresh_seen_at - 10],
+                    "endpoints": [
+                        {"name": "chatgpt", "status": "FAILED", "last_seen_at": 1.0}
+                    ],
+                },
+                status_file,
+            )
+            _ = browser_health_file.write_text(
+                f'{{"schema_version":"1.0","runtime":"runtime_v2","run_id":"run-1","checked_at":{fresh_seen_at},"session_count":1,"healthy_count":1,"unhealthy_count":0,"sessions":[{{"service":"chatgpt","group":"llm","healthy":true,"last_seen_at":{fresh_seen_at}}}]}}',
+                encoding="utf-8",
+            )
+
+            result = tick_gpt_status(status_file, config)
+
+        self.assertEqual(result["ok_count"], 1)
+        self.assertFalse(bool(result["floor_breached"]))
+        self.assertEqual(int(cast(int, result["pending_boot"])), 0)
 
     def test_supervisor_only_counts_chatgpt_session_for_gpt_floor(self) -> None:
         endpoints = gpt_endpoints_from_browser_runtime(

@@ -74,6 +74,8 @@ def build_gpt_status_payload(
     effective_pending_boot = (
         pending_boot if pending_boot != 0 else previous_pending_boot
     )
+    if not floor_breached:
+        effective_pending_boot = 0
     effective_spawn_fail_count = (
         spawn_fail_count if spawn_fail_count != 0 else previous_spawn_fail_count
     )

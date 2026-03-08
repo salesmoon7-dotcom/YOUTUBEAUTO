@@ -36,8 +36,6 @@ def tick_gpt_status(
     runtime_config = config or RuntimeConfig()
     previous_status = load_gpt_status(status_file)
     endpoints = _endpoints_from_browser_health(runtime_config.browser_health_file)
-    if not endpoints:
-        endpoints = _endpoints_from_status(previous_status)
     payload = build_gpt_status_payload(
         endpoints,
         min_ok=runtime_config.gpt_floor_min_ok,
@@ -72,27 +70,6 @@ def _endpoints_from_browser_health(browser_health_file: Path) -> list[GptEndpoin
             )
         )
     return endpoints
-
-
-def _endpoints_from_status(status: dict[str, object] | None) -> list[GptEndpoint]:
-    if status is None:
-        return []
-    raw_endpoints = status.get("endpoints", [])
-    if not isinstance(raw_endpoints, list):
-        return []
-    typed_endpoints: list[GptEndpoint] = []
-    for raw_entry in cast(list[object], raw_endpoints):
-        if not isinstance(raw_entry, dict):
-            continue
-        entry = cast(dict[object, object], raw_entry)
-        typed_endpoints.append(
-            GptEndpoint(
-                name=str(entry.get("name", "default")),
-                status=str(entry.get("status", "FAILED")),
-                last_seen_at=_to_float(entry.get("last_seen_at", 0.0)),
-            )
-        )
-    return typed_endpoints
 
 
 def _to_float(value: object) -> float:
