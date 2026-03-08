@@ -31,6 +31,23 @@ def _topic_spec(
 
 
 class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
+    def test_stage1_runner_only_plans_from_existing_topic_spec(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            workspace = root / "workspace"
+            workspace.mkdir(parents=True, exist_ok=True)
+
+            result = run_stage1_chatgpt_job(
+                _topic_spec(),
+                workspace,
+                debug_log="logs/stage1-audit-run.jsonl",
+            )
+
+            self.assertEqual(result["status"], "ok")
+            self.assertTrue(Path(cast(str, result["result_path"])).exists())
+            next_jobs = cast(list[object], result["next_jobs"])
+            self.assertTrue(next_jobs)
+
     def test_stage1_ignores_channel_hint_and_builds_native_video_plan(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

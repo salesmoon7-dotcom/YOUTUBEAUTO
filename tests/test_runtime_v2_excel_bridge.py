@@ -27,7 +27,9 @@ def _write_excel_fixture(path: Path, *, topic: str, status: str = "") -> Path:
     return path
 
 
-def _write_excel_headers_fixture(path: Path, *, headers: list[str], values: list[str]) -> Path:
+def _write_excel_headers_fixture(
+    path: Path, *, headers: list[str], values: list[str]
+) -> Path:
     workbook = Workbook()
     sheet = cast(Worksheet, workbook.active)
     sheet.title = "Sheet1"
@@ -39,6 +41,29 @@ def _write_excel_headers_fixture(path: Path, *, headers: list[str], values: list
 
 
 class RuntimeV2ExcelBridgeTests(unittest.TestCase):
+    def test_excel_topic_row_seeds_topic_spec_before_stage1_runner(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig(
+                input_root=root / "inbox",
+                queue_store_file=root / "state" / "job_queue.json",
+                feeder_state_file=root / "state" / "feeder_state.json",
+            )
+            excel_path = _write_excel_fixture(root / "topic.xlsx", topic="Bridge topic")
+
+            result = seed_excel_row(
+                config=config,
+                run_id="excel-audit-run-1",
+                excel_path=excel_path,
+                sheet_name="Sheet1",
+                row_index=0,
+            )
+
+        self.assertEqual(result["status"], "seeded")
+        topic_spec = cast(dict[str, object], result["topic_spec"])
+        self.assertEqual(str(topic_spec["topic"]), "Bridge topic")
+        self.assertEqual(str(topic_spec["row_ref"]), "Sheet1!row1")
+
     def test_subprograms_never_receive_excel_path_directly(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -63,8 +88,13 @@ class RuntimeV2ExcelBridgeTests(unittest.TestCase):
             self.assertEqual(queued_jobs, [])
             self.assertFalse(config.queue_store_file.exists())
             self.assertNotIn("excel_path", str(result.get("contract", {})))
-            snapshot_hash = str(cast(dict[str, object], payload).get("excel_snapshot_hash", ""))
-            self.assertIn(f"'checkpoint_key': 'topic_spec:Sheet1!row1:{snapshot_hash}'", str(result.get("contract", {})))
+            snapshot_hash = str(
+                cast(dict[str, object], payload).get("excel_snapshot_hash", "")
+            )
+            self.assertIn(
+                f"'checkpoint_key': 'topic_spec:Sheet1!row1:{snapshot_hash}'",
+                str(result.get("contract", {})),
+            )
             self.assertIn("'local_only': True", str(result.get("contract", {})))
 
     def test_excel_seed_uses_checkpoint_key_and_local_only_contract(self) -> None:
@@ -97,7 +127,11 @@ class RuntimeV2ExcelBridgeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             config = RuntimeConfig(input_root=root / "inbox")
-            excel_path = _write_excel_headers_fixture(root / "topic.xlsx", headers=["topic", "STATUS"], values=["Bridge topic", ""])
+            excel_path = _write_excel_headers_fixture(
+                root / "topic.xlsx",
+                headers=["topic", "STATUS"],
+                values=["Bridge topic", ""],
+            )
 
             result = seed_excel_row(
                 config=config,
@@ -121,7 +155,7 @@ class RuntimeV2ExcelBridgeTests(unittest.TestCase):
             contract_root = config.input_root / "chatgpt"
             contract_root.mkdir(parents=True, exist_ok=True)
             contract_path = contract_root / "fresh.job.json"
-            contract_path.write_text(
+            _ = contract_path.write_text(
                 '{"contract":"runtime_v2_inbox_job","contract_version":"1.0","local_only":true,"job":{"job_id":"fresh-chatgpt","worker":"chatgpt","checkpoint_key":"topic_spec:Sheet1!row1","payload":{"run_id":"run-1","topic_spec":{"run_id":"run-1","row_ref":"Sheet1!row1","topic":"T","status_snapshot":"","excel_snapshot_hash":"x"}}}}',
                 encoding="utf-8",
             )
@@ -172,10 +206,14 @@ class RuntimeV2ExcelBridgeTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 2)
 
-    def test_excel_once_seeded_path_does_not_report_idle_while_waiting_for_stable_age(self) -> None:
+    def test_excel_once_seeded_path_does_not_report_idle_while_waiting_for_stable_age(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
-            excel_path = _write_excel_fixture(root / "topic.xlsx", topic="Bridge topic", status="")
+            excel_path = _write_excel_fixture(
+                root / "topic.xlsx", topic="Bridge topic", status=""
+            )
 
             with patch("runtime_v2.cli.run_control_loop_once") as run_control_loop_once:
                 with patch(
@@ -204,7 +242,10 @@ class RuntimeV2ExcelBridgeTests(unittest.TestCase):
             ]
         }
         with patch("runtime_v2.supervisor.BrowserManager.start"):
-            with patch("runtime_v2.supervisor.BrowserSupervisor.tick", return_value=browser_runtime):
+            with patch(
+                "runtime_v2.supervisor.BrowserSupervisor.tick",
+                return_value=browser_runtime,
+            ):
                 result = run_once(
                     owner="runtime_v2",
                     run_id="chatgpt-run-1",
