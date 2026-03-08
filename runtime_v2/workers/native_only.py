@@ -57,7 +57,7 @@ def native_not_implemented_result(
     payload_details.update(
         {
             "execution_mode": "native_only",
-            "legacy_execution": "disabled",
+            "external_execution": "disabled",
             "workload": workload,
         }
     )

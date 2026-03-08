@@ -186,7 +186,7 @@ def _normalize_gpu_health_snapshot(
         lease=None
         if lease_payload is None
         else Lease.from_dict(_lease_like_payload(lease_payload)),
-        event="normalized_legacy_snapshot" if lease_payload is not None else "idle",
+        event="normalized_snapshot" if lease_payload is not None else "idle",
     )
     _ = write_gpu_health_payload(normalized, config.lease_file)
 

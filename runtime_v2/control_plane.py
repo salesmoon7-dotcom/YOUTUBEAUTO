@@ -664,12 +664,12 @@ def _archived_contract_count(root: Path) -> int:
     if not root.exists():
         return 0
     exact = list(root.glob("*.job.json"))
-    legacy = [
+    alternate = [
         path
         for path in root.glob("*.job.*.json")
         if not path.name.endswith(".reason.json")
     ]
-    return len(exact) + len(legacy)
+    return len(exact) + len(alternate)
 
 
 def _invalid_reason_summary(inbox_root: Path) -> str:
