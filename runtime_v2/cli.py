@@ -23,10 +23,21 @@ from runtime_v2.contracts.json_contract import (
     now_ts,
     validate_contract,
 )
-from runtime_v2.debug_log import append_debug_event, debug_log_path, exception_payload, summarize_cli_report, summarize_runtime_result
+from runtime_v2.debug_log import (
+    append_debug_event,
+    debug_log_path,
+    exception_payload,
+    summarize_cli_report,
+    summarize_runtime_result,
+)
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
+from runtime_v2.latest_run import update_latest_run_pointers
 from runtime_v2.manager import seed_excel_row
-from runtime_v2.n8n_adapter import build_n8n_webhook_response, post_callback, write_mock_callback
+from runtime_v2.n8n_adapter import (
+    build_n8n_webhook_response,
+    post_callback,
+    write_mock_callback,
+)
 from runtime_v2.result_router import write_result_router
 from runtime_v2.supervisor import run_once, run_selftest
 
@@ -86,6 +97,7 @@ def exit_code_from_status(code: str) -> int:
         "CONTROL_BUSY": exit_codes.SUCCESS,
         "GPU_LEASE_BUSY": exit_codes.LEASE_BUSY,
         "BROWSER_UNHEALTHY": exit_codes.BROWSER_UNHEALTHY,
+        "BROWSER_BLOCKED": exit_codes.BROWSER_BLOCKED,
         "GPT_FLOOR_FAIL": exit_codes.GPT_FLOOR_FAIL,
         "SELFTEST_FAIL": exit_codes.SELFTEST_FAIL,
         "CALLBACK_FAIL": exit_codes.CALLBACK_FAIL,
@@ -99,17 +111,23 @@ def main() -> int:
     _ = parser.add_argument("--once", action="store_true")
     _ = parser.add_argument("--control-once", action="store_true")
     _ = parser.add_argument("--control-once-detached", action="store_true")
-    _ = parser.add_argument("--control-once-probe-child", action="store_true", help=argparse.SUPPRESS)
+    _ = parser.add_argument(
+        "--control-once-probe-child", action="store_true", help=argparse.SUPPRESS
+    )
     _ = parser.add_argument("--excel-once", action="store_true")
     _ = parser.add_argument("--excel-path", default="")
     _ = parser.add_argument("--sheet-name", default="Sheet1")
     _ = parser.add_argument("--row-index", type=int, default=0)
     _ = parser.add_argument("--selftest", action="store_true")
     _ = parser.add_argument("--selftest-detached", action="store_true")
-    _ = parser.add_argument("--selftest-probe-child", action="store_true", help=argparse.SUPPRESS)
+    _ = parser.add_argument(
+        "--selftest-probe-child", action="store_true", help=argparse.SUPPRESS
+    )
     _ = parser.add_argument("--callback-url", default="")
     _ = parser.add_argument("--callback-mock-out", default="")
-    _ = parser.add_argument("--gui-status-out", default="system/runtime_v2/health/gui_status.json")
+    _ = parser.add_argument(
+        "--gui-status-out", default="system/runtime_v2/health/gui_status.json"
+    )
     _ = parser.add_argument("--probe-root", default="")
     _ = parser.add_argument("--seed-mock-chain", action="store_true")
     _ = parser.add_argument("--selftest-force-browser-fail", action="store_true")
@@ -136,9 +154,13 @@ def main() -> int:
         return exit_codes.CLI_USAGE
     if len(selected_modes) == 0:
         return exit_codes.CLI_USAGE
-    if (args.selftest_force_browser_fail or args.selftest_force_gpt_fail) and not (args.selftest or args.selftest_detached or args.selftest_probe_child):
+    if (args.selftest_force_browser_fail or args.selftest_force_gpt_fail) and not (
+        args.selftest or args.selftest_detached or args.selftest_probe_child
+    ):
         return exit_codes.CLI_USAGE
-    if args.seed_mock_chain and not (args.control_once or args.control_once_detached or args.control_once_probe_child):
+    if args.seed_mock_chain and not (
+        args.control_once or args.control_once_detached or args.control_once_probe_child
+    ):
         return exit_codes.CLI_USAGE
     if args.excel_once and args.row_index < 0:
         return exit_codes.CLI_USAGE
@@ -207,12 +229,21 @@ def main() -> int:
                 inject_browser_fail=args.selftest_force_browser_fail,
                 inject_gpt_fail=args.selftest_force_gpt_fail,
             )
-        elif args.excel_once and seed_result is not None and str(seed_result.get("status", "")) in {"no_work", "seeded"} and config.stable_file_age_sec > 0:
+        elif (
+            args.excel_once
+            and seed_result is not None
+            and str(seed_result.get("status", "")) in {"no_work", "seeded"}
+            and config.stable_file_age_sec > 0
+        ):
             result = seed_result
         elif args.control_once_probe_child and args.seed_mock_chain:
-            result = _run_control_probe_until_terminal(owner=args.owner, config=config, run_id=run_id)
+            result = _run_control_probe_until_terminal(
+                owner=args.owner, config=config, run_id=run_id
+            )
         elif args.control_once or args.control_once_probe_child or args.excel_once:
-            result = run_control_loop_once(owner=args.owner, config=config, run_id=run_id)
+            result = run_control_loop_once(
+                owner=args.owner, config=config, run_id=run_id
+            )
         else:
             result = run_once(owner=args.owner, run_id=run_id, config=config)
     except BaseException as exc:
@@ -312,7 +343,9 @@ def main() -> int:
                     "run_id": run_id,
                     "event": "gui_status",
                     "ts": now_ts(),
-                    "status": str(summary.get("status", result.get("status", "unknown"))),
+                    "status": str(
+                        summary.get("status", result.get("status", "unknown"))
+                    ),
                     "code": code,
                     "exit_code": exit_code,
                     "debug_log": str(debug_log),
@@ -337,7 +370,9 @@ def main() -> int:
                 metadata={
                     "run_id": run_id,
                     "mode": mode,
-                    "status": str(summary.get("status", result.get("status", "failed"))),
+                    "status": str(
+                        summary.get("status", result.get("status", "failed"))
+                    ),
                     "code": code,
                     "exit_code": exit_code,
                     "stage": str(summary.get("stage", "")),
@@ -348,6 +383,15 @@ def main() -> int:
                     "ts": now_ts(),
                 },
             )
+        update_latest_run_pointers(
+            config,
+            run_id=run_id,
+            mode=mode,
+            status=str(summary.get("status", result.get("status", "failed"))),
+            code=code,
+            debug_log=str(debug_log),
+            write_completed=True,
+        )
 
     report = {
         "run_id": run_id,
@@ -380,14 +424,25 @@ def main() -> int:
     return exit_code
 
 
-def _run_control_probe_until_terminal(*, owner: str, config: RuntimeConfig, run_id: str, max_passes: int = 8) -> dict[str, object]:
-    last_result: dict[str, object] = {"status": "failed", "code": "CONTROL_PROBE_NO_RESULT"}
+def _run_control_probe_until_terminal(
+    *, owner: str, config: RuntimeConfig, run_id: str, max_passes: int = 8
+) -> dict[str, object]:
+    last_result: dict[str, object] = {
+        "status": "failed",
+        "code": "CONTROL_PROBE_NO_RESULT",
+    }
     for _ in range(max(1, max_passes)):
         last_result = run_control_loop_once(owner=owner, config=config, run_id=run_id)
         if _result_has_final_output(last_result):
             return last_result
         result_code = _result_code(last_result)
-        if result_code in {"NO_JOB", "BROWSER_UNHEALTHY", "GPT_FLOOR_FAIL", "GPU_LEASE_BUSY", "GPU_LEASE_RENEW_FAILED"}:
+        if result_code in {
+            "NO_JOB",
+            "BROWSER_UNHEALTHY",
+            "GPT_FLOOR_FAIL",
+            "GPU_LEASE_BUSY",
+            "GPU_LEASE_RENEW_FAILED",
+        }:
             return last_result
         if str(last_result.get("status", "")) == "failed":
             return last_result
@@ -412,7 +467,9 @@ def _result_has_final_output(result: dict[str, object]) -> bool:
 
 
 def _build_runtime_config(args: CliArgs) -> RuntimeConfig:
-    if args.probe_root.strip() and (args.selftest_probe_child or args.control_once_probe_child):
+    if args.probe_root.strip() and (
+        args.selftest_probe_child or args.control_once_probe_child
+    ):
         root = _probe_root_path(args.probe_root)
         return RuntimeConfig(
             lease_file=root / "health" / "gpu_scheduler_health.json",
@@ -427,6 +484,8 @@ def _build_runtime_config(args: CliArgs) -> RuntimeConfig:
             artifact_root=root / "artifacts",
             input_root=root / "inbox",
             result_router_file=root / "evidence" / "result.json",
+            latest_active_run_file=root / "latest_active_run.json",
+            latest_completed_run_file=root / "latest_completed_run.json",
             debug_log_root=root / "logs",
         )
     return RuntimeConfig(
@@ -458,7 +517,9 @@ def _spawn_detached_probe(args: CliArgs, *, mode: str) -> int:
 
     stdout_path = probe_root / "logs" / "selftest_stdout.log"
     stderr_path = probe_root / "logs" / "selftest_stderr.log"
-    child_flag = "--selftest-probe-child" if mode == "selftest" else "--control-once-probe-child"
+    child_flag = (
+        "--selftest-probe-child" if mode == "selftest" else "--control-once-probe-child"
+    )
     command = [
         sys.executable,
         "-u",
@@ -480,7 +541,10 @@ def _spawn_detached_probe(args: CliArgs, *, mode: str) -> int:
     creationflags = 0
     creationflags |= int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
     creationflags |= int(getattr(subprocess, "DETACHED_PROCESS", 0))
-    with stdout_path.open("w", encoding="utf-8") as stdout_handle, stderr_path.open("w", encoding="utf-8") as stderr_handle:
+    with (
+        stdout_path.open("w", encoding="utf-8") as stdout_handle,
+        stderr_path.open("w", encoding="utf-8") as stderr_handle,
+    ):
         child = subprocess.Popen(
             command,
             cwd=str(Path.cwd()),
@@ -575,7 +639,9 @@ def seed_mock_chain_probe(inbox_root: Path) -> Path:
         },
         chain_step=0,
     )
-    _ = _write_text_file(contract_path, json.dumps(payload, ensure_ascii=True, indent=2))
+    _ = _write_text_file(
+        contract_path, json.dumps(payload, ensure_ascii=True, indent=2)
+    )
     _backdate_seed_file(image_path)
     _backdate_seed_file(contract_path)
     return contract_path
