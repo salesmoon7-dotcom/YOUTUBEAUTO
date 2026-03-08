@@ -90,16 +90,27 @@ class BrowserSession:
         last_seen_at = payload.get("last_seen_at", time())
         last_restart_at = payload.get("last_restart_at")
         profile_dir = payload.get("profile_dir", "")
-        resolved_profile_dir = Path(str(profile_dir)).resolve() if str(profile_dir).strip() else Path()
+        resolved_profile_dir = (
+            Path(str(profile_dir)).resolve() if str(profile_dir).strip() else Path()
+        )
         return cls(
             service=str(payload.get("service", "unknown")),
             group=str(payload.get("group", "browser_pool")),
             session_id=str(payload.get("session_id", "primary")),
             port=_to_int(payload.get("port", 0)),
-            profile_dir="" if not str(profile_dir).strip() else str(resolved_profile_dir),
+            profile_dir=""
+            if not str(profile_dir).strip()
+            else str(resolved_profile_dir),
             status=str(payload.get("status", "stopped")),
-            browser_family=str(payload.get("browser_family", _browser_family_for_service(str(payload.get("service", "unknown"))))),
-            started_at=float(started_at if isinstance(started_at, (int, float, str)) else time()),
+            browser_family=str(
+                payload.get(
+                    "browser_family",
+                    _browser_family_for_service(str(payload.get("service", "unknown"))),
+                )
+            ),
+            started_at=float(
+                started_at if isinstance(started_at, (int, float, str)) else time()
+            ),
             last_seen_at=float(
                 last_seen_at if isinstance(last_seen_at, (int, float, str)) else time()
             ),
@@ -159,11 +170,31 @@ def _load_legacy_app_config() -> dict[str, object]:
 
 def _browser_session_defaults() -> list[tuple[str, str, int, str]]:
     defaults = {
-        "chatgpt": ("llm", 9222, str((Path("runtime_v2") / "sessions" / "chatgpt-primary").resolve())),
-        "genspark": ("llm", 9333, str((Path("runtime_v2") / "sessions" / "genspark-primary").resolve())),
-        "seaart": ("image", 9444, str((Path("runtime_v2") / "sessions" / "seaart-primary").resolve())),
-        "geminigen": ("llm", 9555, str((LEGACY_ROOT / "system" / "geminigen_chrome_userdata").resolve())),
-        "canva": ("design", 9666, str((Path("runtime_v2") / "sessions" / "canva-primary").resolve())),
+        "chatgpt": (
+            "llm",
+            9222,
+            str((Path("runtime_v2") / "sessions" / "chatgpt-primary").resolve()),
+        ),
+        "genspark": (
+            "llm",
+            9333,
+            str((Path("runtime_v2") / "sessions" / "genspark-primary").resolve()),
+        ),
+        "seaart": (
+            "image",
+            9444,
+            str((Path("runtime_v2") / "sessions" / "seaart-primary").resolve()),
+        ),
+        "geminigen": (
+            "llm",
+            9555,
+            str((LEGACY_ROOT / "system" / "geminigen_chrome_userdata").resolve()),
+        ),
+        "canva": (
+            "design",
+            9666,
+            str((Path("runtime_v2") / "sessions" / "canva-primary").resolve()),
+        ),
     }
     legacy_config = _load_legacy_app_config()
     ports_raw = legacy_config.get("ports", {})
@@ -179,9 +210,14 @@ def _browser_session_defaults() -> list[tuple[str, str, int, str]]:
         group, default_port, default_profile = defaults[service]
         port = _to_int(ports.get(port_key, default_port), default_port)
         raw_profile = str(session_dirs.get(session_key, default_profile)).strip()
-        profile_dir = str(Path(raw_profile).resolve()) if raw_profile else default_profile
+        profile_dir = (
+            str(Path(raw_profile).resolve()) if raw_profile else default_profile
+        )
         defaults[service] = (group, port, profile_dir)
-    return [(service, group, port, profile_dir) for service, (group, port, profile_dir) in defaults.items()]
+    return [
+        (service, group, port, profile_dir)
+        for service, (group, port, profile_dir) in defaults.items()
+    ]
 
 
 def _browser_family_for_service(service: str) -> str:
@@ -211,7 +247,9 @@ def default_browser_sessions_by_service() -> dict[str, BrowserSession]:
     return {session.service: session for session in default_browser_sessions()}
 
 
-def reconcile_browser_sessions(loaded_sessions: list[BrowserSession]) -> list[BrowserSession]:
+def reconcile_browser_sessions(
+    loaded_sessions: list[BrowserSession],
+) -> list[BrowserSession]:
     defaults = default_browser_sessions_by_service()
     loaded_by_service = {session.service: session for session in loaded_sessions}
     reconciled: list[BrowserSession] = []
@@ -297,8 +335,18 @@ def _read_profile_lock(lock_file: Path) -> dict[str, object]:
     return {str(key): raw_payload[key] for key in raw_payload}
 
 
-def _write_profile_lock(lock_file: Path, payload: Mapping[str, object]) -> dict[str, object]:
+def _write_profile_lock(
+    lock_file: Path, payload: Mapping[str, object]
+) -> dict[str, object]:
     with lock_file.open("x", encoding="utf-8") as handle:
+        _ = handle.write(json.dumps(payload, ensure_ascii=True))
+    return dict(payload)
+
+
+def _rewrite_profile_lock(
+    lock_file: Path, payload: Mapping[str, object]
+) -> dict[str, object]:
+    with lock_file.open("w", encoding="utf-8") as handle:
         _ = handle.write(json.dumps(payload, ensure_ascii=True))
     return dict(payload)
 
@@ -318,7 +366,14 @@ def _pid_is_running(pid: int) -> bool:
 
 
 def _lock_metadata_valid(payload: dict[str, object]) -> bool:
-    required_keys = {"service", "session_id", "port", "pid", "profile_dir", "acquired_at"}
+    required_keys = {
+        "service",
+        "session_id",
+        "port",
+        "pid",
+        "profile_dir",
+        "acquired_at",
+    }
     if not required_keys.issubset(payload):
         return False
     if _to_int(payload.get("pid", 0)) <= 0:
@@ -351,7 +406,9 @@ def inspect_profile_lock(
     owner_pid = _to_int(existing_payload.get("pid", 0))
     owner_port = _to_int(existing_payload.get("port", port), port)
     pid_alive = _pid_is_running(owner_pid) if metadata_valid else False
-    port_open = _probe_local_port(owner_port) if metadata_valid and owner_port > 0 else False
+    port_open = (
+        _probe_local_port(owner_port) if metadata_valid and owner_port > 0 else False
+    )
     acquired_at = existing_payload.get("acquired_at", 0.0)
     lock_age_sec = 0.0
     if isinstance(acquired_at, (int, float, str)):
@@ -372,13 +429,13 @@ def inspect_profile_lock(
     else:
         lock_state = "stale"
     return {
+        **existing_payload,
         "lock_state": lock_state,
         "metadata_valid": metadata_valid,
         "pid_alive": pid_alive,
         "port_open": port_open,
         "lock_age_sec": lock_age_sec,
         "lock_file": str(lock_file),
-        **existing_payload,
     }
 
 
@@ -474,7 +531,9 @@ def acquire_profile_lock(
                 "metadata_valid": bool(existing_payload.get("metadata_valid", True)),
                 "pid_alive": False,
                 "port_open": False,
-                "lock_age_sec": _to_float(existing_payload.get("lock_age_sec", 0.0), 0.0),
+                "lock_age_sec": _to_float(
+                    existing_payload.get("lock_age_sec", 0.0), 0.0
+                ),
                 "action": "stale_lock_recovered",
                 **payload,
             }
@@ -488,7 +547,9 @@ def acquire_profile_lock(
         }
 
 
-def release_profile_lock(profile_dir: str, *, service: str = "", session_id: str = "") -> None:
+def release_profile_lock(
+    profile_dir: str, *, service: str = "", session_id: str = ""
+) -> None:
     lock_file = _profile_lock_file(profile_dir)
     existing_payload = _read_profile_lock(lock_file)
     if service and str(existing_payload.get("service", "")) != service:
@@ -502,7 +563,9 @@ def release_profile_lock(profile_dir: str, *, service: str = "", session_id: str
         return
 
 
-def open_browser_for_login(service: str, *, manager: BrowserManager | None = None) -> dict[str, object]:
+def open_browser_for_login(
+    service: str, *, manager: BrowserManager | None = None
+) -> dict[str, object]:
     active_manager = manager or BrowserManager()
     session = active_manager._session_by_service(service)
     launched = _launch_debug_browser(session)
@@ -533,7 +596,9 @@ class BrowserManager:
             _ = _launch_debug_browser(session)
 
     def is_healthy(self) -> bool:
-        return self.running and all(session.status == "running" for session in self.sessions)
+        return self.running and all(
+            session.status == "running" for session in self.sessions
+        )
 
     def restart(self, service: str) -> None:
         self.running = True
@@ -555,14 +620,20 @@ class BrowserManager:
         for session in self.sessions:
             session.status = "stopped"
             session.last_seen_at = now
-            release_profile_lock(session.profile_dir, service=session.service, session_id=session.session_id)
+            release_profile_lock(
+                session.profile_dir,
+                service=session.service,
+                session_id=session.session_id,
+            )
 
     def mark_unhealthy(self, service: str) -> None:
         session = self._session_by_service(service)
         session.status = "unhealthy"
         session.consecutive_failures += 1
 
-    def session_snapshots(self, forced_unhealthy_services: set[str] | None = None) -> list[dict[str, object]]:
+    def session_snapshots(
+        self, forced_unhealthy_services: set[str] | None = None
+    ) -> list[dict[str, object]]:
         now = time()
         snapshots: list[dict[str, object]] = []
         forced = forced_unhealthy_services or set()
@@ -600,20 +671,26 @@ def _probe_local_port(port: int, timeout_sec: float = 0.2) -> bool:
 
 
 def _session_ready(session: BrowserSession) -> bool:
-    profile_dir = Path(session.profile_dir).resolve() if session.profile_dir.strip() else Path()
+    profile_dir = (
+        Path(session.profile_dir).resolve() if session.profile_dir.strip() else Path()
+    )
     if not profile_dir.exists() or not profile_dir.is_dir():
         return False
     return (profile_dir / "session_ready.json").exists()
 
 
 def _session_ready_file(session: BrowserSession) -> Path:
-    profile_dir = Path(session.profile_dir).resolve() if session.profile_dir.strip() else Path()
+    profile_dir = (
+        Path(session.profile_dir).resolve() if session.profile_dir.strip() else Path()
+    )
     return profile_dir / "session_ready.json"
 
 
 def _list_debug_tabs(session: BrowserSession) -> list[dict[str, object]]:
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{session.port}/json", timeout=3) as response:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{session.port}/json", timeout=3
+        ) as response:
             raw_payload = json.loads(response.read().decode("utf-8"))
     except (OSError, ValueError, json.JSONDecodeError):
         return []
@@ -700,7 +777,10 @@ def _evaluate_session_health(session: BrowserSession) -> tuple[bool, str]:
         )
         _apply_lock_result(session, lock_result)
         if session.lock_state == "stale":
-            return False, "stale_lock_recovered" if session.lock_recovered else "unhealthy"
+            return (
+                False,
+                "stale_lock_recovered" if session.lock_recovered else "unhealthy",
+            )
         if session.lock_state == "busy":
             return False, "busy_lock"
         if session.lock_state == "unknown":
@@ -771,9 +851,11 @@ def _launch_debug_browser(session: BrowserSession) -> bool:
         "--no-default-browser-check",
         _start_url_for_service(session.service),
     ]
-    creationflags = int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)) | int(getattr(subprocess, "DETACHED_PROCESS", 0))
+    creationflags = int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)) | int(
+        getattr(subprocess, "DETACHED_PROCESS", 0)
+    )
     try:
-        _ = subprocess.Popen(
+        child = subprocess.Popen(
             command,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -781,25 +863,59 @@ def _launch_debug_browser(session: BrowserSession) -> bool:
         )
     except OSError:
         session.status = "stopped"
-        release_profile_lock(session.profile_dir, service=session.service, session_id=session.session_id)
+        release_profile_lock(
+            session.profile_dir, service=session.service, session_id=session.session_id
+        )
         return False
     for _ in range(20):
         sleep(0.5)
         if _probe_local_port(session.port):
+            lock_file = _profile_lock_file(session.profile_dir)
+            launched_pid = _to_int(getattr(child, "pid", 0))
+            launch_lock_payload = {
+                "service": session.service,
+                "session_id": session.session_id,
+                "port": session.port,
+                "pid": launched_pid,
+                "profile_dir": session.profile_dir,
+                "acquired_at": round(time(), 3),
+                "browser_pid": launched_pid,
+            }
+            try:
+                _ = _rewrite_profile_lock(lock_file, launch_lock_payload)
+            except OSError:
+                session.status = "unknown_lock"
+                return False
             session.status = "running"
             session.last_seen_at = time()
-            release_profile_lock(session.profile_dir, service=session.service, session_id=session.session_id)
+            session.lock_state = "owned"
+            session.lock_pid_alive = True
+            session.lock_port_open = True
+            session.lock_metadata_valid = True
+            session.lock_age_sec = 0.0
+            session.last_recovery_action = "lock_transferred_to_browser_pid"
             return True
     session.status = "unhealthy"
-    release_profile_lock(session.profile_dir, service=session.service, session_id=session.session_id)
+    release_profile_lock(
+        session.profile_dir, service=session.service, session_id=session.session_id
+    )
     return False
 
 
 def _resolve_browser_executable(service: str) -> Path | None:
     if service == "geminigen":
-        env_names = ["RUNTIME_V2_UC_PATH", "UC_PATH", "RUNTIME_V2_CHROME_PATH", "CHROME_PATH"]
+        env_names = [
+            "RUNTIME_V2_UC_PATH",
+            "UC_PATH",
+            "RUNTIME_V2_CHROME_PATH",
+            "CHROME_PATH",
+        ]
     else:
-        env_names = ["RUNTIME_V2_EDGE_PATH", "EDGE_PATH"] if service == "genspark" else ["RUNTIME_V2_CHROME_PATH", "CHROME_PATH"]
+        env_names = (
+            ["RUNTIME_V2_EDGE_PATH", "EDGE_PATH"]
+            if service == "genspark"
+            else ["RUNTIME_V2_CHROME_PATH", "CHROME_PATH"]
+        )
     for env_name in env_names:
         candidate = os.environ.get(env_name, "").strip()
         if candidate and Path(candidate).exists():

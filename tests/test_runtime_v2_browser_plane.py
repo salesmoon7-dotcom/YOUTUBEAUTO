@@ -41,7 +41,9 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             _start_url_for_service("seaart"),
             "https://www.seaart.ai/ko/create/image?id=d4kssode878c7387fae0&model_ver_no=ef24b47a8d618127c9342fd0635aedb9",
         )
-        self.assertEqual(_start_url_for_service("geminigen"), "https://geminigen.ai/app/video-gen")
+        self.assertEqual(
+            _start_url_for_service("geminigen"), "https://geminigen.ai/app/video-gen"
+        )
         self.assertEqual(
             _start_url_for_service("canva"),
             "https://www.canva.com/design/DAHAnm1uUBA/-FWB5gw_ir1U7Ls0ZHF9Ig/edit",
@@ -59,8 +61,14 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             )
 
             with (
-                patch("runtime_v2.browser.manager._probe_local_port", side_effect=[False, True]),
-                patch("runtime_v2.browser.manager._resolve_browser_executable", return_value=Path(r"C:\\Chrome\\chrome.exe")),
+                patch(
+                    "runtime_v2.browser.manager._probe_local_port",
+                    side_effect=[False, True],
+                ),
+                patch(
+                    "runtime_v2.browser.manager._resolve_browser_executable",
+                    return_value=Path(r"C:\\Chrome\\chrome.exe"),
+                ),
                 patch("runtime_v2.browser.manager.subprocess.Popen") as popen,
             ):
                 launched = _launch_debug_browser(session)
@@ -69,7 +77,82 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         command = popen.call_args.args[0]
         self.assertEqual(command[-1], "https://chatgpt.com/")
 
-    def test_default_browser_sessions_uses_legacy_port_and_profile_overrides(self) -> None:
+    def test_launch_debug_browser_keeps_profile_lock_with_browser_pid(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            profile_dir = Path(tmp_dir) / "chatgpt-primary"
+            session = BrowserSession(
+                service="chatgpt",
+                group="llm",
+                session_id="primary",
+                port=9222,
+                profile_dir=str(profile_dir.resolve()),
+                status="stopped",
+            )
+
+            with (
+                patch(
+                    "runtime_v2.browser.manager._probe_local_port",
+                    side_effect=[False, True],
+                ),
+                patch(
+                    "runtime_v2.browser.manager._resolve_browser_executable",
+                    return_value=Path(r"C:\\Chrome\\chrome.exe"),
+                ),
+                patch("runtime_v2.browser.manager.subprocess.Popen") as popen,
+            ):
+                popen.return_value.configure_mock(pid=54321)
+                launched = _launch_debug_browser(session)
+
+            lock_file = profile_dir / ".runtime_v2.profile.lock"
+            self.assertTrue(launched)
+            self.assertTrue(lock_file.exists())
+            lock_payload = cast(
+                dict[object, object],
+                json.loads(lock_file.read_text(encoding="utf-8")),
+            )
+            self.assertEqual(int(cast(int, lock_payload["pid"])), 54321)
+            self.assertEqual(int(cast(int, lock_payload["browser_pid"])), 54321)
+
+    def test_second_acquire_sees_busy_lock_after_successful_launch(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            profile_dir = Path(tmp_dir) / "chatgpt-primary"
+            session = BrowserSession(
+                service="chatgpt",
+                group="llm",
+                session_id="primary",
+                port=9222,
+                profile_dir=str(profile_dir.resolve()),
+                status="stopped",
+            )
+
+            with (
+                patch(
+                    "runtime_v2.browser.manager._probe_local_port",
+                    side_effect=[False, True, True],
+                ),
+                patch(
+                    "runtime_v2.browser.manager._resolve_browser_executable",
+                    return_value=Path(r"C:\\Chrome\\chrome.exe"),
+                ),
+                patch("runtime_v2.browser.manager._pid_is_running", return_value=True),
+                patch("runtime_v2.browser.manager.subprocess.Popen") as popen,
+            ):
+                popen.return_value.configure_mock(pid=54321)
+                launched = _launch_debug_browser(session)
+                second = acquire_profile_lock(
+                    str(profile_dir.resolve()),
+                    service="chatgpt",
+                    session_id="primary",
+                    port=9222,
+                )
+
+        self.assertTrue(launched)
+        self.assertFalse(bool(second["locked"]))
+        self.assertEqual(str(second["lock_state"]), "busy")
+
+    def test_default_browser_sessions_uses_legacy_port_and_profile_overrides(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             config_path = Path(tmp_dir) / "app_config.json"
             config_path.write_text(
@@ -91,16 +174,26 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch.dict(os.environ, {"RUNTIME_V2_LEGACY_APP_CONFIG": str(config_path.resolve())}, clear=False):
+            with patch.dict(
+                os.environ,
+                {"RUNTIME_V2_LEGACY_APP_CONFIG": str(config_path.resolve())},
+                clear=False,
+            ):
                 sessions = BrowserManager().sessions
 
         session_map = {session.service: session for session in sessions}
         self.assertEqual(session_map["genspark"].port, 9230)
         self.assertEqual(session_map["seaart"].port, 9225)
         self.assertEqual(session_map["canva"].port, 9227)
-        self.assertEqual(session_map["genspark"].profile_dir, str(Path("C:/edge_debug").resolve()))
-        self.assertEqual(session_map["seaart"].profile_dir, str(Path("C:/chrome_seaart").resolve()))
-        self.assertEqual(session_map["canva"].profile_dir, str(Path("C:/chrome_canva").resolve()))
+        self.assertEqual(
+            session_map["genspark"].profile_dir, str(Path("C:/edge_debug").resolve())
+        )
+        self.assertEqual(
+            session_map["seaart"].profile_dir, str(Path("C:/chrome_seaart").resolve())
+        )
+        self.assertEqual(
+            session_map["canva"].profile_dir, str(Path("C:/chrome_canva").resolve())
+        )
         self.assertEqual(
             session_map["geminigen"].profile_dir,
             str(Path("D:/YOUTUBE_AUTO/system/geminigen_chrome_userdata").resolve()),
@@ -125,13 +218,20 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
 
             with patch(
                 "runtime_v2.browser.manager._list_debug_tabs",
-                return_value=[{"url": "https://www.seaart.ai/ko/create/image?id=d4kssode878c7387fae0&model_ver_no=ef24b47a8d618127c9342fd0635aedb9", "title": "Seaart"}],
+                return_value=[
+                    {
+                        "url": "https://www.seaart.ai/ko/create/image?id=d4kssode878c7387fae0&model_ver_no=ef24b47a8d618127c9342fd0635aedb9",
+                        "title": "Seaart",
+                    }
+                ],
             ):
                 ready = _refresh_session_ready_marker(session)
             self.assertTrue(ready)
             self.assertTrue((profile_dir / "session_ready.json").exists())
 
-    def test_manual_login_open_marks_session_ready_after_expected_tab_detected(self) -> None:
+    def test_manual_login_open_marks_session_ready_after_expected_tab_detected(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             session = BrowserSession(
                 service="seaart",
@@ -143,7 +243,9 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             )
             manager = BrowserManager(sessions=[session])
 
-            with patch("runtime_v2.browser.manager._launch_debug_browser", return_value=True):
+            with patch(
+                "runtime_v2.browser.manager._launch_debug_browser", return_value=True
+            ):
                 result = open_browser_for_login("seaart", manager=manager)
 
         self.assertEqual(result["service"], "seaart")
@@ -167,7 +269,12 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
 
             with patch(
                 "runtime_v2.browser.manager._list_debug_tabs",
-                return_value=[{"url": "https://www.canva.com/ko_kr/login/?redirect=%2Fdesign%2FDAHAnm1uUBA%2F-FWB5gw_ir1U7Ls0ZHF9Ig%2Fedit", "title": "Canva login"}],
+                return_value=[
+                    {
+                        "url": "https://www.canva.com/ko_kr/login/?redirect=%2Fdesign%2FDAHAnm1uUBA%2F-FWB5gw_ir1U7Ls0ZHF9Ig%2Fedit",
+                        "title": "Canva login",
+                    }
+                ],
             ):
                 ready = _refresh_session_ready_marker(session)
             self.assertFalse(ready)
@@ -190,14 +297,18 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
 
             with patch(
                 "runtime_v2.browser.manager._list_debug_tabs",
-                return_value=[{"url": "https://chatgpt.com/auth/login", "title": "ChatGPT login"}],
+                return_value=[
+                    {"url": "https://chatgpt.com/auth/login", "title": "ChatGPT login"}
+                ],
             ):
                 ready = _refresh_session_ready_marker(session)
 
         self.assertFalse(ready)
         self.assertFalse(ready_file.exists())
 
-    def test_browser_health_marks_login_page_as_login_required_without_restart(self) -> None:
+    def test_browser_health_marks_login_page_as_login_required_without_restart(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             profile_dir = Path(tmp_dir) / "genspark-primary"
             profile_dir.mkdir(parents=True, exist_ok=True)
@@ -214,12 +325,19 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             supervisor = BrowserSupervisor(manager)
 
             with (
-                patch("runtime_v2.browser.manager._probe_local_port", return_value=True),
+                patch(
+                    "runtime_v2.browser.manager._probe_local_port", return_value=True
+                ),
                 patch(
                     "runtime_v2.browser.manager._list_debug_tabs",
-                    return_value=[{"url": "https://www.genspark.ai/login", "title": "login"}],
+                    return_value=[
+                        {"url": "https://www.genspark.ai/login", "title": "login"}
+                    ],
                 ),
-                patch("runtime_v2.browser.manager._launch_debug_browser", return_value=True) as launch_browser,
+                patch(
+                    "runtime_v2.browser.manager._launch_debug_browser",
+                    return_value=True,
+                ) as launch_browser,
             ):
                 result = supervisor.tick(
                     registry_file=Path(tmp_dir) / "browser_session_registry.json",
@@ -251,10 +369,14 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             events_file = Path(tmp_dir) / "control_plane_events.jsonl"
 
             with (
-                patch("runtime_v2.browser.manager._probe_local_port", return_value=True),
+                patch(
+                    "runtime_v2.browser.manager._probe_local_port", return_value=True
+                ),
                 patch(
                     "runtime_v2.browser.manager._list_debug_tabs",
-                    return_value=[{"url": "https://www.genspark.ai/login", "title": "login"}],
+                    return_value=[
+                        {"url": "https://www.genspark.ai/login", "title": "login"}
+                    ],
                 ),
             ):
                 _ = supervisor.tick(
@@ -267,7 +389,11 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                     cooldown_sec=0,
                 )
 
-            event_lines = [line for line in events_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+            event_lines = [
+                line
+                for line in events_file.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
             latest = cast(dict[object, object], json.loads(event_lines[-1]))
 
         self.assertEqual(str(latest["event"]), "browser_supervisor_status")
@@ -307,8 +433,17 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                     cooldown_sec=0,
                 )
 
-            event_lines = [json.loads(line) for line in events_file.read_text(encoding="utf-8").splitlines() if line.strip()]
-            recovery_events = [cast(dict[object, object], entry) for entry in event_lines if isinstance(entry, dict) and entry.get("event") == "browser_supervisor_recovery"]
+            event_lines = [
+                json.loads(line)
+                for line in events_file.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            recovery_events = [
+                cast(dict[object, object], entry)
+                for entry in event_lines
+                if isinstance(entry, dict)
+                and entry.get("event") == "browser_supervisor_recovery"
+            ]
 
         self.assertEqual(len(recovery_events), 1)
         self.assertEqual(str(recovery_events[0]["status"]), "stale_lock_recovered")
@@ -335,7 +470,11 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             supervisor = BrowserSupervisor(manager)
             events_file = Path(tmp_dir) / "control_plane_events.jsonl"
 
-            with patch.object(manager, "session_snapshots", return_value=[session.to_dict(healthy=False)]):
+            with patch.object(
+                manager,
+                "session_snapshots",
+                return_value=[session.to_dict(healthy=False)],
+            ):
                 _ = supervisor.tick(
                     registry_file=Path(tmp_dir) / "browser_session_registry.json",
                     health_file=Path(tmp_dir) / "browser_health.json",
@@ -346,8 +485,17 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                     cooldown_sec=60,
                 )
 
-            event_lines = [json.loads(line) for line in events_file.read_text(encoding="utf-8").splitlines() if line.strip()]
-            escalation_events = [cast(dict[object, object], entry) for entry in event_lines if isinstance(entry, dict) and entry.get("event") == "browser_supervisor_escalation"]
+            event_lines = [
+                json.loads(line)
+                for line in events_file.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            escalation_events = [
+                cast(dict[object, object], entry)
+                for entry in event_lines
+                if isinstance(entry, dict)
+                and entry.get("event") == "browser_supervisor_escalation"
+            ]
 
         self.assertEqual(len(escalation_events), 1)
         self.assertEqual(str(escalation_events[0]["status"]), "busy_lock")
@@ -357,8 +505,12 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
     def test_same_profile_is_not_opened_by_two_browser_processes(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             profile_dir = str((Path(tmp_dir) / "chrome_seaart").resolve())
-            first = acquire_profile_lock(profile_dir, service="seaart", session_id="primary", port=9225)
-            second = acquire_profile_lock(profile_dir, service="canva", session_id="primary", port=9227)
+            first = acquire_profile_lock(
+                profile_dir, service="seaart", session_id="primary", port=9225
+            )
+            second = acquire_profile_lock(
+                profile_dir, service="canva", session_id="primary", port=9227
+            )
 
         self.assertTrue(bool(first["locked"]))
         self.assertFalse(bool(second["locked"]))
@@ -366,31 +518,59 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
     def test_same_service_lock_is_not_reused_by_different_process(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             profile_dir = Path(tmp_dir) / "chatgpt-primary"
-            first = acquire_profile_lock(str(profile_dir.resolve()), service="chatgpt", session_id="primary", port=9222)
+            first = acquire_profile_lock(
+                str(profile_dir.resolve()),
+                service="chatgpt",
+                session_id="primary",
+                port=9222,
+            )
             lock_file = profile_dir / ".runtime_v2.profile.lock"
             lock_payload = json.loads(lock_file.read_text(encoding="utf-8"))
             lock_payload["pid"] = 999999
-            _ = lock_file.write_text(json.dumps(lock_payload, ensure_ascii=True), encoding="utf-8")
+            _ = lock_file.write_text(
+                json.dumps(lock_payload, ensure_ascii=True), encoding="utf-8"
+            )
 
-            second = acquire_profile_lock(str(profile_dir.resolve()), service="chatgpt", session_id="primary", port=9222)
+            second = acquire_profile_lock(
+                str(profile_dir.resolve()),
+                service="chatgpt",
+                session_id="primary",
+                port=9222,
+            )
 
         self.assertTrue(bool(first["locked"]))
         self.assertFalse(bool(second["locked"]))
 
-    def test_stale_profile_lock_is_recovered_when_owner_dead_and_port_closed(self) -> None:
+    def test_stale_profile_lock_is_recovered_when_owner_dead_and_port_closed(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             profile_dir = Path(tmp_dir) / "chatgpt-primary"
-            first = acquire_profile_lock(str(profile_dir.resolve()), service="chatgpt", session_id="primary", port=9222)
+            first = acquire_profile_lock(
+                str(profile_dir.resolve()),
+                service="chatgpt",
+                session_id="primary",
+                port=9222,
+            )
             lock_file = profile_dir / ".runtime_v2.profile.lock"
             lock_payload = json.loads(lock_file.read_text(encoding="utf-8"))
             lock_payload["pid"] = 999999
-            _ = lock_file.write_text(json.dumps(lock_payload, ensure_ascii=True), encoding="utf-8")
+            _ = lock_file.write_text(
+                json.dumps(lock_payload, ensure_ascii=True), encoding="utf-8"
+            )
 
             with (
                 patch("runtime_v2.browser.manager._pid_is_running", return_value=False),
-                patch("runtime_v2.browser.manager._probe_local_port", return_value=False),
+                patch(
+                    "runtime_v2.browser.manager._probe_local_port", return_value=False
+                ),
             ):
-                second = acquire_profile_lock(str(profile_dir.resolve()), service="chatgpt", session_id="primary", port=9222)
+                second = acquire_profile_lock(
+                    str(profile_dir.resolve()),
+                    service="chatgpt",
+                    session_id="primary",
+                    port=9222,
+                )
 
         self.assertTrue(bool(first["locked"]))
         self.assertTrue(bool(second["locked"]))
@@ -400,14 +580,26 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
     def test_busy_profile_lock_is_not_recovered_when_owner_still_alive(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             profile_dir = Path(tmp_dir) / "chatgpt-primary"
-            first = acquire_profile_lock(str(profile_dir.resolve()), service="chatgpt", session_id="primary", port=9222)
+            first = acquire_profile_lock(
+                str(profile_dir.resolve()),
+                service="chatgpt",
+                session_id="primary",
+                port=9222,
+            )
             lock_file = profile_dir / ".runtime_v2.profile.lock"
             lock_payload = json.loads(lock_file.read_text(encoding="utf-8"))
             lock_payload["pid"] = 999999
-            _ = lock_file.write_text(json.dumps(lock_payload, ensure_ascii=True), encoding="utf-8")
+            _ = lock_file.write_text(
+                json.dumps(lock_payload, ensure_ascii=True), encoding="utf-8"
+            )
 
             with patch("runtime_v2.browser.manager._pid_is_running", return_value=True):
-                second = acquire_profile_lock(str(profile_dir.resolve()), service="chatgpt", session_id="primary", port=9222)
+                second = acquire_profile_lock(
+                    str(profile_dir.resolve()),
+                    service="chatgpt",
+                    session_id="primary",
+                    port=9222,
+                )
 
         self.assertTrue(bool(first["locked"]))
         self.assertFalse(bool(second["locked"]))
@@ -421,7 +613,12 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             lock_file = profile_dir / ".runtime_v2.profile.lock"
             _ = lock_file.write_text('{"service": "chatgpt"}', encoding="utf-8")
 
-            second = acquire_profile_lock(str(profile_dir.resolve()), service="chatgpt", session_id="primary", port=9222)
+            second = acquire_profile_lock(
+                str(profile_dir.resolve()),
+                service="chatgpt",
+                session_id="primary",
+                port=9222,
+            )
 
         self.assertFalse(bool(second["locked"]))
         self.assertEqual(str(second["lock_state"]), "unknown")
@@ -446,7 +643,9 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             manager.running = True
 
             with (
-                patch("runtime_v2.browser.manager._probe_local_port", return_value=True),
+                patch(
+                    "runtime_v2.browser.manager._probe_local_port", return_value=True
+                ),
                 patch("runtime_v2.browser.manager._list_debug_tabs", return_value=[]),
             ):
                 snapshots = manager.session_snapshots()
@@ -466,7 +665,10 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             ]
         }
         with patch("runtime_v2.supervisor.BrowserManager.start"):
-            with patch("runtime_v2.supervisor.BrowserSupervisor.tick", return_value=browser_runtime):
+            with patch(
+                "runtime_v2.supervisor.BrowserSupervisor.tick",
+                return_value=browser_runtime,
+            ):
                 result = run_once(
                     owner="runtime_v2",
                     run_id="chatgpt-run-login-required",
@@ -490,7 +692,10 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             ]
         }
         with patch("runtime_v2.supervisor.BrowserManager.start"):
-            with patch("runtime_v2.supervisor.BrowserSupervisor.tick", return_value=browser_runtime):
+            with patch(
+                "runtime_v2.supervisor.BrowserSupervisor.tick",
+                return_value=browser_runtime,
+            ):
                 result = run_once(
                     owner="runtime_v2",
                     run_id="chatgpt-run-browser-unhealthy",
@@ -530,13 +735,20 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             registry_path = Path(tmp_dir) / "browser_session_registry.json"
             health_path = Path(tmp_dir) / "browser_health.json"
-            _ = registry_path.write_text(json.dumps(payload, ensure_ascii=True), encoding="utf-8")
+            _ = registry_path.write_text(
+                json.dumps(payload, ensure_ascii=True), encoding="utf-8"
+            )
             manager = BrowserManager()
             default_map = {session.service: session for session in manager.sessions}
             supervisor = BrowserSupervisor(manager)
             with (
-                patch("runtime_v2.browser.manager._probe_local_port", return_value=False),
-                patch("runtime_v2.browser.manager._launch_debug_browser", return_value=False),
+                patch(
+                    "runtime_v2.browser.manager._probe_local_port", return_value=False
+                ),
+                patch(
+                    "runtime_v2.browser.manager._launch_debug_browser",
+                    return_value=False,
+                ),
             ):
                 result = supervisor.tick(
                     registry_file=registry_path,
@@ -547,7 +759,9 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
 
         sessions = cast(list[dict[object, object]], result["sessions"])
         session_map = {str(item["service"]): item for item in sessions}
-        self.assertEqual(int(str(session_map["seaart"]["port"])), default_map["seaart"].port)
+        self.assertEqual(
+            int(str(session_map["seaart"]["port"])), default_map["seaart"].port
+        )
         self.assertEqual(
             str(session_map["seaart"]["profile_dir"]),
             default_map["seaart"].profile_dir,
@@ -560,7 +774,9 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                 group="llm",
                 session_id="primary",
                 port=9222,
-                profile_dir=str((Path("runtime_v2") / "sessions" / "chatgpt-primary").resolve()),
+                profile_dir=str(
+                    (Path("runtime_v2") / "sessions" / "chatgpt-primary").resolve()
+                ),
                 status="running",
             ),
             BrowserSession(
@@ -568,7 +784,9 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                 group="image",
                 session_id="primary",
                 port=9225,
-                profile_dir=str((Path("runtime_v2") / "sessions" / "seaart-primary").resolve()),
+                profile_dir=str(
+                    (Path("runtime_v2") / "sessions" / "seaart-primary").resolve()
+                ),
                 status="running",
             ),
         ]
@@ -580,16 +798,32 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             for session in sessions:
                 profile_dir = Path(session.profile_dir)
                 profile_dir.mkdir(parents=True, exist_ok=True)
-                _ = (profile_dir / "session_ready.json").write_text('{"ready": true}', encoding="utf-8")
+                _ = (profile_dir / "session_ready.json").write_text(
+                    '{"ready": true}', encoding="utf-8"
+                )
+
             def debug_tabs_for(session: BrowserSession) -> list[dict[str, str]]:
                 if session.service == "chatgpt":
                     return [{"url": "https://chatgpt.com/", "title": "ChatGPT"}]
-                return [{"url": "https://www.seaart.ai/ko/create/image?id=d4kssode878c7387fae0&model_ver_no=ef24b47a8d618127c9342fd0635aedb9", "title": "SeaArt"}]
+                return [
+                    {
+                        "url": "https://www.seaart.ai/ko/create/image?id=d4kssode878c7387fae0&model_ver_no=ef24b47a8d618127c9342fd0635aedb9",
+                        "title": "SeaArt",
+                    }
+                ]
 
             with (
-                patch("runtime_v2.browser.manager._probe_local_port", return_value=True),
-                patch("runtime_v2.browser.manager._launch_debug_browser", return_value=True),
-                patch("runtime_v2.browser.manager._list_debug_tabs", side_effect=debug_tabs_for),
+                patch(
+                    "runtime_v2.browser.manager._probe_local_port", return_value=True
+                ),
+                patch(
+                    "runtime_v2.browser.manager._launch_debug_browser",
+                    return_value=True,
+                ),
+                patch(
+                    "runtime_v2.browser.manager._list_debug_tabs",
+                    side_effect=debug_tabs_for,
+                ),
             ):
                 result = supervisor.tick(
                     registry_file=root / "browser_session_registry.json",
@@ -638,15 +872,21 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as tmp_dir:
             registry_path = Path(tmp_dir) / "browser_session_registry.json"
-            _ = registry_path.write_text(json.dumps(payload, ensure_ascii=True), encoding="utf-8")
+            _ = registry_path.write_text(
+                json.dumps(payload, ensure_ascii=True), encoding="utf-8"
+            )
             loaded = load_browser_registry(registry_path)
 
         self.assertEqual(len(loaded), 1)
         self.assertTrue(Path(loaded[0].profile_dir).is_absolute())
 
-    def test_stage5_latest_run_has_interpretable_failure_or_success_evidence(self) -> None:
+    def test_stage5_latest_run_has_interpretable_failure_or_success_evidence(
+        self,
+    ) -> None:
         metadata = load_latest_result_metadata()
-        self.assertIn(str(metadata["code"]), {"OK", "GPT_FLOOR_FAIL", "BROWSER_UNHEALTHY"})
+        self.assertIn(
+            str(metadata["code"]), {"OK", "GPT_FLOOR_FAIL", "BROWSER_UNHEALTHY"}
+        )
 
 
 if __name__ == "__main__":
