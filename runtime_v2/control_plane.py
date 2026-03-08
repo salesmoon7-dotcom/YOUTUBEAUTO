@@ -1373,14 +1373,25 @@ def _run_worker(
             run_id=str(job.payload.get("run_id", job.job_id)),
         )
         return result
-    result = run_qwen3_job(job, artifact_root=artifact_root)
-    _ = update_worker_state(
-        resolved_registry_file,
-        workload=job.workload,
-        state="idle",
-        run_id=str(job.payload.get("run_id", job.job_id)),
-    )
-    return result
+    if job.workload == "qwen3_tts":
+        result = run_qwen3_job(job, artifact_root=artifact_root)
+        _ = update_worker_state(
+            resolved_registry_file,
+            workload=job.workload,
+            state="idle",
+            run_id=str(job.payload.get("run_id", job.job_id)),
+        )
+        return result
+    raise ValueError(f"unsupported_workload:{job.workload}")
+
+
+def run_worker(
+    job: JobContract,
+    artifact_root: Path | None = None,
+    *,
+    registry_file: Path | None = None,
+) -> dict[str, object]:
+    return _run_worker(job, artifact_root, registry_file=registry_file)
 
 
 def _run_mock_chain_worker(job: JobContract, artifact_root: Path) -> dict[str, object]:
