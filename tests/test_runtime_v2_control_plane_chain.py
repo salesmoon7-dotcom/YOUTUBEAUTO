@@ -405,6 +405,148 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertEqual(str(job_payload["status"]), "queued")
         self.assertEqual(int(cast(int, job_payload["attempts"])), 0)
 
+    def test_control_plane_retries_browser_unhealthy_runtime_preflight_with_backoff(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig(
+                lease_file=root / "health" / "gpu_scheduler_health.json",
+                lock_root=root / "locks",
+                gui_status_file=root / "health" / "gui_status.json",
+                browser_health_file=root / "health" / "browser_health.json",
+                browser_registry_file=root / "health" / "browser_session_registry.json",
+                gpt_status_file=root / "health" / "gpt_status.json",
+                control_plane_events_file=root
+                / "evidence"
+                / "control_plane_events.jsonl",
+                queue_store_file=root / "state" / "job_queue.json",
+                feeder_state_file=root / "state" / "feeder_state.json",
+                artifact_root=root / "artifacts",
+                input_root=root / "inbox",
+                result_router_file=root / "evidence" / "result.json",
+                debug_log_root=root / "logs",
+            )
+            seed_control_job(
+                JobContract(
+                    job_id="chatgpt-unhealthy-job",
+                    workload="chatgpt",
+                    checkpoint_key="seed:chatgpt-unhealthy-job",
+                    payload={
+                        "run_id": "chatgpt-run-unhealthy",
+                        "topic_spec": {"topic": "unhealthy"},
+                    },
+                ),
+                config=config,
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={"status": "failed", "code": "BROWSER_UNHEALTHY"},
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2", config=config, run_id="control-run-unhealthy"
+                )
+
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            job_payload = next(
+                item
+                for item in queue_items
+                if str(item["job_id"]) == "chatgpt-unhealthy-job"
+            )
+            latest_result = cast(
+                dict[str, object],
+                json.loads(config.result_router_file.read_text(encoding="utf-8")),
+            )
+            latest_metadata = cast(dict[str, object], latest_result["metadata"])
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "BROWSER_UNHEALTHY")
+        self.assertEqual(str(job_payload["status"]), "retry")
+        self.assertEqual(int(cast(int, job_payload["attempts"])), 1)
+        self.assertGreater(float(cast(float, latest_metadata["backoff_sec"])), 0.0)
+        self.assertEqual(str(latest_metadata["worker_error_code"]), "BROWSER_UNHEALTHY")
+        self.assertEqual(str(latest_metadata["completion_state"]), "failed")
+
+    def test_control_plane_keeps_gpt_floor_failure_blocked_without_consuming_attempt(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig(
+                lease_file=root / "health" / "gpu_scheduler_health.json",
+                lock_root=root / "locks",
+                gui_status_file=root / "health" / "gui_status.json",
+                browser_health_file=root / "health" / "browser_health.json",
+                browser_registry_file=root / "health" / "browser_session_registry.json",
+                gpt_status_file=root / "health" / "gpt_status.json",
+                control_plane_events_file=root
+                / "evidence"
+                / "control_plane_events.jsonl",
+                queue_store_file=root / "state" / "job_queue.json",
+                feeder_state_file=root / "state" / "feeder_state.json",
+                artifact_root=root / "artifacts",
+                input_root=root / "inbox",
+                result_router_file=root / "evidence" / "result.json",
+                debug_log_root=root / "logs",
+            )
+            seed_control_job(
+                JobContract(
+                    job_id="chatgpt-gpt-floor-job",
+                    workload="chatgpt",
+                    checkpoint_key="seed:chatgpt-gpt-floor-job",
+                    payload={
+                        "run_id": "chatgpt-run-gpt-floor",
+                        "topic_spec": {"topic": "gpt-floor"},
+                    },
+                ),
+                config=config,
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={"status": "failed", "code": "GPT_FLOOR_FAIL"},
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2", config=config, run_id="control-run-gpt-floor"
+                )
+
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            job_payload = next(
+                item
+                for item in queue_items
+                if str(item["job_id"]) == "chatgpt-gpt-floor-job"
+            )
+            latest_result = cast(
+                dict[str, object],
+                json.loads(config.result_router_file.read_text(encoding="utf-8")),
+            )
+            latest_metadata = cast(dict[str, object], latest_result["metadata"])
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "GPT_FLOOR_FAIL")
+        self.assertEqual(str(job_payload["status"]), "queued")
+        self.assertEqual(int(cast(int, job_payload["attempts"])), 0)
+        self.assertEqual(float(cast(float, latest_metadata["backoff_sec"])), 0.0)
+        self.assertEqual(str(latest_metadata["worker_error_code"]), "GPT_FLOOR_FAIL")
+        self.assertEqual(str(latest_metadata["completion_state"]), "blocked")
+
     def test_control_plane_side_effect_free_mode_skips_bootstrap_and_gpt_ticks(
         self,
     ) -> None:

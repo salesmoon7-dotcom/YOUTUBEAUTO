@@ -1684,20 +1684,30 @@ def _worker_result_contract(worker_result: dict[str, object]) -> dict[str, objec
 
 
 def _worker_result_from_runtime(runtime_result: dict[str, object]) -> dict[str, object]:
-    worker_result = _mapping_from_obj(runtime_result.get("worker_result", {}))
+    worker_result = _mapping_from_obj(runtime_result.get("worker_result"))
     if worker_result is not None:
         return worker_result
+    runtime_code = str(runtime_result.get("code", "RUNTIME_PRECHECK_FAILED"))
+    completion_state, retryable, worker_status = _runtime_preflight_contract(
+        runtime_code
+    )
     return {
-        "status": "failed",
+        "status": worker_status,
         "stage": "runtime_preflight",
-        "error_code": str(runtime_result.get("code", "RUNTIME_PRECHECK_FAILED")),
-        "retryable": False,
+        "error_code": runtime_code,
+        "retryable": retryable,
         "next_jobs": [],
         "completion": {
-            "state": "blocked",
+            "state": completion_state,
             "final_output": False,
         },
     }
+
+
+def _runtime_preflight_contract(runtime_code: str) -> tuple[str, bool, str]:
+    if runtime_code in {"BROWSER_BLOCKED", "GPU_LEASE_BUSY", "GPT_FLOOR_FAIL"}:
+        return ("blocked", True, "blocked")
+    return ("failed", True, "failed")
 
 
 def _next_jobs_entries(worker_result: dict[str, object]) -> list[object]:
