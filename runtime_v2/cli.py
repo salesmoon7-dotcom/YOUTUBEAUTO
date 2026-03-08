@@ -13,7 +13,8 @@ from uuid import uuid4
 
 from runtime_v2 import exit_codes
 from runtime_v2.bootstrap import ensure_runtime_bootstrap
-from runtime_v2.browser.manager import open_browser_for_login
+from runtime_v2.browser.manager import BrowserManager, open_browser_for_login
+from runtime_v2.browser.supervisor import BrowserSupervisor
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.contracts.job_contract import build_explicit_job_contract
 from runtime_v2.control_plane import run_control_loop_once
@@ -31,6 +32,7 @@ from runtime_v2.debug_log import (
     summarize_runtime_result,
 )
 from runtime_v2.evidence import load_runtime_readiness
+from runtime_v2.gpt_pool_monitor import tick_gpt_status
 from runtime_v2.gui_adapter import build_gui_status_payload
 from runtime_v2.latest_run import write_runtime_snapshot
 from runtime_v2.manager import seed_excel_row
@@ -55,6 +57,8 @@ class CliArgs(argparse.Namespace):
     selftest: bool
     selftest_detached: bool
     selftest_probe_child: bool
+    browser_recover_detached: bool
+    browser_recover_probe_child: bool
     callback_url: str
     callback_mock_out: str
     gui_status_out: str
@@ -64,6 +68,7 @@ class CliArgs(argparse.Namespace):
     selftest_force_gpt_fail: bool
     open_browser_login: str
     readiness_check: bool
+    runtime_root: str
 
     def __init__(self) -> None:
         super().__init__()
@@ -79,6 +84,8 @@ class CliArgs(argparse.Namespace):
         self.selftest = False
         self.selftest_detached = False
         self.selftest_probe_child = False
+        self.browser_recover_detached = False
+        self.browser_recover_probe_child = False
         self.callback_url = ""
         self.callback_mock_out = ""
         self.gui_status_out = "system/runtime_v2/health/gui_status.json"
@@ -88,6 +95,7 @@ class CliArgs(argparse.Namespace):
         self.selftest_force_gpt_fail = False
         self.open_browser_login = ""
         self.readiness_check = False
+        self.runtime_root = ""
 
 
 def exit_code_from_status(code: str) -> int:
@@ -149,6 +157,10 @@ def main() -> int:
     _ = parser.add_argument(
         "--selftest-probe-child", action="store_true", help=argparse.SUPPRESS
     )
+    _ = parser.add_argument("--browser-recover-detached", action="store_true")
+    _ = parser.add_argument(
+        "--browser-recover-probe-child", action="store_true", help=argparse.SUPPRESS
+    )
     _ = parser.add_argument("--callback-url", default="")
     _ = parser.add_argument("--callback-mock-out", default="")
     _ = parser.add_argument(
@@ -160,6 +172,7 @@ def main() -> int:
     _ = parser.add_argument("--selftest-force-gpt-fail", action="store_true")
     _ = parser.add_argument("--open-browser-login", default="")
     _ = parser.add_argument("--readiness-check", action="store_true")
+    _ = parser.add_argument("--runtime-root", default="")
     args = parser.parse_args(namespace=CliArgs())
 
     selected_modes = [
@@ -173,6 +186,8 @@ def main() -> int:
             args.selftest,
             args.selftest_detached,
             args.selftest_probe_child,
+            args.browser_recover_detached,
+            args.browser_recover_probe_child,
             bool(args.open_browser_login.strip()),
             args.readiness_check,
         )
@@ -202,6 +217,9 @@ def main() -> int:
         print(json.dumps(readiness, ensure_ascii=True))
         return exit_code_from_readiness(readiness)
 
+    if args.browser_recover_detached:
+        return _spawn_detached_probe(args, mode="browser_recover")
+
     if args.selftest_detached:
         return _spawn_detached_probe(args, mode="selftest")
     if args.control_once_detached:
@@ -209,12 +227,22 @@ def main() -> int:
 
     if args.selftest or args.selftest_probe_child:
         mode = "selftest"
+    elif args.browser_recover_probe_child:
+        mode = "browser_recover"
     elif args.control_once or args.control_once_probe_child or args.excel_once:
         mode = "control_once"
     else:
         mode = "once"
     run_id = str(uuid4())
     config = _build_runtime_config(args)
+    if args.browser_recover_probe_child:
+        report = _run_browser_recovery_probe(
+            config=config,
+            probe_root=_probe_root_path(args.probe_root),
+            run_id=run_id,
+        )
+        print(final_report(report))
+        return exit_code_from_status(str(report.get("code", "CLI_USAGE")))
     ensure_runtime_bootstrap(config, workload="qwen3_tts", run_id=run_id, mode=mode)
     seed_result: dict[str, object] | None = None
     if args.excel_once:
@@ -497,6 +525,9 @@ def _result_has_final_output(result: dict[str, object]) -> bool:
 
 
 def _build_runtime_config(args: CliArgs) -> RuntimeConfig:
+    runtime_root = _runtime_root_path(args.runtime_root)
+    if runtime_root is not None:
+        return RuntimeConfig.from_root(runtime_root)
     if args.probe_root.strip() and (
         args.selftest_probe_child
         or args.control_once_probe_child
@@ -535,11 +566,13 @@ def _spawn_detached_probe(args: CliArgs, *, mode: str) -> int:
     if mode == "control_once" and args.seed_mock_chain:
         seeded_contract = seed_mock_chain_probe(probe_root / "inbox")
 
-    stdout_path = probe_root / "logs" / "selftest_stdout.log"
-    stderr_path = probe_root / "logs" / "selftest_stderr.log"
-    child_flag = (
-        "--selftest-probe-child" if mode == "selftest" else "--control-once-probe-child"
-    )
+    stdout_path = probe_root / "logs" / f"{mode}_stdout.log"
+    stderr_path = probe_root / "logs" / f"{mode}_stderr.log"
+    child_flag = {
+        "selftest": "--selftest-probe-child",
+        "control_once": "--control-once-probe-child",
+        "browser_recover": "--browser-recover-probe-child",
+    }[mode]
     command = [
         sys.executable,
         "-u",
@@ -557,6 +590,8 @@ def _spawn_detached_probe(args: CliArgs, *, mode: str) -> int:
         command.append("--selftest-force-gpt-fail")
     if mode == "control_once" and args.seed_mock_chain:
         command.append("--seed-mock-chain")
+    if args.runtime_root.strip():
+        command.extend(["--runtime-root", args.runtime_root.strip()])
 
     creationflags = 0
     creationflags |= int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
@@ -598,6 +633,53 @@ def _probe_root_path(raw_probe_root: str) -> Path:
     if probe_root:
         return Path(probe_root)
     return Path("system/runtime_v2_probe") / str(uuid4())
+
+
+def _runtime_root_path(raw_runtime_root: str) -> Path | None:
+    runtime_root = raw_runtime_root.strip()
+    if not runtime_root:
+        return None
+    return Path(runtime_root)
+
+
+def _runtime_root_for_config(config: RuntimeConfig) -> Path:
+    return config.result_router_file.parent.parent.resolve()
+
+
+def _run_browser_recovery_probe(
+    *, config: RuntimeConfig, probe_root: Path, run_id: str
+) -> dict[str, object]:
+    browser_runtime = BrowserSupervisor(BrowserManager()).tick(
+        registry_file=config.browser_registry_file,
+        health_file=config.browser_health_file,
+        events_file=config.control_plane_events_file,
+        run_id=run_id,
+        recover_unhealthy=True,
+        restart_threshold=2,
+        cooldown_sec=60,
+    )
+    gpt_status = tick_gpt_status(config.gpt_status_file, config)
+    final_summary_raw = browser_runtime.get("final_summary", {})
+    final_summary = (
+        cast(dict[object, object], final_summary_raw)
+        if isinstance(final_summary_raw, dict)
+        else {}
+    )
+    all_healthy = bool(final_summary.get("all_healthy", False))
+    report = {
+        "run_id": run_id,
+        "mode": "browser_recover",
+        "status": "ok" if all_healthy else "blocked",
+        "code": "OK" if all_healthy else "BROWSER_UNHEALTHY",
+        "exit_code": 0 if all_healthy else exit_codes.BROWSER_UNHEALTHY,
+        "runtime_root": str(_runtime_root_for_config(config)),
+        "restarted_services": browser_runtime.get("restarted_services", []),
+        "initial_summary": browser_runtime.get("initial_summary", {}),
+        "final_summary": final_summary,
+        "gpt_status": gpt_status,
+    }
+    _ = _write_probe_result(probe_root, report)
+    return report
 
 
 def _write_probe_result(probe_root: Path, payload: dict[str, object]) -> Path:
