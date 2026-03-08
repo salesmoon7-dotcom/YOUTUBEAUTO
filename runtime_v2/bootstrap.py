@@ -90,15 +90,26 @@ def ensure_runtime_bootstrap(
             ),
             config.gui_status_file,
         )
-    update_latest_run_pointers(
-        config,
-        run_id=run_id,
-        mode=mode,
-        status="idle",
-        code="BOOTSTRAPPED",
-        debug_log=str(config.debug_log_root / f"{run_id}.jsonl"),
-        write_completed=True,
-    )
+    if _read_json(config.latest_active_run_file) is None:
+        update_latest_run_pointers(
+            config,
+            run_id=run_id,
+            mode=mode,
+            status="idle",
+            code="BOOTSTRAPPED",
+            debug_log=str(config.debug_log_root / f"{run_id}.jsonl"),
+            write_completed=_read_json(config.latest_completed_run_file) is None,
+        )
+    elif _read_json(config.latest_completed_run_file) is None:
+        update_latest_run_pointers(
+            config,
+            run_id=run_id,
+            mode=mode,
+            status="idle",
+            code="BOOTSTRAPPED",
+            debug_log=str(config.debug_log_root / f"{run_id}.jsonl"),
+            write_completed=True,
+        )
 
 
 def _ensure_runtime_directories(config: RuntimeConfig) -> None:

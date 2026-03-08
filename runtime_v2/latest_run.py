@@ -100,6 +100,8 @@ def load_joined_latest_run(
 
     out_of_sync_reasons: list[str] = []
     expected_run_id = "" if pointer is None else str(pointer.get("run_id", ""))
+    if pointer is not None and not expected_run_id:
+        out_of_sync_reasons.append("pointer_run_id_missing")
     if expected_run_id:
         if gui_payload is None or str(gui_payload.get("run_id", "")) != expected_run_id:
             out_of_sync_reasons.append("gui_run_id_mismatch")

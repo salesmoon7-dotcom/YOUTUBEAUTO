@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Literal, cast
 
@@ -86,7 +87,7 @@ def load_runtime_readiness(
             )
             gpt_status = {}
         ok_count = _to_int(gpt_status.get("ok_count", 0))
-        min_ok = _to_int(gpt_status.get("min_ok", 1))
+        min_ok = max(1, _to_int(gpt_status.get("min_ok", 1), default=1))
         if ok_count < min_ok:
             blockers.append(
                 {
@@ -117,6 +118,17 @@ def load_runtime_readiness(
                 "trace_path": str(pointer_file),
             }
         )
+    else:
+        pointer_payload = _dict_from_object(latest_join.get("pointer"))
+        if not str(pointer_payload.get("run_id", "")).strip():
+            blockers.append(
+                {
+                    "axis": "latest_run",
+                    "code": "LATEST_RUN_POINTER_INVALID",
+                    "reason": "latest_pointer_run_id_missing",
+                    "trace_path": str(pointer_file),
+                }
+            )
 
     if bool(latest_join.get("out_of_sync", False)):
         reasons_obj = latest_join.get("reasons", [])
@@ -303,7 +315,12 @@ def _to_int(value: object, default: int = 0) -> int:
         return int(value)
     if isinstance(value, (int, float, str)):
         try:
-            return int(value)
+            numeric = float(value)
         except ValueError:
             return default
+        except OverflowError:
+            return default
+        if not math.isfinite(numeric):
+            return default
+        return int(numeric)
     return default

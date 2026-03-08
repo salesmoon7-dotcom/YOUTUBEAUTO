@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import cast
 
 from runtime_v2.config import RuntimeConfig
+from runtime_v2.bootstrap import ensure_runtime_bootstrap
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
 from runtime_v2.latest_run import load_joined_latest_run
 
@@ -161,6 +162,121 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
         self.assertTrue(bool(latest_join["out_of_sync"]))
         reasons = cast(list[object], latest_join["reasons"])
         self.assertIn("gui_run_id_mismatch", [str(reason) for reason in reasons])
+
+    def test_latest_join_flags_out_of_sync_when_pointer_run_id_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _latest_run_config(root)
+            config.gui_status_file.parent.mkdir(parents=True, exist_ok=True)
+            config.result_router_file.parent.mkdir(parents=True, exist_ok=True)
+            config.control_plane_events_file.parent.mkdir(parents=True, exist_ok=True)
+            config.latest_completed_run_file.parent.mkdir(parents=True, exist_ok=True)
+            _ = config.control_plane_events_file.write_text("", encoding="utf-8")
+            _ = write_gui_status(
+                build_gui_status_payload(
+                    {"status": "ok", "code": "OK"},
+                    run_id="gui-run",
+                    mode="control_loop",
+                    stage="finished",
+                    exit_code=0,
+                ),
+                config.gui_status_file,
+            )
+            _ = config.result_router_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "checked_at": 1.0,
+                        "artifacts": [],
+                        "metadata": {"run_id": "result-run", "code": "OK"},
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            _ = config.latest_completed_run_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "checked_at": 1.0,
+                        "run_id": "",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+
+            latest_join = load_joined_latest_run(config, completed=True)
+
+        self.assertTrue(bool(latest_join["out_of_sync"]))
+        reasons = cast(list[object], latest_join["reasons"])
+        self.assertIn("pointer_run_id_missing", [str(reason) for reason in reasons])
+
+    def test_bootstrap_does_not_overwrite_existing_latest_completed_pointer(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _latest_run_config(root)
+            config.gui_status_file.parent.mkdir(parents=True, exist_ok=True)
+            config.result_router_file.parent.mkdir(parents=True, exist_ok=True)
+            config.control_plane_events_file.parent.mkdir(parents=True, exist_ok=True)
+            config.latest_completed_run_file.parent.mkdir(parents=True, exist_ok=True)
+            _ = config.control_plane_events_file.write_text("", encoding="utf-8")
+            _ = write_gui_status(
+                build_gui_status_payload(
+                    {"status": "failed", "code": "legacy_executor_failed"},
+                    run_id="existing-run",
+                    mode="control_loop",
+                    stage="finished",
+                    exit_code=1,
+                ),
+                config.gui_status_file,
+            )
+            _ = config.result_router_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "checked_at": 1.0,
+                        "artifacts": [],
+                        "metadata": {
+                            "run_id": "existing-run",
+                            "code": "legacy_executor_failed",
+                        },
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            _ = config.latest_completed_run_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "checked_at": 1.0,
+                        "run_id": "existing-run",
+                        "mode": "control_loop",
+                        "status": "failed",
+                        "code": "legacy_executor_failed",
+                        "gui_status_path": str(config.gui_status_file),
+                        "result_path": str(config.result_router_file),
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+
+            ensure_runtime_bootstrap(
+                config, run_id="control-bootstrap", mode="control_loop"
+            )
+            latest_join = load_joined_latest_run(config, completed=True)
+
+        pointer = cast(dict[object, object], latest_join["pointer"])
+        self.assertEqual(str(pointer["run_id"]), "existing-run")
+        self.assertFalse(bool(latest_join["out_of_sync"]))
 
 
 if __name__ == "__main__":
