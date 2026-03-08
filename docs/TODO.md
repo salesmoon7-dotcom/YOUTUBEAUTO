@@ -2,7 +2,7 @@
 
 - 현재 canonical plan 기준의 1순위 remediation은 모두 닫혔습니다.
 - `1행 smoke` readiness 재판정은 완료되었습니다.
-  - detached browser recovery run `system/runtime_v2_probe/browser-recover-run-01/probe_result.json`이 `code=OK`로 종료됐습니다.
+  - detached browser recovery run `system/runtime_v2_probe/browser-recover-run-02/probe_result.json`이 `code=OK`로 종료됐습니다.
   - `python -m runtime_v2.cli --readiness-check` 기준 `ready=true`, `code=OK`를 확인했습니다.
 - 다음 active unit: `docs/plans/2026-03-09-agent-browser-closed-loop-development-plan.md` 후속 운영 정리
   - 현재 최소 closed loop(`dev_plan -> dev_implement -> agent_browser_verify -> dev_replan`)와 safe-tier fail-closed, probe-root smoke는 구현됨
