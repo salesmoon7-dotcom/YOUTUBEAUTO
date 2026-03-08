@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
+from time import time
 from typing import Literal, cast
 
 from runtime_v2.config import RuntimeConfig
@@ -86,6 +87,23 @@ def load_runtime_readiness(
                 }
             )
             gpt_status = {}
+        gpt_checked_at = _to_float(gpt_status.get("checked_at"))
+        stale_sec = max(1, int(runtime_config.running_stale_sec))
+        now = round(time(), 3)
+        gpt_status_is_stale = True
+        if gpt_checked_at is not None:
+            gpt_status_is_stale = now - gpt_checked_at > stale_sec
+        if gpt_checked_at is None or gpt_status_is_stale:
+            blockers.append(
+                {
+                    "axis": "gpt_floor",
+                    "code": "GPT_STATUS_STALE",
+                    "reason": "gpt_status_stale",
+                    "checked_at": gpt_checked_at,
+                    "stale_sec": stale_sec,
+                    "trace_path": str(runtime_config.gpt_status_file),
+                }
+            )
         ok_count = _to_int(gpt_status.get("ok_count", 0))
         min_ok = max(1, _to_int(gpt_status.get("min_ok", 1), default=1))
         if ok_count < min_ok:
@@ -324,3 +342,21 @@ def _to_int(value: object, default: int = 0) -> int:
             return default
         return int(numeric)
     return default
+
+
+def _to_float(value: object) -> float | None:
+    if isinstance(value, bool):
+        numeric = float(value)
+        return numeric if math.isfinite(numeric) else None
+    if isinstance(value, (int, float)):
+        numeric = float(value)
+        return numeric if math.isfinite(numeric) else None
+    if isinstance(value, str):
+        try:
+            numeric = float(value)
+        except ValueError:
+            return None
+        except OverflowError:
+            return None
+        return numeric if math.isfinite(numeric) else None
+    return None
