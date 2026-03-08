@@ -30,6 +30,7 @@ from runtime_v2.debug_log import (
     summarize_cli_report,
     summarize_runtime_result,
 )
+from runtime_v2.evidence import load_runtime_readiness
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
 from runtime_v2.latest_run import update_latest_run_pointers
 from runtime_v2.manager import seed_excel_row
@@ -63,6 +64,7 @@ class CliArgs(argparse.Namespace):
     selftest_force_browser_fail: bool
     selftest_force_gpt_fail: bool
     open_browser_login: str
+    readiness_check: bool
 
     def __init__(self) -> None:
         super().__init__()
@@ -86,6 +88,7 @@ class CliArgs(argparse.Namespace):
         self.selftest_force_browser_fail = False
         self.selftest_force_gpt_fail = False
         self.open_browser_login = ""
+        self.readiness_check = False
 
 
 def exit_code_from_status(code: str) -> int:
@@ -103,6 +106,30 @@ def exit_code_from_status(code: str) -> int:
         "CALLBACK_FAIL": exit_codes.CALLBACK_FAIL,
     }
     return mapping.get(code, exit_codes.CLI_USAGE)
+
+
+def exit_code_from_readiness(readiness: dict[str, object]) -> int:
+    if bool(readiness.get("ready", False)):
+        return exit_codes.SUCCESS
+    blockers = readiness.get("blockers")
+    if isinstance(blockers, list):
+        typed_blockers = cast(list[object], blockers)
+        for blocker_obj in typed_blockers:
+            blocker = (
+                cast(dict[object, object], blocker_obj)
+                if isinstance(blocker_obj, dict)
+                else None
+            )
+            if not isinstance(blocker, dict):
+                continue
+            mapped = exit_code_from_status(str(blocker.get("code", "CLI_USAGE")))
+            if mapped != exit_codes.CLI_USAGE:
+                return mapped
+    primary_code = str(readiness.get("code", "CLI_USAGE"))
+    mapped_primary = exit_code_from_status(primary_code)
+    if mapped_primary != exit_codes.CLI_USAGE:
+        return mapped_primary
+    return exit_codes.BROWSER_BLOCKED
 
 
 def main() -> int:
@@ -133,6 +160,7 @@ def main() -> int:
     _ = parser.add_argument("--selftest-force-browser-fail", action="store_true")
     _ = parser.add_argument("--selftest-force-gpt-fail", action="store_true")
     _ = parser.add_argument("--open-browser-login", default="")
+    _ = parser.add_argument("--readiness-check", action="store_true")
     args = parser.parse_args(namespace=CliArgs())
 
     selected_modes = [
@@ -147,6 +175,7 @@ def main() -> int:
             args.selftest_detached,
             args.selftest_probe_child,
             bool(args.open_browser_login.strip()),
+            args.readiness_check,
         )
         if flag
     ]
@@ -168,6 +197,11 @@ def main() -> int:
         payload = open_browser_for_login(args.open_browser_login.strip())
         print(json.dumps(payload, ensure_ascii=True))
         return exit_codes.SUCCESS
+    if args.readiness_check:
+        config = _build_runtime_config(args)
+        readiness = load_runtime_readiness(config, completed=True)
+        print(json.dumps(readiness, ensure_ascii=True))
+        return exit_code_from_readiness(readiness)
 
     if args.selftest_detached:
         return _spawn_detached_probe(args, mode="selftest")
@@ -468,26 +502,12 @@ def _result_has_final_output(result: dict[str, object]) -> bool:
 
 def _build_runtime_config(args: CliArgs) -> RuntimeConfig:
     if args.probe_root.strip() and (
-        args.selftest_probe_child or args.control_once_probe_child
+        args.selftest_probe_child
+        or args.control_once_probe_child
+        or args.readiness_check
     ):
         root = _probe_root_path(args.probe_root)
-        return RuntimeConfig(
-            lease_file=root / "health" / "gpu_scheduler_health.json",
-            lock_root=root / "locks",
-            gui_status_file=root / "health" / "gui_status.json",
-            browser_health_file=root / "health" / "browser_health.json",
-            browser_registry_file=root / "health" / "browser_session_registry.json",
-            gpt_status_file=root / "health" / "gpt_status.json",
-            control_plane_events_file=root / "evidence" / "control_plane_events.jsonl",
-            queue_store_file=root / "state" / "job_queue.json",
-            feeder_state_file=root / "state" / "feeder_state.json",
-            artifact_root=root / "artifacts",
-            input_root=root / "inbox",
-            result_router_file=root / "evidence" / "result.json",
-            latest_active_run_file=root / "latest_active_run.json",
-            latest_completed_run_file=root / "latest_completed_run.json",
-            debug_log_root=root / "logs",
-        )
+        return RuntimeConfig.from_root(root)
     return RuntimeConfig(
         lease_file=Path("system/runtime_v2/health/gpu_scheduler_health.json"),
         gui_status_file=Path(args.gui_status_out),

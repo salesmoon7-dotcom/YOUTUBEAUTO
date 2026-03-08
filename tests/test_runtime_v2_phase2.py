@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import io
 import sys
 import socket
 import tempfile
@@ -9,6 +10,7 @@ import unittest
 from typing import override
 from pathlib import Path
 from typing import cast
+from contextlib import redirect_stdout
 from unittest.mock import patch
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -22,6 +24,110 @@ from runtime_v2.gpu.lease import LeaseStore, lease_key_for_workload
 from runtime_v2.n8n_adapter import build_n8n_webhook_response, post_callback
 from runtime_v2.gpt.floor import write_gpt_status
 from runtime_v2.supervisor import run_once, run_selftest
+
+
+def _runtime_config(root: Path) -> RuntimeConfig:
+    return RuntimeConfig.from_root(root)
+
+
+def _write_readiness_fixture(
+    root: Path,
+    *,
+    pointer_run_id: str | None = "result-run",
+    gui_run_id: str = "result-run",
+    result_run_id: str = "result-run",
+    result_code: str = "OK",
+    gpt_ok_count: int = 1,
+    gpt_min_ok: int = 1,
+    unhealthy_count: int = 0,
+    registry_raw: str | None = None,
+) -> RuntimeConfig:
+    config = _runtime_config(root)
+    config.gui_status_file.parent.mkdir(parents=True, exist_ok=True)
+    config.result_router_file.parent.mkdir(parents=True, exist_ok=True)
+    _ = config.control_plane_events_file.write_text("", encoding="utf-8")
+    _ = config.gui_status_file.write_text(
+        json.dumps({"run_id": gui_run_id}, ensure_ascii=True), encoding="utf-8"
+    )
+    _ = config.browser_health_file.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "runtime": "runtime_v2",
+                "run_id": "browser-run",
+                "unhealthy_count": unhealthy_count,
+                "sessions": [],
+            },
+            ensure_ascii=True,
+        ),
+        encoding="utf-8",
+    )
+    if registry_raw is None:
+        _ = config.browser_registry_file.write_text(
+            json.dumps(
+                {
+                    "schema_version": "1.0",
+                    "runtime": "runtime_v2",
+                    "run_id": "browser-run",
+                    "sessions": [],
+                },
+                ensure_ascii=True,
+            ),
+            encoding="utf-8",
+        )
+    else:
+        _ = config.browser_registry_file.write_text(registry_raw, encoding="utf-8")
+    _ = config.result_router_file.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "runtime": "runtime_v2",
+                "checked_at": 1.0,
+                "artifacts": [],
+                "metadata": {"run_id": result_run_id, "code": result_code},
+            },
+            ensure_ascii=True,
+        ),
+        encoding="utf-8",
+    )
+    if pointer_run_id is not None:
+        _ = config.latest_completed_run_file.write_text(
+            json.dumps(
+                {
+                    "schema_version": "1.0",
+                    "runtime": "runtime_v2",
+                    "checked_at": 1.0,
+                    "run_id": pointer_run_id,
+                },
+                ensure_ascii=True,
+            ),
+            encoding="utf-8",
+        )
+    _ = write_gpt_status(
+        {
+            "schema_version": "1.0",
+            "runtime": "runtime_v2",
+            "checked_at": 1.0,
+            "ok_count": gpt_ok_count,
+            "min_ok": gpt_min_ok,
+            "floor_breached": gpt_ok_count < gpt_min_ok,
+            "breach_started_at": 1.0,
+            "breach_sec": 10,
+            "pending_boot": 0,
+            "last_spawn_at": None,
+            "spawn_fail_count": 0,
+            "spawn_needed": gpt_ok_count < gpt_min_ok,
+            "warning_active": gpt_ok_count < gpt_min_ok,
+            "last_warning_at": 1.0,
+            "cooldown_sec": 300,
+            "cooldown_elapsed_sec": 10,
+            "hourly_spawn_count": 0,
+            "spawn_history": [],
+            "endpoints": [{"name": "default", "status": "OK", "last_seen_at": 1.0}],
+        },
+        config.gpt_status_file,
+    )
+    return config
 
 
 class RuntimeV2Phase2Tests(unittest.TestCase):
@@ -103,7 +209,9 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
 
     def test_main_returns_callback_fail_when_post_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            gui_status_out = str(Path(tmp_dir) / "gui_status.json")
+            root = Path(tmp_dir)
+            gui_status_out = str(root / "gui_status.json")
+            config = _runtime_config(root)
             args = [
                 "runtime_v2.cli",
                 "--once",
@@ -112,13 +220,18 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
                 "--gui-status-out",
                 gui_status_out,
             ]
-            with patch.object(sys, "argv", args):
+            with (
+                patch("runtime_v2.cli._build_runtime_config", return_value=config),
+                patch.object(sys, "argv", args),
+            ):
                 exit_code = main()
             self.assertEqual(exit_code, exit_codes.CALLBACK_FAIL)
 
     def test_main_returns_browser_blocked_exit_code_for_blocked_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            gui_status_out = str(Path(tmp_dir) / "gui_status.json")
+            root = Path(tmp_dir)
+            gui_status_out = str(root / "gui_status.json")
+            config = _runtime_config(root)
             args = [
                 "runtime_v2.cli",
                 "--once",
@@ -132,11 +245,98 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
                 "completion": {"state": "blocked", "final_output": False},
             }
             with (
+                patch("runtime_v2.cli._build_runtime_config", return_value=config),
                 patch("runtime_v2.cli.run_once", return_value=blocked_result),
                 patch.object(sys, "argv", args),
             ):
                 exit_code = main()
             self.assertEqual(exit_code, exit_codes.BROWSER_BLOCKED)
+
+    def test_readiness_check_reports_gpt_floor_and_latest_run_drift(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            _ = _write_readiness_fixture(
+                root,
+                pointer_run_id="result-run",
+                gui_run_id="gui-run",
+                result_run_id="result-run",
+                result_code="GPT_FLOOR_FAIL",
+                gpt_ok_count=0,
+                gpt_min_ok=1,
+            )
+
+            args = [
+                "runtime_v2.cli",
+                "--readiness-check",
+                "--probe-root",
+                str(root),
+            ]
+            stdout = io.StringIO()
+            with patch.object(sys, "argv", args), redirect_stdout(stdout):
+                exit_code = main()
+
+        payload = json.loads(stdout.getvalue().strip())
+        blockers = cast(list[object], payload["blockers"])
+        blocker_codes = {
+            str(cast(dict[object, object], blocker)["code"])
+            for blocker in blockers
+            if isinstance(blocker, dict)
+        }
+        self.assertEqual(exit_code, exit_codes.GPT_FLOOR_FAIL)
+        self.assertIn("GPT_FLOOR_FAIL", blocker_codes)
+        self.assertIn("LATEST_RUN_DRIFT", blocker_codes)
+
+    def test_readiness_check_fail_closes_when_latest_pointer_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            _ = _write_readiness_fixture(root, pointer_run_id=None)
+
+            args = [
+                "runtime_v2.cli",
+                "--readiness-check",
+                "--probe-root",
+                str(root),
+            ]
+            stdout = io.StringIO()
+            with patch.object(sys, "argv", args), redirect_stdout(stdout):
+                exit_code = main()
+
+        payload = json.loads(stdout.getvalue().strip())
+        blockers = cast(list[object], payload["blockers"])
+        blocker_codes = {
+            str(cast(dict[object, object], blocker)["code"])
+            for blocker in blockers
+            if isinstance(blocker, dict)
+        }
+        self.assertEqual(payload["code"], "LATEST_RUN_POINTER_MISSING")
+        self.assertEqual(exit_code, exit_codes.BROWSER_BLOCKED)
+        self.assertIn("LATEST_RUN_POINTER_MISSING", blocker_codes)
+
+    def test_readiness_check_reports_invalid_browser_registry_json(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            _ = _write_readiness_fixture(root, registry_raw="{not-json")
+
+            args = [
+                "runtime_v2.cli",
+                "--readiness-check",
+                "--probe-root",
+                str(root),
+            ]
+            stdout = io.StringIO()
+            with patch.object(sys, "argv", args), redirect_stdout(stdout):
+                exit_code = main()
+
+        payload = json.loads(stdout.getvalue().strip())
+        blockers = cast(list[object], payload["blockers"])
+        blocker_codes = {
+            str(cast(dict[object, object], blocker)["code"])
+            for blocker in blockers
+            if isinstance(blocker, dict)
+        }
+        self.assertEqual(payload["code"], "BROWSER_REGISTRY_INVALID")
+        self.assertEqual(exit_code, exit_codes.BROWSER_BLOCKED)
+        self.assertIn("BROWSER_REGISTRY_INVALID", blocker_codes)
 
     def test_gui_status_write_is_atomic_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
