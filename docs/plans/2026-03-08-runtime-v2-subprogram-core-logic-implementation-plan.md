@@ -56,6 +56,24 @@
 | RVC | one voice-convert path | single converted audio artifact exists | one row voice chain handled | 24h에서는 GPU lock/state 영향 |
 | 24h | pipeline already complete | not applicable | not applicable | health/evidence stability gate |
 
+## Phase Advancement Targets
+
+각 단계는 참고 기준과의 `전체 parity`가 아니라, runtime_v2에서 안전하게 증명된 완성도 수준을 뜻합니다. 참고 기준은 회귀/일관성 확인용 비교 대상일 뿐이며, 완료 범위는 아래 `지원 사용자 여정 + 품질 게이트 + 비목표`로 한정합니다.
+
+| Service | 1차 목표 완료 시점 | 2차 목표 완료 시점 | 명시적 비목표 |
+|---|---|---|---|
+| GPT | `Excel topic ingest -> topic_spec -> stage1 planner` 대표 여정 1개가 검증되고 planner 산출이 남음 | `row selection -> parsing/mapping -> stage1 merge evidence`까지 닫히고 최소 1종 실패 분류가 보임 | 레퍼런스의 모든 prompt 옵션/튜닝/UI 패리티 |
+| SeaArt | `단일 prompt -> 단일 image artifact` 여정 1개와 파일 무결성이 검증됨 | row 안에서 item 집합이 순서/중단 기준 1종 아래 처리되고 대기/실패 관측 포인트가 남음 | 전체 파라미터/배치/업스케일 패리티 |
+| Genspark | `단일 prompt -> 단일 service artifact` 여정 1개가 검증됨 | row 안에서 item 집합이 처리되고 queue/장시간 작업 관측 포인트 또는 실패 분류 1종이 추가됨 | 모든 모드/슬라이드/플러그인 패리티 |
+| Canva | `thumb_data -> 단일 static artifact` 여정 1개와 export 성공이 검증됨 | row 안에서 thumbnail item 처리와 입력 조합/산출 evidence가 남고 주요 실패 요인 1종이 분류됨 | 전체 에디터 기능/모든 export 포맷 패리티 |
+| GeminiGen | `reference input -> 단일 video artifact attempt` 여정 1개와 계약 필드가 검증됨 | row 안에서 selected scene 집합이 처리되고 selection policy 또는 실패 복구 기준 1종이 검증됨 | 전체 모델/모드/파라미터 패리티 |
+| TTS | `script text -> 단일 audio artifact` 여정 1개와 기본 길이 제약이 검증됨 | row voice chain 안에서 TTS 산출 전달과 chunk/실패 처리 1종이 검증됨 | 전체 SSML/발음 사전/세부 보이스 패리티 |
+| KenBurns | `image/audio inputs -> 단일 video artifact` 여정 1개와 결정적 산출이 검증됨 | row compose chain 안에서 KenBurns 산출과 전환/타이밍 기준 1종이 검증됨 | 전체 편집 파라미터/GUI 수준 패리티 |
+| RVC | `voice input -> 단일 converted artifact` 여정 1개와 GPU gate 준수가 검증됨 | row voice chain 안에서 upstream/downstream evidence 연결과 장시간 처리 기준 1종이 검증됨 | 전체 모델 관리/고급 파라미터 패리티 |
+| 24h | 해당 없음 | 해당 없음 | 개별 서비스의 최초 happy-path 구현 대체 |
+
+이 표의 의미는 `1차 = 프로그램 자체의 최소 독립 처리 검증`, `2차 = row 문맥 안에서의 최소 연결/집계/중단 기준 + 안정성/관측성 1종 검증`입니다. 이 수준을 넘는 품질/속도/대량 처리/전체 parity는 3차 목표 이전에 완료로 주장하지 않습니다.
+
 ## Core Logic Definition (Locked)
 
 각 하부프로그램의 core logic는 아래 4개만 포함합니다.
