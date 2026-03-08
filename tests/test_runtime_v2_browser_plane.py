@@ -5,6 +5,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from time import time
 from typing import cast
 from unittest.mock import patch
 
@@ -429,7 +430,14 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             supervisor = BrowserSupervisor(manager)
             events_file = Path(tmp_dir) / "control_plane_events.jsonl"
 
-            with patch.object(manager, "restart"):
+            with (
+                patch.object(
+                    manager,
+                    "session_snapshots",
+                    return_value=[session.to_dict(healthy=False)],
+                ),
+                patch.object(manager, "restart"),
+            ):
                 _ = supervisor.tick(
                     registry_file=Path(tmp_dir) / "browser_session_registry.json",
                     health_file=Path(tmp_dir) / "browser_health.json",
@@ -456,6 +464,97 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertEqual(str(recovery_events[0]["status"]), "stale_lock_recovered")
         self.assertEqual(str(recovery_events[0]["action"]), "clear_lock")
         self.assertEqual(str(recovery_events[0]["action_result"]), "ok")
+
+    def test_manager_skips_launch_when_fresh_foreign_browser_owner_exists(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            lock_file = Path(tmp_dir) / "browser_plane.lock"
+            _ = lock_file.write_text(
+                json.dumps(
+                    {
+                        "pid": 999999,
+                        "acquired_at": round(time(), 3),
+                        "last_heartbeat_at": round(time(), 3),
+                        "run_id": "foreign-run",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            manager = BrowserManager()
+
+            with (
+                patch.dict(
+                    os.environ,
+                    {"RUNTIME_V2_BROWSER_PLANE_LOCK": str(lock_file.resolve())},
+                    clear=False,
+                ),
+                patch("runtime_v2.browser.manager._pid_is_running", return_value=True),
+                patch(
+                    "runtime_v2.browser.manager._launch_debug_browser"
+                ) as launch_browser,
+            ):
+                manager.start()
+
+        launch_browser.assert_not_called()
+        self.assertTrue(
+            all(session.status == "external" for session in manager.sessions)
+        )
+
+    def test_supervisor_takes_over_stale_browser_owner_and_emits_event(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            lock_file = Path(tmp_dir) / "browser_plane.lock"
+            events_file = Path(tmp_dir) / "control_plane_events.jsonl"
+            _ = lock_file.write_text(
+                json.dumps(
+                    {
+                        "pid": 999999,
+                        "acquired_at": 1.0,
+                        "last_heartbeat_at": 1.0,
+                        "run_id": "stale-owner",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            manager = BrowserManager()
+            supervisor = BrowserSupervisor(manager)
+
+            with (
+                patch.dict(
+                    os.environ,
+                    {"RUNTIME_V2_BROWSER_PLANE_LOCK": str(lock_file.resolve())},
+                    clear=False,
+                ),
+                patch("runtime_v2.browser.manager._pid_is_running", return_value=False),
+                patch(
+                    "runtime_v2.browser.manager._launch_debug_browser",
+                    return_value=False,
+                ),
+            ):
+                _ = supervisor.tick(
+                    registry_file=Path(tmp_dir) / "browser_session_registry.json",
+                    health_file=Path(tmp_dir) / "browser_health.json",
+                    events_file=events_file,
+                    run_id="browser-owner-takeover",
+                    recover_unhealthy=False,
+                )
+
+            event_lines = [
+                json.loads(line)
+                for line in events_file.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            ownership_events = [
+                cast(dict[object, object], entry)
+                for entry in event_lines
+                if isinstance(entry, dict)
+                and entry.get("event") == "browser_plane_ownership"
+            ]
+
+        self.assertEqual(len(ownership_events), 1)
+        self.assertEqual(
+            str(ownership_events[0]["action_result"]), "ownership_stale_takeover"
+        )
 
     def test_supervisor_escalates_long_lived_busy_lock(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

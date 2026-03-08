@@ -6,7 +6,12 @@ from time import time
 from typing import cast
 
 from runtime_v2.browser.health import build_browser_health_payload, write_browser_health
-from runtime_v2.browser.manager import BrowserManager, reconcile_browser_sessions
+from runtime_v2.browser.manager import (
+    BrowserManager,
+    ensure_browser_plane_ownership,
+    inspect_browser_plane_owner,
+    reconcile_browser_sessions,
+)
 from runtime_v2.browser.probe import summarize_browser_health
 from runtime_v2.browser.registry import (
     build_browser_registry_payload,
@@ -23,7 +28,9 @@ def _to_float(value: object, default: float = 0.0) -> float:
     return default
 
 
-def _append_browser_event(record: dict[str, object], output_file: str | Path | None) -> None:
+def _append_browser_event(
+    record: dict[str, object], output_file: str | Path | None
+) -> None:
     if output_file is None:
         return
     path = Path(output_file)
@@ -40,11 +47,17 @@ def _emit_browser_session_events(
     output_file: str | Path | None,
     run_id: str,
     busy_lock_escalation_sec: float | None = None,
+    emit_escalations: bool = True,
 ) -> None:
     for session in sessions:
         recovered = bool(session.get("lock_recovered", False))
         status = "stale_lock_recovered" if recovered else str(session.get("status", ""))
-        if status not in {"login_required", "busy_lock", "unknown_lock", "stale_lock_recovered"}:
+        if status not in {
+            "login_required",
+            "busy_lock",
+            "unknown_lock",
+            "stale_lock_recovered",
+        }:
             continue
         action = "hold"
         if status == "stale_lock_recovered":
@@ -62,7 +75,9 @@ def _emit_browser_session_events(
                 "metadata_valid": bool(session.get("lock_metadata_valid", True)),
                 "lock_age_sec": _to_float(session.get("lock_age_sec", 0.0), 0.0),
                 "action": action,
-                "action_result": "pending_restart" if status == "stale_lock_recovered" else "blocked",
+                "action_result": "pending_restart"
+                if status == "stale_lock_recovered"
+                else "blocked",
                 "error": "",
                 "tick_id": run_id,
             },
@@ -70,7 +85,8 @@ def _emit_browser_session_events(
         )
         lock_age_sec = _to_float(session.get("lock_age_sec", 0.0), 0.0)
         if (
-            status == "busy_lock"
+            emit_escalations
+            and status == "busy_lock"
             and busy_lock_escalation_sec is not None
             and lock_age_sec >= busy_lock_escalation_sec
         ):
@@ -95,6 +111,32 @@ def _emit_browser_session_events(
             )
 
 
+def _emit_browser_plane_ownership_event(
+    ownership: dict[str, object], *, output_file: str | Path | None, run_id: str
+) -> None:
+    action_result = str(ownership.get("action_result", ""))
+    if not action_result or action_result == "ownership_heartbeat":
+        return
+    _append_browser_event(
+        {
+            "event": "browser_plane_ownership",
+            "run_id": run_id,
+            "status": str(ownership.get("lock_state", "free")),
+            "lock_state": str(ownership.get("lock_state", "free")),
+            "pid_alive": bool(ownership.get("pid_alive", False)),
+            "metadata_valid": bool(ownership.get("metadata_valid", True)),
+            "lock_age_sec": _to_float(ownership.get("lock_age_sec", 0.0), 0.0),
+            "action": "takeover"
+            if action_result == "ownership_stale_takeover"
+            else "hold",
+            "action_result": action_result,
+            "error": "",
+            "tick_id": run_id,
+        },
+        output_file,
+    )
+
+
 class BrowserSupervisor:
     def __init__(self, manager: BrowserManager) -> None:
         self.manager: BrowserManager = manager
@@ -111,7 +153,9 @@ class BrowserSupervisor:
         forced_services: set[str] = set()
         if force_unhealthy_service:
             forced_services.add(force_unhealthy_service)
-        initial_sessions = self.manager.session_snapshots(forced_unhealthy_services=forced_services)
+        initial_sessions = self.manager.session_snapshots(
+            forced_unhealthy_services=forced_services
+        )
         initial_summary = summarize_browser_health(initial_sessions)
         unhealthy_services_value = initial_summary.get("unhealthy_services", [])
         unhealthy_services: list[str] = []
@@ -154,6 +198,7 @@ class BrowserSupervisor:
         restart_threshold: int = 2,
         cooldown_sec: int = 60,
     ) -> dict[str, object]:
+        previous_ownership = inspect_browser_plane_owner()
         loaded_sessions = load_browser_registry(registry_file)
         if loaded_sessions:
             self.manager.sessions = reconcile_browser_sessions(loaded_sessions)
@@ -163,25 +208,51 @@ class BrowserSupervisor:
         elif not self.manager.running:
             self.manager.start()
 
+        ownership = ensure_browser_plane_ownership(run_id=run_id)
+        previous_state = str(previous_ownership.get("lock_state", "free"))
+        if bool(previous_ownership.get("owned", False)) and not bool(
+            ownership.get("owned", False)
+        ):
+            ownership = {**ownership, "action_result": "ownership_lost"}
+        elif not bool(previous_ownership.get("owned", False)) and bool(
+            ownership.get("owned", False)
+        ):
+            if previous_state == "stale":
+                ownership = {**ownership, "action_result": "ownership_stale_takeover"}
+            elif previous_state == "free":
+                ownership = {**ownership, "action_result": "ownership_acquired"}
+        _emit_browser_plane_ownership_event(
+            ownership,
+            output_file=events_file,
+            run_id=run_id,
+        )
+
         if force_unhealthy_service:
             self.manager.mark_unhealthy(force_unhealthy_service)
 
         forced_services: set[str] = set()
         if force_unhealthy_service:
             forced_services.add(force_unhealthy_service)
-        initial_sessions = self.manager.session_snapshots(forced_unhealthy_services=forced_services)
+        initial_sessions = self.manager.session_snapshots(
+            forced_unhealthy_services=forced_services
+        )
         _emit_browser_session_events(
             initial_sessions,
             output_file=events_file,
             run_id=run_id,
             busy_lock_escalation_sec=float(max(cooldown_sec, 1)),
+            emit_escalations=False,
         )
         initial_summary = summarize_browser_health(initial_sessions)
         restarted_services: list[str] = []
         if recover_unhealthy:
             now = time()
             for session in self.manager.sessions:
-                is_unhealthy = session.status in {"unhealthy", "stopped", "stale_lock_recovered"}
+                is_unhealthy = session.status in {
+                    "unhealthy",
+                    "stopped",
+                    "stale_lock_recovered",
+                }
                 cooldown_elapsed = session.last_restart_at is None or (
                     now - session.last_restart_at >= cooldown_sec
                 )

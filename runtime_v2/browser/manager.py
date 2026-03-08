@@ -10,6 +10,8 @@ from time import sleep, time
 from typing import Mapping
 import urllib.request
 
+from runtime_v2.config import RuntimeConfig
+
 
 START_URLS: dict[str, str] = {
     "chatgpt": "https://chatgpt.com/",
@@ -37,6 +39,156 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 RUNTIME_APP_CONFIG = (
     WORKSPACE_ROOT / "system" / "runtime_v2" / "config" / "app_config.json"
 )
+
+
+def _browser_plane_lock_file() -> Path:
+    override = os.environ.get("RUNTIME_V2_BROWSER_PLANE_LOCK", "").strip()
+    if override:
+        return Path(override)
+    return RuntimeConfig().lock_root / "browser_plane.lock"
+
+
+def _browser_plane_lock_stale_sec() -> int:
+    return max(1, int(RuntimeConfig().lock_mutex_stale_sec))
+
+
+def _read_browser_plane_lock() -> dict[str, object]:
+    lock_file = _browser_plane_lock_file()
+    if not lock_file.exists():
+        return {}
+    try:
+        raw_payload = json.loads(lock_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(raw_payload, dict):
+        return {}
+    return {str(key): raw_payload[key] for key in raw_payload}
+
+
+def _write_browser_plane_lock(
+    payload: Mapping[str, object], *, replace: bool
+) -> dict[str, object]:
+    lock_file = _browser_plane_lock_file()
+    lock_file.parent.mkdir(parents=True, exist_ok=True)
+    mode = "w" if replace else "x"
+    with lock_file.open(mode, encoding="utf-8") as handle:
+        _ = handle.write(json.dumps(dict(payload), ensure_ascii=True))
+    return dict(payload)
+
+
+def _browser_plane_payload(run_id: str = "") -> dict[str, object]:
+    now = round(time(), 3)
+    return {
+        "pid": os.getpid(),
+        "acquired_at": now,
+        "last_heartbeat_at": now,
+        "run_id": run_id or "runtime_v2-browser-plane",
+    }
+
+
+def _browser_plane_metadata_valid(payload: dict[str, object]) -> bool:
+    if _to_int(payload.get("pid", 0)) <= 0:
+        return False
+    if _to_float(payload.get("acquired_at", -1.0), -1.0) < 0.0:
+        return False
+    if _to_float(payload.get("last_heartbeat_at", -1.0), -1.0) < 0.0:
+        return False
+    return True
+
+
+def inspect_browser_plane_owner() -> dict[str, object]:
+    lock_file = _browser_plane_lock_file()
+    payload = _read_browser_plane_lock()
+    if not payload:
+        return {
+            "lock_state": "free",
+            "owned": False,
+            "metadata_valid": True,
+            "pid_alive": False,
+            "lock_age_sec": 0.0,
+            "lock_file": str(lock_file),
+        }
+    metadata_valid = _browser_plane_metadata_valid(payload)
+    owner_pid = _to_int(payload.get("pid", 0))
+    pid_alive = _pid_is_running(owner_pid) if metadata_valid else False
+    heartbeat_at = _to_float(payload.get("last_heartbeat_at", 0.0), 0.0)
+    lock_age_sec = max(0.0, round(time() - heartbeat_at, 3))
+    if metadata_valid and owner_pid == os.getpid():
+        lock_state = "owned"
+    elif not metadata_valid:
+        lock_state = "unknown"
+    elif (not pid_alive) and lock_age_sec >= _browser_plane_lock_stale_sec():
+        lock_state = "stale"
+    else:
+        lock_state = "busy"
+    return {
+        **payload,
+        "lock_state": lock_state,
+        "owned": lock_state == "owned",
+        "metadata_valid": metadata_valid,
+        "pid_alive": pid_alive,
+        "lock_age_sec": lock_age_sec,
+        "lock_file": str(lock_file),
+    }
+
+
+def ensure_browser_plane_ownership(run_id: str = "") -> dict[str, object]:
+    lock_file = _browser_plane_lock_file()
+    payload = _browser_plane_payload(run_id)
+    snapshot = inspect_browser_plane_owner()
+    lock_state = str(snapshot.get("lock_state", "free"))
+    if lock_state == "free":
+        try:
+            _ = _write_browser_plane_lock(payload, replace=False)
+        except FileExistsError:
+            snapshot = inspect_browser_plane_owner()
+            return {
+                **snapshot,
+                "owned": bool(snapshot.get("owned", False)),
+                "action_result": "ownership_busy",
+            }
+        return {
+            **payload,
+            "lock_state": "owned",
+            "owned": True,
+            "metadata_valid": True,
+            "pid_alive": True,
+            "lock_age_sec": 0.0,
+            "lock_file": str(lock_file),
+            "action_result": "ownership_acquired",
+        }
+    if lock_state == "owned":
+        updated = dict(snapshot)
+        updated["last_heartbeat_at"] = payload["last_heartbeat_at"]
+        _ = _write_browser_plane_lock(updated, replace=True)
+        return {**updated, "owned": True, "action_result": "ownership_heartbeat"}
+    if lock_state == "stale":
+        takeover_payload = dict(payload)
+        _ = _write_browser_plane_lock(takeover_payload, replace=True)
+        return {
+            **takeover_payload,
+            "lock_state": "owned",
+            "owned": True,
+            "metadata_valid": True,
+            "pid_alive": True,
+            "lock_age_sec": 0.0,
+            "lock_file": str(lock_file),
+            "action_result": "ownership_stale_takeover",
+        }
+    action_result = "ownership_unknown" if lock_state == "unknown" else "ownership_busy"
+    return {**snapshot, "owned": False, "action_result": action_result}
+
+
+def release_browser_plane_ownership() -> None:
+    snapshot = inspect_browser_plane_owner()
+    if not bool(snapshot.get("owned", False)):
+        return
+    lock_file = _browser_plane_lock_file()
+    try:
+        if lock_file.exists():
+            lock_file.unlink()
+    except OSError:
+        return
 
 
 @dataclass(slots=True)
@@ -588,8 +740,9 @@ class BrowserManager:
 
     def start(self) -> None:
         self.running = True
+        ownership = ensure_browser_plane_ownership()
         for session in self.sessions:
-            if not _manager_owns_browser(session.service):
+            if not bool(ownership.get("owned", False)):
                 session.status = "external"
                 session.consecutive_failures = 0
                 continue
@@ -605,7 +758,8 @@ class BrowserManager:
     def restart(self, service: str) -> None:
         self.running = True
         session = self._session_by_service(service)
-        if not _manager_owns_browser(service):
+        ownership = ensure_browser_plane_ownership()
+        if not bool(ownership.get("owned", False)):
             session.status = "external"
             return
         now = time()
@@ -627,6 +781,7 @@ class BrowserManager:
                 service=session.service,
                 session_id=session.session_id,
             )
+        release_browser_plane_ownership()
 
     def mark_unhealthy(self, service: str) -> None:
         session = self._session_by_service(service)
@@ -939,4 +1094,6 @@ def _resolve_browser_executable(service: str) -> Path | None:
 
 
 def _manager_owns_browser(service: str) -> bool:
-    return True
+    _ = service
+    ownership = inspect_browser_plane_owner()
+    return bool(ownership.get("owned", False))
