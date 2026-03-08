@@ -17,16 +17,16 @@
 - 로컬 근거:
   - `D:\YOUTUBEAUTO\.git\config`
   - `D:\YOUTUBEAUTO\.git\HEAD`
-- 레거시 참고 패턴:
-  - `D:\YOUTUBE_AUTO\.git\config`
+- 외부 참고 패턴:
+  - 별도 참고 저장소의 `.git/config`
 
 ## First Successful Method From This Conversation
 
 - 이 섹션은 `최초 연결 성공` 또는 `원격/브랜치가 꼬였을 때의 복구 절차`를 기록한 것입니다.
 - 즉, 매번 반복하는 운영 절차가 아니라 초기 셋업/복구용 기준입니다.
 - 실제 최초 성공 순서는 아래였습니다.
-  1. 레거시 저장소 `D:\YOUTUBE_AUTO\.git\config`에서 기존 remote 패턴을 먼저 확인
-  2. 현재 저장소는 레거시와 같은 원격을 공유하지 않고 `분리`하기로 결정
+  1. 별도 참고 저장소의 `.git/config`에서 기존 remote 패턴을 먼저 확인
+  2. 현재 저장소는 참고 저장소와 같은 원격을 공유하지 않고 `분리`하기로 결정
   3. 새 원격 저장소 URL을 `https://github.com/salesmoon7-dotcom/YOUTUBEAUTO.git`로 고정
   4. `D:\YOUTUBEAUTO`의 `origin`을 위 URL로 연결
   5. 로컬 기본 브랜치 기준을 `main`으로 정렬하고, `HEAD`를 `refs/heads/main`으로 맞춤
@@ -71,10 +71,10 @@
 ### 1-1. Remote Decision Rule
 
 - 이 규칙은 `최초 셋업` 또는 `복구`에만 적용합니다.
-- 이 저장소에서 remote 관련 작업을 새로 잡아야 할 때는 먼저 레거시 저장소 설정을 참고만 합니다.
-  - 참고 경로: `D:\YOUTUBE_AUTO\.git\config`
+- 이 저장소에서 remote 관련 작업을 새로 잡아야 할 때는 먼저 별도 참고 저장소 설정을 참고만 합니다.
+  - 참고 경로: 별도 참고 저장소의 `.git/config`
 - 하지만 결론은 항상 분리 원격 기준입니다.
-- 즉, 레거시 remote를 그대로 공유하지 않고 현재 저장소 전용 remote를 사용합니다.
+- 즉, 외부 참고 remote를 그대로 공유하지 않고 현재 저장소 전용 remote를 사용합니다.
 
 ### 2. Remote/Branch Standard
 
@@ -83,13 +83,13 @@
   - remote URL: `https://github.com/salesmoon7-dotcom/YOUTUBEAUTO.git`
   - branch: `main`
   - tracking: `origin/main`
-- 레거시 저장소와 같은 원격을 공유하지 않습니다.
-- 이 저장소는 레거시와 분리된 별도 GitHub repo를 기준으로 운영합니다.
+- 참고 저장소와 같은 원격을 공유하지 않습니다.
+- 이 저장소는 외부 참고 저장소와 분리된 별도 GitHub repo를 기준으로 운영합니다.
 
 ### 2-1. First Setup Replay Rule
 
 - remote/upstream이 비어 있거나 꼬였을 때만, 일반 Git 실험을 하지 말고 최초 성공 순서를 그대로 재연합니다.
-  1. 레거시 remote 패턴 확인
+  1. 외부 참고 remote 패턴 확인
   2. 분리 원격 유지 결정 확인
   3. `origin = https://github.com/salesmoon7-dotcom/YOUTUBEAUTO.git` 적용
   4. `HEAD -> main` 정렬 확인
@@ -151,7 +151,7 @@
   - 어떤 remote를 쓸지
   - 어떤 branch를 기준으로 할지
   - HTTPS를 쓸지 SSH를 쓸지
-  - 레거시 repo와 합칠지 분리할지
+  - 외부 참고 repo와 합칠지 분리할지
 - 그리고 실패 시에도 새 방법을 즉흥적으로 시도하지 않습니다. 먼저 이 채팅에서 성공한 `초기 셋업/복구 순서`를 재연합니다.
 - 이 항목들은 이미 결정되었고, 기본값은 아래로 고정입니다.
   - `origin`
@@ -270,7 +270,7 @@ git_plain.bat log -4 --oneline
 ## Non-Goals
 
 - 이 문서는 SSH 전환 절차를 기본 경로로 채택하지 않습니다.
-- 이 문서는 레거시 repo와의 통합 운영을 표준으로 삼지 않습니다.
+- 이 문서는 외부 참고 repo와의 통합 운영을 표준으로 삼지 않습니다.
 - 이 문서는 force push, history rewrite, global git config 변경을 기본 절차에 넣지 않습니다.
 
 ## Related Files
@@ -281,6 +281,6 @@ git_plain.bat log -4 --oneline
 | `D:\YOUTUBEAUTO\.git\HEAD` | 현재 기본 branch 기준 |
 | `git_plain.bat` | Windows에서 plain Git 실행을 고정하는 로컬 래퍼 |
 | `scripts/git_plain.py` | shell=False로 Git를 직접 호출하는 Python 진입점 |
-| `D:\YOUTUBE_AUTO\.git\config` | 레거시 repo 비교 기준 |
+| 외부 참고 저장소의 `.git/config` | 분리 repo 비교 기준 |
 | `AGENTS.md` | 세션 라우팅 진입점 |
 | `docs/INDEX.md` | canonical docs 진입점 |

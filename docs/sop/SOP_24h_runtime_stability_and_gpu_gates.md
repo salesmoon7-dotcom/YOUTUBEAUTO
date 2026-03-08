@@ -7,7 +7,7 @@
 ## 0. 경로/리소스 분리 원칙
 
 - 신규 런타임은 `runtime_v2/`, `system/runtime_v2/`만 사용합니다.
-- 레거시 런타임 경로(`runtime/`, `system/runtime/`)에는 쓰기 금지입니다.
+- 외부 참고 런타임 경로(`runtime/`, `system/runtime/`)에는 쓰기 금지입니다.
 - 브라우저 세션/포트/락 파일은 runtime_v2 네임스페이스로 분리합니다.
 
 ## 1. 목적
