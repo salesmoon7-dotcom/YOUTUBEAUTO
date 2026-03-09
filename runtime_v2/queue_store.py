@@ -16,7 +16,12 @@ class QueueStore:
     def load(self) -> list[JobContract]:
         if not self.queue_file.exists():
             return []
-        raw_payload_obj = cast(object, json.loads(self.queue_file.read_text(encoding="utf-8")))
+        try:
+            raw_payload_obj = cast(
+                object, json.loads(self.queue_file.read_text(encoding="utf-8"))
+            )
+        except json.JSONDecodeError:
+            return []
         if not isinstance(raw_payload_obj, list):
             return []
         raw_payload = cast(list[object], raw_payload_obj)

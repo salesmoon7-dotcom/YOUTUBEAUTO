@@ -12,6 +12,7 @@ from runtime_v2.config import RuntimeConfig
 from runtime_v2.contracts.job_contract import JobContract, build_explicit_job_contract
 from runtime_v2.control_plane import run_control_loop_once, seed_control_job
 from runtime_v2.latest_run import load_joined_latest_run
+from runtime_v2.queue_store import QueueStore
 
 
 def _runtime_config(root: Path) -> RuntimeConfig:
@@ -19,6 +20,22 @@ def _runtime_config(root: Path) -> RuntimeConfig:
 
 
 class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
+    def test_control_plane_queue_helpers_share_queue_store_canonical_path(self) -> None:
+        import runtime_v2.control_plane as control_plane_module
+
+        self.assertIs(control_plane_module._load_jobs, QueueStore.load)
+        self.assertIs(control_plane_module._save_jobs, QueueStore.save)
+        self.assertIs(control_plane_module._upsert_job, QueueStore.upsert)
+
+    def test_queue_store_load_fail_closes_on_corrupted_queue_file(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            queue_file = Path(tmp_dir) / "job_queue.json"
+            _ = queue_file.write_text("{not-json", encoding="utf-8")
+
+            jobs = QueueStore(queue_file).load()
+
+        self.assertEqual(jobs, [])
+
     def test_retry_and_circuit_helpers_share_single_canonical_policy_module(
         self,
     ) -> None:

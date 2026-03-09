@@ -15,7 +15,6 @@ from runtime_v2.agent_browser.evidence import build_agent_browser_evidence
 from runtime_v2.gpt_autospawn import apply_autospawn_decision
 from runtime_v2.gpt_pool_monitor import tick_gpt_status
 from runtime_v2 import recovery_policy
-from runtime_v2.retry_budget import next_backoff_sec, within_retry_budget
 from runtime_v2.queue_store import QueueStore
 from runtime_v2.state_machine import (
     append_transition_record,
@@ -89,9 +88,10 @@ def run_control_loop_once(
     artifact_root = getattr(
         runtime_config, "artifact_root", Path("system/runtime_v2/artifacts")
     )
-    jobs = _load_jobs(queue_file)
+    queue_store = QueueStore(queue_file)
+    jobs = _load_jobs(queue_store)
     _recover_stale_running_jobs(
-        queue_file, jobs, now, runtime_config, events_file, run_id=run_id
+        queue_store, jobs, now, runtime_config, events_file, run_id=run_id
     )
     job = _next_runnable_job(jobs, now)
     if job is None:
@@ -100,7 +100,7 @@ def run_control_loop_once(
         )
         seeded_jobs = seed_local_jobs(runtime_config)
         if seeded_jobs:
-            jobs = _load_jobs(queue_file)
+            jobs = _load_jobs(queue_store)
             job = _next_runnable_job(jobs, now)
             if job is not None:
                 gui_payload = _build_control_gui_status(
@@ -223,7 +223,7 @@ def run_control_loop_once(
     previous_status = job.status
     if can_transition(previous_status, "running"):
         job.status = "running"
-        _ = _upsert_job(queue_file, jobs, job)
+        _ = _upsert_job(queue_store, job)
         running_record = transition_record(job.job_id, previous_status, job.status)
         running_record["routed_from"] = str(job.payload.get("routed_from", ""))
         running_record["chain_depth"] = _to_int(job.payload.get("chain_depth", 0))
@@ -322,7 +322,7 @@ def run_control_loop_once(
         failure_next_jobs = worker_contract.get("next_jobs", [])
         if not isinstance(failure_next_jobs, list) or not failure_next_jobs:
             failure_next_jobs = _agent_browser_failure_next_jobs(job)
-        if isinstance(failure_next_jobs, list) and failure_next_jobs:
+        if failure_next_jobs:
             seeded_downstream = _seed_declared_next_jobs(
                 queue_file,
                 jobs,
@@ -378,7 +378,7 @@ def run_control_loop_once(
             job.payload["next_attempt_at"] = next_attempt_at
         else:
             _ = job.payload.pop("next_attempt_at", None)
-        _ = _upsert_job(queue_file, jobs, job)
+        _ = _upsert_job(queue_store, job)
         completed_record = transition_record(job.job_id, previous_status, job.status)
         completed_record["routed_from"] = str(job.payload.get("routed_from", ""))
         completed_record["chain_depth"] = _to_int(job.payload.get("chain_depth", 0))
@@ -561,8 +561,8 @@ def seed_control_job(job: JobContract, config: RuntimeConfig | None = None) -> N
         "queue_store_file",
         Path("system/runtime_v2/state/job_queue.json"),
     )
-    jobs = _load_jobs(queue_file)
-    _ = _upsert_job(queue_file, jobs, job)
+    queue_store = QueueStore(queue_file)
+    _ = _upsert_job(queue_store, job)
 
 
 def seed_local_jobs(config: RuntimeConfig | None = None) -> list[JobContract]:
@@ -1075,22 +1075,7 @@ def _normalize_local_path(raw_path: str) -> Path | None:
     return candidate
 
 
-def _load_jobs(queue_file: Path) -> list[JobContract]:
-    if not queue_file.exists():
-        return []
-    raw_payload_obj = cast(object, json.loads(queue_file.read_text(encoding="utf-8")))
-    if not isinstance(raw_payload_obj, list):
-        return []
-    raw_payload = cast(list[object], raw_payload_obj)
-    jobs: list[JobContract] = []
-    for raw_item in raw_payload:
-        if isinstance(raw_item, dict):
-            item = cast(dict[object, object], raw_item)
-            typed_item: dict[str, object] = {}
-            for raw_key in item:
-                typed_item[str(raw_key)] = item[raw_key]
-            jobs.append(JobContract.from_dict(typed_item))
-    return jobs
+_load_jobs = QueueStore.load
 
 
 def _next_runnable_job(jobs: list[JobContract], now: float) -> JobContract | None:
@@ -1105,7 +1090,7 @@ def _next_runnable_job(jobs: list[JobContract], now: float) -> JobContract | Non
 
 
 def _recover_stale_running_jobs(
-    queue_file: Path,
+    queue_store: QueueStore,
     jobs: list[JobContract],
     now: float,
     config: RuntimeConfig,
@@ -1123,7 +1108,9 @@ def _recover_stale_running_jobs(
             continue
         recovery_action = (
             "retry"
-            if within_retry_budget(job.attempts, config.max_retry_attempts)
+            if recovery_policy.within_retry_budget(
+                job.attempts, config.max_retry_attempts
+            )
             else "failed"
         )
         previous_status = job.status
@@ -1131,7 +1118,7 @@ def _recover_stale_running_jobs(
         job.attempts += 1
         if recovery_action == "retry":
             job.payload["next_attempt_at"] = round(
-                now + next_backoff_sec(job.attempts), 3
+                now + recovery_policy.next_backoff_sec(job.attempts), 3
             )
         else:
             _ = job.payload.pop("next_attempt_at", None)
@@ -1153,34 +1140,13 @@ def _recover_stale_running_jobs(
         transition["chain_depth"] = _to_int(job.payload.get("chain_depth", 0))
         _ = _append_transition_record(transition, events_file, run_id=run_id)
     if changed:
-        _ = _save_jobs(queue_file, jobs)
+        _ = _save_jobs(queue_store, jobs)
 
 
-def _save_jobs(queue_file: Path, jobs: list[JobContract]) -> Path:
-    queue_file.parent.mkdir(parents=True, exist_ok=True)
-    payload = [job.to_dict() for job in jobs]
-    with tempfile.NamedTemporaryFile(
-        "w",
-        encoding="utf-8",
-        dir=queue_file.parent,
-        prefix=f"{queue_file.stem}.",
-        suffix=".tmp",
-        delete=False,
-    ) as handle:
-        _ = handle.write(json.dumps(payload, ensure_ascii=True))
-        temp_path = Path(handle.name)
-    _ = temp_path.replace(queue_file)
-    return queue_file
+_save_jobs = QueueStore.save
 
 
-def _upsert_job(queue_file: Path, jobs: list[JobContract], job: JobContract) -> Path:
-    for index, current in enumerate(jobs):
-        if current.job_id == job.job_id:
-            job.updated_at = time()
-            jobs[index] = job
-            return _save_jobs(queue_file, jobs)
-    jobs.append(job)
-    return _save_jobs(queue_file, jobs)
+_upsert_job = QueueStore.upsert
 
 
 def _append_transition_record(
@@ -1230,13 +1196,15 @@ def _evaluate_recovery(
         job.attempts, success=success, circuit=circuit
     )
     if not success and recovery.get("action") == "retry":
-        if not within_retry_budget(job.attempts, config.max_retry_attempts):
+        if not recovery_policy.within_retry_budget(
+            job.attempts, config.max_retry_attempts
+        ):
             recovery = cast(
                 dict[str, object],
                 {"action": "failed", "backoff_sec": 0, "circuit_open": False},
             )
         else:
-            recovery["backoff_sec"] = next_backoff_sec(job.attempts)
+            recovery["backoff_sec"] = recovery_policy.next_backoff_sec(job.attempts)
     job.payload["failure_count"] = circuit.failure_count
     job.payload["circuit_opened_at"] = circuit.opened_at
     return recovery
@@ -1592,6 +1560,7 @@ def _seed_declared_next_jobs(
     *,
     run_id: str,
 ) -> list[JobContract]:
+    queue_store = QueueStore(queue_file)
     typed_next_jobs = _next_jobs_entries(worker_result)
     if not typed_next_jobs and parent_job.workload == "chatgpt":
         typed_next_jobs = _declared_stage1_next_jobs(worker_result)
@@ -1712,7 +1681,7 @@ def _seed_declared_next_jobs(
             )
             continue
         jobs.append(next_job)
-        _ = _save_jobs(queue_file, jobs)
+        _ = _save_jobs(queue_store, jobs)
         known_job_ids.add(next_job.job_id)
         seeded.append(next_job)
     return seeded
