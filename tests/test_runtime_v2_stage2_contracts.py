@@ -161,6 +161,23 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
             "use_agent_browser", cast(dict[str, object], seaart_job["payload"])
         )
 
+    def test_stage2_jobs_include_stage1_handoff_when_present(self) -> None:
+        video_plan = _video_plan("D:/YOUTUBEAUTO")
+        video_plan["stage1_handoff"] = {
+            "contract": {"version": "stage1.v1", "title": "Money title"}
+        }
+
+        jobs, _ = build_stage2_jobs(video_plan)
+        first_payload = cast(
+            dict[str, object], cast(dict[str, object], jobs[0]["job"])["payload"]
+        )
+        render_payload = cast(
+            dict[str, object], cast(dict[str, object], jobs[-1]["job"])["payload"]
+        )
+
+        self.assertIn("stage1_handoff", first_payload)
+        self.assertIn("stage1_handoff", render_payload)
+
 
 if __name__ == "__main__":
     _ = unittest.main()

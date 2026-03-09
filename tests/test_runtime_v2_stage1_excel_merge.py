@@ -27,7 +27,9 @@ def _row_values(path: Path) -> dict[str, object]:
     try:
         sheet = workbook["Sheet1"]
         headers = [str(cell.value) for cell in sheet[1]]
-        values = [sheet.cell(row=2, column=index + 1).value for index in range(len(headers))]
+        values = [
+            sheet.cell(row=2, column=index + 1).value for index in range(len(headers))
+        ]
         return dict(zip(headers, values, strict=False))
     finally:
         workbook.close()
@@ -46,7 +48,11 @@ class RuntimeV2Stage1ExcelMergeTests(unittest.TestCase):
                 excel_path=excel_path,
                 sheet_name="Sheet1",
                 row_index=0,
-                video_plan={"topic": "Bridge topic", "story_outline": ["a", "b"], "reason_code": "ok"},
+                video_plan={
+                    "topic": "Bridge topic",
+                    "story_outline": ["a", "b"],
+                    "reason_code": "ok",
+                },
             )
 
             values = _row_values(excel_path)
@@ -69,7 +75,11 @@ class RuntimeV2Stage1ExcelMergeTests(unittest.TestCase):
                 excel_path=excel_path,
                 sheet_name="Sheet1",
                 row_index=0,
-                video_plan={"topic": "Bridge topic", "story_outline": ["a", "b"], "reason_code": "ok"},
+                video_plan={
+                    "topic": "Bridge topic",
+                    "story_outline": ["a", "b"],
+                    "reason_code": "ok",
+                },
             )
 
             values = _row_values(excel_path)
@@ -117,10 +127,60 @@ class RuntimeV2Stage1ExcelMergeTests(unittest.TestCase):
                 excel_path=excel_path,
                 sheet_name="MissingSheet",
                 row_index=0,
-                video_plan={"topic": "Bridge topic", "story_outline": ["a", "b"], "reason_code": "ok"},
+                video_plan={
+                    "topic": "Bridge topic",
+                    "story_outline": ["a", "b"],
+                    "reason_code": "ok",
+                },
             )
 
         self.assertFalse(merged)
+
+    def test_stage1_merge_writes_parsed_fields_when_handoff_exists(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            excel_path = _write_merge_fixture(
+                Path(tmp_dir) / "topic.xlsx",
+                headers=[
+                    "Topic",
+                    "Status",
+                    "Video Plan",
+                    "Reason Code",
+                    "Title",
+                    "Title for Thumb",
+                    "Description",
+                    "Keywords",
+                    "Voice",
+                ],
+                row=["Bridge topic", "", "", "", "", "", "", "", ""],
+            )
+
+            merged = merge_stage1_result(
+                excel_path=excel_path,
+                sheet_name="Sheet1",
+                row_index=0,
+                video_plan={
+                    "topic": "Bridge topic",
+                    "story_outline": ["a", "b"],
+                    "reason_code": "ok",
+                    "stage1_handoff": {
+                        "contract": {
+                            "title": "Bridge title",
+                            "title_for_thumb": "Bridge thumb",
+                            "description": "Bridge description",
+                            "keywords": ["bridge", "topic"],
+                            "voice_groups": [{"scene_index": 1, "voice": "narration"}],
+                        }
+                    },
+                },
+            )
+
+            values = _row_values(excel_path)
+
+        self.assertTrue(merged)
+        self.assertEqual(values["Title"], "Bridge title")
+        self.assertEqual(values["Title for Thumb"], "Bridge thumb")
+        self.assertEqual(values["Description"], "Bridge description")
+        self.assertEqual(values["Keywords"], "bridge, topic")
 
 
 if __name__ == "__main__":

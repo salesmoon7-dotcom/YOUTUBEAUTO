@@ -154,6 +154,15 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             str(stage1_result["video_plan_path"]).endswith("video_plan.json")
         )
         self.assertTrue(str(stage1_result["result_path"]).endswith("result.json"))
+        self.assertTrue(
+            str(stage1_result["raw_output_path"]).endswith("raw_output.json")
+        )
+        self.assertTrue(
+            str(stage1_result["parsed_payload_path"]).endswith("parsed_payload.json")
+        )
+        self.assertTrue(
+            str(stage1_result["handoff_path"]).endswith("stage1_handoff.json")
+        )
 
     def test_stage1_result_contains_downstream_seed_data(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -182,6 +191,31 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertEqual(stage1_result["row_ref"], "Sheet1!row1")
         self.assertEqual(first_payload["run_id"], "stage1-run-1")
         self.assertEqual(first_payload["row_ref"], "Sheet1!row1")
+        self.assertIn("stage1_handoff", first_payload)
+
+    def test_stage1_runner_writes_parsed_payload_and_handoff_contract(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            workspace = Path(tmp_dir)
+
+            result = run_stage1_chatgpt_job(
+                _topic_spec(topic="Money flow"),
+                workspace,
+                debug_log="logs/stage1-run-1.jsonl",
+            )
+
+            result_path = Path(cast(str, result["result_path"]))
+            result_payload = cast(
+                dict[str, object], json.loads(result_path.read_text(encoding="utf-8"))
+            )
+            details = cast(dict[str, object], result_payload["details"])
+            handoff = cast(dict[str, object], details["stage1_handoff"])
+            parsed_payload = cast(dict[str, object], handoff["contract"])
+
+            self.assertEqual(result["status"], "ok")
+            self.assertEqual(parsed_payload["version"], "stage1.v1")
+            self.assertEqual(parsed_payload["title"], "Money flow")
+            self.assertTrue(Path(cast(str, handoff["raw_output_path"])).exists())
+            self.assertTrue(Path(cast(str, handoff["parsed_payload_path"])).exists())
 
     def test_stage1_route_failure_becomes_structured_failed_result(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
