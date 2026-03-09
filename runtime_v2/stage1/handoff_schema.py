@@ -22,7 +22,7 @@ HANDOFF_REQUIRED_FIELDS = [
 
 def normalize_stage1_handoff_contract(payload: dict[str, object]) -> dict[str, object]:
     normalized = dict(payload)
-    normalized.setdefault("version", f"stage1_handoff.v{STAGE1_HANDOFF_SCHEMA_VERSION}")
+    normalized["version"] = f"stage1_handoff.v{STAGE1_HANDOFF_SCHEMA_VERSION}"
     normalized.setdefault("bgm", "")
     normalized.setdefault("keywords", [])
     normalized.setdefault("scene_prompts", [])

@@ -51,6 +51,7 @@
   - 1차 조치로 `CHATGPT_BACKEND_UNAVAILABLE` + `failure_stage=submit/read` canonical failure contract와 runner 재시도 연결은 반영되었습니다.
   - backend abstraction/fallback 최소 구현으로 raw CDP HTTP `session_probe`가 같은 failure contract의 `final_state`에 연결되었습니다.
   - submit/read 자체를 `ChatGPTBackend` interface로 분리하는 최소 구현도 반영되었습니다.
+  - `stage1_handoff.contract`는 이제 항상 `stage1_handoff.v1.0` + `voice_texts/ref_img_1/ref_img_2`를 포함합니다.
   - 남은 핵심은 real-first test evidence를 다시 확보하는 것입니다.
   - `1차 테스트`는 그 계층이 닫힌 뒤 `mock -> smoke -> real` 순서로 다시 진행합니다.
 - 새 준비 보완 계획: `docs/plans/2026-03-10-runtime-v2-subprogram-gap-analysis-plan.md`

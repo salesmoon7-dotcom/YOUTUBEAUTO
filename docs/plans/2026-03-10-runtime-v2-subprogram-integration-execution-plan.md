@@ -135,6 +135,7 @@
   - Excel export/import bridge 추가
   - `handoff -> excel row -> handoff` 라운드트립 계약 테스트 추가
   - downstream-friendly 필드 (`voice_texts`, `Ref Img 1`, `Ref Img 2`, `BGM`, `#01...`)를 정본 규칙으로 고정
+  - `stage1_handoff.contract.version`은 이제 항상 `stage1_handoff.v1.0`으로 정규화됩니다.
 
 ### Phase 3. Ready-to-test gate
 

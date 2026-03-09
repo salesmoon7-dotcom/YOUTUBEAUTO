@@ -161,3 +161,92 @@ Focus:
 
 - 가장 먼저 할 일은 `ChatGPT`를 포함한 **필드 단위 matrix**를 완성하는 것입니다.
 - 그 다음으로 각 하부프로그램별 **failure matrix**를 작성합니다.
+
+---
+
+## GPT Field Matrix
+
+| Legacy field | Legacy source | runtime_v2 source | Required | Current status | Notes |
+|---|---|---|---|---|---|
+| `title` | GPT text / Excel title | `stage1_handoff.contract.title` | Yes | implemented | `runtime_v2/stage1/parsed_payload.py` |
+| `title_for_thumb` | GPT thumb title | `stage1_handoff.contract.title_for_thumb` | Yes | implemented | inline label parsing까지 반영 |
+| `description` | GPT summary block | `stage1_handoff.contract.description` | Yes | implemented | browser snapshot / gpt_response_text 경로 공통 |
+| `keywords` | GPT keyword list | `stage1_handoff.contract.keywords` | Yes | implemented | list normalized |
+| `bgm` | GPT BGM field | `stage1_handoff.contract.bgm` | Yes | implemented | empty string 허용, key는 canonical |
+| `voice_groups` | GPT/Excel voice mapping | `stage1_handoff.contract.voice_groups` | Yes | implemented | `stage1_handoff` SSOT schema에서 검증 |
+| `voice_texts` | downstream-friendly row voice map | `stage1_handoff.contract.voice_texts` | Optional | implemented | `handoff_schema`가 `scene_prompts`에서 생성 |
+| `scene_prompts` / `#01...` | GPT scene lines | `stage1_handoff.contract.scene_prompts` | Yes | implemented | inline label/value 파싱 반영 |
+| `ref_img_1` | operator/legacy image ref | `stage1_handoff.contract.ref_img_1` | Optional | partial | schema/default는 있음, 실제 ChatGPT 생산 경로는 아직 비어 있음 |
+| `ref_img_2` | operator/legacy image ref | `stage1_handoff.contract.ref_img_2` | Optional | partial | schema/default는 있음, 실제 ChatGPT 생산 경로는 아직 비어 있음 |
+| `gpt_response_text` | real assistant output | `topic_spec.gpt_response_text` | Internal bridge | partial | snapshot/gpt text 주입은 구현됨, real-first evidence는 미완료 |
+
+### GPT Field Matrix interpretation
+
+- `stage1_handoff.contract`는 이미 downstream이 읽기 좋은 canonical field 집합을 갖고 있습니다.
+- 현재 진짜 gap은 **field 존재 자체**보다 `gpt_response_text`를 실제 browser interaction layer가 얼마나 안정적으로 만들어 주는가입니다.
+- `ref_img_1/ref_img_2`는 schema/default는 있지만 ChatGPT canonical producer로서 아직 실질 생산 경로가 없습니다.
+
+## GPT Failure Matrix
+
+| Failure class | Trigger | Canonical error code | Layer | Current status | Debug meaning |
+|---|---|---|---|---|---|
+| backend unavailable on submit | `agent-browser --cdp 9222 eval` submit 실패 / `os error 10060` | `CHATGPT_BACKEND_UNAVAILABLE` + `failure_stage=submit` | `chatgpt_interaction` | implemented | 포트/attach/backend 계층 문제 |
+| backend unavailable on read | response poll 중 `read timeout` / attach 실패 | `CHATGPT_BACKEND_UNAVAILABLE` + `failure_stage=read` | `chatgpt_interaction` | implemented | 응답 대기/attach/backend 계층 문제 |
+| response timeout | stable assistant text가 timeout까지 확보되지 않음 | `CHATGPT_RESPONSE_TIMEOUT` | `chatgpt_interaction` | implemented | interaction completed 판단 실패 |
+| invalid topic spec | upstream topic spec missing/invalid | `invalid_topic_spec` | `chatgpt_runner` | implemented | 입력 계약 문제 |
+| artifact invalid | voice groups / parsed payload shape mismatch | `artifact_invalid` | `chatgpt_runner` / parsed payload | implemented | parser/bridge contract 문제 |
+| route failure | video plan -> downstream jobs 구성 실패 | `route_failed` | `chatgpt_runner` | implemented | stage1->stage2 bridge 문제 |
+
+### GPT Failure Matrix interpretation
+
+- 파서는 이미 별도 failure class를 갖고 있고, 현재 blocker는 parser가 아니라 `CHATGPT_BACKEND_UNAVAILABLE` 계열입니다.
+- 즉, 실제 테스트가 막힐 때 먼저 봐야 할 행은 backend submit/read 계층입니다.
+
+## GPT Golden Cases
+
+| Golden case | Input | Output | Evidence | Completion |
+|---|---|---|---|---|
+| browser snapshot bridge | `browser_evidence.snapshot_path` -> snapshot text | `stage1_handoff.json` | `system/runtime_v2_probe/stage1-row13-evidence-05/` | handoff ready |
+| gpt text bridge | `gpt_response_text` direct injection | `stage1_handoff.json` | `system/runtime_v2_probe/stage1-row13-evidence-04/` | handoff ready |
+| topic-spec fallback | topic only -> synthetic parsed payload | `stage1_handoff.json` | `system/runtime_v2_probe/stage1-row13-evidence-01/` | handoff ready |
+
+### GPT Golden evidence notes
+
+- 이후 `real-first test`는 위 3개와 같은 파일 레이아웃을 유지해야 합니다.
+- 특히 `raw_output.json`, `parsed_payload.json`, `stage1_handoff.json` 3종은 항상 남겨야 합니다.
+
+## GPT Readiness Checklist
+
+### Mock Ready
+
+- [x] `CHATGPT_BACKEND_UNAVAILABLE` canonical failure contract 존재
+- [x] `failure_stage=submit/read` 존재
+- [x] `chatgpt_runner` retry semantics 존재
+- [x] parser -> handoff contract tests 존재
+
+### Smoke Ready
+
+- [x] browser snapshot -> `gpt_response_text` bridge evidence 존재
+- [x] `gpt_response_text` -> `stage1_handoff` evidence 존재
+- [x] downstream `next_jobs` stage1 bridge evidence 존재
+
+### Real Ready
+
+- [ ] 실제 ChatGPT assistant response artifact 생성
+- [ ] real assistant response가 snapshot placeholder가 아닌지 증명
+- [ ] same run_id 기준 `raw_output -> parsed_payload -> handoff` evidence 확보
+- [ ] downstream 1개 서비스가 handoff-derived payload로 real run 성공
+
+## Current GPT Verdict
+
+- `Mock`: Yes
+- `Smoke`: Yes
+- `Real first`: Not yet
+
+즉, 현재 GPT는 **구축은 상당 부분 완료됐지만 real-first gate는 아직 닫히지 않은 상태**입니다.
+
+### Latest GPT-only follow-up
+
+- `runtime_v2/stage1/handoff_schema.py`가 `version`을 항상 `stage1_handoff.v1.0`으로 정규화하도록 보강했습니다.
+- `run_stage1_chatgpt_job()` 결과의 `stage1_handoff.contract`는 이제 `voice_texts`, `ref_img_1`, `ref_img_2`를 항상 포함합니다.
+- 따라서 GPT Field Matrix의 “필수 필드 존재”는 현재 코드 산출물 기준으로 증명 가능합니다.

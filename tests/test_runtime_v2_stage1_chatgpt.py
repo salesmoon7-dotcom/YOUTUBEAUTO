@@ -72,8 +72,20 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
 
             self.assertEqual(result["status"], "ok")
             self.assertTrue(Path(cast(str, result["result_path"])).exists())
-            next_jobs = cast(list[object], result["next_jobs"])
-            self.assertFalse(next_jobs)
+            result_path = Path(cast(str, result["result_path"]))
+            result_payload = cast(
+                dict[str, object], json.loads(result_path.read_text(encoding="utf-8"))
+            )
+            handoff = cast(
+                dict[str, object],
+                cast(dict[str, object], result_payload["details"])["stage1_handoff"],
+            )
+            contract = cast(dict[str, object], handoff["contract"])
+
+            self.assertEqual(contract["version"], "stage1_handoff.v1.0")
+            self.assertIsInstance(contract["voice_texts"], list)
+            self.assertIn("ref_img_1", contract)
+            self.assertIn("ref_img_2", contract)
 
     def test_stage1_ignores_channel_hint_and_builds_native_video_plan(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -305,6 +317,10 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertEqual(parsed_payload["title_for_thumb"], "머니 썸네일 제목")
         self.assertEqual(parsed_payload["description"], "머니 설명")
         self.assertEqual(parsed_payload["bgm"], "serious piano")
+        self.assertEqual(parsed_payload["version"], "stage1_handoff.v1.0")
+        self.assertIsInstance(parsed_payload["voice_texts"], list)
+        self.assertIn("ref_img_1", parsed_payload)
+        self.assertIn("ref_img_2", parsed_payload)
         self.assertEqual(
             parsed_payload["scene_prompts"],
             ["십세부터 오십세까지 설명", "육십세부터 구십세까지 설명"],
