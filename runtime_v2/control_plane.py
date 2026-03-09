@@ -1132,6 +1132,11 @@ def _seed_declared_next_jobs(
     typed_next_jobs = _next_jobs_entries(worker_result)
     if not typed_next_jobs and parent_job.workload == "chatgpt":
         typed_next_jobs = _declared_stage1_next_jobs(worker_result)
+    _ = _attach_asset_manifest(
+        typed_next_jobs,
+        run_id=str(parent_job.payload.get("run_id", "")).strip(),
+        row_ref=str(parent_job.payload.get("row_ref", "")).strip(),
+    )
     if len(typed_next_jobs) > MAX_NEXT_JOBS:
         _ = _append_control_event(
             {
@@ -1253,6 +1258,109 @@ def _seed_declared_next_jobs(
         known_job_ids.add(next_job.job_id)
         seeded.append(next_job)
     return seeded
+
+
+def _attach_asset_manifest(
+    typed_next_jobs: list[object], *, run_id: str, row_ref: str
+) -> Path | None:
+    manifest_context = _asset_manifest_context(typed_next_jobs)
+    if manifest_context is None:
+        return None
+    asset_root, roles = manifest_context
+    manifest_path = _write_asset_manifest(
+        asset_root, run_id=run_id, row_ref=row_ref, roles=roles
+    )
+    for raw_entry in typed_next_jobs:
+        if not isinstance(raw_entry, dict):
+            continue
+        entry = cast(dict[object, object], raw_entry)
+        job_raw = entry.get("job")
+        if not isinstance(job_raw, dict):
+            continue
+        job_block = cast(dict[object, object], job_raw)
+        if str(job_block.get("worker", "")) != "render":
+            continue
+        payload_raw = job_block.get("payload")
+        if not isinstance(payload_raw, dict):
+            continue
+        payload = cast(dict[object, object], payload_raw)
+        payload["asset_manifest_path"] = str(manifest_path.resolve())
+    return manifest_path
+
+
+def _asset_manifest_context(
+    typed_next_jobs: list[object],
+) -> tuple[Path, dict[str, str]] | None:
+    asset_root: Path | None = None
+    roles: dict[str, str] = {}
+    for raw_entry in typed_next_jobs:
+        entry = _mapping_from_obj(raw_entry)
+        if entry is None:
+            continue
+        job_block = _mapping_from_obj(entry.get("job", {}))
+        if job_block is None:
+            continue
+        worker = str(job_block.get("worker", "")).strip()
+        payload = _mapping_from_obj(job_block.get("payload", {}))
+        if payload is None:
+            continue
+        if worker == "render":
+            render_root = str(payload.get("render_folder_path", "")).strip()
+            if render_root:
+                asset_root = Path(render_root).resolve()
+            voice_json_path = str(payload.get("voice_json_path", "")).strip()
+            if voice_json_path and "voice_json" not in roles:
+                roles["voice_json"] = voice_json_path
+            continue
+        artifact_path = str(payload.get("service_artifact_path", "")).strip()
+        if not artifact_path:
+            continue
+        scene_index = _to_int(payload.get("scene_index", 0))
+        if worker == "canva":
+            roles[f"thumb.scene_{scene_index:02d}.canva"] = artifact_path
+            if "thumb_primary" not in roles:
+                roles["thumb_primary"] = artifact_path
+        elif worker == "geminigen":
+            roles[f"stage2.scene_{scene_index:02d}.geminigen"] = artifact_path
+        else:
+            roles[f"stage2.scene_{scene_index:02d}.{worker}"] = artifact_path
+            if worker == "genspark" and "image_primary" not in roles:
+                roles["image_primary"] = artifact_path
+            elif worker == "seaart" and "image_primary" not in roles:
+                roles["image_primary"] = artifact_path
+            if worker == "geminigen" and "video_primary" not in roles:
+                roles["video_primary"] = artifact_path
+    if asset_root is None or not roles:
+        return None
+    return asset_root, roles
+
+
+def _write_asset_manifest(
+    asset_root: Path, *, run_id: str, row_ref: str, roles: dict[str, str]
+) -> Path:
+    manifest_path = asset_root / "asset_manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": "1.0",
+        "runtime": "runtime_v2",
+        "checked_at": round(time(), 3),
+        "run_id": run_id,
+        "row_ref": row_ref,
+        "asset_root": str(asset_root.resolve()),
+        "roles": roles,
+    }
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=manifest_path.parent,
+        prefix=f"{manifest_path.stem}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        _ = handle.write(json.dumps(payload, ensure_ascii=True, indent=2))
+        temp_path = Path(handle.name)
+    _ = temp_path.replace(manifest_path)
+    return manifest_path
 
 
 def _declared_stage1_next_jobs(worker_result: dict[str, object]) -> list[object]:

@@ -129,12 +129,86 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertEqual(str(by_job_id["chatgpt-job"]["status"]), "completed")
         self.assertTrue(routed_jobs)
         self.assertEqual(len(render_jobs), 1)
-        first_routed_payload = cast(dict[str, object], routed_jobs[0]["payload"])
-        render_payload = cast(dict[str, object], render_jobs[0]["payload"])
-        self.assertEqual(first_routed_payload["run_id"], "chatgpt-run-1")
-        self.assertEqual(first_routed_payload["row_ref"], "Sheet1!row1")
-        self.assertEqual(render_payload["run_id"], "chatgpt-run-1")
-        self.assertEqual(render_payload["row_ref"], "Sheet1!row1")
+
+    def test_control_plane_writes_asset_manifest_for_stage1_routed_jobs(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            topic_spec: dict[str, object] = {
+                "contract": "topic_spec",
+                "contract_version": "1.0",
+                "run_id": "chatgpt-run-manifest",
+                "row_ref": "Sheet1!row1",
+                "topic": "Bridge topic",
+                "status_snapshot": "",
+                "excel_snapshot_hash": "hash-1",
+            }
+            seed_control_job(
+                JobContract(
+                    job_id="chatgpt-manifest",
+                    workload="chatgpt",
+                    checkpoint_key="topic_spec:Sheet1!row1:hash-1",
+                    payload={
+                        "run_id": "chatgpt-run-manifest",
+                        "row_ref": "Sheet1!row1",
+                        "topic_spec": topic_spec,
+                    },
+                ),
+                config=config,
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                side_effect=lambda **kwargs: {
+                    "status": "ok",
+                    "code": "OK",
+                    "worker_result": kwargs["execute"](),
+                },
+            ):
+                _ = run_control_loop_once(
+                    owner="runtime_v2", config=config, run_id="control-run-manifest"
+                )
+
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queued_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            render_job = next(
+                item
+                for item in queued_items
+                if str(item.get("job_id", "")).startswith("render-")
+            )
+            render_payload = cast(dict[str, object], render_job["payload"])
+            manifest_path = Path(str(render_payload["asset_manifest_path"]))
+            manifest = cast(
+                dict[str, object], json.loads(manifest_path.read_text(encoding="utf-8"))
+            )
+            self.assertTrue(manifest_path.exists())
+            self.assertEqual(manifest["run_id"], "chatgpt-run-manifest")
+            roles = cast(dict[str, object], manifest["roles"])
+            self.assertTrue(
+                str(roles["image_primary"])
+                .replace("\\", "/")
+                .endswith("images/genspark-chatgpt-run-manifest-1.png")
+            )
+            self.assertTrue(
+                str(roles["stage2.scene_01.genspark"])
+                .replace("\\", "/")
+                .endswith("images/genspark-chatgpt-run-manifest-1.png")
+            )
+            self.assertTrue(
+                str(roles["stage2.scene_02.seaart"])
+                .replace("\\", "/")
+                .endswith("images/seaart-chatgpt-run-manifest-2.png")
+            )
+            self.assertTrue(
+                str(roles["voice_json"]).replace("\\", "/").endswith("voice.json")
+            )
 
     def test_control_plane_routes_stage1_video_plan_without_worker_next_jobs(
         self,
