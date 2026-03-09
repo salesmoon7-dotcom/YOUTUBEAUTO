@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from runtime_v2.config import RuntimeConfig
 from runtime_v2.browser.manager import default_browser_sessions_by_service
 
 
@@ -53,6 +54,8 @@ def build_stage2_agent_browser_adapter_command(
         str(resolved_port),
         "--service-artifact-path",
         str(Path(service_artifact_path)),
+        "--runtime-root",
+        str(_default_runtime_root()),
     ]
     if resolved_url:
         command.extend(["--expected-url-substring", resolved_url])
@@ -71,3 +74,8 @@ def _default_port_for_service(service: str) -> int:
 
 def attach_evidence_path(workspace: Path) -> Path:
     return workspace / "attach_evidence.json"
+
+
+def _default_runtime_root() -> Path:
+    config = RuntimeConfig()
+    return config.result_router_file.parent.parent.resolve()

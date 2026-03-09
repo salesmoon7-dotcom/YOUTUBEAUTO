@@ -15,7 +15,7 @@ from runtime_v2 import exit_codes
 from runtime_v2.bootstrap import ensure_runtime_bootstrap
 from runtime_v2.browser.manager import BrowserManager, open_browser_for_login
 from runtime_v2.browser.supervisor import BrowserSupervisor
-from runtime_v2.config import RuntimeConfig
+from runtime_v2.config import RuntimeConfig, WorkloadName
 from runtime_v2.contracts.job_contract import JobContract, build_explicit_job_contract
 from runtime_v2.control_plane import run_control_loop_once
 from runtime_v2.contracts.json_contract import (
@@ -41,6 +41,11 @@ from runtime_v2.n8n_adapter import (
     post_callback,
     write_mock_callback,
 )
+from runtime_v2.stage2.canva_worker import run_canva_job
+from runtime_v2.stage2.geminigen_worker import run_geminigen_job
+from runtime_v2.stage2.genspark_worker import run_genspark_job
+from runtime_v2.stage2.json_builders import build_stage2_jobs
+from runtime_v2.stage2.seaart_worker import run_seaart_job
 from runtime_v2.supervisor import run_once, run_selftest
 from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
 
@@ -61,6 +66,8 @@ class CliArgs(argparse.Namespace):
     browser_recover_detached: bool
     browser_recover_probe_child: bool
     agent_browser_stage2_adapter_child: bool
+    stage2_row1_detached: bool
+    stage2_row1_probe_child: bool
     callback_url: str
     callback_mock_out: str
     gui_status_out: str
@@ -76,6 +83,7 @@ class CliArgs(argparse.Namespace):
     service_artifact_path: str
     expected_url_substring: str
     expected_title_substring: str
+    stage2_agent_browser_services: str
 
     def __init__(self) -> None:
         super().__init__()
@@ -94,6 +102,8 @@ class CliArgs(argparse.Namespace):
         self.browser_recover_detached = False
         self.browser_recover_probe_child = False
         self.agent_browser_stage2_adapter_child = False
+        self.stage2_row1_detached = False
+        self.stage2_row1_probe_child = False
         self.callback_url = ""
         self.callback_mock_out = ""
         self.gui_status_out = "system/runtime_v2/health/gui_status.json"
@@ -109,6 +119,7 @@ class CliArgs(argparse.Namespace):
         self.service_artifact_path = ""
         self.expected_url_substring = ""
         self.expected_title_substring = ""
+        self.stage2_agent_browser_services = "genspark"
 
 
 def exit_code_from_status(code: str) -> int:
@@ -179,6 +190,10 @@ def main() -> int:
         action="store_true",
         help=argparse.SUPPRESS,
     )
+    _ = parser.add_argument("--stage2-row1-detached", action="store_true")
+    _ = parser.add_argument(
+        "--stage2-row1-probe-child", action="store_true", help=argparse.SUPPRESS
+    )
     _ = parser.add_argument("--callback-url", default="")
     _ = parser.add_argument("--callback-mock-out", default="")
     _ = parser.add_argument(
@@ -196,6 +211,10 @@ def main() -> int:
     _ = parser.add_argument("--service-artifact-path", default="")
     _ = parser.add_argument("--expected-url-substring", default="")
     _ = parser.add_argument("--expected-title-substring", default="")
+    _ = parser.add_argument(
+        "--stage2-agent-browser-services",
+        default="genspark",
+    )
     args = parser.parse_args(namespace=CliArgs())
 
     selected_modes = [
@@ -212,6 +231,8 @@ def main() -> int:
             args.browser_recover_detached,
             args.browser_recover_probe_child,
             args.agent_browser_stage2_adapter_child,
+            args.stage2_row1_detached,
+            args.stage2_row1_probe_child,
             bool(args.open_browser_login.strip()),
             args.readiness_check,
         )
@@ -243,6 +264,8 @@ def main() -> int:
 
     if args.browser_recover_detached:
         return _spawn_detached_probe(args, mode="browser_recover")
+    if args.stage2_row1_detached:
+        return _spawn_detached_probe(args, mode="stage2_row1")
 
     if args.agent_browser_stage2_adapter_child:
         return _run_agent_browser_stage2_adapter_child(args)
@@ -256,6 +279,8 @@ def main() -> int:
         mode = "selftest"
     elif args.browser_recover_probe_child:
         mode = "browser_recover"
+    elif args.stage2_row1_probe_child:
+        mode = "stage2_row1"
     elif args.control_once or args.control_once_probe_child or args.excel_once:
         mode = "control_once"
     else:
@@ -267,6 +292,17 @@ def main() -> int:
             config=config,
             probe_root=_probe_root_path(args.probe_root),
             run_id=run_id,
+        )
+        print(final_report(report))
+        return exit_code_from_status(str(report.get("code", "CLI_USAGE")))
+    if args.stage2_row1_probe_child:
+        report = _run_stage2_row1_probe(
+            config=config,
+            probe_root=_probe_root_path(args.probe_root),
+            run_id=run_id,
+            agent_browser_services=_parse_stage2_agent_browser_services(
+                args.stage2_agent_browser_services
+            ),
         )
         print(final_report(report))
         return exit_code_from_status(str(report.get("code", "CLI_USAGE")))
@@ -558,6 +594,7 @@ def _build_runtime_config(args: CliArgs) -> RuntimeConfig:
     if args.probe_root.strip() and (
         args.selftest_probe_child
         or args.control_once_probe_child
+        or args.stage2_row1_probe_child
         or args.readiness_check
     ):
         root = _probe_root_path(args.probe_root)
@@ -599,6 +636,7 @@ def _spawn_detached_probe(args: CliArgs, *, mode: str) -> int:
         "selftest": "--selftest-probe-child",
         "control_once": "--control-once-probe-child",
         "browser_recover": "--browser-recover-probe-child",
+        "stage2_row1": "--stage2-row1-probe-child",
     }[mode]
     command = [
         sys.executable,
@@ -617,6 +655,13 @@ def _spawn_detached_probe(args: CliArgs, *, mode: str) -> int:
         command.append("--selftest-force-gpt-fail")
     if mode == "control_once" and args.seed_mock_chain:
         command.append("--seed-mock-chain")
+    if mode == "stage2_row1":
+        command.extend(
+            [
+                "--stage2-agent-browser-services",
+                args.stage2_agent_browser_services,
+            ]
+        )
     if args.runtime_root.strip():
         command.extend(["--runtime-root", args.runtime_root.strip()])
 
@@ -671,6 +716,151 @@ def _runtime_root_path(raw_runtime_root: str) -> Path | None:
 
 def _runtime_root_for_config(config: RuntimeConfig) -> Path:
     return config.result_router_file.parent.parent.resolve()
+
+
+def _parse_stage2_agent_browser_services(raw: str) -> list[str]:
+    services: list[str] = []
+    for item in raw.split(","):
+        service = item.strip()
+        if service:
+            services.append(service)
+    return services
+
+
+def _stage2_runner_for_service(service: str):
+    mapping = {
+        "genspark": run_genspark_job,
+        "seaart": run_seaart_job,
+        "geminigen": run_geminigen_job,
+        "canva": run_canva_job,
+    }
+    return mapping[service]
+
+
+def _build_stage2_row1_video_plan(
+    *, asset_root: Path, run_id: str, agent_browser_services: list[str]
+) -> dict[str, object]:
+    return {
+        "contract": "video_plan",
+        "contract_version": "1.0",
+        "run_id": run_id,
+        "row_ref": "Sheet1!row1",
+        "topic": "Stage2 row1 auto probe",
+        "scene_plan": [
+            {"scene_index": 1, "prompt": "scene one"},
+            {"scene_index": 2, "prompt": "scene two"},
+            {"scene_index": 3, "prompt": "scene three"},
+            {"scene_index": 4, "prompt": "scene four"},
+        ],
+        "asset_plan": {
+            "asset_root": str(asset_root.resolve()),
+            "common_asset_folder": str(asset_root.resolve()),
+        },
+        "voice_plan": {"mapping_source": "excel_scene", "scene_count": 4, "groups": []},
+        "reason_code": "ok",
+        "evidence": {"source": "stage2_row1_detached"},
+        "use_agent_browser_services": agent_browser_services,
+    }
+
+
+def _build_stage2_placeholder_adapter_command(target_path: Path) -> list[str]:
+    return [
+        sys.executable,
+        "-c",
+        (
+            "from pathlib import Path; "
+            f"p=Path(r'{str(target_path)}'); "
+            "p.parent.mkdir(parents=True, exist_ok=True); "
+            "p.write_bytes(b'placeholder')"
+        ),
+    ]
+
+
+def _run_stage2_row1_probe(
+    *,
+    config: RuntimeConfig,
+    probe_root: Path,
+    run_id: str,
+    agent_browser_services: list[str],
+) -> dict[str, object]:
+    asset_root = probe_root / "stage2_row1_assets"
+    asset_root.mkdir(parents=True, exist_ok=True)
+    video_plan = _build_stage2_row1_video_plan(
+        asset_root=asset_root,
+        run_id=run_id,
+        agent_browser_services=agent_browser_services,
+    )
+    jobs, render_spec = build_stage2_jobs(video_plan)
+    stage2_results: list[dict[str, object]] = []
+    overall_ok = True
+    failure_code = "OK"
+    for raw in jobs[:-1]:
+        typed = cast(dict[str, object], raw)
+        job_payload = cast(dict[str, object], typed["job"])
+        service = str(job_payload["worker"])
+        payload = cast(dict[str, object], job_payload["payload"])
+        payload["runtime_root"] = str(
+            RuntimeConfig().result_router_file.parent.parent.resolve()
+        )
+        if service not in agent_browser_services:
+            payload["adapter_command"] = _build_stage2_placeholder_adapter_command(
+                Path(str(payload.get("service_artifact_path", "")))
+            )
+        contract = JobContract(
+            job_id=str(job_payload["job_id"]),
+            workload=cast(WorkloadName, service),
+            checkpoint_key=str(job_payload["checkpoint_key"]),
+            payload=payload,
+        )
+        runner = _stage2_runner_for_service(service)
+        result = runner(contract, config.artifact_root)
+        fallback_used = False
+        attach_attempt_failed = str(result.get("status", "")) != "ok"
+        if attach_attempt_failed and service in agent_browser_services:
+            fallback_payload = dict(payload)
+            fallback_payload.pop("use_agent_browser", None)
+            fallback_payload["adapter_command"] = (
+                _build_stage2_placeholder_adapter_command(
+                    Path(str(payload.get("service_artifact_path", "")))
+                )
+            )
+            fallback_contract = JobContract(
+                job_id=str(job_payload["job_id"]),
+                workload=cast(WorkloadName, service),
+                checkpoint_key=str(job_payload["checkpoint_key"]),
+                payload=fallback_payload,
+            )
+            result = runner(fallback_contract, config.artifact_root)
+            fallback_used = True
+        stage2_results.append(
+            {
+                "service": service,
+                "status": str(result.get("status", "")),
+                "error_code": str(result.get("error_code", "")),
+                "details": result.get("details", {}),
+                "completion": result.get("completion", {}),
+                "fallback_used": fallback_used,
+                "attach_attempt_failed": attach_attempt_failed,
+            }
+        )
+        if str(result.get("status", "")) != "ok" and overall_ok:
+            overall_ok = False
+            failure_code = str(result.get("error_code", "BROWSER_BLOCKED"))
+    report: dict[str, object] = {
+        "run_id": run_id,
+        "mode": "stage2_row1",
+        "status": "ok" if overall_ok else "blocked",
+        "code": "OK" if overall_ok else failure_code,
+        "exit_code": exit_codes.SUCCESS
+        if overall_ok
+        else exit_code_from_status(failure_code),
+        "agent_browser_services": agent_browser_services,
+        "video_plan": video_plan,
+        "render_spec": render_spec,
+        "results": stage2_results,
+    }
+    _ = _write_probe_result(probe_root, report)
+    return report
 
 
 def _run_browser_recovery_probe(
@@ -730,6 +920,10 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         },
     )
     result = run_agent_browser_verify_job(job, artifact_root)
+    if str(result.get("status", "")) != "ok":
+        recovery_config = _build_runtime_config(args)
+        _attempt_stage2_attach_recovery(recovery_config, service)
+        result = run_agent_browser_verify_job(job, artifact_root)
     _write_stage2_attach_evidence(
         workspace=workspace, service=service, port=args.port, result=result
     )
@@ -773,6 +967,19 @@ def _write_stage2_attach_evidence(
         json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8"
     )
     return evidence_path
+
+
+def _attempt_stage2_attach_recovery(config: RuntimeConfig, service: str) -> None:
+    _ = BrowserSupervisor(BrowserManager()).tick(
+        registry_file=config.browser_registry_file,
+        health_file=config.browser_health_file,
+        events_file=config.control_plane_events_file,
+        run_id=f"stage2-attach-recovery-{service}-{uuid4()}",
+        recover_unhealthy=True,
+        restart_threshold=1,
+        cooldown_sec=0,
+    )
+    _ = tick_gpt_status(config.gpt_status_file, config)
 
 
 def _write_probe_result(probe_root: Path, payload: dict[str, object]) -> Path:
