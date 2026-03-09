@@ -140,6 +140,27 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertEqual(result["error_code"], "AGENT_BROWSER_COMMAND_FAILED")
         self.assertFalse(result.get("next_jobs", []))
 
+    def test_agent_browser_worker_resolves_executable_from_appdata_npm(self) -> None:
+        from runtime_v2.workers.agent_browser_worker import (
+            _resolve_agent_browser_command,
+        )
+
+        with patch.dict(
+            "os.environ", {"APPDATA": r"C:\Users\1\AppData\Roaming"}, clear=False
+        ):
+            with patch(
+                "runtime_v2.workers.agent_browser_worker.shutil.which",
+                return_value=None,
+            ):
+                resolved = _resolve_agent_browser_command(
+                    ["agent-browser", "--cdp", "9222", "tab", "list"]
+                )
+
+        self.assertTrue(
+            str(resolved[0]).endswith("agent-browser.cmd")
+            or str(resolved[0]).endswith("agent-browser-win32-x64.exe")
+        )
+
 
 if __name__ == "__main__":
     _ = unittest.main()

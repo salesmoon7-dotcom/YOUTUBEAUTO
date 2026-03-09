@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import cast
@@ -26,8 +28,9 @@ from runtime_v2.workers.job_runtime import (
 
 
 def _run_agent_browser_command(command: list[str], *, timeout_sec: int = 30) -> str:
+    resolved_command = _resolve_agent_browser_command(command)
     completed = subprocess.run(
-        command,
+        resolved_command,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -40,6 +43,36 @@ def _run_agent_browser_command(command: list[str], *, timeout_sec: int = 30) -> 
         detail = stderr or stdout or f"exit_code={completed.returncode}"
         raise RuntimeError(detail)
     return completed.stdout
+
+
+def _resolve_agent_browser_command(command: list[str]) -> list[str]:
+    if not command:
+        return command
+    executable = command[0]
+    if executable != "agent-browser":
+        return command
+    resolved = shutil.which(executable)
+    if resolved:
+        return [resolved, *command[1:]]
+    appdata = os.environ.get("APPDATA", "").strip()
+    candidates: list[Path] = []
+    if appdata:
+        npm_root = Path(appdata) / "npm"
+        candidates.extend(
+            [
+                npm_root / "agent-browser.cmd",
+                npm_root / "agent-browser.ps1",
+                npm_root
+                / "node_modules"
+                / "agent-browser"
+                / "bin"
+                / "agent-browser-win32-x64.exe",
+            ]
+        )
+    for candidate in candidates:
+        if candidate.exists():
+            return [str(candidate), *command[1:]]
+    return command
 
 
 def _default_port_for_service(service: str) -> int:
