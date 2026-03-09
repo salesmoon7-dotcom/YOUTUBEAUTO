@@ -383,6 +383,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                 return_value={
                     "status": "ok",
                     "response_text": _gpt_response_text(),
+                    "submit_info": {"sendClicked": True},
                     "final_state": {"assistant_block_count": 1},
                 },
             ):
@@ -396,6 +397,12 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             result_payload = cast(
                 dict[str, object], json.loads(result_path.read_text(encoding="utf-8"))
             )
+            raw_output = cast(
+                dict[str, object],
+                json.loads(
+                    (root / "workspace" / "raw_output.json").read_text(encoding="utf-8")
+                ),
+            )
             handoff = cast(
                 dict[str, object],
                 cast(dict[str, object], result_payload["details"])["stage1_handoff"],
@@ -406,6 +413,16 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertIn(
             "scene one from gpt", cast(list[object], parsed_payload["scene_prompts"])
         )
+        gpt_capture = cast(dict[str, object], raw_output["gpt_capture"])
+        browser_evidence = cast(dict[str, object], raw_output["browser_evidence"])
+        self.assertEqual(raw_output["source"], "gpt_response_text")
+        self.assertEqual(gpt_capture["status"], "ok")
+        self.assertEqual(gpt_capture["source"], "agent_browser_live")
+        self.assertTrue(
+            bool(cast(dict[str, object], gpt_capture["submit_info"])["sendClicked"])
+        )
+        self.assertEqual(browser_evidence["service"], "chatgpt")
+        self.assertEqual(browser_evidence["port"], 9222)
 
     def test_stage1_runner_retries_live_chatgpt_after_relaunch(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -447,6 +464,96 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertEqual(generate_mock.call_count, 2)
         relaunch_mock.assert_called_once_with("chatgpt")
         sleep_mock.assert_called_once()
+
+    def test_stage1_runner_fails_closed_when_live_chatgpt_capture_stays_failed(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            topic_spec = _topic_spec(topic="Money flow")
+            topic_spec["browser_evidence"] = {"service": "chatgpt", "port": 9222}
+
+            with (
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                    side_effect=[
+                        {
+                            "status": "failed",
+                            "error_code": "CHATGPT_BACKEND_UNAVAILABLE",
+                            "failure_stage": "read",
+                            "details": {"backend_error": "os error 10060"},
+                            "submit_info": {},
+                            "final_state": {},
+                        },
+                        {
+                            "status": "failed",
+                            "error_code": "CHATGPT_BACKEND_UNAVAILABLE",
+                            "failure_stage": "read",
+                            "details": {"backend_error": "os error 10060"},
+                            "submit_info": {},
+                            "final_state": {},
+                        },
+                    ],
+                ),
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.open_browser_for_login"
+                ) as relaunch_mock,
+                patch("runtime_v2.stage1.chatgpt_runner.sleep") as sleep_mock,
+            ):
+                result = run_stage1_chatgpt_job(
+                    topic_spec,
+                    root / "workspace",
+                    debug_log="logs/stage1-run-1.jsonl",
+                )
+
+                raw_output = cast(
+                    dict[str, object],
+                    json.loads(
+                        (root / "workspace" / "raw_output.json").read_text(
+                            encoding="utf-8"
+                        )
+                    ),
+                )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_BACKEND_UNAVAILABLE")
+        details = cast(dict[str, object], result["details"])
+        executor = cast(dict[str, object], details["executor"])
+        gpt_capture = cast(dict[str, object], executor["gpt_capture"])
+        self.assertEqual(gpt_capture["status"], "failed")
+        self.assertEqual(raw_output["source"], "gpt_capture_only")
+        self.assertEqual(
+            cast(dict[str, object], raw_output["gpt_capture"])["status"], "failed"
+        )
+        relaunch_mock.assert_called_once_with("chatgpt")
+        sleep_mock.assert_called_once()
+
+    def test_stage1_runner_fails_closed_when_chatgpt_live_request_has_no_port(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            topic_spec = _topic_spec(topic="Money flow")
+            topic_spec["browser_evidence"] = {"service": "chatgpt"}
+
+            result = run_stage1_chatgpt_job(
+                topic_spec,
+                root / "workspace",
+                debug_log="logs/stage1-run-1.jsonl",
+            )
+
+            raw_output = cast(
+                dict[str, object],
+                json.loads(
+                    (root / "workspace" / "raw_output.json").read_text(encoding="utf-8")
+                ),
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_BACKEND_UNAVAILABLE")
+        self.assertEqual(raw_output["source"], "gpt_capture_only")
+        browser_evidence = cast(dict[str, object], raw_output["browser_evidence"])
+        self.assertEqual(browser_evidence["service"], "chatgpt")
 
     def test_stage1_route_failure_becomes_structured_failed_result(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

@@ -118,12 +118,28 @@ def attach_gpt_response_text_from_browser_evidence(
                 _ = open_browser_for_login("chatgpt")
                 sleep(8)
                 result = generate_gpt_response_text(prompt=prompt, port=raw_port)
+            enriched = dict(topic_spec)
+            enriched["gpt_capture"] = _canonical_gpt_capture(
+                result, source="agent_browser_live"
+            )
             if str(result.get("status", "")) == "ok":
-                enriched = dict(topic_spec)
                 enriched["gpt_response_text"] = str(result.get("response_text", ""))
                 enriched["gpt_response_source"] = "agent_browser_live"
                 enriched["gpt_response_meta"] = result.get("final_state", {})
                 return enriched
+            return enriched
+        if service == "chatgpt":
+            enriched = dict(topic_spec)
+            enriched["gpt_capture"] = {
+                "status": "failed",
+                "source": "agent_browser_live",
+                "submit_info": {},
+                "final_state": {},
+                "error_code": "CHATGPT_BACKEND_UNAVAILABLE",
+                "failure_stage": "submit",
+                "details": {"backend_error": "missing_chatgpt_live_port"},
+            }
+            return enriched
         return dict(topic_spec)
     snapshot_file = Path(snapshot_path)
     if not snapshot_file.exists():
@@ -131,6 +147,12 @@ def attach_gpt_response_text_from_browser_evidence(
     enriched = dict(topic_spec)
     enriched["gpt_response_text"] = snapshot_file.read_text(encoding="utf-8")
     enriched["gpt_response_source"] = "agent_browser_snapshot"
+    enriched["gpt_capture"] = {
+        "status": "ok",
+        "source": "agent_browser_snapshot",
+        "submit_info": {},
+        "final_state": {"snapshot_path": str(snapshot_file.resolve())},
+    }
     return enriched
 
 
@@ -141,6 +163,29 @@ def _should_retry_chatgpt_interaction(result: dict[str, object]) -> bool:
         return False
     failure_stage = str(result.get("failure_stage", "")).strip()
     return failure_stage in {"submit", "read"}
+
+
+def _canonical_gpt_capture(
+    result: dict[str, object], *, source: str
+) -> dict[str, object]:
+    payload = {
+        "status": str(result.get("status", "failed")),
+        "source": source,
+        "submit_info": result.get("submit_info", {}),
+        "final_state": result.get("final_state", {}),
+    }
+    if str(result.get("status", "")) != "ok":
+        payload["error_code"] = str(result.get("error_code", ""))
+        payload["failure_stage"] = str(result.get("failure_stage", ""))
+        payload["details"] = result.get("details", {})
+    return payload
+
+
+def _requires_live_chatgpt_capture(browser_evidence: dict[str, object]) -> bool:
+    if str(browser_evidence.get("snapshot_path", "")).strip():
+        return False
+    service = str(browser_evidence.get("service", "")).strip()
+    return service == "chatgpt"
 
 
 def build_video_plan_from_stage1_parsed_payload(
@@ -253,6 +298,34 @@ def run_stage1_chatgpt_job(
     )
     run_id = str(topic_spec.get("run_id", "")).strip()
     row_ref = str(topic_spec.get("row_ref", "")).strip()
+    raw_output_path = workspace / "raw_output.json"
+    parsed_payload_path = workspace / "parsed_payload.json"
+    handoff_path = workspace / "stage1_handoff.json"
+    raw_output = build_stage1_raw_output_artifact(topic_spec)
+    _ = write_json_atomic(raw_output_path, raw_output)
+    if _requires_live_chatgpt_capture(browser_evidence):
+        gpt_capture = topic_spec.get("gpt_capture", {})
+        if (
+            not isinstance(gpt_capture, dict)
+            or str(gpt_capture.get("status", "")) != "ok"
+        ):
+            error_code = (
+                str(gpt_capture.get("error_code", "")).strip()
+                if isinstance(gpt_capture, dict)
+                else ""
+            ) or "CHATGPT_BACKEND_UNAVAILABLE"
+            return _stage1_failed(
+                workspace,
+                debug_log=debug_log,
+                run_id=run_id,
+                row_ref=row_ref,
+                error_code=error_code,
+                reason_code=error_code,
+                evidence={
+                    "gpt_capture": gpt_capture,
+                    "raw_output_path": str(raw_output_path.resolve()),
+                },
+            )
     is_valid, _ = validate_topic_spec(topic_spec)
     if not is_valid:
         return _stage1_failed(
@@ -263,11 +336,6 @@ def run_stage1_chatgpt_job(
             error_code="invalid_topic_spec",
             reason_code="invalid_topic_spec",
         )
-    raw_output_path = workspace / "raw_output.json"
-    parsed_payload_path = workspace / "parsed_payload.json"
-    handoff_path = workspace / "stage1_handoff.json"
-    raw_output = build_stage1_raw_output_artifact(topic_spec)
-    _ = write_json_atomic(raw_output_path, raw_output)
     parsed_payload = build_stage1_parsed_payload_from_topic_spec(topic_spec)
     errors = validate_stage1_parsed_payload(parsed_payload)
     if errors:

@@ -10,21 +10,35 @@ from runtime_v2.stage1.handoff_schema import normalize_stage1_handoff_contract
 def build_stage1_raw_output_artifact(
     topic_spec: dict[str, object],
 ) -> dict[str, object]:
-    response_text = str(topic_spec.get("gpt_response_text", "")).strip()
-    if response_text:
-        return {
-            "source": "gpt_response_text",
-            "response_text": response_text,
-            "row_ref": str(topic_spec.get("row_ref", "")).strip(),
-            "run_id": str(topic_spec.get("run_id", "")).strip(),
-        }
-    payload = build_stage1_parsed_payload_from_topic_spec(topic_spec)
-    return {
-        "source": "topic_spec_fallback",
-        "response_text": json.dumps(payload, ensure_ascii=False, indent=2),
+    payload: dict[str, object] = {
         "row_ref": str(topic_spec.get("row_ref", "")).strip(),
         "run_id": str(topic_spec.get("run_id", "")).strip(),
     }
+    browser_evidence = topic_spec.get("browser_evidence")
+    if isinstance(browser_evidence, dict):
+        payload["browser_evidence"] = {
+            "service": str(browser_evidence.get("service", "")).strip(),
+            "port": browser_evidence.get("port"),
+            "snapshot_path": str(browser_evidence.get("snapshot_path", "")).strip(),
+        }
+    gpt_capture = topic_spec.get("gpt_capture")
+    if isinstance(gpt_capture, dict):
+        payload["gpt_capture"] = cast(dict[str, object], gpt_capture)
+    response_text = str(topic_spec.get("gpt_response_text", "")).strip()
+    if response_text:
+        payload["source"] = "gpt_response_text"
+        payload["response_text"] = response_text
+        return payload
+    if "gpt_capture" in payload:
+        payload["source"] = "gpt_capture_only"
+        payload["response_text"] = ""
+        return payload
+    fallback_payload = build_stage1_parsed_payload_from_topic_spec(topic_spec)
+    payload["source"] = "topic_spec_fallback"
+    payload["response_text"] = json.dumps(
+        fallback_payload, ensure_ascii=False, indent=2
+    )
+    return payload
 
 
 def build_stage1_raw_output(topic_spec: dict[str, object]) -> str:
