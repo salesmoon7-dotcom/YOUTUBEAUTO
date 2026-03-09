@@ -9,8 +9,8 @@ from runtime_v2.contracts.video_plan import build_video_plan
 from runtime_v2.stage1.parsed_payload import (
     build_stage1_handoff,
     build_stage1_parsed_payload_from_topic_spec,
-    build_stage1_raw_output,
-    parse_stage1_output,
+    build_stage1_raw_output_artifact,
+    validate_stage1_parsed_payload,
 )
 from runtime_v2.stage1.result_contract import stage1_result_payload
 from runtime_v2.stage2.router import route_video_plan
@@ -204,12 +204,11 @@ def run_stage1_chatgpt_job(
     raw_output_path = workspace / "raw_output.json"
     parsed_payload_path = workspace / "parsed_payload.json"
     handoff_path = workspace / "stage1_handoff.json"
-    raw_output = build_stage1_raw_output(topic_spec)
-    _ = write_json_atomic(
-        raw_output_path, cast(dict[str, object], json.loads(raw_output))
-    )
-    parsed_payload, errors = parse_stage1_output(raw_output)
-    if parsed_payload is None:
+    raw_output = build_stage1_raw_output_artifact(topic_spec)
+    _ = write_json_atomic(raw_output_path, raw_output)
+    parsed_payload = build_stage1_parsed_payload_from_topic_spec(topic_spec)
+    errors = validate_stage1_parsed_payload(parsed_payload)
+    if errors:
         return _stage1_failed(
             workspace,
             debug_log=debug_log,

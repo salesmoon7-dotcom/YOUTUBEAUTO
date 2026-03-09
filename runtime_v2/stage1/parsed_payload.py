@@ -3,13 +3,49 @@ from __future__ import annotations
 import json
 from typing import cast
 
+from runtime_v2.stage1.gpt_plan_parser import build_topic_spec_from_gpt_response
+
+
+def build_stage1_raw_output_artifact(
+    topic_spec: dict[str, object],
+) -> dict[str, object]:
+    response_text = str(topic_spec.get("gpt_response_text", "")).strip()
+    if response_text:
+        return {
+            "source": "gpt_response_text",
+            "response_text": response_text,
+            "row_ref": str(topic_spec.get("row_ref", "")).strip(),
+            "run_id": str(topic_spec.get("run_id", "")).strip(),
+        }
+    payload = build_stage1_parsed_payload_from_topic_spec(topic_spec)
+    return {
+        "source": "topic_spec_fallback",
+        "response_text": json.dumps(payload, ensure_ascii=False, indent=2),
+        "row_ref": str(topic_spec.get("row_ref", "")).strip(),
+        "run_id": str(topic_spec.get("run_id", "")).strip(),
+    }
+
 
 def build_stage1_raw_output(topic_spec: dict[str, object]) -> str:
-    payload = build_stage1_parsed_payload_from_topic_spec(topic_spec)
+    payload = build_stage1_raw_output_artifact(topic_spec)
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
 def build_stage1_parsed_payload_from_topic_spec(
+    topic_spec: dict[str, object],
+) -> dict[str, object]:
+    response_text = str(topic_spec.get("gpt_response_text", "")).strip()
+    if response_text:
+        enriched_topic_spec = build_topic_spec_from_gpt_response(
+            topic_spec, response_text
+        )
+        return _build_stage1_parsed_payload_from_enriched_topic_spec(
+            enriched_topic_spec
+        )
+    return _build_stage1_parsed_payload_from_enriched_topic_spec(topic_spec)
+
+
+def _build_stage1_parsed_payload_from_enriched_topic_spec(
     topic_spec: dict[str, object],
 ) -> dict[str, object]:
     topic = str(topic_spec.get("topic", "")).strip()
@@ -32,6 +68,7 @@ def build_stage1_parsed_payload_from_topic_spec(
         "scene_prompts": scene_prompts,
         "voice_groups": voice_groups,
         "reason_code": "ok",
+        "excel_snapshot_hash": str(topic_spec.get("excel_snapshot_hash", "")),
     }
 
 
