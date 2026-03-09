@@ -10,4 +10,5 @@ def build_agent_browser_evidence(worker_result: dict[str, object]) -> dict[str, 
         "current_url": str(details.get("current_url", "")),
         "current_title": str(details.get("current_title", "")),
         "transcript_path": str(details.get("transcript_path", "")),
+        "snapshot_path": str(details.get("snapshot_path", "")),
     }

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import cast
 
-from runtime_v2.stage1.gpt_plan_parser import build_topic_spec_from_gpt_response
+from runtime_v2.stage1.gpt_response_parser import parse_gpt_response_text
 
 
 def build_stage1_raw_output_artifact(
@@ -36,13 +36,67 @@ def build_stage1_parsed_payload_from_topic_spec(
 ) -> dict[str, object]:
     response_text = str(topic_spec.get("gpt_response_text", "")).strip()
     if response_text:
-        enriched_topic_spec = build_topic_spec_from_gpt_response(
-            topic_spec, response_text
-        )
-        return _build_stage1_parsed_payload_from_enriched_topic_spec(
-            enriched_topic_spec
+        parsed_result, errors = parse_gpt_response_text(topic_spec, response_text)
+        if parsed_result is None:
+            raise ValueError(errors[0] if errors else "invalid_gpt_response_text")
+        return _build_stage1_parsed_payload_from_parsed_result(
+            topic_spec, parsed_result
         )
     return _build_stage1_parsed_payload_from_enriched_topic_spec(topic_spec)
+
+
+def _build_stage1_parsed_payload_from_parsed_result(
+    topic_spec: dict[str, object], parsed_result: dict[str, object]
+) -> dict[str, object]:
+    topic = str(topic_spec.get("topic", "")).strip()
+    row_ref = str(topic_spec.get("row_ref", "")).strip()
+    run_id = str(topic_spec.get("run_id", "")).strip()
+    scene_prompts = [
+        str(item).strip()
+        for item in cast(list[object], parsed_result.get("scene_prompts", []))
+        if str(item).strip()
+    ]
+    voice_groups = [
+        cast(dict[str, object], item)
+        for item in cast(list[object], parsed_result.get("voice_groups", []))
+        if isinstance(item, dict)
+    ]
+    story_outline = [
+        str(item).strip()
+        for item in cast(
+            list[object], parsed_result.get("story_outline", scene_prompts)
+        )
+        if str(item).strip()
+    ]
+    return {
+        "version": "stage1.v1",
+        "run_id": run_id,
+        "row_ref": row_ref,
+        "topic": topic,
+        "title": str(parsed_result.get("title", topic)).strip() or topic,
+        "title_for_thumb": str(
+            parsed_result.get("title_for_thumb", parsed_result.get("title", topic))
+        ).strip()
+        or topic,
+        "description": str(
+            parsed_result.get("description", f"{topic} 요약 콘텐츠")
+        ).strip(),
+        "keywords": [
+            str(item).strip()
+            for item in cast(list[object], parsed_result.get("keywords", []))
+            if str(item).strip()
+        ],
+        "bgm": str(parsed_result.get("bgm", "")).strip(),
+        "scene_prompts": scene_prompts,
+        "voice_groups": voice_groups,
+        "voice_mapping_source": str(
+            parsed_result.get("voice_mapping_source", "stage1_parsed")
+        ).strip()
+        or "stage1_parsed",
+        "story_outline": story_outline,
+        "reason_code": "ok",
+        "excel_snapshot_hash": str(topic_spec.get("excel_snapshot_hash", "")),
+    }
 
 
 def _build_stage1_parsed_payload_from_enriched_topic_spec(
@@ -52,10 +106,15 @@ def _build_stage1_parsed_payload_from_enriched_topic_spec(
     row_ref = str(topic_spec.get("row_ref", "")).strip()
     run_id = str(topic_spec.get("run_id", "")).strip()
     scene_prompts = _scene_prompts(topic_spec)
-    voice_groups = [
-        {"scene_index": index + 1, "voice": "narration"}
-        for index in range(len(scene_prompts))
-    ]
+    raw_voice_groups = topic_spec.get("voice_groups")
+    voice_groups = (
+        cast(list[object], raw_voice_groups)
+        if isinstance(raw_voice_groups, list)
+        else [
+            {"scene_index": index + 1, "voice": "narration"}
+            for index in range(len(scene_prompts))
+        ]
+    )
     return {
         "version": "stage1.v1",
         "run_id": run_id,
@@ -65,8 +124,10 @@ def _build_stage1_parsed_payload_from_enriched_topic_spec(
         "title_for_thumb": topic,
         "description": f"{topic} 요약 콘텐츠".strip(),
         "keywords": _keywords(topic),
+        "bgm": str(topic_spec.get("bgm", "default_bgm")).strip() or "default_bgm",
         "scene_prompts": scene_prompts,
         "voice_groups": voice_groups,
+        "voice_mapping_source": "excel_scene",
         "reason_code": "ok",
         "excel_snapshot_hash": str(topic_spec.get("excel_snapshot_hash", "")),
     }
@@ -96,6 +157,7 @@ def validate_stage1_parsed_payload(payload: dict[str, object]) -> list[str]:
         "title_for_thumb",
         "description",
         "keywords",
+        "bgm",
         "scene_prompts",
         "voice_groups",
         "reason_code",
@@ -112,7 +174,7 @@ def validate_stage1_parsed_payload(payload: dict[str, object]) -> list[str]:
     if not isinstance(keywords, list) or not keywords:
         return ["invalid_keywords"]
     voice_groups = payload.get("voice_groups")
-    if not isinstance(voice_groups, list) or len(voice_groups) != len(scene_prompts):
+    if not isinstance(voice_groups, list) or not voice_groups:
         return ["invalid_voice_groups"]
     return []
 

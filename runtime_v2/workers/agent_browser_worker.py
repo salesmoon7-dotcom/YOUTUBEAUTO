@@ -149,6 +149,7 @@ def run_agent_browser_verify_job(
             "current_url": current_url,
             "current_title": current_title,
             "transcript_path": str(transcript_path.resolve()),
+            "snapshot_path": str(snapshot_path.resolve()),
         }
         return finalize_worker_result(
             workspace,

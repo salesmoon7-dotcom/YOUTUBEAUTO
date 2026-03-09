@@ -100,6 +100,21 @@ def build_video_plan_from_topic_spec(
     return build_video_plan_from_stage1_parsed_payload(parsed_payload, workspace)
 
 
+def attach_gpt_response_text_from_browser_evidence(
+    topic_spec: dict[str, object], browser_evidence: dict[str, object]
+) -> dict[str, object]:
+    snapshot_path = str(browser_evidence.get("snapshot_path", "")).strip()
+    if not snapshot_path:
+        return dict(topic_spec)
+    snapshot_file = Path(snapshot_path)
+    if not snapshot_file.exists():
+        return dict(topic_spec)
+    enriched = dict(topic_spec)
+    enriched["gpt_response_text"] = snapshot_file.read_text(encoding="utf-8")
+    enriched["gpt_response_source"] = "agent_browser_snapshot"
+    return enriched
+
+
 def build_video_plan_from_stage1_parsed_payload(
     parsed_payload: dict[str, object], workspace: Path
 ) -> dict[str, object]:
@@ -109,20 +124,30 @@ def build_video_plan_from_stage1_parsed_payload(
     assets_root = workspace / "assets"
     assets_root.mkdir(parents=True, exist_ok=True)
     scene_prompts = cast(list[object], parsed_payload.get("scene_prompts", []))
-    voice_groups = cast(list[object], parsed_payload.get("voice_groups", []))
+    raw_voice_groups = cast(list[object], parsed_payload.get("voice_groups", []))
     scenes: list[dict[str, object]] = [
         {"scene_index": index + 1, "prompt": str(prompt).strip()}
         for index, prompt in enumerate(scene_prompts)
         if str(prompt).strip()
     ]
+    voice_groups: list[dict[str, object]] = []
+    for entry in raw_voice_groups:
+        if not isinstance(entry, dict):
+            raise ValueError("artifact_invalid")
+        scene_index = entry.get("scene_index")
+        voice = str(entry.get("voice", "")).strip()
+        if not isinstance(scene_index, int) or scene_index <= 0 or not voice:
+            raise ValueError("artifact_invalid")
+        voice_groups.append({"scene_index": scene_index, "voice": voice})
+    if len(voice_groups) != len(scenes):
+        raise ValueError("artifact_invalid")
     voice_plan: dict[str, object] = {
-        "mapping_source": "stage1_parsed",
+        "mapping_source": str(
+            parsed_payload.get("voice_mapping_source", "stage1_parsed")
+        ).strip()
+        or "stage1_parsed",
         "scene_count": len(scenes),
-        "groups": [
-            cast(dict[str, object], group)
-            for group in voice_groups
-            if isinstance(group, dict)
-        ],
+        "groups": voice_groups,
     }
     video_plan = build_video_plan(
         run_id=run_id,
@@ -189,6 +214,15 @@ def _stage1_failed(
 def run_stage1_chatgpt_job(
     topic_spec: dict[str, object], workspace: Path, *, debug_log: str
 ) -> dict[str, object]:
+    browser_evidence_obj = topic_spec.get("browser_evidence", {})
+    browser_evidence = (
+        cast(dict[str, object], browser_evidence_obj)
+        if isinstance(browser_evidence_obj, dict)
+        else {}
+    )
+    topic_spec = attach_gpt_response_text_from_browser_evidence(
+        topic_spec, browser_evidence
+    )
     run_id = str(topic_spec.get("run_id", "")).strip()
     row_ref = str(topic_spec.get("row_ref", "")).strip()
     is_valid, _ = validate_topic_spec(topic_spec)

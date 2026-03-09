@@ -157,6 +157,23 @@ def merge_stage1_handoff_to_excel(
             else ""
         )
         _write_optional_field(sheet, headers, row_no, "voice", voice_text)
+        _write_optional_field(
+            sheet,
+            headers,
+            row_no,
+            "bgm",
+            str(parsed_payload.get("bgm", "")),
+        )
+        scene_prompts = parsed_payload.get("scene_prompts", [])
+        if isinstance(scene_prompts, list):
+            for index, prompt in enumerate(scene_prompts, start=1):
+                _write_optional_field(
+                    sheet,
+                    headers,
+                    row_no,
+                    f"#{index:02d}",
+                    str(prompt).strip(),
+                )
         workbook.save(Path(excel_path))
         return True
     except OSError:
