@@ -12,7 +12,7 @@ from runtime_v2.config import RuntimeConfig
 from runtime_v2.contracts.job_contract import JobContract, build_explicit_job_contract
 from runtime_v2.control_plane import run_control_loop_once, seed_control_job
 from runtime_v2.latest_run import load_joined_latest_run
-from runtime_v2.queue_store import QueueStore
+from runtime_v2.queue_store import QueueStore, QueueStoreError
 
 
 def _runtime_config(root: Path) -> RuntimeConfig:
@@ -32,9 +32,25 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             queue_file = Path(tmp_dir) / "job_queue.json"
             _ = queue_file.write_text("{not-json", encoding="utf-8")
 
-            jobs = QueueStore(queue_file).load()
+            with self.assertRaises(QueueStoreError):
+                _ = QueueStore(queue_file).load()
 
-        self.assertEqual(jobs, [])
+    def test_control_plane_reports_invalid_queue_store_as_failed(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            config.queue_store_file.parent.mkdir(parents=True, exist_ok=True)
+            _ = config.queue_store_file.write_text("{not-json", encoding="utf-8")
+
+            result = run_control_loop_once(
+                owner="runtime_v2", config=config, run_id="control-run-invalid-queue"
+            )
+            latest_join = load_joined_latest_run(config, completed=True)
+            result_metadata = cast(dict[object, object], latest_join["result_metadata"])
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "QUEUE_STORE_INVALID")
+        self.assertEqual(str(result_metadata["code"]), "QUEUE_STORE_INVALID")
 
     def test_retry_and_circuit_helpers_share_single_canonical_policy_module(
         self,

@@ -15,7 +15,7 @@ from runtime_v2.agent_browser.evidence import build_agent_browser_evidence
 from runtime_v2.gpt_autospawn import apply_autospawn_decision
 from runtime_v2.gpt_pool_monitor import tick_gpt_status
 from runtime_v2 import recovery_policy
-from runtime_v2.queue_store import QueueStore
+from runtime_v2.queue_store import QueueStore, QueueStoreError
 from runtime_v2.state_machine import (
     append_transition_record,
     can_transition,
@@ -89,7 +89,48 @@ def run_control_loop_once(
         runtime_config, "artifact_root", Path("system/runtime_v2/artifacts")
     )
     queue_store = QueueStore(queue_file)
-    jobs = _load_jobs(queue_store)
+    try:
+        jobs = _load_jobs(queue_store)
+    except QueueStoreError:
+        invalid_debug_log = str(debug_log_path(runtime_config.debug_log_root, run_id))
+        gui_payload = _build_control_gui_status(
+            run_id=run_id,
+            stage="queue_store",
+            exit_code=1,
+            status={
+                "queue_status": "failed",
+                "error_code": "QUEUE_STORE_INVALID",
+            },
+        )
+        write_control_plane_runtime_snapshot(
+            runtime_config,
+            run_id=run_id,
+            status="failed",
+            code="QUEUE_STORE_INVALID",
+            debug_log=invalid_debug_log,
+            gui_payload=gui_payload,
+            artifacts=[],
+            metadata={
+                "run_id": run_id,
+                "mode": "control_loop",
+                "status": "failed",
+                "code": "QUEUE_STORE_INVALID",
+                "queue_status": "failed",
+                "worker_error_code": "QUEUE_STORE_INVALID",
+                "debug_log": invalid_debug_log,
+                "ts": round(time(), 3),
+            },
+        )
+        _ = _append_control_event(
+            {
+                "event": "queue_store_invalid",
+                "queue_file": str(queue_file),
+                "code": "QUEUE_STORE_INVALID",
+            },
+            events_file,
+            run_id=run_id,
+        )
+        return {"status": "failed", "code": "QUEUE_STORE_INVALID"}
     _recover_stale_running_jobs(
         queue_store, jobs, now, runtime_config, events_file, run_id=run_id
     )

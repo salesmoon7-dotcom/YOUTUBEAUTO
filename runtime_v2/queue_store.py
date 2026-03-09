@@ -9,6 +9,10 @@ from typing import cast
 from runtime_v2.contracts.job_contract import JobContract
 
 
+class QueueStoreError(RuntimeError):
+    pass
+
+
 class QueueStore:
     def __init__(self, queue_file: Path) -> None:
         self.queue_file: Path = queue_file
@@ -21,9 +25,9 @@ class QueueStore:
                 object, json.loads(self.queue_file.read_text(encoding="utf-8"))
             )
         except json.JSONDecodeError:
-            return []
+            raise QueueStoreError("queue_store_invalid")
         if not isinstance(raw_payload_obj, list):
-            return []
+            raise QueueStoreError("queue_store_invalid")
         raw_payload = cast(list[object], raw_payload_obj)
         jobs: list[JobContract] = []
         for raw_item in raw_payload:
