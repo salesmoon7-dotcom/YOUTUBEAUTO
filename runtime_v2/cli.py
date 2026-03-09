@@ -730,6 +730,9 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         },
     )
     result = run_agent_browser_verify_job(job, artifact_root)
+    _write_stage2_attach_evidence(
+        workspace=workspace, service=service, port=args.port, result=result
+    )
     if str(result.get("status", "")) != "ok":
         return exit_codes.BROWSER_UNHEALTHY
     target_path = Path(service_artifact_path)
@@ -747,6 +750,29 @@ def _write_stage2_placeholder_artifact(path: Path) -> None:
         _ = path.write_bytes(b"agent-browser-stage2-placeholder\n")
         return
     _ = path.write_text("agent-browser-stage2-placeholder\n", encoding="utf-8")
+
+
+def _write_stage2_attach_evidence(
+    *, workspace: Path, service: str, port: int, result: dict[str, object]
+) -> Path:
+    details_raw = result.get("details", {})
+    details = details_raw if isinstance(details_raw, dict) else {}
+    payload = {
+        "schema_version": "1.0",
+        "service": service,
+        "port": port,
+        "status": str(result.get("status", "unknown")),
+        "stage": str(result.get("stage", "agent_browser_verify")),
+        "error_code": str(result.get("error_code", "")),
+        "current_url": str(details.get("current_url", "")),
+        "current_title": str(details.get("current_title", "")),
+        "transcript_path": str(details.get("transcript_path", "")),
+    }
+    evidence_path = workspace / "attach_evidence.json"
+    _ = evidence_path.write_text(
+        json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8"
+    )
+    return evidence_path
 
 
 def _write_probe_result(probe_root: Path, payload: dict[str, object]) -> Path:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -27,7 +28,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 "runtime_v2.cli.run_agent_browser_verify_job",
                 return_value={"status": "ok"},
             ):
-                exit_code = _run_agent_browser_stage2_adapter_child(args)
+                with patch("runtime_v2.cli.Path.cwd", return_value=root):
+                    exit_code = _run_agent_browser_stage2_adapter_child(args)
 
             self.assertEqual(exit_code, exit_codes.SUCCESS)
             self.assertTrue(output_path.exists())
@@ -35,6 +37,11 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 "agent-browser-stage2-placeholder",
                 output_path.read_text(encoding="utf-8"),
             )
+            evidence = json.loads(
+                (root / "attach_evidence.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(evidence["service"], "genspark")
+            self.assertEqual(evidence["status"], "ok")
 
 
 if __name__ == "__main__":

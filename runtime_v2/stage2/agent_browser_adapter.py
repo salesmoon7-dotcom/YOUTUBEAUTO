@@ -67,3 +67,7 @@ def _default_port_for_service(service: str) -> int:
     if session is None:
         raise ValueError(f"unknown_agent_browser_service:{service}")
     return session.port
+
+
+def attach_evidence_path(workspace: Path) -> Path:
+    return workspace / "attach_evidence.json"
