@@ -109,6 +109,7 @@ def run_rvc_job(
                 "image_path": str(job.payload.get("image_path", "")).strip(),
                 "duration_sec": job.payload.get("duration_sec", 8),
                 "service_artifact_path": str(verified_output.resolve()),
+                "reused": bool(adapter_result.get("reused", False)),
                 "adapter_mode": "command",
             },
             completion={
@@ -116,6 +117,7 @@ def run_rvc_job(
                 "final_output": True,
                 "final_artifact": verified_output.name,
                 "final_artifact_path": str(verified_output.resolve()),
+                "reused": bool(adapter_result.get("reused", False)),
             },
         )
 

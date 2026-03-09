@@ -113,6 +113,7 @@ def run_qwen3_job(
                 "image_path": str(job.payload.get("image_path", "")).strip(),
                 "model_name": str(job.payload.get("model_name", "")).strip(),
                 "service_artifact_path": str(verified_output.resolve()),
+                "reused": bool(adapter_result.get("reused", False)),
                 "adapter_mode": "command",
             },
             completion={
@@ -120,6 +121,7 @@ def run_qwen3_job(
                 "final_output": True,
                 "final_artifact": verified_output.name,
                 "final_artifact_path": str(verified_output.resolve()),
+                "reused": bool(adapter_result.get("reused", False)),
             },
         )
 

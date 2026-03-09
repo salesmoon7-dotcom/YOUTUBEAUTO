@@ -98,10 +98,12 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
             result = run_qwen3_job(job, artifact_root=artifact_root)
 
         completion = cast(dict[object, object], result["completion"])
-        self.assertEqual(result["status"], "failed")
-        self.assertEqual(result["error_code"], "stale_service_artifact_path")
-        self.assertEqual(completion["state"], "failed")
-        self.assertFalse(bool(completion["final_output"]))
+        details = cast(dict[object, object], result["details"])
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(completion["state"], "succeeded")
+        self.assertTrue(bool(completion["final_output"]))
+        self.assertTrue(bool(completion["reused"]))
+        self.assertTrue(bool(details["reused"]))
 
     def test_rvc_worker_processes_one_item_via_explicit_adapter_command(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

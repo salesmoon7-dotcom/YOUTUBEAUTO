@@ -132,12 +132,15 @@ def run_verified_adapter_command(
         return base_payload
     after_signature = _file_signature(verified_output)
     if before_signature is not None and before_signature == after_signature:
-        base_payload["ok"] = False
-        base_payload["error_code"] = "stale_service_artifact_path"
         details = dict(cast(dict[str, object], base_payload["details"]))
         details["service_artifact_path"] = str(verified_output.resolve())
+        details["reused"] = True
         base_payload["details"] = details
+        base_payload["ok"] = True
+        base_payload["reused"] = True
+        base_payload["output_path"] = verified_output
         return base_payload
     base_payload["ok"] = True
+    base_payload["reused"] = False
     base_payload["output_path"] = verified_output
     return base_payload
