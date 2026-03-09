@@ -11,6 +11,10 @@
   - detached `2차 1행` auto probe `system/runtime_v2_probe/stage2-row1-auto-03/probe_result.json`은 `code=OK`로 완료됨
   - 남은 일은 live attach 범위를 `genspark` 외 서비스(`seaart/geminigen/canva`)까지 넓혀도 placeholder fallback 없이 닫히게 만드는 것입니다.
   - live readiness 상세 판정은 `docs/plans/2026-03-09-agent-browser-live-readiness-report.md`를 기준으로 관리합니다.
+- stage1 legacy parity active unit:
+  - `docs/plans/2026-03-09-runtime-v2-legacy-pipeline-feasibility-plan.md` 기준 `stage1 GPT output/parse/handoff canonical contract` 1차 배치는 구현됨
+  - 실제 row evidence는 `system/runtime_v2_probe/stage1-row13-evidence-01/`에 생성됨
+  - 남은 일은 real GPT/browser output을 이 canonical handoff에 연결하고, Excel field parity를 레거시 수준까지 확장하는 것입니다.
   - skill bundle 기준은 `docs/sop/SOP_closed_loop_automation_skill_map.md`를 canonical map으로 사용합니다.
 - 채팅 interruption 대응 규칙 강화:
   - 채팅 세션에서는 실브라우저 relaunch/recovery를 실행하지 않습니다.
