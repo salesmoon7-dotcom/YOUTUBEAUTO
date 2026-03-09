@@ -178,6 +178,39 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
         self.assertIn("stage1_handoff", first_payload)
         self.assertIn("stage1_handoff", render_payload)
 
+    def test_canva_payload_includes_thumb_data_and_deterministic_ref_img(self) -> None:
+        video_plan = _video_plan("D:/YOUTUBEAUTO")
+        video_plan["scene_plan"] = [
+            {"scene_index": 1, "prompt": "scene one"},
+            {"scene_index": 2, "prompt": "scene two"},
+            {"scene_index": 3, "prompt": "scene three"},
+            {"scene_index": 4, "prompt": "scene four"},
+        ]
+        video_plan["stage1_handoff"] = {
+            "contract": {
+                "version": "stage1.v1",
+                "title_for_thumb": "Legacy thumb title",
+            }
+        }
+
+        jobs, _ = build_stage2_jobs(video_plan)
+        typed_jobs = [cast(dict[str, object], item["job"]) for item in jobs[:-1]]
+        canva_job = next(job for job in typed_jobs if str(job["worker"]) == "canva")
+        canva_payload = cast(dict[str, object], canva_job["payload"])
+
+        self.assertEqual(
+            canva_payload["thumb_data"],
+            {
+                "bg_prompt": "scene four",
+                "line1": "Legacy thumb title",
+                "line2": "",
+            },
+        )
+        self.assertEqual(
+            str(canva_payload["ref_img"]).replace("\\", "/"),
+            "D:/YOUTUBEAUTO/images/genspark-stage2-run-1-1.png",
+        )
+
 
 if __name__ == "__main__":
     _ = unittest.main()

@@ -54,6 +54,40 @@ def _build_voice_json(scene_plan: list[object]) -> dict[str, object]:
     return {"voice_texts": voice_texts}
 
 
+def _stage1_contract(video_plan: dict[str, object]) -> dict[str, object] | None:
+    handoff = video_plan.get("stage1_handoff")
+    if not isinstance(handoff, dict):
+        return None
+    contract = handoff.get("contract")
+    if not isinstance(contract, dict):
+        return None
+    return cast(dict[str, object], contract)
+
+
+def _build_thumb_data(
+    *, prompt: str, stage1_contract: dict[str, object] | None
+) -> dict[str, object]:
+    title_for_thumb = ""
+    if stage1_contract is not None:
+        title_for_thumb = str(stage1_contract.get("title_for_thumb", "")).strip()
+    return {
+        "bg_prompt": prompt,
+        "line1": title_for_thumb,
+        "line2": "",
+    }
+
+
+def _select_ref_img(timeline: list[dict[str, object]]) -> str:
+    for preferred_workload in ("genspark", "seaart"):
+        for entry in timeline:
+            if str(entry.get("workload", "")) != preferred_workload:
+                continue
+            candidate = str(entry.get("asset_path", "")).strip()
+            if candidate:
+                return candidate
+    return ""
+
+
 def build_stage2_jobs(
     video_plan: dict[str, object],
 ) -> tuple[list[dict[str, object]], dict[str, object]]:
@@ -86,6 +120,7 @@ def build_stage2_jobs(
         else set()
     )
     stage1_handoff = video_plan.get("stage1_handoff")
+    stage1_contract = _stage1_contract(video_plan)
     for scene_offset, raw_scene in enumerate(typed_scene_plan):
         if not isinstance(raw_scene, dict):
             continue
@@ -107,6 +142,13 @@ def build_stage2_jobs(
         payload["service_artifact_path"] = str(service_artifact_path)
         if isinstance(stage1_handoff, dict):
             payload["stage1_handoff"] = stage1_handoff
+        if workload == "canva":
+            payload["thumb_data"] = _build_thumb_data(
+                prompt=prompt, stage1_contract=stage1_contract
+            )
+            ref_img = _select_ref_img(timeline)
+            if ref_img:
+                payload["ref_img"] = ref_img
         if workload in agent_browser_services:
             payload["use_agent_browser"] = True
         jobs.append(
