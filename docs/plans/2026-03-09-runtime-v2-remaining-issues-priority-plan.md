@@ -4,7 +4,7 @@
 
 **Goal:** 남아 있는 `runtime_v2` 문제를 `지금 바로 고칠 것`, `운영 환경 정리 후 할 것`, `지금은 건드리지 말 것`으로 나눠 실행 우선순위를 고정합니다.
 
-**Architecture:** 코드 구조 자체보다 운영 readiness와 의미 해석의 혼선을 먼저 줄입니다. 즉시 실행 항목은 `placeholder probe 성공`과 `real readiness`를 출력/문서에서 분리하는 작업이고, 환경 blocker(`seaart`, `geminigen`)와 richer stage1 parity는 후속 단계로 남깁니다.
+**Architecture:** 코드 구조 자체보다 운영 readiness와 의미 해석의 혼선을 먼저 줄입니다. 즉시 실행 항목은 `placeholder probe 성공`과 `real readiness`를 출력/문서에서 분리하는 작업이었고, 이 배치는 완료되었습니다. 환경 blocker는 최신 evidence 기준 해소되었고, 남은 코드는 richer stage1 field의 추가 샘플 확장 판단입니다.
 
 **Tech Stack:** Python 3.13, runtime_v2 CLI/probe output, docs/TODO/COMPLETED, pytest, py_compile, LSP diagnostics
 
@@ -25,14 +25,8 @@
 
 ### 2. 운영 환경 정리 후 할 것
 
-- `seaart:9444`, `geminigen:9555` CDP attach 환경 blocker 해결
-- stage1 richer field parity(`title/title_for_thumb/description/keywords/bgm/#01...`) 보강
-- 근거:
-  - `docs/TODO.md:24`-`docs/TODO.md:27`
-  - `docs/plans/2026-03-09-agent-browser-live-readiness-report.md:70`-`docs/plans/2026-03-09-agent-browser-live-readiness-report.md:79`
-  - `docs/plans/2026-03-09-runtime-v2-legacy-pipeline-feasibility-plan.md:197`
-- 이유:
-  - 둘 다 가치가 크지만, 현재는 코드만 수정해도 닫히지 않거나 운영 환경/실브라우저 증거가 필요합니다.
+- 현재 없음 (latest evidence 기준 environment blocker 해소)
+- 후속 운영 일은 “blocker 해결”이 아니라 세션 안정성 모니터링입니다.
 
 ### 3. 지금은 건드리지 말 것
 
@@ -89,3 +83,5 @@
 - `probe_result.json`만 보고도 placeholder 경유인지, live attach 준비가 얼마나 되었는지 분리해서 읽을 수 있습니다.
 - 문서와 출력이 같은 의미를 사용합니다.
 - 환경 blocker와 코드 blocker가 더 이상 같은 문장으로 섞이지 않습니다.
+
+**Document Status:** COMPLETED - immediate semantics separation batch finished, environment blockers cleared in later evidence, remaining code work narrowed to optional stage1 parser expansion only.

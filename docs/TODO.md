@@ -25,6 +25,7 @@
     - `geminigen:9555` -> `system/runtime_v2_probe/agent-browser-geminigen-final-11/summary.json`
     - `canva:9666` -> `system/runtime_v2_probe/agent-browser-live-attach-07/summary.json`
   - live readiness 상세 판정은 `docs/plans/2026-03-09-agent-browser-live-readiness-report.md`를 기준으로 관리합니다.
+  - latest evidence 기준 `ChatGPT/Genspark/Seaart/Geminigen/Canva` 모두 canonical live attach 확인이 끝났습니다.
 - stage1 legacy parity active unit:
   - `docs/plans/2026-03-09-runtime-v2-legacy-pipeline-feasibility-plan.md` 기준 `stage1 GPT output/parse/handoff canonical contract` 2차 배치까지 구현됨
   - 실제 row evidence는 `system/runtime_v2_probe/stage1-row13-evidence-01/`에 생성됨
@@ -38,7 +39,6 @@
   - readiness blocker가 실브라우저 복구를 요구하면 detached 또는 수동 smoke 단계에서만 수행합니다.
 - 테스트 실행은 `docs/plans/2026-03-08-browser-session-stability-plan.md`의 `Test Tier Execution Contract`를 따릅니다. 채팅 세션 기본 검증은 `safe`만 허용하고, `isolated`는 개별 실행, `manual`은 채팅 세션 밖에서만 다룹니다.
 - 새 active unit: `docs/plans/2026-03-09-runtime-v2-remaining-issues-priority-plan.md`
-  - 즉시 실행: placeholder probe success와 real readiness를 출력/문서에서 더 명확히 분리합니다.
-  - 운영 환경 정리 후 실행: `seaart/geminigen` environment blocker, stage1 richer field parity
-  - 현재 no-go: `control_plane` 2차 분해
+  - 즉시 실행 배치는 완료되었습니다.
   - probe 출력은 `code=OK`와 별도로 `live_readiness`, `placeholder_services`, `live_ready_services`를 통해 해석해야 합니다.
+  - 현재 남은 우선순위는 stage1 richer field의 추가 샘플 확장 판단이며, `control_plane` 2차 분해는 여전히 no-go입니다.

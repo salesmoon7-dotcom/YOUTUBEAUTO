@@ -8,9 +8,9 @@
 
 ## Verdict
 
-- **Partial Go**
-- `ChatGPT(9222)`와 `Genspark(9333)`는 바로 개발 시작 가능한 수준입니다.
-- `Seaart(9444)`, `Geminigen(9555)`, `Canva(9666)`는 `agent-browser` live attach timeout 때문에 아직 전체 Go 상태가 아닙니다.
+- **Go**
+- `ChatGPT(9222)`, `Genspark(9333)`, `Seaart(9444)`, `Geminigen(9555)`, `Canva(9666)` 모두 현재 canonical verify 기준 live attach 확인이 완료되었습니다.
+- 단, `seaart`, `geminigen`은 운영 세션에서 `agent-browser` CLI가 불안정할 수 있어 canonical verify는 raw CDP HTTP fallback을 포함한 worker 경로를 기준으로 해석합니다.
 
 ## Verified Evidence
 
@@ -144,10 +144,9 @@ python -m pytest tests/test_runtime_v2_agent_browser.py tests/test_runtime_v2_de
 
 ## Immediate Next Action
 
-1. `9444`, `9555`, `9666`의 CDP attach timeout 원인을 추적합니다.
-2. 각 포트에 대해 `tab list -> get url/get title` live evidence를 다시 확보합니다.
-3. `video_plan["use_agent_browser_services"]`에 live-ready 서비스부터 연결해 stage2 row1 자동화 범위를 넓힙니다.
-4. 세 포트가 모두 안정 응답하면 전체 readiness를 `Go`로 승격합니다.
+1. live attach blocker 추적은 종료하고, 현재 evidence를 canonical readiness 기준으로 유지합니다.
+2. 이후 작업은 코드 구현이 아니라 서비스별 운영 세션 안정성 모니터링으로 전환합니다.
+3. `video_plan["use_agent_browser_services"]` 사용 범위를 운영 정책에 맞게 점진 확대할지 판단합니다.
 
 ## Canonical References
 
