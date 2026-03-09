@@ -178,6 +178,36 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
         self.assertIn("stage1_handoff", first_payload)
         self.assertIn("stage1_handoff", render_payload)
 
+    def test_canva_stage2_payload_prefers_stage1_ref_image_when_present(self) -> None:
+        video_plan = _video_plan("D:/YOUTUBEAUTO")
+        video_plan["scene_plan"] = [
+            {"scene_index": 1, "prompt": "scene one"},
+            {"scene_index": 2, "prompt": "scene two"},
+            {"scene_index": 3, "prompt": "scene three"},
+            {"scene_index": 4, "prompt": "scene four"},
+        ]
+        video_plan["stage1_handoff"] = {
+            "contract": {
+                "version": "stage1_handoff.v1.0",
+                "title": "Money title",
+                "title_for_thumb": "Thumb line 1\nThumb line 2",
+                "ref_img_1": "images/ref1.png",
+            }
+        }
+
+        jobs, _ = build_stage2_jobs(video_plan)
+        canva_job = next(
+            cast(dict[str, object], item["job"])
+            for item in jobs
+            if cast(dict[str, object], item["job"])["worker"] == "canva"
+        )
+        payload = cast(dict[str, object], canva_job["payload"])
+        thumb_data = cast(dict[str, object], payload["thumb_data"])
+
+        self.assertEqual(str(payload["ref_img"]), "images/ref1.png")
+        self.assertEqual(str(thumb_data["line1"]), "Thumb line 1")
+        self.assertEqual(str(thumb_data["line2"]), "Thumb line 2")
+
     def test_canva_payload_includes_thumb_data_and_deterministic_ref_img(self) -> None:
         video_plan = _video_plan("D:/YOUTUBEAUTO")
         video_plan["scene_plan"] = [

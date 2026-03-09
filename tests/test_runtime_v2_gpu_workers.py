@@ -50,6 +50,43 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
             self.assertEqual(completion["state"], "succeeded")
             self.assertTrue(bool(completion["final_output"]))
 
+    def test_qwen3_worker_can_consume_voice_texts_directly(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            image_path = root / "image.png"
+            output_path = root / "speech.wav"
+            _ = image_path.write_bytes(b"png")
+            job = JobContract(
+                job_id="qwen-job-voice-texts",
+                workload="qwen3_tts",
+                payload={
+                    "voice_texts": [
+                        {"col": "#01", "text": "hello world", "original_voices": [1]},
+                        {"col": "#02", "text": "second line", "original_voices": [2]},
+                    ],
+                    "image_path": str(image_path.resolve()),
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "adapter_command": [
+                        sys.executable,
+                        "-c",
+                        (
+                            "from pathlib import Path; "
+                            f"p=Path(r'{str(output_path)}'); "
+                            "p.parent.mkdir(parents=True, exist_ok=True); "
+                            "p.write_bytes(b'wav')"
+                        ),
+                    ],
+                },
+            )
+
+            result = run_qwen3_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        details = cast(dict[object, object], result["details"])
+        self.assertEqual(details["voice_text_count"], 2)
+
     def test_qwen3_worker_emits_rvc_next_job_contract(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
