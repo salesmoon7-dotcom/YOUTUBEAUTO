@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import json
+import urllib.request
 from pathlib import Path
 from typing import cast
 
@@ -58,6 +60,30 @@ def _snapshot_required(service: str, payload: dict[str, object]) -> bool:
     if isinstance(raw, bool):
         return raw
     return service == "chatgpt"
+
+
+def _http_cdp_tab_list(port: int) -> list[dict[str, object]]:
+    with urllib.request.urlopen(
+        f"http://127.0.0.1:{port}/json/list", timeout=10
+    ) as response:
+        payload = json.loads(response.read().decode("utf-8", "ignore"))
+    if not isinstance(payload, list):
+        return []
+    tabs: list[dict[str, object]] = []
+    for raw_item in payload:
+        if not isinstance(raw_item, dict):
+            continue
+        item = cast(dict[str, object], raw_item)
+        if str(item.get("type", "")) != "page":
+            continue
+        tabs.append(
+            {
+                "index": len(tabs),
+                "title": str(item.get("title", "")),
+                "url": str(item.get("url", "")),
+            }
+        )
+    return tabs
 
 
 def _resolve_agent_browser_command(command: list[str]) -> list[str]:
@@ -155,11 +181,26 @@ def run_agent_browser_verify_job(
     capture_snapshot = _snapshot_required(service, job.payload)
     try:
         tab_list_command = build_tab_list_command(port=port)
-        tab_list_output = _run_agent_browser_command(
-            tab_list_command, timeout_sec=timeout_sec
-        )
-        transcript.append({"command": tab_list_command, "output": tab_list_output})
-        tabs = parse_tab_list_output(tab_list_output)
+        used_http_fallback = False
+        try:
+            tab_list_output = _run_agent_browser_command(
+                tab_list_command, timeout_sec=timeout_sec
+            )
+            transcript.append({"command": tab_list_command, "output": tab_list_output})
+            tabs = parse_tab_list_output(tab_list_output)
+        except RuntimeError as exc:
+            if service == "chatgpt":
+                raise
+            tabs = _http_cdp_tab_list(port)
+            used_http_fallback = True
+            transcript.append(
+                {
+                    "command": [f"http://127.0.0.1:{port}/json/list"],
+                    "output": json.dumps(tabs, ensure_ascii=False),
+                    "fallback": "raw_cdp_http",
+                    "agent_browser_error": str(exc),
+                }
+            )
 
         selected_tab = select_best_tab(
             tabs,
@@ -168,24 +209,29 @@ def run_agent_browser_verify_job(
         )
         if selected_tab is None and (expected_url or expected_title):
             raise ValueError("agent_browser_matching_tab_not_found")
-        if selected_tab is not None:
+        current_url = ""
+        current_title = ""
+        if used_http_fallback and selected_tab is not None:
+            selected = tabs[selected_tab]
+            current_url = str(selected.get("url", ""))
+            current_title = str(selected.get("title", ""))
+        elif selected_tab is not None:
             select_command = build_tab_select_command(port=port, index=selected_tab)
             select_output = _run_agent_browser_command(
                 select_command, timeout_sec=timeout_sec
             )
             transcript.append({"command": select_command, "output": select_output})
+            get_url_command = build_get_url_command(port=port)
+            current_url = parse_scalar_output(
+                _run_agent_browser_command(get_url_command, timeout_sec=timeout_sec)
+            )
+            transcript.append({"command": get_url_command, "output": current_url})
 
-        get_url_command = build_get_url_command(port=port)
-        current_url = parse_scalar_output(
-            _run_agent_browser_command(get_url_command, timeout_sec=timeout_sec)
-        )
-        transcript.append({"command": get_url_command, "output": current_url})
-
-        get_title_command = build_get_title_command(port=port)
-        current_title = parse_scalar_output(
-            _run_agent_browser_command(get_title_command, timeout_sec=timeout_sec)
-        )
-        transcript.append({"command": get_title_command, "output": current_title})
+            get_title_command = build_get_title_command(port=port)
+            current_title = parse_scalar_output(
+                _run_agent_browser_command(get_title_command, timeout_sec=timeout_sec)
+            )
+            transcript.append({"command": get_title_command, "output": current_title})
 
         snapshot_path = None
         if capture_snapshot:

@@ -239,6 +239,64 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertEqual(str(details["snapshot_path"]), "")
 
+    def test_agent_browser_verify_can_fallback_to_raw_cdp_http_for_non_chatgpt(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "artifacts"
+            job = JobContract(
+                job_id="agent-browser-seaart-http-fallback",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-seaart-http-fallback",
+                payload={
+                    "service": "seaart",
+                    "port": 9444,
+                    "expected_url_substring": "seaart.ai",
+                    "expected_title_substring": "SeaArt",
+                },
+            )
+
+            outputs = iter(
+                [
+                    RuntimeError("Failed to read: os error 10060"),
+                    "selected",
+                    "https://www.seaart.ai/ko/create/image?id=abc",
+                    "AI 이미지 생성기 - SeaArt",
+                ]
+            )
+
+            def fake_run(command: list[str], *, timeout_sec: int = 30) -> str:
+                value = next(outputs)
+                if isinstance(value, Exception):
+                    raise value
+                return value
+
+            with (
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                    side_effect=fake_run,
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._http_cdp_tab_list",
+                    return_value=[
+                        {
+                            "index": 0,
+                            "title": "AI 이미지 생성기 - SeaArt",
+                            "url": "https://www.seaart.ai/ko/create/image?id=abc",
+                        }
+                    ],
+                ),
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(
+            str(details["current_url"]), "https://www.seaart.ai/ko/create/image?id=abc"
+        )
+
 
 if __name__ == "__main__":
     _ = unittest.main()
