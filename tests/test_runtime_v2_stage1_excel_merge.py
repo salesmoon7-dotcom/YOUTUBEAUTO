@@ -168,6 +168,8 @@ class RuntimeV2Stage1ExcelMergeTests(unittest.TestCase):
                             "title_for_thumb": "Bridge thumb",
                             "description": "Bridge description",
                             "keywords": ["bridge", "topic"],
+                            "bgm": "calm piano",
+                            "scene_prompts": ["scene one", "scene two"],
                             "voice_groups": [{"scene_index": 1, "voice": "narration"}],
                         }
                     },
@@ -181,6 +183,54 @@ class RuntimeV2Stage1ExcelMergeTests(unittest.TestCase):
         self.assertEqual(values["Title for Thumb"], "Bridge thumb")
         self.assertEqual(values["Description"], "Bridge description")
         self.assertEqual(values["Keywords"], "bridge, topic")
+
+    def test_stage1_merge_writes_bgm_and_scene_columns_when_present(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            excel_path = _write_merge_fixture(
+                Path(tmp_dir) / "topic.xlsx",
+                headers=[
+                    "Topic",
+                    "Status",
+                    "Video Plan",
+                    "Reason Code",
+                    "BGM",
+                    "#01",
+                    "#02",
+                ],
+                row=["Bridge topic", "", "", "", "", "", ""],
+            )
+
+            merged = merge_stage1_result(
+                excel_path=excel_path,
+                sheet_name="Sheet1",
+                row_index=0,
+                video_plan={
+                    "topic": "Bridge topic",
+                    "story_outline": ["a", "b"],
+                    "reason_code": "ok",
+                    "stage1_handoff": {
+                        "contract": {
+                            "title": "Bridge title",
+                            "title_for_thumb": "Bridge thumb",
+                            "description": "Bridge description",
+                            "keywords": ["bridge", "topic"],
+                            "bgm": "calm piano",
+                            "scene_prompts": ["scene one", "scene two"],
+                            "voice_groups": [
+                                {"scene_index": 1, "voice": "narration"},
+                                {"scene_index": 2, "voice": "narration"},
+                            ],
+                        }
+                    },
+                },
+            )
+
+            values = _row_values(excel_path)
+
+        self.assertTrue(merged)
+        self.assertEqual(values["BGM"], "calm piano")
+        self.assertEqual(values["#01"], "scene one")
+        self.assertEqual(values["#02"], "scene two")
 
 
 if __name__ == "__main__":

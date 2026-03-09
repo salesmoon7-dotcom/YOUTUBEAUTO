@@ -8,6 +8,7 @@ from typing import cast
 from unittest.mock import patch
 
 from runtime_v2.stage1.chatgpt_runner import (
+    attach_gpt_response_text_from_browser_evidence,
     build_video_plan_from_topic_spec,
     run_stage1_chatgpt_job,
 )
@@ -265,6 +266,50 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                 cast(list[object], parsed_payload["scene_prompts"]),
             )
             self.assertEqual(parsed_payload["title"], "Money flow")
+
+    def test_stage1_can_attach_gpt_response_text_from_browser_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            snapshot_path = root / "snapshot.txt"
+            _ = snapshot_path.write_text(_gpt_response_text(), encoding="utf-8")
+
+            topic_spec = _topic_spec(topic="Money flow")
+            enriched = attach_gpt_response_text_from_browser_evidence(
+                topic_spec,
+                {"snapshot_path": str(snapshot_path)},
+            )
+
+        self.assertEqual(str(enriched["gpt_response_source"]), "agent_browser_snapshot")
+        self.assertIn("story_outline", str(enriched["gpt_response_text"]))
+
+    def test_stage1_runner_auto_uses_browser_evidence_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            snapshot_path = root / "snapshot.txt"
+            _ = snapshot_path.write_text(_gpt_response_text(), encoding="utf-8")
+            topic_spec = _topic_spec(topic="Money flow")
+            topic_spec["browser_evidence"] = {"snapshot_path": str(snapshot_path)}
+
+            result = run_stage1_chatgpt_job(
+                topic_spec,
+                root / "workspace",
+                debug_log="logs/stage1-run-1.jsonl",
+            )
+
+            result_path = Path(cast(str, result["result_path"]))
+            result_payload = cast(
+                dict[str, object], json.loads(result_path.read_text(encoding="utf-8"))
+            )
+            handoff = cast(
+                dict[str, object],
+                cast(dict[str, object], result_payload["details"])["stage1_handoff"],
+            )
+            parsed_payload = cast(dict[str, object], handoff["contract"])
+
+        self.assertEqual(result["status"], "ok")
+        self.assertIn(
+            "scene one from gpt", cast(list[object], parsed_payload["scene_prompts"])
+        )
 
     def test_stage1_route_failure_becomes_structured_failed_result(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
