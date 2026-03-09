@@ -45,6 +45,21 @@ def _run_agent_browser_command(command: list[str], *, timeout_sec: int = 30) -> 
     return completed.stdout
 
 
+def _service_timeout_sec(service: str) -> int:
+    if service == "seaart":
+        return 60
+    if service == "geminigen":
+        return 60
+    return 30
+
+
+def _snapshot_required(service: str, payload: dict[str, object]) -> bool:
+    raw = payload.get("capture_snapshot")
+    if isinstance(raw, bool):
+        return raw
+    return service == "chatgpt"
+
+
 def _resolve_agent_browser_command(command: list[str]) -> list[str]:
     if not command:
         return command
@@ -136,9 +151,13 @@ def run_agent_browser_verify_job(
     )
 
     transcript: list[dict[str, object]] = []
+    timeout_sec = _service_timeout_sec(service)
+    capture_snapshot = _snapshot_required(service, job.payload)
     try:
         tab_list_command = build_tab_list_command(port=port)
-        tab_list_output = _run_agent_browser_command(tab_list_command)
+        tab_list_output = _run_agent_browser_command(
+            tab_list_command, timeout_sec=timeout_sec
+        )
         transcript.append({"command": tab_list_command, "output": tab_list_output})
         tabs = parse_tab_list_output(tab_list_output)
 
@@ -151,29 +170,37 @@ def run_agent_browser_verify_job(
             raise ValueError("agent_browser_matching_tab_not_found")
         if selected_tab is not None:
             select_command = build_tab_select_command(port=port, index=selected_tab)
-            select_output = _run_agent_browser_command(select_command)
+            select_output = _run_agent_browser_command(
+                select_command, timeout_sec=timeout_sec
+            )
             transcript.append({"command": select_command, "output": select_output})
 
         get_url_command = build_get_url_command(port=port)
-        current_url = parse_scalar_output(_run_agent_browser_command(get_url_command))
+        current_url = parse_scalar_output(
+            _run_agent_browser_command(get_url_command, timeout_sec=timeout_sec)
+        )
         transcript.append({"command": get_url_command, "output": current_url})
 
         get_title_command = build_get_title_command(port=port)
         current_title = parse_scalar_output(
-            _run_agent_browser_command(get_title_command)
+            _run_agent_browser_command(get_title_command, timeout_sec=timeout_sec)
         )
         transcript.append({"command": get_title_command, "output": current_title})
 
-        snapshot_command = build_snapshot_command(port=port, max_output=1200)
-        snapshot_output = _run_agent_browser_command(snapshot_command)
-        transcript.append({"command": snapshot_command, "output": snapshot_output})
+        snapshot_path = None
+        if capture_snapshot:
+            snapshot_command = build_snapshot_command(port=port, max_output=1200)
+            snapshot_output = _run_agent_browser_command(
+                snapshot_command, timeout_sec=timeout_sec
+            )
+            transcript.append({"command": snapshot_command, "output": snapshot_output})
+            snapshot_path = workspace / "snapshot.txt"
+            _ = snapshot_path.write_text(snapshot_output, encoding="utf-8")
 
         transcript_path = write_json_atomic(
             workspace / "agent_browser_transcript.json",
             {"service": service, "port": port, "steps": transcript},
         )
-        snapshot_path = workspace / "snapshot.txt"
-        _ = snapshot_path.write_text(snapshot_output, encoding="utf-8")
 
         details: dict[str, object] = {
             "service": service,
@@ -182,13 +209,18 @@ def run_agent_browser_verify_job(
             "current_url": current_url,
             "current_title": current_title,
             "transcript_path": str(transcript_path.resolve()),
-            "snapshot_path": str(snapshot_path.resolve()),
+            "snapshot_path": ""
+            if snapshot_path is None
+            else str(snapshot_path.resolve()),
         }
+        artifacts = [transcript_path]
+        if snapshot_path is not None:
+            artifacts.append(snapshot_path)
         return finalize_worker_result(
             workspace,
             status="ok",
             stage="agent_browser_verify",
-            artifacts=[transcript_path, snapshot_path],
+            artifacts=artifacts,
             retryable=False,
             details=details,
             completion={"state": "verified", "final_output": False},

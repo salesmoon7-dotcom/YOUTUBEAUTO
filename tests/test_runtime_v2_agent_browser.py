@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 from unittest.mock import patch
 
 from runtime_v2.config import allowed_workloads
@@ -53,6 +54,41 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         )
 
         self.assertEqual(index, 2)
+
+    def test_parse_tab_list_handles_titles_with_hyphen_and_keeps_url(self) -> None:
+        from runtime_v2.agent_browser.result_parser import (
+            parse_tab_list_output,
+            select_best_tab,
+        )
+
+        tab_output = "[0] 4 머니 - YouTube 썸네일 - https://www.canva.com/design/DAHAnm1uUBA/-FWB5gw_ir1U7Ls0ZHF9Ig/edit\n"
+
+        tabs = parse_tab_list_output(tab_output)
+        index = select_best_tab(
+            tabs,
+            expected_url_substring="canva.com",
+            expected_title_substring="Canva",
+        )
+
+        self.assertEqual(
+            str(tabs[0]["url"]),
+            "https://www.canva.com/design/DAHAnm1uUBA/-FWB5gw_ir1U7Ls0ZHF9Ig/edit",
+        )
+        self.assertEqual(index, 0)
+
+    def test_parse_tab_list_strips_ansi_prefix_before_matching(self) -> None:
+        from runtime_v2.agent_browser.result_parser import (
+            parse_tab_list_output,
+            select_best_tab,
+        )
+
+        tab_output = "\u001b[36m→\u001b[0m [0] 4 머니 - YouTube 썸네일 - https://www.canva.com/design/DAHAnm1uUBA/-FWB5gw_ir1U7Ls0ZHF9Ig/edit\n"
+
+        tabs = parse_tab_list_output(tab_output)
+        index = select_best_tab(tabs, expected_url_substring="canva.com")
+
+        self.assertEqual(len(tabs), 1)
+        self.assertEqual(index, 0)
 
     def test_run_worker_dispatches_agent_browser_verify(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -160,6 +196,48 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
             str(resolved[0]).endswith("agent-browser.cmd")
             or str(resolved[0]).endswith("agent-browser-win32-x64.exe")
         )
+
+    def test_agent_browser_worker_uses_longer_timeout_for_seaart(self) -> None:
+        from runtime_v2.workers.agent_browser_worker import _service_timeout_sec
+
+        self.assertEqual(_service_timeout_sec("seaart"), 60)
+        self.assertEqual(_service_timeout_sec("geminigen"), 60)
+        self.assertEqual(_service_timeout_sec("canva"), 30)
+
+    def test_agent_browser_verify_skips_snapshot_for_non_chatgpt_services(self) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "artifacts"
+            job = JobContract(
+                job_id="agent-browser-canva-no-snapshot",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-canva-no-snapshot",
+                payload={
+                    "service": "canva",
+                    "port": 9666,
+                    "expected_url_substring": "canva.com",
+                },
+            )
+
+            outputs = iter(
+                [
+                    "[0] Canva design - https://www.canva.com/design/foo/edit\n",
+                    "selected",
+                    "https://www.canva.com/design/foo/edit",
+                    "Canva design",
+                ]
+            )
+
+            with patch(
+                "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                side_effect=lambda *args, **kwargs: next(outputs),
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(str(details["snapshot_path"]), "")
 
 
 if __name__ == "__main__":

@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import re
 
-
-_TAB_LINE = re.compile(r"^\s*(?:→\s*)?\[(\d+)\]\s*(.*?)\s*-\s*(\S+)\s*$")
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def parse_scalar_output(output: str) -> str:
@@ -13,15 +12,31 @@ def parse_scalar_output(output: str) -> str:
 def parse_tab_list_output(output: str) -> list[dict[str, object]]:
     tabs: list[dict[str, object]] = []
     for raw_line in output.splitlines():
-        line = raw_line.strip()
+        line = _ANSI_ESCAPE.sub("", raw_line).strip()
         if not line:
             continue
-        match = _TAB_LINE.match(line)
-        if match is None:
+        if line.startswith("→"):
+            line = line[1:].strip()
+        if not line.startswith("["):
             continue
-        index = int(match.group(1))
-        title = match.group(2).strip()
-        url = match.group(3).strip()
+        close_index = line.find("]")
+        if close_index <= 1:
+            continue
+        raw_index = line[1:close_index].strip()
+        try:
+            index = int(raw_index)
+        except ValueError:
+            continue
+        remainder = line[close_index + 1 :].strip()
+        separator = " - http"
+        separator_index = remainder.rfind(separator)
+        if separator_index == -1:
+            separator = " - https"
+            separator_index = remainder.rfind(separator)
+        if separator_index == -1:
+            continue
+        title = remainder[:separator_index].strip()
+        url = remainder[separator_index + 3 :].strip()
         tabs.append({"index": index, "title": title, "url": url})
     return tabs
 
