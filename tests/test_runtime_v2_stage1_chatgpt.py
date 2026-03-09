@@ -401,7 +401,14 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                 patch(
                     "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
                     side_effect=[
-                        RuntimeError("os error 10060"),
+                        {
+                            "status": "failed",
+                            "error_code": "CHATGPT_BACKEND_UNAVAILABLE",
+                            "failure_stage": "read",
+                            "details": {"backend_error": "os error 10060"},
+                            "submit_info": {},
+                            "final_state": {},
+                        },
                         {
                             "status": "ok",
                             "response_text": _gpt_response_text(),
