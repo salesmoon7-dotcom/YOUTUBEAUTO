@@ -83,6 +83,20 @@ def _resolve_output_target(raw_path: str) -> Path | None:
     return candidate
 
 
+def _resolve_output_target_info(raw_path: str) -> tuple[Path | None, str | None]:
+    text = raw_path.strip()
+    if not text:
+        return None, "OUTPUT_PATH_INVALID"
+    candidate = Path(text).expanduser()
+    if not candidate.is_absolute():
+        candidate = (REPO_ROOT / candidate).resolve()
+    else:
+        candidate = candidate.resolve()
+    if REPO_ROOT not in candidate.parents and candidate != REPO_ROOT:
+        return None, "OUTPUT_OUTSIDE_ROOT"
+    return candidate, None
+
+
 def _file_signature(path: Path | None) -> tuple[int, int] | None:
     if path is None or not path.exists() or not path.is_file():
         return None
@@ -98,7 +112,7 @@ def run_verified_adapter_command(
     adapter_error_code: str,
     timeout_sec: int = 3600,
 ) -> dict[str, object]:
-    target_path = _resolve_output_target(service_artifact_path)
+    target_path, target_error = _resolve_output_target_info(service_artifact_path)
     before_signature = _file_signature(target_path)
     process_result = run_external_process(
         adapter_command,
@@ -117,29 +131,50 @@ def run_verified_adapter_command(
         "details": {
             "returncode": exit_code_int,
             "timed_out": bool(process_result.get("timed_out", False)),
+            "service_artifact_path": service_artifact_path,
+            "resolved_output_path": "" if target_path is None else str(target_path),
+            "stdout_path": str(stdout_path.resolve()),
+            "stderr_path": str(stderr_path.resolve()),
+            "before_signature": before_signature,
         },
     }
+    if target_error is not None:
+        base_payload["ok"] = False
+        base_payload["error_code"] = target_error
+        return base_payload
     if exit_code_int != 0:
         base_payload["ok"] = False
-        base_payload["error_code"] = adapter_error_code
+        stderr_text = str(process_result.get("stderr", ""))
+        if bool(process_result.get("timed_out", False)):
+            base_payload["error_code"] = "ADAPTER_TIMEOUT"
+        elif (
+            "No such file" in stderr_text
+            or "cannot find the file" in stderr_text.lower()
+        ):
+            base_payload["error_code"] = "ADAPTER_NOT_FOUND"
+        else:
+            base_payload["error_code"] = "ADAPTER_NONZERO_EXIT"
         return base_payload
     verified_output = (
         None if target_path is None else resolve_local_input(str(target_path))
     )
     if verified_output is None:
         base_payload["ok"] = False
-        base_payload["error_code"] = "missing_service_artifact_path"
+        base_payload["error_code"] = "OUTPUT_NOT_CREATED"
         return base_payload
     after_signature = _file_signature(verified_output)
+    details = dict(cast(dict[str, object], base_payload["details"]))
+    details["after_signature"] = after_signature
     if before_signature is not None and before_signature == after_signature:
-        details = dict(cast(dict[str, object], base_payload["details"]))
         details["service_artifact_path"] = str(verified_output.resolve())
         details["reused"] = True
         base_payload["details"] = details
         base_payload["ok"] = True
         base_payload["reused"] = True
+        base_payload["error_code"] = "OUTPUT_UNCHANGED_REUSED"
         base_payload["output_path"] = verified_output
         return base_payload
+    base_payload["details"] = details
     base_payload["ok"] = True
     base_payload["reused"] = False
     base_payload["output_path"] = verified_output
