@@ -42,6 +42,10 @@ python -m pytest tests/test_runtime_v2_agent_browser.py tests/test_runtime_v2_de
 
 - detached `2차 1행` auto probe: `system/runtime_v2_probe/stage2-row1-auto-03/probe_result.json`
 - result: `status=ok`, `code=OK`
+- interpretation rule:
+  - 위 `code=OK`는 **probe success**를 뜻하며, 전체 live readiness `Go`와 동일하지 않습니다.
+  - `probe_result.json`의 `live_readiness`는 `full` 또는 `partial`로 실제 attach 준비 수준을 별도 표시해야 합니다.
+  - `placeholder_services`는 placeholder/fallback으로 닫힌 서비스를, `live_ready_services`는 real attach로 확인된 서비스를 뜻합니다.
 - current automation policy:
   - live-ready 서비스(`genspark`)는 `agent-browser` attach + `attach_evidence.json`을 우선 사용
   - 나머지 browser stage2 서비스는 detached row1 probe에서 placeholder adapter fallback으로 닫아 2차 테스트를 자동 완료
@@ -133,6 +137,7 @@ python -m pytest tests/test_runtime_v2_agent_browser.py tests/test_runtime_v2_de
 - 현재 저장소는 `agent-browser`를 쓰는 브라우저 프로그램 개발을 **부분적으로 시작할 준비**가 되어 있습니다.
 - 구체적으로는 `ChatGPT`, `Genspark`를 대상으로 한 개발/검증 루프는 바로 시작할 수 있습니다.
 - 하지만 브라우저군 전체를 공통 추상화로 묶어 개발하려면 `9444/9555/9666`의 CDP attach timeout 원인을 먼저 해결해야 합니다.
+- 따라서 `probe success`와 `live readiness`를 같은 의미로 읽지 않습니다.
 
 ## Immediate Next Action
 

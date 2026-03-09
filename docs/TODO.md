@@ -40,3 +40,4 @@
   - 즉시 실행: placeholder probe success와 real readiness를 출력/문서에서 더 명확히 분리합니다.
   - 운영 환경 정리 후 실행: `seaart/geminigen` environment blocker, stage1 richer field parity
   - 현재 no-go: `control_plane` 2차 분해
+  - probe 출력은 `code=OK`와 별도로 `live_readiness`, `placeholder_services`, `live_ready_services`를 통해 해석해야 합니다.
