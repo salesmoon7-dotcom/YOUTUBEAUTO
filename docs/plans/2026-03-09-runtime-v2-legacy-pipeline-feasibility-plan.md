@@ -186,6 +186,12 @@
   - `system/runtime_v2_probe/stage1-row13-evidence-04/raw_output.json`
   - `system/runtime_v2_probe/stage1-row13-evidence-04/parsed_payload.json`
   - `system/runtime_v2_probe/stage1-row13-evidence-04/stage1_handoff.json`
+- browser transcript/DOM 공급원 연결 evidence:
+  - `system/runtime_v2_probe/stage1-row13-evidence-05/snapshot.txt`
+  - `system/runtime_v2_probe/stage1-row13-evidence-05/raw_output.json`
+  - `system/runtime_v2_probe/stage1-row13-evidence-05/parsed_payload.json`
+  - `system/runtime_v2_probe/stage1-row13-evidence-05/stage1_handoff.json`
 - `Sheet1!row13` 기준으로 위 3개 artifact가 생성되고, downstream `next_jobs`도 3개(`genspark`, `seaart`, `render`)까지 이어지는 것을 확인했습니다.
 - `stage1-row13-evidence-04`는 `raw_source = gpt_response_text`로 기록되어, placeholder topic-spec fallback이 아니라 실제 GPT text 입력이 `stage1.v1` parsed handoff로 연결되는 것을 확인했습니다.
-- 남은 일은 실제 browser ChatGPT transcript/DOM output을 `gpt_response_text` 공급원으로 자동 연결하고, Excel handoff 필드를 레거시 수준까지 넓히는 것입니다.
+- `stage1-row13-evidence-05`는 `browser_evidence.snapshot_path`를 통해 stage1가 자동으로 `gpt_response_text`를 주입하고 same handoff contract로 연결되는 것을 확인했습니다.
+- 남은 일은 실제 browser ChatGPT transcript/DOM output의 richer block/field를 `title/title_for_thumb/description/keywords/bgm/#01...`까지 더 충실하게 매핑하는 것입니다.

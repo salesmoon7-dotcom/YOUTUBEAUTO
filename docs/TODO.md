@@ -20,7 +20,8 @@
   - `docs/plans/2026-03-09-runtime-v2-legacy-pipeline-feasibility-plan.md` 기준 `stage1 GPT output/parse/handoff canonical contract` 2차 배치까지 구현됨
   - 실제 row evidence는 `system/runtime_v2_probe/stage1-row13-evidence-01/`에 생성됨
   - 실제 GPT text 연결 evidence는 `system/runtime_v2_probe/stage1-row13-evidence-04/`에 생성됨
-  - 남은 일은 real browser ChatGPT transcript/DOM output을 `gpt_response_text` 공급원으로 자동 연결하고, Excel field parity를 레거시 수준까지 확장하는 것입니다.
+  - browser snapshot auto hookup evidence는 `system/runtime_v2_probe/stage1-row13-evidence-05/`에 생성됨
+  - 남은 일은 real browser ChatGPT transcript/DOM output의 richer field를 `title/title_for_thumb/description/keywords/bgm/#01...`까지 더 충실하게 반영하는 것입니다.
   - skill bundle 기준은 `docs/sop/SOP_closed_loop_automation_skill_map.md`를 canonical map으로 사용합니다.
 - 채팅 interruption 대응 규칙 강화:
   - 채팅 세션에서는 실브라우저 relaunch/recovery를 실행하지 않습니다.
