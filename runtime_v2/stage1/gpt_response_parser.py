@@ -10,6 +10,10 @@ _LABEL_PATTERN = re.compile(
     r"^(Title for Thumb|Title|Description|Keywords|Voice|BGM|Scene\s*\d+|#\d+)\s*:?\s*$",
     re.IGNORECASE,
 )
+_INLINE_LABEL_PATTERN = re.compile(
+    r"^(Title for Thumb|Title|Description|Keywords|Voice|BGM|Scene\s*\d+|#\d+)\s*:\s*(.+)$",
+    re.IGNORECASE,
+)
 
 
 def parse_gpt_response_text(
@@ -65,6 +69,11 @@ def _parse_block_response(
     for raw_line in response_text.splitlines():
         line = raw_line.strip()
         if not line:
+            continue
+        inline_match = _INLINE_LABEL_PATTERN.match(line)
+        if inline_match:
+            current_label = inline_match.group(1).strip().lower()
+            labels.setdefault(current_label, []).append(inline_match.group(2).strip())
             continue
         label_match = _LABEL_PATTERN.match(line)
         if label_match:
