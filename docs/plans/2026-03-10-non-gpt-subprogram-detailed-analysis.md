@@ -231,7 +231,19 @@
 
 ### 2. Failure-mode risk
 
-- `adapter_failed`, `native_not_implemented` 같은 상위 코드만으로는 실제 원인 분리가 부족한 서비스가 있음
+- 1차 보완 완료:
+  - `run_verified_adapter_command()`가 표준 실패 코드를 직접 반환하도록 보강됨
+  - 현재 반영 코드:
+    - `ADAPTER_TIMEOUT`
+    - `ADAPTER_NOT_FOUND`
+    - `ADAPTER_NONZERO_EXIT`
+    - `OUTPUT_PATH_INVALID`
+    - `OUTPUT_OUTSIDE_ROOT`
+    - `OUTPUT_NOT_CREATED`
+    - `OUTPUT_UNCHANGED_REUSED` (`ok=true` 재사용 분류)
+- 남은 일:
+  - 더 많은 worker에 서비스별 세분화 코드를 보조 필드로 추가
+  - failure matrix 문서와 테스트를 서비스 단위로 더 넓힘
 
 ### 3. Long-run stability risk
 
@@ -252,6 +264,7 @@
 
 2. **서비스별 failure matrix를 코드/테스트에 반영**
    - adapter/browser/session/input/artifact 오류를 더 세분화
+   - 공통 adapter failure matrix 1차는 반영됨
 
 3. **서비스별 functional verification evidence를 따로 확보**
    - 최소 1개 row/asset 기준으로 실제 산출물 evidence 확보
