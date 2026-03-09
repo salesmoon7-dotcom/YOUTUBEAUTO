@@ -74,6 +74,9 @@
   - `agent-browser --cdp 9222 eval ...` 는 현재 ChatGPT 세션에서 `os error 10060`으로 불안정합니다.
   - Selenium attach도 foreground Chrome과 별개로 내부 session bootstrap에서 read timeout이 발생했습니다.
   - 따라서 남은 실제 blocker는 `ChatGPT` 브라우저 입력/응답 자동화 백엔드 안정화입니다.
+  - immediate safe action applied: `runtime_v2/stage1/chatgpt_interaction.py` now surfaces backend instability as canonical failure contract (`CHATGPT_BACKEND_UNAVAILABLE` + `failure_stage=submit/read`) instead of raw `RuntimeError` propagation.
+  - `runtime_v2/stage1/chatgpt_runner.py`도 이 canonical failure contract를 해석해 browser relaunch/retry 여부를 결정하도록 맞췄습니다.
+  - 따라서 현재 1차 조치의 목적은 “포트 불안정을 숨기지 않고, 상위 계층이 같은 의미로 재시도하게 만드는 것”입니다. 아직 근본 해결은 아니며, 다음 실제 구현 우선순위는 backend abstraction/fallback canonicalization입니다.
 
 ## Program-by-Program Integration Matrix
 
@@ -124,6 +127,11 @@
 - 위 상호작용 계층이 생성한 실제 GPT 응답을 `gpt_response_text`로 저장
 - `stage1.v1` 파서에 연결
 - 결과를 Excel/JSON handoff로 병합
+- follow-up complete:
+  - `stage1_handoff` SSOT schema 추가
+  - Excel export/import bridge 추가
+  - `handoff -> excel row -> handoff` 라운드트립 계약 테스트 추가
+  - downstream-friendly 필드 (`voice_texts`, `Ref Img 1`, `Ref Img 2`, `BGM`, `#01...`)를 정본 규칙으로 고정
 
 ### Phase 3. Ready-to-test gate
 

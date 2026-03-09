@@ -32,7 +32,8 @@
   - 실제 GPT text 연결 evidence는 `system/runtime_v2_probe/stage1-row13-evidence-04/`에 생성됨
   - browser snapshot auto hookup evidence는 `system/runtime_v2_probe/stage1-row13-evidence-05/`에 생성됨
   - inline label/value(`Title: ...`, `#01: ...`) richer field parsing은 반영되었습니다.
-  - 남은 일은 실제 browser DOM/snapshot 변형 패턴을 더 수집해 parser 허용 폭을 넓힐지 판단하는 것입니다.
+  - downstream field matrix용 `stage1_handoff` SSOT schema, Excel export/import bridge, roundtrip contract test는 구현되었습니다.
+  - 남은 일은 실제 browser DOM/snapshot 변형 패턴을 더 수집해 parser 허용 폭을 넓히고, ChatGPT interaction backend를 안정화하는 것입니다.
   - 다음 legacy carryover 적용 계획은 `docs/plans/2026-03-09-runtime-v2-legacy-carryover-top3-plan.md`를 기준으로 관리합니다.
   - legacy carryover top3 safe batch는 완료되었습니다.
   - skill bundle 기준은 `docs/sop/SOP_closed_loop_automation_skill_map.md`를 canonical map으로 사용합니다.
@@ -46,5 +47,7 @@
   - 현재 남은 우선순위는 stage1 richer field의 추가 샘플 확장 판단이며, `control_plane` 2차 분해는 여전히 no-go입니다.
 - 새 active integration plan: `docs/plans/2026-03-10-runtime-v2-subprogram-integration-execution-plan.md`
   - 레거시는 실패한 복잡계로 간주하고 구현체가 아니라 계약/파싱 참고 자료로만 사용합니다.
-  - 다음 실제 구현 우선순위는 `ChatGPT interaction layer canonicalization`입니다.
+- 다음 실제 구현 우선순위는 `ChatGPT interaction layer canonicalization`입니다.
+  - 1차 조치로 `CHATGPT_BACKEND_UNAVAILABLE` + `failure_stage=submit/read` canonical failure contract와 runner 재시도 연결은 반영되었습니다.
+  - 남은 핵심은 `agent-browser` 단일 의존을 줄이는 backend abstraction/fallback canonicalization입니다.
   - `1차 테스트`는 그 계층이 닫힌 뒤 `mock -> smoke -> real` 순서로 다시 진행합니다.
