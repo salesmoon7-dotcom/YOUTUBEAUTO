@@ -22,9 +22,8 @@
   - detached `2차 1행` auto probe `system/runtime_v2_probe/stage2-row1-auto-03/probe_result.json`은 `code=OK`로 완료됨
   - follow-up attach 결과 `canva:9666`은 회복됐습니다.
   - 최종 남은 blocker는 `seaart:9444`, `geminigen:9555` 두 환경 이슈입니다.
-  - `seaart:9444`는 브라우저 부팅은 되지만 CDP attach가 현재 환경에서 `os error 10060`으로 불안정합니다.
-  - `geminigen:9555`는 `D:/YOUTUBE_AUTO/system/geminigen_chrome_userdata` profile의 process singleton 충돌로 판단됩니다.
-  - 따라서 남은 항목은 코드 구현이 아니라 `seaart/geminigen` 브라우저 운영 환경 정리입니다.
+  - `seaart:9444`, `geminigen:9555` 모두 foreground launch에서는 `DevTools listening`까지 확인되지만, 현재 세션/launch pattern에서 `agent-browser` attach가 안정적으로 유지되지 않습니다.
+  - 따라서 남은 항목은 코드 구현이 아니라 `seaart/geminigen` 브라우저 운영 환경/런처 안정화입니다.
   - live readiness 상세 판정은 `docs/plans/2026-03-09-agent-browser-live-readiness-report.md`를 기준으로 관리합니다.
 - stage1 legacy parity active unit:
   - `docs/plans/2026-03-09-runtime-v2-legacy-pipeline-feasibility-plan.md` 기준 `stage1 GPT output/parse/handoff canonical contract` 2차 배치까지 구현됨
@@ -37,3 +36,7 @@
   - 채팅 세션에서는 실브라우저 relaunch/recovery를 실행하지 않습니다.
   - readiness blocker가 실브라우저 복구를 요구하면 detached 또는 수동 smoke 단계에서만 수행합니다.
 - 테스트 실행은 `docs/plans/2026-03-08-browser-session-stability-plan.md`의 `Test Tier Execution Contract`를 따릅니다. 채팅 세션 기본 검증은 `safe`만 허용하고, `isolated`는 개별 실행, `manual`은 채팅 세션 밖에서만 다룹니다.
+- 새 active unit: `docs/plans/2026-03-09-runtime-v2-remaining-issues-priority-plan.md`
+  - 즉시 실행: placeholder probe success와 real readiness를 출력/문서에서 더 명확히 분리합니다.
+  - 운영 환경 정리 후 실행: `seaart/geminigen` environment blocker, stage1 richer field parity
+  - 현재 no-go: `control_plane` 2차 분해
