@@ -70,6 +70,30 @@
 - ChatGPT 실제 응답 생성/대기/완료 판정 계층이 아직 `runtime_v2`에 canonicalized 되어 있지 않음
 - `1차 테스트`의 실제 blocker는 파서가 아니라 **ChatGPT 상호작용 안정성**임
 - 따라서 지금 해야 할 것은 downstream 확장이 아니라 **ChatGPT interaction layer 구현**임
+- 추가 확인:
+  - `agent-browser --cdp 9222 eval ...` 는 현재 ChatGPT 세션에서 `os error 10060`으로 불안정합니다.
+  - Selenium attach도 foreground Chrome과 별개로 내부 session bootstrap에서 read timeout이 발생했습니다.
+  - 따라서 남은 실제 blocker는 `ChatGPT` 브라우저 입력/응답 자동화 백엔드 안정화입니다.
+
+## Program-by-Program Integration Matrix
+
+| Program | Legacy contract role | runtime_v2 current status | Remaining gap | Ready for real test? |
+|---|---|---|---|---|
+| ChatGPT | canonical producer of downstream fields (`Title`, `Thumb`, `Voice`, `Description`, `Keywords`, scene prompts) | `stage1.v1` handoff exists, parser exists, browser snapshot hookup exists | real prompt submission / send / response-complete wait is not canonicalized | No |
+| SeaArt | immediate post-GPT image generator | stage2 worker + agent-browser/live attach evidence complete | consumes minimal handoff, richer GPT field linkage still pending | Yes (after ChatGPT handoff) |
+| Genspark | immediate post-GPT image generator | stage2 worker + agent-browser/live attach evidence complete | same as above | Yes (after ChatGPT handoff) |
+| TTS | immediate post-GPT voice generator | feeder/workload/worker contracts exist | real upstream `voice_texts` handoff from ChatGPT still not canonicalized | Partial |
+| GeminiGen | image->video downstream | stage2 worker + live attach evidence complete | depends on upstream image artifact readiness | Partial |
+| Canva | title/thumb + ref image downstream | stage2 worker + live attach evidence complete | depends on upstream `title_for_thumb` + reference image parity | Partial |
+| Kenburn | image + voice -> video compositor | GPU worker/feeder exist | depends on image/voice bundle map parity | Partial |
+| RVC | TTS/video-derived voice conversion | GPU worker/feeder exist | depends on stable TTS/Gemini video upstream contracts | Partial |
+
+### Matrix interpretation
+
+- 현재 downstream 프로그램 대부분은 “실행 가능한 worker/adapter contract”까지는 준비되어 있습니다.
+- 그러나 **실제 테스트 준비도**를 막는 핵심 병목은 여전히 `ChatGPT`입니다.
+- 이유는 downstream contract의 대부분이 GPT가 채우는 canonical handoff field에 의존하기 때문입니다.
+- 따라서 다음 구현 우선순위는 계속해서 `ChatGPT interaction layer canonicalization`입니다.
 
 ## Execution Order
 

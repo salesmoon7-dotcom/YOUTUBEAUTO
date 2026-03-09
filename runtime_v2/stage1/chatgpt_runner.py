@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from time import sleep
 from typing import cast
 
+from runtime_v2.browser.manager import open_browser_for_login
 from runtime_v2.contracts.topic_spec import validate_topic_spec
 from runtime_v2.contracts.video_plan import build_video_plan
 from runtime_v2.stage1.parsed_payload import (
@@ -12,6 +14,7 @@ from runtime_v2.stage1.parsed_payload import (
     build_stage1_raw_output_artifact,
     validate_stage1_parsed_payload,
 )
+from runtime_v2.stage1.chatgpt_interaction import generate_gpt_response_text
 from runtime_v2.stage1.result_contract import stage1_result_payload
 from runtime_v2.workers.job_runtime import finalize_worker_result, write_json_atomic
 
@@ -102,8 +105,26 @@ def build_video_plan_from_topic_spec(
 def attach_gpt_response_text_from_browser_evidence(
     topic_spec: dict[str, object], browser_evidence: dict[str, object]
 ) -> dict[str, object]:
+    if str(topic_spec.get("gpt_response_text", "")).strip():
+        return dict(topic_spec)
     snapshot_path = str(browser_evidence.get("snapshot_path", "")).strip()
     if not snapshot_path:
+        service = str(browser_evidence.get("service", "")).strip()
+        raw_port = browser_evidence.get("port", 0)
+        if service == "chatgpt" and isinstance(raw_port, int) and raw_port > 0:
+            prompt = str(topic_spec.get("topic", "")).strip()
+            try:
+                result = generate_gpt_response_text(prompt=prompt, port=raw_port)
+            except RuntimeError:
+                _ = open_browser_for_login("chatgpt")
+                sleep(8)
+                result = generate_gpt_response_text(prompt=prompt, port=raw_port)
+            if str(result.get("status", "")) == "ok":
+                enriched = dict(topic_spec)
+                enriched["gpt_response_text"] = str(result.get("response_text", ""))
+                enriched["gpt_response_source"] = "agent_browser_live"
+                enriched["gpt_response_meta"] = result.get("final_state", {})
+                return enriched
         return dict(topic_spec)
     snapshot_file = Path(snapshot_path)
     if not snapshot_file.exists():

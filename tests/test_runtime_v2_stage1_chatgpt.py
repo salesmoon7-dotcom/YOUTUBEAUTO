@@ -354,6 +354,77 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             "scene one from gpt", cast(list[object], parsed_payload["scene_prompts"])
         )
 
+    def test_stage1_runner_can_generate_gpt_response_text_from_live_browser_evidence(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            topic_spec = _topic_spec(topic="Money flow")
+            topic_spec["browser_evidence"] = {"service": "chatgpt", "port": 9222}
+
+            with patch(
+                "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                return_value={
+                    "status": "ok",
+                    "response_text": _gpt_response_text(),
+                    "final_state": {"assistant_block_count": 1},
+                },
+            ):
+                result = run_stage1_chatgpt_job(
+                    topic_spec,
+                    root / "workspace",
+                    debug_log="logs/stage1-run-1.jsonl",
+                )
+
+            result_path = Path(cast(str, result["result_path"]))
+            result_payload = cast(
+                dict[str, object], json.loads(result_path.read_text(encoding="utf-8"))
+            )
+            handoff = cast(
+                dict[str, object],
+                cast(dict[str, object], result_payload["details"])["stage1_handoff"],
+            )
+            parsed_payload = cast(dict[str, object], handoff["contract"])
+
+        self.assertEqual(result["status"], "ok")
+        self.assertIn(
+            "scene one from gpt", cast(list[object], parsed_payload["scene_prompts"])
+        )
+
+    def test_stage1_runner_retries_live_chatgpt_after_relaunch(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            topic_spec = _topic_spec(topic="Money flow")
+            topic_spec["browser_evidence"] = {"service": "chatgpt", "port": 9222}
+
+            with (
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                    side_effect=[
+                        RuntimeError("os error 10060"),
+                        {
+                            "status": "ok",
+                            "response_text": _gpt_response_text(),
+                            "final_state": {"assistant_block_count": 1},
+                        },
+                    ],
+                ) as generate_mock,
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.open_browser_for_login"
+                ) as relaunch_mock,
+                patch("runtime_v2.stage1.chatgpt_runner.sleep") as sleep_mock,
+            ):
+                result = run_stage1_chatgpt_job(
+                    topic_spec,
+                    root / "workspace",
+                    debug_log="logs/stage1-run-1.jsonl",
+                )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(generate_mock.call_count, 2)
+        relaunch_mock.assert_called_once_with("chatgpt")
+        sleep_mock.assert_called_once()
+
     def test_stage1_route_failure_becomes_structured_failed_result(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             workspace = Path(tmp_dir)
