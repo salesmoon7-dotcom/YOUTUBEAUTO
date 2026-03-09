@@ -243,6 +243,8 @@ Focus:
 - [x] live capture success/failure metadata가 `raw_output.json.gpt_capture`에 기록됨
 - [x] live 의도에서 capture failure는 fail-close 됨
 - [x] no-port live request도 silent fallback 없이 fail-close 됨
+- [x] live fail-closed에서도 `raw_output.json`과 `result.json.details.stage1_result.raw_output_path`가 남음
+- [ ] `system/runtime_v2_probe/first-test-real-live-06/` 기준 real assistant artifact는 아직 실패(`CHATGPT_BACKEND_UNAVAILABLE`)
 
 ## Current GPT Verdict
 

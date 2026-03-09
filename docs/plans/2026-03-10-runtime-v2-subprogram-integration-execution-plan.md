@@ -150,6 +150,11 @@
 
 - current progress:
   - 1번의 파일 스키마와 failure semantics는 준비 완료입니다. 남은 것은 실제 live artifact를 다시 생성하는 운영 단계입니다.
+  - real-first execution attempted: `system/runtime_v2_probe/first-test-real-live-06/`
+    - `raw_output.json.gpt_capture`와 `result.json.details.stage1_result.raw_output_path`는 확보되었습니다.
+    - verdict: `CHATGPT_BACKEND_UNAVAILABLE` fail-close
+    - browser/gpt floor 자체는 healthy였지만, 실제 ChatGPT submit 경로에서 `os error 10060`이 재현되었습니다.
+    - 따라서 real-first gate는 아직 `No`, but evidence chain is now preserved even on failure.
 
 ### Phase 4. Test order
 
