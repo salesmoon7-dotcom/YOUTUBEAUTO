@@ -10,7 +10,8 @@
 - 새 active unit: `docs/plans/2026-03-09-control-plane-feeder-decomposition-plan.md`
   - 1차 분해 범위는 feeder discovery / explicit contract parsing / feeder state I/O만입니다.
   - `run_control_loop_once()`, failure contract, recovery, downstream chaining, snapshot writer는 `control_plane.py`에 남깁니다.
-  - 1차 배치는 완료되었습니다. 남은 구조 개선 후보는 필요 시 2차로 `worker dispatch` 분리 여부를 재평가하는 것입니다.
+  - 1차 배치는 완료되었습니다. Oracle 최종 판단은 현재 시점에서 2차 분해는 `no-go`입니다.
+  - 분해 재개 조건: `_run_worker()` 왕복 디버깅이 반복되거나, workload 3개 이상 추가로 dispatch 충돌이 실제 발생하거나, worker 선택 정책 자체를 교체해야 할 때입니다.
 - `1행 smoke` readiness 재판정은 완료되었습니다.
   - detached browser recovery run `system/runtime_v2_probe/browser-recover-run-02/probe_result.json`이 `code=OK`로 종료됐습니다.
   - `python -m runtime_v2.cli --readiness-check` 기준 `ready=true`, `code=OK`를 확인했습니다.

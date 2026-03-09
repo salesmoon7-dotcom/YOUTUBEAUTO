@@ -10,6 +10,8 @@
 
 **Document Status:** COMPLETED - first safe feeder decomposition batch implemented on 2026-03-09.
 
+**Current Decision:** NO-GO for second decomposition batch right now. Oracle review concluded that after feeder extraction, the remaining complexity in `runtime_v2/control_plane.py` is naturally cohesive orchestration rather than harmful semantic drift. In particular, splitting worker dispatch now would likely increase file-to-file jumps during debugging without materially reducing policy complexity.
+
 ---
 
 ## Why This Plan Exists
@@ -100,6 +102,10 @@
 
 - `runtime_v2/control_plane_feeder.py`를 추가해 `seed_local_jobs()`와 explicit contract discovery / feeder state I/O / local path validation을 분리했습니다.
 - `runtime_v2/control_plane.py`는 control loop, failure/recovery/chaining, snapshot/event writer, worker dispatch에 더 집중된 파일이 되었습니다.
+- 2차 분해(특히 worker dispatch 분리)는 현재 시점에서는 보류합니다. 재개 조건은 다음 중 하나입니다.
+  - `_run_worker()` 주변 디버깅 왕복이 최근 3회 중 절반 이상 반복될 때
+  - 새 workload가 3개 이상 추가되어 dispatch 변경 충돌이 실제로 생길 때
+  - 동기 함수 호출 스위치가 아니라 worker 선택 정책 자체를 바꿔야 할 때
 - 분해 후 fresh verification:
   - `python -m pytest tests/test_runtime_v2_excel_bridge.py::RuntimeV2ExcelBridgeTests::test_subprograms_never_receive_excel_path_directly -q`
   - `python -m pytest tests/test_runtime_v2_excel_bridge.py::RuntimeV2ExcelBridgeTests::test_resident_worker_poll_enforces_configured_stable_file_age -q`
