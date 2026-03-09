@@ -54,21 +54,37 @@ def _build_voice_json(scene_plan: list[object]) -> dict[str, object]:
     return {"voice_texts": voice_texts}
 
 
-def build_stage2_jobs(video_plan: dict[str, object]) -> tuple[list[dict[str, object]], dict[str, object]]:
+def build_stage2_jobs(
+    video_plan: dict[str, object],
+) -> tuple[list[dict[str, object]], dict[str, object]]:
     asset_plan_raw = video_plan.get("asset_plan", {})
     if not isinstance(asset_plan_raw, dict):
         raise ValueError("artifact_invalid")
     asset_plan = cast(dict[str, object], asset_plan_raw)
-    asset_root = ensure_common_asset_root(str(asset_plan.get("common_asset_folder", asset_plan.get("asset_root", ""))))
+    asset_root = ensure_common_asset_root(
+        str(asset_plan.get("common_asset_folder", asset_plan.get("asset_root", "")))
+    )
     run_id = str(video_plan.get("run_id", ""))
     row_ref = str(video_plan.get("row_ref", ""))
     scene_plan_raw = video_plan.get("scene_plan", [])
     jobs: list[dict[str, object]] = []
     workloads: list[WorkloadName] = ["genspark", "seaart", "geminigen", "canva"]
-    typed_scene_plan = cast(list[object], scene_plan_raw) if isinstance(scene_plan_raw, list) else []
+    typed_scene_plan = (
+        cast(list[object], scene_plan_raw) if isinstance(scene_plan_raw, list) else []
+    )
     asset_refs: list[str] = []
     timeline: list[dict[str, object]] = []
     thumbnail_refs: list[str] = []
+    raw_agent_browser_services = video_plan.get("use_agent_browser_services", [])
+    agent_browser_services = (
+        {
+            str(item).strip()
+            for item in cast(list[object], raw_agent_browser_services)
+            if str(item).strip()
+        }
+        if isinstance(raw_agent_browser_services, list)
+        else set()
+    )
     for scene_offset, raw_scene in enumerate(typed_scene_plan):
         if not isinstance(raw_scene, dict):
             continue
@@ -76,7 +92,9 @@ def build_stage2_jobs(video_plan: dict[str, object]) -> tuple[list[dict[str, obj
         workload = workloads[scene_offset % len(workloads)]
         scene_index = _scene_index_from_value(scene.get("scene_index", 0))
         prompt = str(scene.get("prompt", "")).strip()
-        service_artifact_path = (asset_root / _service_output_name(workload, run_id, scene_index)).resolve()
+        service_artifact_path = (
+            asset_root / _service_output_name(workload, run_id, scene_index)
+        ).resolve()
         payload = build_stage2_payload(
             run_id=run_id,
             row_ref=row_ref,
@@ -86,6 +104,8 @@ def build_stage2_jobs(video_plan: dict[str, object]) -> tuple[list[dict[str, obj
             reason_code=str(video_plan.get("reason_code", "ok")),
         )
         payload["service_artifact_path"] = str(service_artifact_path)
+        if workload in agent_browser_services:
+            payload["use_agent_browser"] = True
         jobs.append(
             build_explicit_job_contract(
                 job_id=f"{workload}-{run_id}-{scene_index}",

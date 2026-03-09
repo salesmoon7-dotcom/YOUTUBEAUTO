@@ -35,10 +35,15 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             jobs, _ = build_stage2_jobs(_video_plan(tmp_dir))
 
-        workloads = [cast(dict[str, object], cast(dict[str, object], job["job"]))["worker"] for job in jobs]
+        workloads = [
+            cast(dict[str, object], cast(dict[str, object], job["job"]))["worker"]
+            for job in jobs
+        ]
         self.assertEqual(workloads[:2], ["genspark", "seaart"])
 
-    def test_render_spec_and_stage2_contracts_include_row_binding_and_reason_code(self) -> None:
+    def test_render_spec_and_stage2_contracts_include_row_binding_and_reason_code(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             jobs, render_spec = build_stage2_jobs(_video_plan(tmp_dir))
 
@@ -55,11 +60,18 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
         self.assertTrue(str(render_payload["render_folder_path"]).endswith(tmp_dir))
         self.assertTrue(str(render_payload["voice_json_path"]).endswith("voice.json"))
 
-    def test_browser_stage2_workloads_bypass_gpu_lease_and_use_browser_gate_only(self) -> None:
+    def test_browser_stage2_workloads_bypass_gpu_lease_and_use_browser_gate_only(
+        self,
+    ) -> None:
         browser_runtime = {"sessions": [{"service": "genspark", "healthy": True}]}
         with patch("runtime_v2.supervisor.BrowserManager.start"):
-            with patch("runtime_v2.supervisor.BrowserSupervisor.tick", return_value=browser_runtime):
-                with patch("runtime_v2.supervisor.lease_store_for_workload") as lease_store_for_workload:
+            with patch(
+                "runtime_v2.supervisor.BrowserSupervisor.tick",
+                return_value=browser_runtime,
+            ):
+                with patch(
+                    "runtime_v2.supervisor.lease_store_for_workload"
+                ) as lease_store_for_workload:
                     result = run_once(
                         owner="runtime_v2",
                         run_id="stage2-run-1",
@@ -93,11 +105,15 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
         self.assertTrue(str(artifact["sha256"]).strip())
         self.assertTrue(str(payload["metadata"]["debug_log"]).endswith("run.jsonl"))
 
-    def test_stage2_contract_builders_fail_closed_when_common_asset_folder_missing(self) -> None:
+    def test_stage2_contract_builders_fail_closed_when_common_asset_folder_missing(
+        self,
+    ) -> None:
         with self.assertRaisesRegex(ValueError, "missing_common_asset_root"):
             _ = build_stage2_jobs(_video_plan("D:/YOUTUBEAUTO/does-not-exist-stage2"))
 
-    def test_stage2_contract_builders_preserve_all_scenes_without_zip_truncation(self) -> None:
+    def test_stage2_contract_builders_preserve_all_scenes_without_zip_truncation(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             video_plan = _video_plan(tmp_dir)
             video_plan["scene_plan"] = [
@@ -114,6 +130,36 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
         last_job = cast(dict[str, object], jobs[-2]["job"])
         self.assertEqual(last_job["worker"], "genspark")
         self.assertEqual(cast(dict[str, object], jobs[-1]["job"])["worker"], "render")
+
+    def test_stage2_jobs_can_opt_in_agent_browser_services_from_video_plan(
+        self,
+    ) -> None:
+        video_plan = _video_plan("D:/YOUTUBEAUTO")
+        video_plan["scene_plan"] = [
+            {"scene_index": 1, "prompt": "scene one"},
+            {"scene_index": 2, "prompt": "scene two"},
+            {"scene_index": 3, "prompt": "scene three"},
+            {"scene_index": 4, "prompt": "scene four"},
+        ]
+        video_plan["use_agent_browser_services"] = ["genspark", "canva"]
+
+        jobs, _ = build_stage2_jobs(video_plan)
+        typed_jobs = [cast(dict[str, object], item["job"]) for item in jobs[:-1]]
+        genspark_job = next(
+            job for job in typed_jobs if str(job["worker"]) == "genspark"
+        )
+        canva_job = next(job for job in typed_jobs if str(job["worker"]) == "canva")
+        seaart_job = next(job for job in typed_jobs if str(job["worker"]) == "seaart")
+
+        self.assertTrue(
+            bool(cast(dict[str, object], genspark_job["payload"])["use_agent_browser"])
+        )
+        self.assertTrue(
+            bool(cast(dict[str, object], canva_job["payload"])["use_agent_browser"])
+        )
+        self.assertNotIn(
+            "use_agent_browser", cast(dict[str, object], seaart_job["payload"])
+        )
 
 
 if __name__ == "__main__":

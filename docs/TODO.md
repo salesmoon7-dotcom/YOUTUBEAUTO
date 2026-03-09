@@ -6,7 +6,10 @@
   - `python -m runtime_v2.cli --readiness-check` 기준 `ready=true`, `code=OK`를 확인했습니다.
 - 다음 active unit: `docs/plans/2026-03-09-agent-browser-closed-loop-development-plan.md` 후속 운영 정리
   - 현재 최소 closed loop(`dev_plan -> dev_implement -> agent_browser_verify -> dev_replan`)와 safe-tier fail-closed, probe-root smoke는 구현됨
+  - stage2 브라우저 워커는 `video_plan["use_agent_browser_services"]` opt-in으로 hidden CLI child 기반 `agent-browser` adapter 경로를 자동 생성할 수 있음
   - 남은 일은 detached/manual tier에서 실제 브라우저 attach evidence를 더 쌓는 것입니다.
+  - live readiness 상세 판정은 `docs/plans/2026-03-09-agent-browser-live-readiness-report.md`를 기준으로 관리합니다.
+  - skill bundle 기준은 `docs/sop/SOP_closed_loop_automation_skill_map.md`를 canonical map으로 사용합니다.
 - 채팅 interruption 대응 규칙 강화:
   - 채팅 세션에서는 실브라우저 relaunch/recovery를 실행하지 않습니다.
   - readiness blocker가 실브라우저 복구를 요구하면 detached 또는 수동 smoke 단계에서만 수행합니다.
