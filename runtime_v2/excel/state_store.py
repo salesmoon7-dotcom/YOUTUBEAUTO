@@ -13,6 +13,7 @@ from runtime_v2.excel.status_contract import (
     TERMINAL_STATUSES,
     can_transition_excel_status,
 )
+from runtime_v2.excel.stage1_handoff_bridge import export_stage1_handoff_to_excel_row
 
 
 def _header_map(sheet: Worksheet) -> dict[str, int]:
@@ -120,60 +121,9 @@ def merge_stage1_handoff_to_excel(
             return False
         headers = _header_map(sheet)
         row_no = row_index + 2
-        _write_optional_field(
-            sheet, headers, row_no, "title", str(parsed_payload.get("title", ""))
-        )
-        _write_optional_field(
-            sheet,
-            headers,
-            row_no,
-            "title for thumb",
-            str(parsed_payload.get("title_for_thumb", "")),
-        )
-        _write_optional_field(
-            sheet,
-            headers,
-            row_no,
-            "description",
-            str(parsed_payload.get("description", "")),
-        )
-        keywords = parsed_payload.get("keywords", [])
-        keyword_text = (
-            ", ".join(
-                [
-                    str(item).strip()
-                    for item in cast(list[object], keywords)
-                    if str(item).strip()
-                ]
-            )
-            if isinstance(keywords, list)
-            else ""
-        )
-        _write_optional_field(sheet, headers, row_no, "keywords", keyword_text)
-        voice_groups = parsed_payload.get("voice_groups", [])
-        voice_text = (
-            json.dumps(voice_groups, ensure_ascii=False)
-            if isinstance(voice_groups, list)
-            else ""
-        )
-        _write_optional_field(sheet, headers, row_no, "voice", voice_text)
-        _write_optional_field(
-            sheet,
-            headers,
-            row_no,
-            "bgm",
-            str(parsed_payload.get("bgm", "")),
-        )
-        scene_prompts = parsed_payload.get("scene_prompts", [])
-        if isinstance(scene_prompts, list):
-            for index, prompt in enumerate(scene_prompts, start=1):
-                _write_optional_field(
-                    sheet,
-                    headers,
-                    row_no,
-                    f"#{index:02d}",
-                    str(prompt).strip(),
-                )
+        row_values = export_stage1_handoff_to_excel_row(parsed_payload)
+        for key, value in row_values.items():
+            _write_optional_field(sheet, headers, row_no, key, value)
         workbook.save(Path(excel_path))
         return True
     except OSError:

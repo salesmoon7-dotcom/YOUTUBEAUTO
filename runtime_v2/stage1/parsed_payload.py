@@ -4,6 +4,7 @@ import json
 from typing import cast
 
 from runtime_v2.stage1.gpt_response_parser import parse_gpt_response_text
+from runtime_v2.stage1.handoff_schema import normalize_stage1_handoff_contract
 
 
 def build_stage1_raw_output_artifact(
@@ -185,14 +186,15 @@ def build_stage1_handoff(
     parsed_payload_path: str,
     parsed_payload: dict[str, object],
 ) -> dict[str, object]:
+    normalized_payload = normalize_stage1_handoff_contract(parsed_payload)
     return {
         "raw_output_path": raw_output_path,
         "parsed_payload_path": parsed_payload_path,
-        "contract": parsed_payload,
+        "contract": normalized_payload,
         "meta": {
-            "version": str(parsed_payload.get("version", "")),
-            "row_ref": str(parsed_payload.get("row_ref", "")),
-            "run_id": str(parsed_payload.get("run_id", "")),
+            "version": str(normalized_payload.get("version", "")),
+            "row_ref": str(normalized_payload.get("row_ref", "")),
+            "run_id": str(normalized_payload.get("run_id", "")),
         },
     }
 
