@@ -48,8 +48,11 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             )
             self.assertEqual(evidence["service"], "genspark")
             self.assertEqual(evidence["status"], "ok")
+            self.assertTrue(bool(evidence["probe_debug_only"]))
+            self.assertFalse(bool(evidence["recovery_attempted"]))
+            self.assertTrue(bool(evidence["placeholder_artifact"]))
 
-    def test_stage2_adapter_child_retries_after_recovery_once(self) -> None:
+    def test_stage2_adapter_child_fails_closed_without_internal_recovery(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             output_path = root / "exports" / "scene-01.png"
@@ -64,21 +67,24 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             with (
                 patch(
                     "runtime_v2.cli.run_agent_browser_verify_job",
-                    side_effect=[
-                        {"status": "failed", "error_code": "AGENT_BROWSER_TIMEOUT"},
-                        {"status": "ok"},
-                    ],
+                    return_value={
+                        "status": "failed",
+                        "error_code": "AGENT_BROWSER_TIMEOUT",
+                    },
                 ) as verify_mock,
-                patch(
-                    "runtime_v2.cli._attempt_stage2_attach_recovery"
-                ) as recovery_mock,
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
             ):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
-            self.assertEqual(exit_code, exit_codes.SUCCESS)
-            self.assertEqual(verify_mock.call_count, 2)
-            recovery_mock.assert_called_once()
+            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+            self.assertEqual(verify_mock.call_count, 1)
+            evidence = json.loads(
+                (root / "attach_evidence.json").read_text(encoding="utf-8")
+            )
+            self.assertTrue(bool(evidence["probe_debug_only"]))
+            self.assertFalse(bool(evidence["recovery_attempted"]))
+            self.assertFalse(bool(evidence["placeholder_artifact"]))
+            self.assertFalse(output_path.exists())
 
     def test_stage2_row1_probe_records_all_browser_results(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

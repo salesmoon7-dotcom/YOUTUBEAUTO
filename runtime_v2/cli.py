@@ -34,7 +34,7 @@ from runtime_v2.debug_log import (
 from runtime_v2.evidence import load_runtime_readiness
 from runtime_v2.gpt_pool_monitor import tick_gpt_status
 from runtime_v2.gui_adapter import build_gui_status_payload
-from runtime_v2.latest_run import write_runtime_snapshot
+from runtime_v2.latest_run import write_cli_runtime_snapshot
 from runtime_v2.manager import seed_excel_row
 from runtime_v2.n8n_adapter import (
     build_n8n_webhook_response,
@@ -43,6 +43,10 @@ from runtime_v2.n8n_adapter import (
 )
 from runtime_v2.stage2.canva_worker import run_canva_job
 from runtime_v2.stage2.geminigen_worker import run_geminigen_job
+from runtime_v2.stage2.agent_browser_adapter import (
+    stage2_attach_verify_succeeded,
+    write_stage2_attach_evidence,
+)
 from runtime_v2.stage2.genspark_worker import run_genspark_job
 from runtime_v2.stage2.json_builders import build_stage2_jobs
 from runtime_v2.stage2.seaart_worker import run_seaart_job
@@ -485,7 +489,7 @@ def main() -> int:
                 "gui_payload": gui_payload,
             },
         )
-        write_runtime_snapshot(
+        write_cli_runtime_snapshot(
             config,
             run_id=run_id,
             mode=mode,
@@ -493,7 +497,6 @@ def main() -> int:
             code=code,
             debug_log=str(debug_log),
             gui_payload=gui_payload,
-            artifacts=[],
             metadata={
                 "run_id": run_id,
                 "mode": mode,
@@ -511,7 +514,6 @@ def main() -> int:
                 "debug_log": str(debug_log),
                 "ts": now_ts(),
             },
-            write_completed=True,
         )
 
     report = {
@@ -920,14 +922,17 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         },
     )
     result = run_agent_browser_verify_job(job, artifact_root)
-    if str(result.get("status", "")) != "ok":
-        recovery_config = _build_runtime_config(args)
-        _attempt_stage2_attach_recovery(recovery_config, service)
-        result = run_agent_browser_verify_job(job, artifact_root)
-    _write_stage2_attach_evidence(
-        workspace=workspace, service=service, port=args.port, result=result
+    attach_ok = stage2_attach_verify_succeeded(result)
+    write_stage2_attach_evidence(
+        workspace=workspace,
+        service=service,
+        port=args.port,
+        result=result,
+        probe_debug_only=True,
+        recovery_attempted=False,
+        placeholder_artifact=attach_ok,
     )
-    if str(result.get("status", "")) != "ok":
+    if not attach_ok:
         return exit_codes.BROWSER_UNHEALTHY
     target_path = Path(service_artifact_path)
     target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -944,42 +949,6 @@ def _write_stage2_placeholder_artifact(path: Path) -> None:
         _ = path.write_bytes(b"agent-browser-stage2-placeholder\n")
         return
     _ = path.write_text("agent-browser-stage2-placeholder\n", encoding="utf-8")
-
-
-def _write_stage2_attach_evidence(
-    *, workspace: Path, service: str, port: int, result: dict[str, object]
-) -> Path:
-    details_raw = result.get("details", {})
-    details = details_raw if isinstance(details_raw, dict) else {}
-    payload = {
-        "schema_version": "1.0",
-        "service": service,
-        "port": port,
-        "status": str(result.get("status", "unknown")),
-        "stage": str(result.get("stage", "agent_browser_verify")),
-        "error_code": str(result.get("error_code", "")),
-        "current_url": str(details.get("current_url", "")),
-        "current_title": str(details.get("current_title", "")),
-        "transcript_path": str(details.get("transcript_path", "")),
-    }
-    evidence_path = workspace / "attach_evidence.json"
-    _ = evidence_path.write_text(
-        json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8"
-    )
-    return evidence_path
-
-
-def _attempt_stage2_attach_recovery(config: RuntimeConfig, service: str) -> None:
-    _ = BrowserSupervisor(BrowserManager()).tick(
-        registry_file=config.browser_registry_file,
-        health_file=config.browser_health_file,
-        events_file=config.control_plane_events_file,
-        run_id=f"stage2-attach-recovery-{service}-{uuid4()}",
-        recover_unhealthy=True,
-        restart_threshold=1,
-        cooldown_sec=0,
-    )
-    _ = tick_gpt_status(config.gpt_status_file, config)
 
 
 def _write_probe_result(probe_root: Path, payload: dict[str, object]) -> Path:

@@ -17,7 +17,7 @@ from runtime_v2.agent_browser.result_parser import (
     select_best_tab,
 )
 from runtime_v2.browser.manager import BrowserManager
-from runtime_v2.contracts.job_contract import JobContract, build_explicit_job_contract
+from runtime_v2.contracts.job_contract import JobContract
 from runtime_v2.workers.job_runtime import (
     finalize_worker_result,
     prepare_workspace,
@@ -161,35 +161,6 @@ def run_agent_browser_verify_job(
             completion={"state": "verified", "final_output": False},
         )
     except (RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
-        failure_next_jobs: list[dict[str, object]] = []
-        if bool(job.payload.get("replan_on_failure", False)):
-            raw_verification = job.payload.get("verification", [])
-            verification = (
-                cast(list[object], raw_verification)
-                if isinstance(raw_verification, list)
-                else []
-            )
-            raw_browser_checks = job.payload.get("browser_checks", [])
-            browser_checks = (
-                cast(list[object], raw_browser_checks)
-                if isinstance(raw_browser_checks, list)
-                else []
-            )
-            failure_next_jobs.append(
-                build_explicit_job_contract(
-                    job_id=f"dev-replan-{job.job_id}",
-                    workload="dev_replan",
-                    checkpoint_key=f"derived:dev_replan:{job.job_id}",
-                    payload={
-                        "run_id": str(job.payload.get("run_id", "")).strip(),
-                        "verification": verification,
-                        "browser_checks": browser_checks,
-                        "replan_payload": job.payload.get("replan_payload", {}),
-                    },
-                    chain_step=3,
-                    parent_job_id=job.job_id,
-                )
-            )
         transcript_path = write_json_atomic(
             workspace / "agent_browser_transcript.json",
             {
@@ -212,7 +183,6 @@ def run_agent_browser_verify_job(
                 "transcript_path": str(transcript_path.resolve()),
                 "failure_reason": str(exc),
             },
-            next_jobs=failure_next_jobs,
             completion={"state": "blocked", "final_output": False},
         )
 

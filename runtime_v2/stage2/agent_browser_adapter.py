@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
+from typing import Mapping
 
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.browser.manager import default_browser_sessions_by_service
@@ -74,6 +76,43 @@ def _default_port_for_service(service: str) -> int:
 
 def attach_evidence_path(workspace: Path) -> Path:
     return workspace / "attach_evidence.json"
+
+
+def stage2_attach_verify_succeeded(result: Mapping[str, object]) -> bool:
+    return str(result.get("status", "")) == "ok"
+
+
+def write_stage2_attach_evidence(
+    *,
+    workspace: Path,
+    service: str,
+    port: int,
+    result: Mapping[str, object],
+    probe_debug_only: bool,
+    recovery_attempted: bool,
+    placeholder_artifact: bool,
+) -> Path:
+    details_raw = result.get("details", {})
+    details = details_raw if isinstance(details_raw, dict) else {}
+    payload = {
+        "schema_version": "1.0",
+        "service": service,
+        "port": port,
+        "status": str(result.get("status", "unknown")),
+        "stage": str(result.get("stage", "agent_browser_verify")),
+        "error_code": str(result.get("error_code", "")),
+        "current_url": str(details.get("current_url", "")),
+        "current_title": str(details.get("current_title", "")),
+        "transcript_path": str(details.get("transcript_path", "")),
+        "probe_debug_only": probe_debug_only,
+        "recovery_attempted": recovery_attempted,
+        "placeholder_artifact": placeholder_artifact,
+    }
+    evidence_path = attach_evidence_path(workspace)
+    _ = evidence_path.write_text(
+        json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8"
+    )
+    return evidence_path
 
 
 def _default_runtime_root() -> Path:

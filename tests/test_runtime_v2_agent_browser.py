@@ -110,6 +110,36 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "AGENT_BROWSER_TARGET_REQUIRED")
 
+    def test_agent_browser_verify_failure_does_not_emit_replan_policy(self) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "artifacts"
+            job = JobContract(
+                job_id="agent-browser-replan-leak",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-replan-leak",
+                payload={
+                    "service": "chatgpt",
+                    "port": 9222,
+                    "expected_url_substring": "chatgpt.com",
+                    "replan_on_failure": True,
+                    "verification": ["pytest"],
+                    "browser_checks": [{"service": "chatgpt"}],
+                    "replan_payload": {"tasks": ["implement fix"]},
+                },
+            )
+
+            with patch(
+                "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                side_effect=RuntimeError("boom"),
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "AGENT_BROWSER_COMMAND_FAILED")
+        self.assertFalse(result.get("next_jobs", []))
+
 
 if __name__ == "__main__":
     _ = unittest.main()
