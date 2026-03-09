@@ -76,7 +76,9 @@
   - 따라서 남은 실제 blocker는 `ChatGPT` 브라우저 입력/응답 자동화 백엔드 안정화입니다.
   - immediate safe action applied: `runtime_v2/stage1/chatgpt_interaction.py` now surfaces backend instability as canonical failure contract (`CHATGPT_BACKEND_UNAVAILABLE` + `failure_stage=submit/read`) instead of raw `RuntimeError` propagation.
   - `runtime_v2/stage1/chatgpt_runner.py`도 이 canonical failure contract를 해석해 browser relaunch/retry 여부를 결정하도록 맞췄습니다.
-  - 따라서 현재 1차 조치의 목적은 “포트 불안정을 숨기지 않고, 상위 계층이 같은 의미로 재시도하게 만드는 것”입니다. 아직 근본 해결은 아니며, 다음 실제 구현 우선순위는 backend abstraction/fallback canonicalization입니다.
+  - 따라서 현재 1차 조치의 목적은 “포트 불안정을 숨기지 않고, 상위 계층이 같은 의미로 재시도하게 만드는 것”입니다.
+  - follow-up applied: `chatgpt_interaction`는 이제 `session_probe` backend를 통해 raw CDP HTTP(`/json/list`) 상태를 `final_state`로 기록할 수 있습니다. 즉, `agent-browser` eval 실패와 raw CDP 관측 상태를 같은 failure contract에서 함께 보게 됩니다.
+  - 아직 근본 해결은 아니며, 남은 핵심은 **실제 submit/read backend 자체를 canonicalized backend interface로 분리**하는 것입니다.
 
 ## Program-by-Program Integration Matrix
 

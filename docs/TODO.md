@@ -49,5 +49,6 @@
   - 레거시는 실패한 복잡계로 간주하고 구현체가 아니라 계약/파싱 참고 자료로만 사용합니다.
 - 다음 실제 구현 우선순위는 `ChatGPT interaction layer canonicalization`입니다.
   - 1차 조치로 `CHATGPT_BACKEND_UNAVAILABLE` + `failure_stage=submit/read` canonical failure contract와 runner 재시도 연결은 반영되었습니다.
-  - 남은 핵심은 `agent-browser` 단일 의존을 줄이는 backend abstraction/fallback canonicalization입니다.
+  - backend abstraction/fallback 최소 구현으로 raw CDP HTTP `session_probe`가 같은 failure contract의 `final_state`에 연결되었습니다.
+  - 남은 핵심은 submit/read 자체를 canonical backend interface로 분리하는 것입니다.
   - `1차 테스트`는 그 계층이 닫힌 뒤 `mock -> smoke -> real` 순서로 다시 진행합니다.
