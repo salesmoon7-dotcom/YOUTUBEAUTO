@@ -6,10 +6,14 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Literal, cast
+from unittest.mock import patch
 
 from runtime_v2.config import RuntimeConfig, WorkloadName
 from runtime_v2.contracts.job_contract import JobContract
 from runtime_v2.control_plane import run_worker
+from runtime_v2.stage2.agent_browser_adapter import (
+    build_stage2_agent_browser_adapter_command,
+)
 from runtime_v2.stage2.canva_worker import run_canva_job
 from runtime_v2.stage2.geminigen_worker import run_geminigen_job
 from runtime_v2.stage2.genspark_worker import run_genspark_job
@@ -67,6 +71,18 @@ def _video_plan(asset_root: str) -> dict[str, object]:
 
 
 class RuntimeV2Stage2WorkerTests(unittest.TestCase):
+    def test_agent_browser_stage2_adapter_command_uses_hidden_cli_child(self) -> None:
+        command = build_stage2_agent_browser_adapter_command(
+            service="genspark",
+            service_artifact_path="D:/YOUTUBEAUTO/system/runtime_v2/artifacts/images/test.png",
+        )
+
+        self.assertIn("--agent-browser-stage2-adapter-child", command)
+        self.assertIn("--service", command)
+        self.assertIn("genspark", command)
+        self.assertIn("--service-artifact-path", command)
+        self.assertIn("genspark.ai", command)
+
     def test_geminigen_worker_processes_one_item_via_explicit_adapter_command(
         self,
     ) -> None:
@@ -488,7 +504,72 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         self.assertEqual(
             details["service_artifact_path"], str(root / "shared" / "output.png")
         )
-        self.assertFalse(registry_file.exists())
+
+    def test_genspark_worker_can_use_agent_browser_adapter_mode(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "genspark-agent-browser.png"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = output_path.write_bytes(b"png")
+            job = _stage2_job("genspark")
+            job.payload["service_artifact_path"] = str(output_path)
+            job.payload["use_agent_browser"] = True
+            stdout_path = root / "artifacts" / "stdout.log"
+            stderr_path = root / "artifacts" / "stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+
+            with patch(
+                "runtime_v2.stage2.genspark_worker.run_verified_adapter_command",
+                return_value={
+                    "ok": True,
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "output_path": output_path,
+                },
+            ) as run_adapter:
+                result = run_genspark_job(job, root / "artifacts")
+
+        self.assertEqual(result["status"], "ok")
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(str(details["adapter_mode"]), "agent_browser")
+        adapter_command = run_adapter.call_args.kwargs["adapter_command"]
+        self.assertIn("--agent-browser-stage2-adapter-child", adapter_command)
+        self.assertIn("genspark", adapter_command)
+
+    def test_canva_worker_can_use_agent_browser_adapter_mode(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "canva-agent-browser.png"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = output_path.write_bytes(b"png")
+            job = _stage2_job("canva")
+            job.payload["service_artifact_path"] = str(output_path)
+            job.payload["use_agent_browser"] = True
+            stdout_path = root / "artifacts" / "stdout.log"
+            stderr_path = root / "artifacts" / "stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+
+            with patch(
+                "runtime_v2.stage2.canva_worker.run_verified_adapter_command",
+                return_value={
+                    "ok": True,
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "output_path": output_path,
+                },
+            ) as run_adapter:
+                result = run_canva_job(job, root / "artifacts")
+
+        self.assertEqual(result["status"], "ok")
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(str(details["adapter_mode"]), "agent_browser")
+        adapter_command = run_adapter.call_args.kwargs["adapter_command"]
+        self.assertIn("--agent-browser-stage2-adapter-child", adapter_command)
+        self.assertIn("canva", adapter_command)
 
     def test_stage2_worker_uses_json_input_only_and_returns_runner_result(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

@@ -4,6 +4,9 @@ from pathlib import Path
 from typing import cast
 
 from runtime_v2.contracts.job_contract import JobContract
+from runtime_v2.stage2.agent_browser_adapter import (
+    build_stage2_agent_browser_adapter_command,
+)
 from runtime_v2.stage2.request_builders import (
     build_canva_thumb_file,
     channel_from_payload,
@@ -37,6 +40,17 @@ def run_canva_job(
     thumb_data_path = build_canva_thumb_file(workspace, job.payload)
     ref_img = str(job.payload.get("ref_img", "")).strip()
     adapter_command_raw = job.payload.get("adapter_command")
+    if (not isinstance(adapter_command_raw, list) or not adapter_command_raw) and bool(
+        job.payload.get("use_agent_browser", False)
+    ):
+        adapter_command_raw = build_stage2_agent_browser_adapter_command(
+            service="canva",
+            service_artifact_path=str(job.payload.get("service_artifact_path", "")),
+            expected_url_substring=str(job.payload.get("expected_url_substring", "")),
+            expected_title_substring=str(
+                job.payload.get("expected_title_substring", "")
+            ),
+        )
     if isinstance(adapter_command_raw, list) and adapter_command_raw:
         adapter_command_items = cast(list[object], adapter_command_raw)
         adapter_command = [str(item) for item in adapter_command_items]
@@ -81,7 +95,12 @@ def run_canva_job(
                 "save_path": str(verified_output.resolve()),
                 "ref_img": ref_img,
                 "service_artifact_path": str(verified_output.resolve()),
-                "adapter_mode": "command",
+                "adapter_mode": (
+                    "agent_browser"
+                    if bool(job.payload.get("use_agent_browser", False))
+                    and "--agent-browser-stage2-adapter-child" in adapter_command
+                    else "command"
+                ),
             },
             completion={
                 "state": "succeeded",

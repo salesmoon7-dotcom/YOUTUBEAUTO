@@ -4,6 +4,9 @@ from pathlib import Path
 from typing import cast
 
 from runtime_v2.contracts.job_contract import JobContract
+from runtime_v2.stage2.agent_browser_adapter import (
+    build_stage2_agent_browser_adapter_command,
+)
 from runtime_v2.stage2.request_builders import build_image_prompt_file
 from runtime_v2.workers.external_process import run_verified_adapter_command
 from runtime_v2.workers.job_runtime import finalize_worker_result, prepare_workspace
@@ -32,6 +35,17 @@ def run_genspark_job(
     request_path = write_native_request(workspace, job.payload)
     prompt_path = build_image_prompt_file(workspace, job.payload, workload="genspark")
     adapter_command_raw = job.payload.get("adapter_command")
+    if (not isinstance(adapter_command_raw, list) or not adapter_command_raw) and bool(
+        job.payload.get("use_agent_browser", False)
+    ):
+        adapter_command_raw = build_stage2_agent_browser_adapter_command(
+            service="genspark",
+            service_artifact_path=str(job.payload.get("service_artifact_path", "")),
+            expected_url_substring=str(job.payload.get("expected_url_substring", "")),
+            expected_title_substring=str(
+                job.payload.get("expected_title_substring", "")
+            ),
+        )
     if isinstance(adapter_command_raw, list) and adapter_command_raw:
         adapter_command_items = cast(list[object], adapter_command_raw)
         adapter_command = [str(item) for item in adapter_command_items]
@@ -73,7 +87,12 @@ def run_genspark_job(
             details={
                 "model": str(job.payload.get("model", "stage2")),
                 "service_artifact_path": str(verified_output.resolve()),
-                "adapter_mode": "command",
+                "adapter_mode": (
+                    "agent_browser"
+                    if bool(job.payload.get("use_agent_browser", False))
+                    and "--agent-browser-stage2-adapter-child" in adapter_command
+                    else "command"
+                ),
             },
             completion={
                 "state": "succeeded",
