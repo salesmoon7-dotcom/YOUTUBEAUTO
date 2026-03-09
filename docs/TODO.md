@@ -7,6 +7,10 @@
 - 다음 구조 조사 후보:
   - `runtime_v2/control_plane.py` 자체의 크기와 다책임 구조는 여전히 디버깅 복잡도 hotspot입니다.
   - 이 항목은 새 기능이 아니라 구조 분해 목적의 별도 architecture review unit으로 다루는 것이 안전합니다.
+- 새 active unit: `docs/plans/2026-03-09-control-plane-feeder-decomposition-plan.md`
+  - 1차 분해 범위는 feeder discovery / explicit contract parsing / feeder state I/O만입니다.
+  - `run_control_loop_once()`, failure contract, recovery, downstream chaining, snapshot writer는 `control_plane.py`에 남깁니다.
+  - 1차 배치는 완료되었습니다. 남은 구조 개선 후보는 필요 시 2차로 `worker dispatch` 분리 여부를 재평가하는 것입니다.
 - `1행 smoke` readiness 재판정은 완료되었습니다.
   - detached browser recovery run `system/runtime_v2_probe/browser-recover-run-02/probe_result.json`이 `code=OK`로 종료됐습니다.
   - `python -m runtime_v2.cli --readiness-check` 기준 `ready=true`, `code=OK`를 확인했습니다.
