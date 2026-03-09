@@ -58,6 +58,17 @@ python -m pytest tests/test_runtime_v2_agent_browser.py tests/test_runtime_v2_de
   - `agent-browser` 실행 파일 자체는 해결됨 (`APPDATA/npm` fallback path 탐지 구현 완료).
   - 따라서 후속 작업은 코드 구현이 아니라 해당 포트로 브라우저를 실제 기동하는 운영 단계입니다.
 
+### Follow-up Attach Audit
+
+- evidence: `system/runtime_v2_probe/agent-browser-live-attach-07/summary.json`
+- result:
+  - `canva:9666` -> `status=ok`
+  - `seaart:9444` -> `AGENT_BROWSER_COMMAND_FAILED` (`os error 10060`)
+  - `geminigen:9555` -> `AGENT_BROWSER_COMMAND_FAILED` (`os error 10060`)
+- interpretation:
+  - `canva`는 코드 측 matcher/snapshot 정책 보정으로 live attach까지 회복됐습니다.
+  - 남은 blocker는 `seaart`, `geminigen` 두 서비스의 세션 안정성/포트 응답 문제입니다.
+
 ### Runtime Health Readiness
 
 - `docs/TODO.md` 기준 readiness check 완료
