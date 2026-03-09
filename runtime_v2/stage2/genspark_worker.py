@@ -5,6 +5,7 @@ from typing import cast
 
 from runtime_v2.contracts.job_contract import JobContract
 from runtime_v2.stage2.agent_browser_adapter import (
+    attach_evidence_path,
     build_stage2_agent_browser_adapter_command,
 )
 from runtime_v2.stage2.request_builders import build_image_prompt_file
@@ -57,12 +58,19 @@ def run_genspark_job(
         )
         stdout_path = Path(str(adapter_result["stdout_path"]))
         stderr_path = Path(str(adapter_result["stderr_path"]))
+        attach_evidence = attach_evidence_path(workspace)
         if not bool(adapter_result.get("ok", False)):
             return finalize_worker_result(
                 workspace,
                 status="failed",
                 stage="genspark_adapter",
-                artifacts=[request_path, prompt_path, stdout_path, stderr_path],
+                artifacts=[
+                    request_path,
+                    prompt_path,
+                    stdout_path,
+                    stderr_path,
+                    *([attach_evidence] if attach_evidence.exists() else []),
+                ],
                 error_code=str(
                     adapter_result.get("error_code", "genspark_adapter_failed")
                 ),
@@ -81,6 +89,7 @@ def run_genspark_job(
                 prompt_path,
                 stdout_path,
                 stderr_path,
+                *([attach_evidence] if attach_evidence.exists() else []),
                 verified_output,
             ],
             retryable=False,
@@ -92,6 +101,9 @@ def run_genspark_job(
                     if bool(job.payload.get("use_agent_browser", False))
                     and "--agent-browser-stage2-adapter-child" in adapter_command
                     else "command"
+                ),
+                "attach_evidence_path": (
+                    str(attach_evidence.resolve()) if attach_evidence.exists() else ""
                 ),
             },
             completion={

@@ -509,6 +509,15 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             output_path = root / "exports" / "genspark-agent-browser.png"
+            attach_evidence = (
+                root
+                / "artifacts"
+                / "genspark"
+                / "genspark-job-1"
+                / "attach_evidence.json"
+            )
+            attach_evidence.parent.mkdir(parents=True, exist_ok=True)
+            _ = attach_evidence.write_text('{"status":"ok"}', encoding="utf-8")
             output_path.parent.mkdir(parents=True, exist_ok=True)
             _ = output_path.write_bytes(b"png")
             job = _stage2_job("genspark")
@@ -534,6 +543,9 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         details = cast(dict[str, object], result["details"])
         self.assertEqual(str(details["adapter_mode"]), "agent_browser")
+        self.assertTrue(
+            str(details["attach_evidence_path"]).endswith("attach_evidence.json")
+        )
         adapter_command = run_adapter.call_args.kwargs["adapter_command"]
         self.assertIn("--agent-browser-stage2-adapter-child", adapter_command)
         self.assertIn("genspark", adapter_command)
@@ -542,6 +554,11 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             output_path = root / "exports" / "canva-agent-browser.png"
+            attach_evidence = (
+                root / "artifacts" / "canva" / "canva-job-1" / "attach_evidence.json"
+            )
+            attach_evidence.parent.mkdir(parents=True, exist_ok=True)
+            _ = attach_evidence.write_text('{"status":"ok"}', encoding="utf-8")
             output_path.parent.mkdir(parents=True, exist_ok=True)
             _ = output_path.write_bytes(b"png")
             job = _stage2_job("canva")
@@ -567,6 +584,9 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         details = cast(dict[str, object], result["details"])
         self.assertEqual(str(details["adapter_mode"]), "agent_browser")
+        self.assertTrue(
+            str(details["attach_evidence_path"]).endswith("attach_evidence.json")
+        )
         adapter_command = run_adapter.call_args.kwargs["adapter_command"]
         self.assertIn("--agent-browser-stage2-adapter-child", adapter_command)
         self.assertIn("canva", adapter_command)
