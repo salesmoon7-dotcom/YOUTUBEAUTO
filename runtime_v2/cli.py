@@ -16,7 +16,7 @@ from runtime_v2.bootstrap import ensure_runtime_bootstrap
 from runtime_v2.browser.manager import BrowserManager, open_browser_for_login
 from runtime_v2.browser.supervisor import BrowserSupervisor
 from runtime_v2.config import RuntimeConfig
-from runtime_v2.contracts.job_contract import build_explicit_job_contract
+from runtime_v2.contracts.job_contract import JobContract, build_explicit_job_contract
 from runtime_v2.control_plane import run_control_loop_once
 from runtime_v2.contracts.json_contract import (
     emit_event,
@@ -42,6 +42,7 @@ from runtime_v2.n8n_adapter import (
     write_mock_callback,
 )
 from runtime_v2.supervisor import run_once, run_selftest
+from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
 
 
 class CliArgs(argparse.Namespace):
@@ -59,6 +60,7 @@ class CliArgs(argparse.Namespace):
     selftest_probe_child: bool
     browser_recover_detached: bool
     browser_recover_probe_child: bool
+    agent_browser_stage2_adapter_child: bool
     callback_url: str
     callback_mock_out: str
     gui_status_out: str
@@ -69,6 +71,11 @@ class CliArgs(argparse.Namespace):
     open_browser_login: str
     readiness_check: bool
     runtime_root: str
+    service: str
+    port: int
+    service_artifact_path: str
+    expected_url_substring: str
+    expected_title_substring: str
 
     def __init__(self) -> None:
         super().__init__()
@@ -86,6 +93,7 @@ class CliArgs(argparse.Namespace):
         self.selftest_probe_child = False
         self.browser_recover_detached = False
         self.browser_recover_probe_child = False
+        self.agent_browser_stage2_adapter_child = False
         self.callback_url = ""
         self.callback_mock_out = ""
         self.gui_status_out = "system/runtime_v2/health/gui_status.json"
@@ -96,6 +104,11 @@ class CliArgs(argparse.Namespace):
         self.open_browser_login = ""
         self.readiness_check = False
         self.runtime_root = ""
+        self.service = ""
+        self.port = 0
+        self.service_artifact_path = ""
+        self.expected_url_substring = ""
+        self.expected_title_substring = ""
 
 
 def exit_code_from_status(code: str) -> int:
@@ -161,6 +174,11 @@ def main() -> int:
     _ = parser.add_argument(
         "--browser-recover-probe-child", action="store_true", help=argparse.SUPPRESS
     )
+    _ = parser.add_argument(
+        "--agent-browser-stage2-adapter-child",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     _ = parser.add_argument("--callback-url", default="")
     _ = parser.add_argument("--callback-mock-out", default="")
     _ = parser.add_argument(
@@ -173,6 +191,11 @@ def main() -> int:
     _ = parser.add_argument("--open-browser-login", default="")
     _ = parser.add_argument("--readiness-check", action="store_true")
     _ = parser.add_argument("--runtime-root", default="")
+    _ = parser.add_argument("--service", default="")
+    _ = parser.add_argument("--port", type=int, default=0)
+    _ = parser.add_argument("--service-artifact-path", default="")
+    _ = parser.add_argument("--expected-url-substring", default="")
+    _ = parser.add_argument("--expected-title-substring", default="")
     args = parser.parse_args(namespace=CliArgs())
 
     selected_modes = [
@@ -188,6 +211,7 @@ def main() -> int:
             args.selftest_probe_child,
             args.browser_recover_detached,
             args.browser_recover_probe_child,
+            args.agent_browser_stage2_adapter_child,
             bool(args.open_browser_login.strip()),
             args.readiness_check,
         )
@@ -219,6 +243,9 @@ def main() -> int:
 
     if args.browser_recover_detached:
         return _spawn_detached_probe(args, mode="browser_recover")
+
+    if args.agent_browser_stage2_adapter_child:
+        return _run_agent_browser_stage2_adapter_child(args)
 
     if args.selftest_detached:
         return _spawn_detached_probe(args, mode="selftest")
@@ -680,6 +707,46 @@ def _run_browser_recovery_probe(
     }
     _ = _write_probe_result(probe_root, report)
     return report
+
+
+def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
+    workspace = Path.cwd()
+    artifact_root = workspace / "agent_browser_adapter_artifacts"
+    service = args.service.strip()
+    if not service:
+        return exit_codes.CLI_USAGE
+    service_artifact_path = args.service_artifact_path.strip()
+    if not service_artifact_path:
+        return exit_codes.CLI_USAGE
+    job = JobContract(
+        job_id=f"agent-browser-stage2-{service}",
+        workload="agent_browser_verify",
+        checkpoint_key=f"agent-browser-stage2:{service}:{args.port}",
+        payload={
+            "service": service,
+            "port": args.port,
+            "expected_url_substring": args.expected_url_substring.strip(),
+            "expected_title_substring": args.expected_title_substring.strip(),
+        },
+    )
+    result = run_agent_browser_verify_job(job, artifact_root)
+    if str(result.get("status", "")) != "ok":
+        return exit_codes.BROWSER_UNHEALTHY
+    target_path = Path(service_artifact_path)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_stage2_placeholder_artifact(target_path)
+    return exit_codes.SUCCESS
+
+
+def _write_stage2_placeholder_artifact(path: Path) -> None:
+    suffix = path.suffix.lower()
+    if suffix == ".mp4":
+        _ = path.write_bytes(b"agent-browser-stage2-placeholder\n")
+        return
+    if suffix == ".png":
+        _ = path.write_bytes(b"agent-browser-stage2-placeholder\n")
+        return
+    _ = path.write_text("agent-browser-stage2-placeholder\n", encoding="utf-8")
 
 
 def _write_probe_result(probe_root: Path, payload: dict[str, object]) -> Path:
