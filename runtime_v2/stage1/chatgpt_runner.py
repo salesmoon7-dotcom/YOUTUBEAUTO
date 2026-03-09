@@ -113,9 +113,8 @@ def attach_gpt_response_text_from_browser_evidence(
         raw_port = browser_evidence.get("port", 0)
         if service == "chatgpt" and isinstance(raw_port, int) and raw_port > 0:
             prompt = str(topic_spec.get("topic", "")).strip()
-            try:
-                result = generate_gpt_response_text(prompt=prompt, port=raw_port)
-            except RuntimeError:
+            result = generate_gpt_response_text(prompt=prompt, port=raw_port)
+            if _should_retry_chatgpt_interaction(result):
                 _ = open_browser_for_login("chatgpt")
                 sleep(8)
                 result = generate_gpt_response_text(prompt=prompt, port=raw_port)
@@ -133,6 +132,15 @@ def attach_gpt_response_text_from_browser_evidence(
     enriched["gpt_response_text"] = snapshot_file.read_text(encoding="utf-8")
     enriched["gpt_response_source"] = "agent_browser_snapshot"
     return enriched
+
+
+def _should_retry_chatgpt_interaction(result: dict[str, object]) -> bool:
+    if str(result.get("status", "")) == "ok":
+        return False
+    if str(result.get("error_code", "")) != "CHATGPT_BACKEND_UNAVAILABLE":
+        return False
+    failure_stage = str(result.get("failure_stage", "")).strip()
+    return failure_stage in {"submit", "read"}
 
 
 def build_video_plan_from_stage1_parsed_payload(

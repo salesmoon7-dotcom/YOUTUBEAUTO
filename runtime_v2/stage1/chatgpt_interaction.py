@@ -51,13 +51,28 @@ def generate_gpt_response_text(
     command_runner: Callable[[list[str], int], str] | None = None,
 ) -> dict[str, object]:
     runner = _default_runner if command_runner is None else command_runner
-    submit_info = _submit_prompt(prompt=prompt, port=port, runner=runner)
+    try:
+        submit_info = _submit_prompt(prompt=prompt, port=port, runner=runner)
+    except RuntimeError as exc:
+        return _interaction_failure(
+            failure_stage="submit",
+            error_code="CHATGPT_BACKEND_UNAVAILABLE",
+            backend_error=str(exc),
+        )
     started = time.time()
     last_text = ""
     stable_count = 0
     last_state: dict[str, object] = {}
     while time.time() - started < timeout_sec:
-        state = _read_response_state(port=port, runner=runner)
+        try:
+            state = _read_response_state(port=port, runner=runner)
+        except RuntimeError as exc:
+            return _interaction_failure(
+                failure_stage="read",
+                error_code="CHATGPT_BACKEND_UNAVAILABLE",
+                backend_error=str(exc),
+                submit_info=submit_info,
+            )
         last_state = state
         text = str(state.get("assistant_text", "")).strip()
         has_stop = bool(state.get("has_stop", False))
@@ -78,8 +93,28 @@ def generate_gpt_response_text(
     return {
         "status": "failed",
         "error_code": "CHATGPT_RESPONSE_TIMEOUT",
+        "failure_stage": "read",
         "submit_info": submit_info,
         "final_state": last_state,
+    }
+
+
+def _interaction_failure(
+    *,
+    failure_stage: str,
+    error_code: str,
+    backend_error: str,
+    submit_info: dict[str, object] | None = None,
+) -> dict[str, object]:
+    return {
+        "status": "failed",
+        "error_code": error_code,
+        "failure_stage": failure_stage,
+        "submit_info": {} if submit_info is None else submit_info,
+        "final_state": {},
+        "details": {
+            "backend_error": backend_error,
+        },
     }
 
 
