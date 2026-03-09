@@ -2,11 +2,11 @@
 
 - `docs/plans/2026-03-09-runtime-v2-guardrail-drift-remediation-plan.md`는 완료되었습니다.
   - Task 1~6을 통해 single writer, failure contract freeze, worker policy leakage, adapter boundary, retry/backoff/circuit canonical source를 정리했습니다.
-  - 추가 follow-up으로 `stage1` worker의 downstream `next_jobs` 생성 제거, CLI latest pointer ownership 제거, stage2 adapter child 내부 recovery 제거까지 반영했습니다.
+  - 추가 follow-up으로 `stage1` worker의 downstream `next_jobs` 생성 제거, CLI latest pointer ownership 제거, stage2 adapter child 내부 recovery 제거, control-plane queue ownership의 `QueueStore` canonicalization, excel sync latest pointer 제거, corrupted queue fail-close까지 반영했습니다.
   - 검증은 채팅 interruption guardrail에 따라 interrupt-safe 케이스 단위 pytest와 파일 단위 `py_compile`, LSP diagnostics로 수행했습니다.
 - 다음 구조 조사 후보:
-  - `runtime_v2/control_plane.py`와 queue path(`QueueStore` vs `_load_jobs/_save_jobs/_upsert_job`)의 중복 경계는 여전히 디버깅 복잡도 hotspot입니다.
-  - 이 항목은 새 기능이 아니라 구조 단순화 목적의 별도 architecture review unit으로 다루는 것이 안전합니다.
+  - `runtime_v2/control_plane.py` 자체의 크기와 다책임 구조는 여전히 디버깅 복잡도 hotspot입니다.
+  - 이 항목은 새 기능이 아니라 구조 분해 목적의 별도 architecture review unit으로 다루는 것이 안전합니다.
 - `1행 smoke` readiness 재판정은 완료되었습니다.
   - detached browser recovery run `system/runtime_v2_probe/browser-recover-run-02/probe_result.json`이 `code=OK`로 종료됐습니다.
   - `python -m runtime_v2.cli --readiness-check` 기준 `ready=true`, `code=OK`를 확인했습니다.
