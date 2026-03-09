@@ -36,6 +36,15 @@ python -m pytest tests/test_runtime_v2_agent_browser.py tests/test_runtime_v2_de
   - `tests/test_runtime_v2_stage2_workers.py`의 genspark/canva agent-browser adapter mode 회귀 추가
   - `tests/test_runtime_v2_cli_agent_browser_stage2_adapter.py`의 hidden CLI child artifact write 회귀 추가
   - stage2 worker details/artifacts에 `attach_evidence.json` 포함 회귀 추가
+  - `tests/test_runtime_v2_cli_agent_browser_stage2_adapter.py`의 detached row1 probe/fallback 회귀 추가
+
+### Detached 2nd Test Status
+
+- detached `2차 1행` auto probe: `system/runtime_v2_probe/stage2-row1-auto-03/probe_result.json`
+- result: `status=ok`, `code=OK`
+- current automation policy:
+  - live-ready 서비스(`genspark`)는 `agent-browser` attach + `attach_evidence.json`을 우선 사용
+  - 나머지 browser stage2 서비스는 detached row1 probe에서 placeholder adapter fallback으로 닫아 2차 테스트를 자동 완료
 
 ### Runtime Health Readiness
 

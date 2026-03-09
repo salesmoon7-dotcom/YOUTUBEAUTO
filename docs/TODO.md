@@ -8,7 +8,8 @@
   - 현재 최소 closed loop(`dev_plan -> dev_implement -> agent_browser_verify -> dev_replan`)와 safe-tier fail-closed, probe-root smoke는 구현됨
   - stage2 브라우저 워커는 `video_plan["use_agent_browser_services"]` opt-in으로 hidden CLI child 기반 `agent-browser` adapter 경로를 자동 생성할 수 있음
   - stage2 `agent-browser` opt-in 실행은 workspace에 `attach_evidence.json`을 자동 생성해 attach 증거를 남김
-  - 남은 일은 detached/manual tier에서 실제 브라우저 attach evidence를 더 쌓는 것입니다.
+  - detached `2차 1행` auto probe `system/runtime_v2_probe/stage2-row1-auto-03/probe_result.json`은 `code=OK`로 완료됨
+  - 남은 일은 live attach 범위를 `genspark` 외 서비스(`seaart/geminigen/canva`)까지 넓혀도 placeholder fallback 없이 닫히게 만드는 것입니다.
   - live readiness 상세 판정은 `docs/plans/2026-03-09-agent-browser-live-readiness-report.md`를 기준으로 관리합니다.
   - skill bundle 기준은 `docs/sop/SOP_closed_loop_automation_skill_map.md`를 canonical map으로 사용합니다.
 - 채팅 interruption 대응 규칙 강화:
