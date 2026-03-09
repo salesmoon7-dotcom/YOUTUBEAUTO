@@ -59,3 +59,10 @@
 - 새 준비 보완 계획: `docs/plans/2026-03-10-runtime-v2-subprogram-gap-analysis-plan.md`
   - 테스트 전에 `field matrix`, `failure matrix`, `golden evidence`, `readiness checklist`를 완성해 디버깅 비용을 줄입니다.
   - 이 계획이 먼저 닫힌 뒤에야 실제 테스트를 반복 실행하는 것이 맞습니다.
+- 비-GPT 상세 분석 기준: `docs/plans/2026-03-10-non-gpt-subprogram-detailed-analysis.md`
+  - 현재 비-GPT는 “대체로 준비됨”이 아니라 서비스별로 `Implemented` / `Contract-verified` / `Functionally-verified`로 구분해 관리합니다.
+  - `Functionally-verified` evidence가 없는 서비스는 완료로 올리지 않습니다.
+  - 현재 판정:
+    - `SeaArt`, `Genspark`, `TTS`, `GeminiGen`, `Canva` -> mostly `Contract-verified`
+    - `Kenburn`, `RVC` -> mostly `Implemented`
+  - 따라서 비-GPT도 아직 전체 완료가 아니며, 서비스별 functional evidence를 더 확보해야 합니다.
