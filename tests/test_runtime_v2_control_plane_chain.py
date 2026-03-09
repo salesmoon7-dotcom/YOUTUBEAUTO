@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import cast
 from unittest.mock import patch
 
+from runtime_v2 import circuit_breaker, recovery_policy, retry_budget
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.contracts.job_contract import JobContract, build_explicit_job_contract
 from runtime_v2.control_plane import run_control_loop_once, seed_control_job
@@ -18,6 +19,18 @@ def _runtime_config(root: Path) -> RuntimeConfig:
 
 
 class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
+    def test_retry_and_circuit_helpers_share_single_canonical_policy_module(
+        self,
+    ) -> None:
+        self.assertIs(circuit_breaker.CircuitState, recovery_policy.CircuitState)
+        self.assertIs(
+            retry_budget.within_retry_budget, recovery_policy.within_retry_budget
+        )
+        self.assertIs(retry_budget.next_backoff_sec, recovery_policy.next_backoff_sec)
+        self.assertIs(circuit_breaker.record_failure, recovery_policy.record_failure)
+        self.assertIs(circuit_breaker.reset_circuit, recovery_policy.reset_circuit)
+        self.assertIs(circuit_breaker.is_circuit_open, recovery_policy.is_circuit_open)
+
     def test_control_plane_runs_chatgpt_job_and_seeds_stage2_jobs_with_same_run_id(
         self,
     ) -> None:
@@ -89,6 +102,73 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertEqual(first_routed_payload["row_ref"], "Sheet1!row1")
         self.assertEqual(render_payload["run_id"], "chatgpt-run-1")
         self.assertEqual(render_payload["row_ref"], "Sheet1!row1")
+
+    def test_control_plane_routes_stage1_video_plan_without_worker_next_jobs(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            topic_spec: dict[str, object] = {
+                "contract": "topic_spec",
+                "contract_version": "1.0",
+                "run_id": "chatgpt-run-no-next-jobs",
+                "row_ref": "Sheet1!row1",
+                "topic": "Bridge topic",
+                "status_snapshot": "",
+                "excel_snapshot_hash": "hash-1",
+            }
+            seed_control_job(
+                JobContract(
+                    job_id="chatgpt-no-next-jobs",
+                    workload="chatgpt",
+                    checkpoint_key="topic_spec:Sheet1!row1:hash-1",
+                    payload={
+                        "run_id": "chatgpt-run-no-next-jobs",
+                        "row_ref": "Sheet1!row1",
+                        "topic_spec": topic_spec,
+                    },
+                ),
+                config=config,
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                side_effect=lambda **kwargs: {
+                    "status": "ok",
+                    "code": "OK",
+                    "worker_result": {
+                        **kwargs["execute"](),
+                        "next_jobs": [],
+                    },
+                },
+            ):
+                _ = run_control_loop_once(
+                    owner="runtime_v2", config=config, run_id="control-run-stage1-plan"
+                )
+
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queued_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            routed_jobs = [
+                item
+                for item in queued_items
+                if str(item.get("job_id", "")).startswith(("genspark-", "seaart-"))
+            ]
+            render_jobs = [
+                item
+                for item in queued_items
+                if str(item.get("job_id", "")).startswith("render-")
+            ]
+
+        self.assertTrue(routed_jobs)
+        self.assertEqual(len(render_jobs), 1)
 
     def test_runtime_config_from_root_keeps_latest_pointers_inside_temp_root(
         self,
@@ -345,11 +425,12 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             )
             latest_metadata = cast(dict[str, object], latest_result["metadata"])
 
-        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["status"], "blocked")
         self.assertEqual(result["code"], "BROWSER_BLOCKED")
         self.assertEqual(str(job_payload["status"]), "retry")
         self.assertEqual(int(cast(int, job_payload["attempts"])), 0)
         self.assertGreater(float(cast(float, latest_metadata["backoff_sec"])), 0.0)
+        self.assertEqual(str(latest_metadata["status"]), "blocked")
         self.assertEqual(str(latest_metadata["completion_state"]), "blocked")
 
     def test_control_plane_retries_browser_unhealthy_runtime_preflight_with_backoff(
@@ -456,12 +537,64 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             )
             latest_metadata = cast(dict[str, object], latest_result["metadata"])
 
-        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["status"], "blocked")
         self.assertEqual(result["code"], "GPT_FLOOR_FAIL")
         self.assertEqual(str(job_payload["status"]), "retry")
         self.assertEqual(int(cast(int, job_payload["attempts"])), 0)
         self.assertGreater(float(cast(float, latest_metadata["backoff_sec"])), 0.0)
+        self.assertEqual(str(latest_metadata["status"]), "blocked")
         self.assertEqual(str(latest_metadata["worker_error_code"]), "GPT_FLOOR_FAIL")
+        self.assertEqual(str(latest_metadata["completion_state"]), "blocked")
+
+    def test_control_plane_holds_gpu_lease_busy_with_fixed_backoff(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            seed_control_job(
+                JobContract(
+                    job_id="qwen-gpu-busy-job",
+                    workload="qwen3_tts",
+                    checkpoint_key="seed:qwen-gpu-busy-job",
+                    payload={"script_text": "hello", "chain_depth": 0},
+                ),
+                config=config,
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={"status": "failed", "code": "GPU_LEASE_BUSY"},
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2", config=config, run_id="control-run-gpu-busy"
+                )
+
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            job_payload = next(
+                item
+                for item in queue_items
+                if str(item["job_id"]) == "qwen-gpu-busy-job"
+            )
+            latest_result = cast(
+                dict[str, object],
+                json.loads(config.result_router_file.read_text(encoding="utf-8")),
+            )
+            latest_metadata = cast(dict[str, object], latest_result["metadata"])
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["code"], "GPU_LEASE_BUSY")
+        self.assertEqual(str(job_payload["status"]), "retry")
+        self.assertEqual(int(cast(int, job_payload["attempts"])), 0)
+        self.assertGreater(float(cast(float, latest_metadata["backoff_sec"])), 0.0)
+        self.assertEqual(str(latest_metadata["status"]), "blocked")
+        self.assertEqual(str(latest_metadata["worker_error_code"]), "GPU_LEASE_BUSY")
         self.assertEqual(str(latest_metadata["completion_state"]), "blocked")
 
     def test_control_plane_uses_retryable_not_completion_state_for_retry_decision(
@@ -531,6 +664,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             str(latest_metadata["worker_error_code"]),
             "native_qwen3_tts_not_implemented",
         )
+        self.assertEqual(str(latest_metadata["completion_state"]), "failed")
 
     def test_control_plane_event_log_keeps_control_run_id_on_events_and_transitions(
         self,

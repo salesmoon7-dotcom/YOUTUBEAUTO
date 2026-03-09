@@ -60,7 +60,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             self.assertEqual(result["status"], "ok")
             self.assertTrue(Path(cast(str, result["result_path"])).exists())
             next_jobs = cast(list[object], result["next_jobs"])
-            self.assertTrue(next_jobs)
+            self.assertFalse(next_jobs)
 
     def test_stage1_ignores_channel_hint_and_builds_native_video_plan(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -178,7 +178,9 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             str(stage1_result["handoff_path"]).endswith("stage1_handoff.json")
         )
 
-    def test_stage1_result_contains_downstream_seed_data(self) -> None:
+    def test_stage1_result_keeps_downstream_seeding_data_in_video_plan_only(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             workspace = Path(tmp_dir)
 
@@ -195,17 +197,15 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             details = cast(dict[str, object], result_payload["details"])
             stage1_result = cast(dict[str, object], details["stage1_result"])
             next_jobs = cast(list[object], stage1_result["next_jobs"])
+            video_plan = cast(dict[str, object], details["video_plan"])
 
         self.assertEqual(result["status"], "ok")
-        self.assertTrue(next_jobs)
-        first_entry = cast(dict[str, object], next_jobs[0])
-        first_job = cast(dict[str, object], first_entry["job"])
-        first_payload = cast(dict[str, object], first_job["payload"])
+        self.assertFalse(next_jobs)
         self.assertEqual(stage1_result["status"], "ok")
         self.assertEqual(stage1_result["row_ref"], "Sheet1!row1")
-        self.assertEqual(first_payload["run_id"], "stage1-run-1")
-        self.assertEqual(first_payload["row_ref"], "Sheet1!row1")
-        self.assertIn("stage1_handoff", first_payload)
+        self.assertEqual(video_plan["run_id"], "stage1-run-1")
+        self.assertEqual(video_plan["row_ref"], "Sheet1!row1")
+        self.assertIn("stage1_handoff", video_plan)
 
     def test_stage1_runner_writes_parsed_payload_and_handoff_contract(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

@@ -16,7 +16,7 @@ from runtime_v2.excel.state_store import (
     merge_stage1_handoff_to_excel,
 )
 from runtime_v2.gui_adapter import build_gui_status_payload
-from runtime_v2.latest_run import write_runtime_snapshot
+from runtime_v2.latest_run import write_excel_sync_runtime_snapshot
 from runtime_v2.result_router import attach_failure_summary
 from runtime_v2.workers.job_runtime import write_json_atomic
 
@@ -214,10 +214,9 @@ def sync_final_video_result(
         stage="final_video_sync",
         exit_code=0 if updated else 1,
     )
-    write_runtime_snapshot(
+    write_excel_sync_runtime_snapshot(
         config,
         run_id=run_id,
-        mode="excel_sync",
         status="ok" if updated else "failed",
         code="OK" if updated else "EXCEL_SYNC_FAILED",
         debug_log=debug_log,
@@ -233,7 +232,6 @@ def sync_final_video_result(
             "reason_code": reason_code,
             "excel_synced": updated,
         },
-        write_completed=True,
         artifact_root=artifact_root,
     )
     return updated
@@ -313,17 +311,15 @@ def sync_failure_result(
         stage="failure_summary",
         exit_code=1,
     )
-    write_runtime_snapshot(
+    write_excel_sync_runtime_snapshot(
         config,
         run_id=run_id,
-        mode="excel_sync",
         status="failed",
         code=reason_code,
         debug_log=debug_log,
         gui_payload=gui_payload,
         artifacts=[],
         metadata=metadata,
-        write_completed=True,
         artifact_root=artifact_root,
     )
     return failure_path.exists() and config.result_router_file.exists()

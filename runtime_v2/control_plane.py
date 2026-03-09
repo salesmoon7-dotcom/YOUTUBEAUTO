@@ -10,12 +10,11 @@ from runtime_v2.bootstrap import ensure_runtime_bootstrap
 from runtime_v2.config import GpuWorkload, RuntimeConfig, allowed_workloads
 from runtime_v2.debug_log import append_debug_event, debug_log_path
 from runtime_v2.gui_adapter import build_gui_status_payload
-from runtime_v2.latest_run import write_runtime_snapshot
+from runtime_v2.latest_run import write_control_plane_runtime_snapshot
 from runtime_v2.agent_browser.evidence import build_agent_browser_evidence
 from runtime_v2.gpt_autospawn import apply_autospawn_decision
 from runtime_v2.gpt_pool_monitor import tick_gpt_status
-from runtime_v2.recovery_policy import CircuitState, evaluate_recovery
-from runtime_v2.result_router import write_result_router
+from runtime_v2 import recovery_policy
 from runtime_v2.retry_budget import next_backoff_sec, within_retry_budget
 from runtime_v2.queue_store import QueueStore
 from runtime_v2.state_machine import (
@@ -24,6 +23,7 @@ from runtime_v2.state_machine import (
     transition_record,
 )
 from runtime_v2.stage1.chatgpt_runner import run_stage1_chatgpt_job
+from runtime_v2.stage2.router import route_video_plan
 from runtime_v2.stage2.canva_worker import run_canva_job
 from runtime_v2.stage2.geminigen_worker import run_geminigen_job
 from runtime_v2.stage2.genspark_worker import run_genspark_job
@@ -117,10 +117,9 @@ def run_control_loop_once(
                         ),
                     },
                 )
-                write_runtime_snapshot(
+                write_control_plane_runtime_snapshot(
                     runtime_config,
                     run_id=run_id,
-                    mode="control_loop",
                     status="seeded",
                     code="SEEDED_JOB",
                     debug_log=str(
@@ -149,7 +148,6 @@ def run_control_loop_once(
                         ),
                         "ts": round(time(), 3),
                     },
-                    write_completed=True,
                 )
                 _ = append_debug_event(
                     debug_log_path(runtime_config.debug_log_root, run_id),
@@ -183,10 +181,9 @@ def run_control_loop_once(
                 "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
             },
         )
-        write_runtime_snapshot(
+        write_control_plane_runtime_snapshot(
             runtime_config,
             run_id=run_id,
-            mode="control_loop",
             status="idle",
             code="NO_JOB",
             debug_log=str(debug_log_path(runtime_config.debug_log_root, run_id)),
@@ -209,7 +206,6 @@ def run_control_loop_once(
                 "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
                 "ts": round(time(), 3),
             },
-            write_completed=True,
         )
         _ = append_debug_event(
             debug_log_path(runtime_config.debug_log_root, run_id),
@@ -338,6 +334,11 @@ def run_control_loop_once(
     agent_browser_terminal_block = bool(
         job.workload == "agent_browser_verify" and result.get("status") == "blocked"
     )
+    worker_retryable = (
+        False
+        if agent_browser_terminal_block
+        else bool(worker_contract.get("retryable", False))
+    )
     blocked_failure = bool(
         not success
         and not agent_browser_terminal_block
@@ -350,13 +351,21 @@ def run_control_loop_once(
         job,
         success=bool(success),
         blocked=blocked_failure,
-        retryable=False
-        if agent_browser_terminal_block
-        else bool(worker_contract.get("retryable", False)),
+        retryable=worker_retryable,
         config=runtime_config,
     )
     next_status = _next_status_for_recovery(recovery)
     backoff_sec = _to_float(recovery.get("backoff_sec", 0), 0.0)
+    raw_completion_state = (
+        "" if completion is None else str(completion.get("state", ""))
+    )
+    completion_state = _normalized_completion_state(
+        raw_completion_state,
+        success=bool(success),
+        blocked=blocked_failure,
+        retryable=worker_retryable,
+    )
+    result_status = "ok" if success else "blocked" if blocked_failure else "failed"
 
     if can_transition(job.status, next_status):
         previous_status = job.status
@@ -377,7 +386,7 @@ def run_control_loop_once(
 
     control_debug_log = debug_log_path(runtime_config.debug_log_root, run_id)
     gui_status: dict[str, object] = {
-        "status": "ok" if success else "failed",
+        "status": result_status,
         "code": "OK"
         if success
         else str(worker_contract.get("error_code", result.get("code", "FAILED"))),
@@ -395,9 +404,7 @@ def run_control_loop_once(
         "manifest_path": worker_manifest_path,
         "result_path": worker_result_path,
         "backoff_sec": backoff_sec,
-        "completion_state": ""
-        if completion is None
-        else str(completion.get("state", "")),
+        "completion_state": completion_state,
         "final_output": False
         if completion is None
         else bool(completion.get("final_output", False)),
@@ -423,11 +430,10 @@ def run_control_loop_once(
         latest_artifacts = worker_artifacts
     elif artifact_path is not None:
         latest_artifacts = [artifact_path]
-    write_runtime_snapshot(
+    write_control_plane_runtime_snapshot(
         runtime_config,
         run_id=run_id,
-        mode="control_loop",
-        status="ok" if success else "failed",
+        status=result_status,
         code="OK"
         if success
         else str(worker_contract.get("error_code", result.get("code", "FAILED"))),
@@ -437,7 +443,7 @@ def run_control_loop_once(
         metadata={
             "run_id": run_id,
             "mode": "control_loop",
-            "status": "ok" if success else "failed",
+            "status": result_status,
             "code": "OK"
             if success
             else str(worker_contract.get("error_code", result.get("code", "FAILED"))),
@@ -461,9 +467,7 @@ def run_control_loop_once(
             "chain_depth": _to_int(job.payload.get("chain_depth", 0)),
             "next_jobs_count": next_jobs_count,
             "routed_count": len(seeded_downstream),
-            "completion_state": ""
-            if completion is None
-            else str(completion.get("state", "")),
+            "completion_state": completion_state,
             "final_output": False
             if completion is None
             else bool(completion.get("final_output", False)),
@@ -480,18 +484,18 @@ def run_control_loop_once(
             else {},
             "ts": round(time(), 3),
         },
-        write_completed=True,
     )
     _ = append_debug_event(
         control_debug_log,
         event="control_loop_result",
-        level="ERROR" if not success else "INFO",
+        level="ERROR" if result_status == "failed" else "INFO",
         payload={
             "run_id": run_id,
             "job_id": job.job_id,
             "workload": job.workload,
             "queue_status": job.status,
             "success": bool(success),
+            "result_status": result_status,
             "accepted_count": accepted_count,
             "invalid_count": invalid_count,
             "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
@@ -520,9 +524,7 @@ def run_control_loop_once(
             "routed_count": len(seeded_downstream),
             "chain_depth": _to_int(job.payload.get("chain_depth", 0)),
             "routed_from": str(job.payload.get("routed_from", "")),
-            "completion_state": ""
-            if completion is None
-            else str(completion.get("state", "")),
+            "completion_state": completion_state,
             "final_output": False
             if completion is None
             else bool(completion.get("final_output", False)),
@@ -539,7 +541,7 @@ def run_control_loop_once(
         run_id=run_id,
     )
     return {
-        "status": "ok" if success else "failed",
+        "status": result_status,
         "code": "OK"
         if success
         else str(worker_contract.get("error_code", result.get("code", "FAILED"))),
@@ -1206,7 +1208,7 @@ def _evaluate_recovery(
     retryable: bool = True,
     config: RuntimeConfig,
 ) -> dict[str, object]:
-    circuit = CircuitState(
+    circuit = recovery_policy.CircuitState(
         failure_count=_to_int(job.payload.get("failure_count", 0)),
         opened_at=_to_optional_float(job.payload.get("circuit_opened_at")),
     )
@@ -1224,7 +1226,9 @@ def _evaluate_recovery(
         job.payload["failure_count"] = circuit.failure_count
         job.payload["circuit_opened_at"] = circuit.opened_at
         return {"action": "failed", "backoff_sec": 0, "circuit_open": False}
-    recovery = evaluate_recovery(job.attempts, success=success, circuit=circuit)
+    recovery = recovery_policy.evaluate_recovery(
+        job.attempts, success=success, circuit=circuit
+    )
     if not success and recovery.get("action") == "retry":
         if not within_retry_budget(job.attempts, config.max_retry_attempts):
             recovery = cast(
@@ -1589,6 +1593,8 @@ def _seed_declared_next_jobs(
     run_id: str,
 ) -> list[JobContract]:
     typed_next_jobs = _next_jobs_entries(worker_result)
+    if not typed_next_jobs and parent_job.workload == "chatgpt":
+        typed_next_jobs = _declared_stage1_next_jobs(worker_result)
     if len(typed_next_jobs) > MAX_NEXT_JOBS:
         _ = _append_control_event(
             {
@@ -1712,6 +1718,20 @@ def _seed_declared_next_jobs(
     return seeded
 
 
+def _declared_stage1_next_jobs(worker_result: dict[str, object]) -> list[object]:
+    details = _mapping_from_obj(worker_result.get("details", {}))
+    if details is None:
+        return []
+    video_plan = _mapping_from_obj(details.get("video_plan", {}))
+    if video_plan is None:
+        return []
+    try:
+        next_jobs, _ = route_video_plan(video_plan)
+    except ValueError:
+        return []
+    return [cast(object, item) for item in next_jobs]
+
+
 def _job_from_declared_next_entry(entry: dict[str, object]) -> JobContract | None:
     parsed_job, _ = _job_from_explicit_payload(
         entry, source_hint=f"declared:{entry.get('job', {})}"
@@ -1801,6 +1821,18 @@ def _runtime_preflight_contract(runtime_code: str) -> tuple[str, bool, str]:
     if runtime_code in {"BROWSER_BLOCKED", "GPU_LEASE_BUSY", "GPT_FLOOR_FAIL"}:
         return ("blocked", True, "blocked")
     return ("failed", True, "failed")
+
+
+def _normalized_completion_state(
+    raw_state: str, *, success: bool, blocked: bool, retryable: bool
+) -> str:
+    if success:
+        return raw_state
+    if blocked:
+        return "blocked"
+    if not retryable:
+        return "failed"
+    return raw_state or "failed"
 
 
 def _next_jobs_entries(worker_result: dict[str, object]) -> list[object]:

@@ -258,13 +258,21 @@ def run_once(
                 runtime_config, gpu_workload, lease_key, snapshot, event="lock_busy"
             )
             return {
-                "status": "failed",
+                "status": "blocked",
                 "code": "GPU_LEASE_BUSY",
                 "workload": workload,
                 "lock_key": lease_key,
                 "browser": browser_runtime,
                 "browser_sessions": browser_sessions,
                 "lease": snapshot.to_dict() if snapshot is not None else None,
+                "worker_result": {
+                    "status": "failed",
+                    "stage": "runtime_preflight",
+                    "error_code": "GPU_LEASE_BUSY",
+                    "retryable": True,
+                    "next_jobs": [],
+                    "completion": {"state": "blocked", "final_output": False},
+                },
             }
 
     try:
@@ -333,7 +341,7 @@ def run_once(
         lease_payload = None if lease is None else lease.to_dict()
         if workload_requires_gpt_floor(workload) and not floor_ok:
             return {
-                "status": "failed",
+                "status": "blocked",
                 "code": "GPT_FLOOR_FAIL",
                 "gpt_ok_count": floor_count,
                 "gpt_status": gpt_status,
@@ -342,6 +350,14 @@ def run_once(
                 "browser": browser_runtime,
                 "browser_sessions": browser_sessions,
                 "lease": lease_payload,
+                "worker_result": {
+                    "status": "failed",
+                    "stage": "runtime_preflight",
+                    "error_code": "GPT_FLOOR_FAIL",
+                    "retryable": True,
+                    "next_jobs": [],
+                    "completion": {"state": "blocked", "final_output": False},
+                },
             }
 
         runtime_result: dict[str, object] = {

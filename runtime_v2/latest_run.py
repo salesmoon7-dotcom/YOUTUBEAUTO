@@ -91,6 +91,7 @@ def write_runtime_snapshot(
     metadata: dict[str, object],
     write_completed: bool,
     artifact_root: Path | None = None,
+    update_pointers: bool = True,
 ) -> None:
     _ = write_gui_status(gui_payload, config.gui_status_file)
     _ = write_result_router(
@@ -99,14 +100,150 @@ def write_runtime_snapshot(
         config.result_router_file,
         metadata=metadata,
     )
-    update_latest_run_pointers(
+    if update_pointers:
+        update_latest_run_pointers(
+            config,
+            run_id=run_id,
+            mode=mode,
+            status=status,
+            code=code,
+            debug_log=debug_log,
+            write_completed=write_completed,
+        )
+
+
+def ensure_bootstrap_runtime_snapshot(
+    config: RuntimeConfig,
+    *,
+    run_id: str,
+    mode: str,
+    debug_log: str,
+    gui_payload: dict[str, object],
+) -> None:
+    write_completed = _read_json(config.latest_completed_run_file) is None
+    if (
+        _read_json(config.result_router_file) is None
+        or _read_json(config.gui_status_file) is None
+    ):
+        write_runtime_snapshot(
+            config,
+            run_id=run_id,
+            mode=mode,
+            status="idle",
+            code="BOOTSTRAPPED",
+            debug_log=debug_log,
+            gui_payload=gui_payload,
+            artifacts=[],
+            metadata={
+                "run_id": run_id,
+                "mode": mode,
+                "status": "idle",
+                "code": "BOOTSTRAPPED",
+                "exit_code": 0,
+                "debug_log": debug_log,
+            },
+            write_completed=write_completed,
+        )
+        return
+    if _read_json(config.latest_active_run_file) is None:
+        update_latest_run_pointers(
+            config,
+            run_id=run_id,
+            mode=mode,
+            status="idle",
+            code="BOOTSTRAPPED",
+            debug_log=debug_log,
+            write_completed=write_completed,
+        )
+        return
+    if write_completed:
+        update_latest_run_pointers(
+            config,
+            run_id=run_id,
+            mode=mode,
+            status="idle",
+            code="BOOTSTRAPPED",
+            debug_log=debug_log,
+            write_completed=True,
+        )
+
+
+def write_control_plane_runtime_snapshot(
+    config: RuntimeConfig,
+    *,
+    run_id: str,
+    status: str,
+    code: str,
+    debug_log: str,
+    gui_payload: dict[str, object],
+    artifacts: list[Path],
+    metadata: dict[str, object],
+) -> None:
+    write_runtime_snapshot(
+        config,
+        run_id=run_id,
+        mode="control_loop",
+        status=status,
+        code=code,
+        debug_log=debug_log,
+        gui_payload=gui_payload,
+        artifacts=artifacts,
+        metadata=metadata,
+        write_completed=True,
+    )
+
+
+def write_cli_runtime_snapshot(
+    config: RuntimeConfig,
+    *,
+    run_id: str,
+    mode: str,
+    status: str,
+    code: str,
+    debug_log: str,
+    gui_payload: dict[str, object],
+    metadata: dict[str, object],
+    artifacts: list[Path] | None = None,
+) -> None:
+    write_runtime_snapshot(
         config,
         run_id=run_id,
         mode=mode,
         status=status,
         code=code,
         debug_log=debug_log,
-        write_completed=write_completed,
+        gui_payload=gui_payload,
+        artifacts=[] if artifacts is None else artifacts,
+        metadata=metadata,
+        write_completed=True,
+        update_pointers=False,
+    )
+
+
+def write_excel_sync_runtime_snapshot(
+    config: RuntimeConfig,
+    *,
+    run_id: str,
+    status: str,
+    code: str,
+    debug_log: str,
+    gui_payload: dict[str, object],
+    artifacts: list[Path],
+    metadata: dict[str, object],
+    artifact_root: Path,
+) -> None:
+    write_runtime_snapshot(
+        config,
+        run_id=run_id,
+        mode="excel_sync",
+        status=status,
+        code=code,
+        debug_log=debug_log,
+        gui_payload=gui_payload,
+        artifacts=artifacts,
+        metadata=metadata,
+        write_completed=True,
+        artifact_root=artifact_root,
     )
 
 

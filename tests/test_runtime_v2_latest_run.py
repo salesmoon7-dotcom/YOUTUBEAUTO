@@ -1,18 +1,24 @@
 from __future__ import annotations
 
 import json
+import ast
 import tempfile
 import unittest
 from pathlib import Path
 from typing import cast
 from unittest.mock import patch
 
+import runtime_v2.control_plane as control_plane_module
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.control_plane import run_control_loop_once, seed_control_job
 from runtime_v2.contracts.job_contract import JobContract
 from runtime_v2.bootstrap import ensure_runtime_bootstrap
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
-from runtime_v2.latest_run import load_joined_latest_run, write_runtime_snapshot
+from runtime_v2.latest_run import (
+    load_joined_latest_run,
+    write_cli_runtime_snapshot,
+    write_runtime_snapshot,
+)
 
 
 def _latest_run_config(root: Path) -> RuntimeConfig:
@@ -26,6 +32,32 @@ def _latest_run_config(root: Path) -> RuntimeConfig:
 
 
 class RuntimeV2LatestRunTests(unittest.TestCase):
+    def test_runtime_writer_modules_use_mode_specific_latest_run_apis(self) -> None:
+        root = Path(r"D:\YOUTUBEAUTO")
+        expectations = {
+            root / "runtime_v2" / "bootstrap.py": "ensure_bootstrap_runtime_snapshot",
+            root / "runtime_v2" / "cli.py": "write_cli_runtime_snapshot",
+            root / "runtime_v2" / "manager.py": "write_excel_sync_runtime_snapshot",
+            root
+            / "runtime_v2"
+            / "control_plane.py": "write_control_plane_runtime_snapshot",
+        }
+        forbidden = {"write_runtime_snapshot", "update_latest_run_pointers"}
+
+        for file_path, expected_call in expectations.items():
+            source = file_path.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=str(file_path))
+            called_names = {
+                node.func.id
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            }
+            self.assertIn(expected_call, called_names, msg=str(file_path))
+            self.assertFalse(
+                forbidden & called_names,
+                msg=f"{file_path} still calls low-level latest_run APIs directly",
+            )
+
     def test_only_single_runtime_api_updates_latest_and_result_snapshots(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -68,6 +100,34 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
         self.assertEqual(str(gui_status["run_id"]), "runtime-run-1")
         self.assertEqual(str(result_metadata["run_id"]), "runtime-run-1")
         self.assertEqual(str(result_metadata["code"]), "OK")
+
+    def test_cli_runtime_snapshot_does_not_write_latest_pointers(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _latest_run_config(root)
+            gui_payload = build_gui_status_payload(
+                {"status": "ok", "code": "OK", "queue_status": "finished"},
+                run_id="cli-run-1",
+                mode="selftest",
+                stage="finished",
+                exit_code=0,
+            )
+
+            write_cli_runtime_snapshot(
+                config,
+                run_id="cli-run-1",
+                mode="selftest",
+                status="ok",
+                code="OK",
+                debug_log=str(root / "debug.jsonl"),
+                gui_payload=gui_payload,
+                metadata={"run_id": "cli-run-1", "code": "OK", "mode": "selftest"},
+            )
+
+            self.assertTrue(config.gui_status_file.exists())
+            self.assertTrue(config.result_router_file.exists())
+            self.assertFalse(config.latest_active_run_file.exists())
+            self.assertFalse(config.latest_completed_run_file.exists())
 
     def test_control_plane_uses_runtime_snapshot_api_without_direct_result_router_write(
         self,
@@ -113,12 +173,6 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
                 patch(
                     "runtime_v2.control_plane.run_gated", return_value=runtime_result
                 ),
-                patch(
-                    "runtime_v2.control_plane.write_result_router",
-                    side_effect=AssertionError(
-                        "control_plane must not write result_router directly"
-                    ),
-                ),
             ):
                 result = run_control_loop_once(
                     owner="runtime_v2",
@@ -130,6 +184,7 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
 
         self.assertEqual(str(result["status"]), "ok")
         self.assertFalse(bool(joined["out_of_sync"]))
+        self.assertFalse(hasattr(control_plane_module, "write_result_router"))
 
     def test_load_joined_latest_run_uses_pointer_specific_paths(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

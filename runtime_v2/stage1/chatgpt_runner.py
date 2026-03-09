@@ -13,7 +13,6 @@ from runtime_v2.stage1.parsed_payload import (
     validate_stage1_parsed_payload,
 )
 from runtime_v2.stage1.result_contract import stage1_result_payload
-from runtime_v2.stage2.router import route_video_plan
 from runtime_v2.workers.job_runtime import finalize_worker_result, write_json_atomic
 
 
@@ -279,25 +278,13 @@ def run_stage1_chatgpt_job(
 
     video_plan_path = workspace / "video_plan.json"
     worker_result_path = workspace / "result.json"
-    try:
-        next_jobs, _ = route_video_plan(video_plan)
-    except ValueError as exc:
-        error_code = str(exc) or "route_failed"
-        return _stage1_failed(
-            workspace,
-            debug_log=debug_log,
-            run_id=run_id,
-            row_ref=row_ref,
-            error_code=error_code,
-            reason_code=error_code,
-        )
     stage1_result = stage1_result_payload(
         run_id=str(video_plan.get("run_id", "")),
         row_ref=str(video_plan.get("row_ref", "")),
         video_plan_path=str(video_plan_path.resolve()),
         debug_log=debug_log,
         reason_code=str(video_plan.get("reason_code", "ok")),
-        next_jobs=next_jobs,
+        next_jobs=[],
         result_path=str(worker_result_path.resolve()),
         raw_output_path=str(raw_output_path.resolve()),
         parsed_payload_path=str(parsed_payload_path.resolve()),
@@ -314,6 +301,6 @@ def run_stage1_chatgpt_job(
             "stage1_result": stage1_result,
             "stage1_handoff": handoff,
         },
-        next_jobs=next_jobs,
+        next_jobs=[],
         completion={"state": "planned", "final_output": False},
     )
