@@ -12,6 +12,9 @@ def stage1_result_payload(
     error_code: str = "",
     result_path: str = "",
     status: str = "ok",
+    raw_output_path: str = "",
+    parsed_payload_path: str = "",
+    handoff_path: str = "",
 ) -> dict[str, object]:
     return {
         "contract": "stage1_result",
@@ -25,4 +28,7 @@ def stage1_result_payload(
         "next_jobs": next_jobs or [],
         "error_code": error_code,
         "result_path": result_path,
+        "raw_output_path": raw_output_path,
+        "parsed_payload_path": parsed_payload_path,
+        "handoff_path": handoff_path,
     }

@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import cast
 
 from runtime_v2.contracts.topic_spec import validate_topic_spec
 from runtime_v2.contracts.video_plan import build_video_plan
+from runtime_v2.stage1.parsed_payload import (
+    build_stage1_handoff,
+    build_stage1_parsed_payload_from_topic_spec,
+    build_stage1_raw_output,
+    parse_stage1_output,
+)
 from runtime_v2.stage1.result_contract import stage1_result_payload
 from runtime_v2.stage2.router import route_video_plan
 from runtime_v2.workers.job_runtime import finalize_worker_result, write_json_atomic
@@ -89,30 +96,52 @@ def build_video_plan_from_topic_spec(
     is_valid, _ = validate_topic_spec(topic_spec)
     if not is_valid:
         raise ValueError("invalid_topic_spec")
-    topic = str(topic_spec.get("topic", "")).strip()
-    row_ref = str(topic_spec.get("row_ref", "")).strip()
-    run_id = str(topic_spec.get("run_id", "")).strip()
+    parsed_payload = build_stage1_parsed_payload_from_topic_spec(topic_spec)
+    return build_video_plan_from_stage1_parsed_payload(parsed_payload, workspace)
+
+
+def build_video_plan_from_stage1_parsed_payload(
+    parsed_payload: dict[str, object], workspace: Path
+) -> dict[str, object]:
+    topic = str(parsed_payload.get("topic", "")).strip()
+    row_ref = str(parsed_payload.get("row_ref", "")).strip()
+    run_id = str(parsed_payload.get("run_id", "")).strip()
     assets_root = workspace / "assets"
     assets_root.mkdir(parents=True, exist_ok=True)
-    scenes = _build_scene_plan(topic_spec)
+    scene_prompts = cast(list[object], parsed_payload.get("scene_prompts", []))
+    voice_groups = cast(list[object], parsed_payload.get("voice_groups", []))
+    scenes: list[dict[str, object]] = [
+        {"scene_index": index + 1, "prompt": str(prompt).strip()}
+        for index, prompt in enumerate(scene_prompts)
+        if str(prompt).strip()
+    ]
+    voice_plan: dict[str, object] = {
+        "mapping_source": "stage1_parsed",
+        "scene_count": len(scenes),
+        "groups": [
+            cast(dict[str, object], group)
+            for group in voice_groups
+            if isinstance(group, dict)
+        ],
+    }
     video_plan = build_video_plan(
         run_id=run_id,
         row_ref=row_ref,
         topic=topic,
         story_outline=[
-            f"{topic} scene {index + 1}".strip() for index in range(len(scenes))
+            str(item).strip() for item in scene_prompts if str(item).strip()
         ],
         scene_plan=scenes,
         asset_plan={
             "asset_root": str(workspace.resolve()),
             "common_asset_folder": str(assets_root.resolve()),
         },
-        voice_plan=_build_voice_plan(topic_spec, scenes),
-        reason_code="ok",
+        voice_plan=voice_plan,
+        reason_code=str(parsed_payload.get("reason_code", "ok")),
         evidence={
             "source": "chatgpt_runner",
             "workspace": str(workspace.resolve()),
-            "excel_snapshot_hash": str(topic_spec.get("excel_snapshot_hash", "")),
+            "excel_snapshot_hash": str(parsed_payload.get("excel_snapshot_hash", "")),
         },
     )
     _ = write_json_atomic(workspace / "video_plan.json", video_plan)
@@ -162,8 +191,48 @@ def run_stage1_chatgpt_job(
 ) -> dict[str, object]:
     run_id = str(topic_spec.get("run_id", "")).strip()
     row_ref = str(topic_spec.get("row_ref", "")).strip()
+    is_valid, _ = validate_topic_spec(topic_spec)
+    if not is_valid:
+        return _stage1_failed(
+            workspace,
+            debug_log=debug_log,
+            run_id=run_id,
+            row_ref=row_ref,
+            error_code="invalid_topic_spec",
+            reason_code="invalid_topic_spec",
+        )
+    raw_output_path = workspace / "raw_output.json"
+    parsed_payload_path = workspace / "parsed_payload.json"
+    handoff_path = workspace / "stage1_handoff.json"
+    raw_output = build_stage1_raw_output(topic_spec)
+    _ = write_json_atomic(
+        raw_output_path, cast(dict[str, object], json.loads(raw_output))
+    )
+    parsed_payload, errors = parse_stage1_output(raw_output)
+    if parsed_payload is None:
+        return _stage1_failed(
+            workspace,
+            debug_log=debug_log,
+            run_id=run_id,
+            row_ref=row_ref,
+            error_code=errors[0] if errors else "invalid_stage1_output",
+            reason_code=errors[0] if errors else "invalid_stage1_output",
+            evidence={"raw_output_path": str(raw_output_path.resolve())},
+        )
+    _ = write_json_atomic(parsed_payload_path, parsed_payload)
+    handoff = build_stage1_handoff(
+        raw_output_path=str(raw_output_path.resolve()),
+        parsed_payload_path=str(parsed_payload_path.resolve()),
+        parsed_payload=parsed_payload,
+    )
+    _ = write_json_atomic(handoff_path, handoff)
     try:
-        video_plan = build_video_plan_from_topic_spec(topic_spec, workspace)
+        video_plan = build_video_plan_from_stage1_parsed_payload(
+            parsed_payload, workspace
+        )
+        video_plan["stage1_handoff"] = handoff
+        video_plan["parsed_payload"] = parsed_payload
+        _ = write_json_atomic(workspace / "video_plan.json", video_plan)
     except ValueError as exc:
         error_code = str(exc) or "invalid_topic_spec"
         return _stage1_failed(
@@ -197,14 +266,21 @@ def run_stage1_chatgpt_job(
         reason_code=str(video_plan.get("reason_code", "ok")),
         next_jobs=next_jobs,
         result_path=str(worker_result_path.resolve()),
+        raw_output_path=str(raw_output_path.resolve()),
+        parsed_payload_path=str(parsed_payload_path.resolve()),
+        handoff_path=str(handoff_path.resolve()),
     )
     return finalize_worker_result(
         workspace,
         status="ok",
         stage="chatgpt",
-        artifacts=[video_plan_path],
+        artifacts=[video_plan_path, raw_output_path, parsed_payload_path, handoff_path],
         retryable=False,
-        details={"video_plan": video_plan, "stage1_result": stage1_result},
+        details={
+            "video_plan": video_plan,
+            "stage1_result": stage1_result,
+            "stage1_handoff": handoff,
+        },
         next_jobs=next_jobs,
         completion={"state": "planned", "final_output": False},
     )
