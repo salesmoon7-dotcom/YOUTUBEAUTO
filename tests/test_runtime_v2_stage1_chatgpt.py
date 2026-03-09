@@ -268,7 +268,8 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                 debug_log="logs/stage1-run-1.jsonl",
             )
 
-        stage1_result = cast(dict[str, object], result["stage1_result"])
+        details = cast(dict[str, object], result["details"])
+        stage1_result = cast(dict[str, object], details["stage1_result"])
         self.assertEqual(result["status"], "failed")
         self.assertTrue(
             str(stage1_result["raw_output_path"]).endswith("raw_output.json")
