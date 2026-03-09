@@ -796,6 +796,8 @@ def _run_stage2_row1_probe(
     stage2_results: list[dict[str, object]] = []
     overall_ok = True
     failure_code = "OK"
+    placeholder_services: list[str] = []
+    live_ready_services: list[str] = []
     for raw in jobs[:-1]:
         typed = cast(dict[str, object], raw)
         job_payload = cast(dict[str, object], typed["job"])
@@ -834,6 +836,10 @@ def _run_stage2_row1_probe(
             )
             result = runner(fallback_contract, config.artifact_root)
             fallback_used = True
+        if fallback_used or service not in agent_browser_services:
+            placeholder_services.append(service)
+        elif str(result.get("status", "")) == "ok":
+            live_ready_services.append(service)
         stage2_results.append(
             {
                 "service": service,
@@ -857,6 +863,11 @@ def _run_stage2_row1_probe(
         if overall_ok
         else exit_code_from_status(failure_code),
         "agent_browser_services": agent_browser_services,
+        "readiness_scope": "stage2_probe",
+        "probe_success": overall_ok,
+        "live_readiness": "full" if not placeholder_services else "partial",
+        "placeholder_services": placeholder_services,
+        "live_ready_services": live_ready_services,
         "video_plan": video_plan,
         "render_spec": render_spec,
         "results": stage2_results,

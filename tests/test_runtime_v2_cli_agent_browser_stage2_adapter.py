@@ -112,6 +112,14 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertEqual(report["code"], "OK")
         self.assertEqual(report["status"], "ok")
         self.assertEqual(len(cast(list[object], report["results"])), 4)
+        self.assertEqual(report["readiness_scope"], "stage2_probe")
+        self.assertEqual(report["live_readiness"], "full")
+        self.assertEqual(cast(list[object], report["placeholder_services"]), [])
+        self.assertEqual(
+            cast(list[object], report["live_ready_services"]),
+            ["genspark", "seaart", "geminigen", "canva"],
+        )
+        self.assertTrue(bool(report["probe_success"]))
 
     def test_stage2_row1_probe_falls_back_after_attach_failure(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -149,6 +157,14 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         first = cast(list[dict[str, object]], report["results"])[0]
         self.assertTrue(bool(first["attach_attempt_failed"]))
         self.assertTrue(bool(first["fallback_used"]))
+        self.assertEqual(report["readiness_scope"], "stage2_probe")
+        self.assertEqual(report["live_readiness"], "partial")
+        self.assertEqual(
+            cast(list[object], report["placeholder_services"]),
+            ["genspark", "seaart", "geminigen", "canva"],
+        )
+        self.assertEqual(cast(list[object], report["live_ready_services"]), [])
+        self.assertTrue(bool(report["probe_success"]))
 
 
 if __name__ == "__main__":
