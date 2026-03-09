@@ -17,6 +17,7 @@
 
 ## Operations Priority SOP
 - `sop/SOP_git_online_commit_workflow.md`
+- `sop/SOP_closed_loop_automation_skill_map.md`
 - `sop/SOP_runtime_v2_development_guardrails.md`
 - `sop/SOP_24h_runtime_stability_and_gpu_gates.md`
 - `sop/SOP_runtime_v2_inbox_contract.md`
