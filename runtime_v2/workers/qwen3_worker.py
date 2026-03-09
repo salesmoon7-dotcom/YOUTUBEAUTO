@@ -33,21 +33,47 @@ def _int_value(raw_value: object, default: int) -> int:
     return default
 
 
+def _voice_texts_payload(payload: dict[str, object]) -> list[dict[str, object]]:
+    raw_voice_texts = payload.get("voice_texts", [])
+    if isinstance(raw_voice_texts, list):
+        normalized: list[dict[str, object]] = []
+        for entry in cast(list[object], raw_voice_texts):
+            if not isinstance(entry, dict):
+                continue
+            typed = cast(dict[str, object], entry)
+            text = str(typed.get("text", "")).strip()
+            col = str(typed.get("col", "")).strip()
+            if text and col:
+                normalized.append(
+                    {
+                        "col": col,
+                        "text": text,
+                        "original_voices": typed.get("original_voices", []),
+                    }
+                )
+        if normalized:
+            return normalized
+    raw_text = payload.get("script_text", "")
+    script_text = str(raw_text).strip() if isinstance(raw_text, str) else ""
+    if not script_text:
+        return []
+    return [{"col": "#01", "text": script_text, "original_voices": [1]}]
+
+
 def run_qwen3_job(
     job: JobContract | None = None, artifact_root: Path | None = None
 ) -> dict[str, object]:
     if job is None:
         return {"worker": "qwen3_tts", "status": "failed", "error_code": "missing_job"}
     workspace = prepare_workspace(job, artifact_root=artifact_root)
-    raw_text = job.payload.get("script_text", "")
-    script_text = str(raw_text).strip() if isinstance(raw_text, str) else ""
-    if not script_text:
+    voice_texts = _voice_texts_payload(job.payload)
+    if not voice_texts:
         return finalize_worker_result(
             workspace,
             status="failed",
             stage="validate_input",
             artifacts=[],
-            error_code="missing_script_text",
+            error_code="missing_voice_texts",
             retryable=False,
             completion={"state": "failed", "final_output": False},
         )
@@ -63,7 +89,7 @@ def run_qwen3_job(
                 "topic": str(job.payload.get("topic", job.job_id)),
                 "no": str(job.payload.get("episode_no", "1")),
                 "folder_path": str(project_root.resolve()),
-                "voice_texts": [{"col": "#01", "text": script_text}],
+                "voice_texts": voice_texts,
             }
         ],
     }
@@ -109,7 +135,8 @@ def run_qwen3_job(
             ],
             retryable=False,
             details={
-                "script_text_present": True,
+                "script_text_present": bool(voice_texts),
+                "voice_text_count": len(voice_texts),
                 "image_path": str(job.payload.get("image_path", "")).strip(),
                 "model_name": str(job.payload.get("model_name", "")).strip(),
                 "service_artifact_path": str(verified_output.resolve()),
@@ -131,7 +158,8 @@ def run_qwen3_job(
         stage="qwen3_tts",
         artifacts=[request_file, prompt_file],
         details={
-            "script_text_present": True,
+            "script_text_present": bool(voice_texts),
+            "voice_text_count": len(voice_texts),
             "image_path": str(job.payload.get("image_path", "")).strip(),
             "model_name": str(job.payload.get("model_name", "")).strip(),
         },

@@ -70,10 +70,17 @@ def _build_thumb_data(
     title_for_thumb = ""
     if stage1_contract is not None:
         title_for_thumb = str(stage1_contract.get("title_for_thumb", "")).strip()
+    line1 = title_for_thumb
+    line2 = ""
+    if "\n" in title_for_thumb:
+        parts = [part.strip() for part in title_for_thumb.splitlines() if part.strip()]
+        if parts:
+            line1 = parts[0]
+            line2 = parts[1] if len(parts) > 1 else ""
     return {
         "bg_prompt": prompt,
-        "line1": title_for_thumb,
-        "line2": "",
+        "line1": line1,
+        "line2": line2,
     }
 
 
@@ -85,6 +92,16 @@ def _select_ref_img(timeline: list[dict[str, object]]) -> str:
             candidate = str(entry.get("asset_path", "")).strip()
             if candidate:
                 return candidate
+    return ""
+
+
+def _select_ref_img_from_stage1(stage1_contract: dict[str, object] | None) -> str:
+    if stage1_contract is None:
+        return ""
+    for key in ("ref_img_1", "ref_img_2"):
+        candidate = str(stage1_contract.get(key, "")).strip()
+        if candidate:
+            return candidate
     return ""
 
 
@@ -146,7 +163,9 @@ def build_stage2_jobs(
             payload["thumb_data"] = _build_thumb_data(
                 prompt=prompt, stage1_contract=stage1_contract
             )
-            ref_img = _select_ref_img(timeline)
+            ref_img = _select_ref_img_from_stage1(stage1_contract)
+            if not ref_img:
+                ref_img = _select_ref_img(timeline)
             if ref_img:
                 payload["ref_img"] = ref_img
         if workload in agent_browser_services:
