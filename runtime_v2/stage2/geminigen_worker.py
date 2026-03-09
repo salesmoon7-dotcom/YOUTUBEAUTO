@@ -97,6 +97,7 @@ def run_geminigen_job(
                 "provider": str(job.payload.get("provider", "google")),
                 "model": str(job.payload.get("model", "veo3")),
                 "service_artifact_path": str(verified_output.resolve()),
+                "reused": bool(adapter_result.get("reused", False)),
                 "adapter_mode": (
                     "agent_browser"
                     if bool(job.payload.get("use_agent_browser", False))
@@ -112,6 +113,7 @@ def run_geminigen_job(
                 "final_output": True,
                 "final_artifact": verified_output.name,
                 "final_artifact_path": str(verified_output.resolve()),
+                "reused": bool(adapter_result.get("reused", False)),
             },
         )
 

@@ -297,7 +297,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                 self.assertEqual(result["status"], "ok")
                 self.assertTrue(output_path.exists())
 
-    def test_genspark_worker_requires_adapter_command_to_create_fresh_output(
+    def test_genspark_worker_reuses_existing_output_as_success(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -313,10 +313,12 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             result = run_genspark_job(job, artifact_root)
 
         completion = cast(dict[str, object], result["completion"])
-        self.assertEqual(result["status"], "failed")
-        self.assertEqual(result["error_code"], "stale_service_artifact_path")
-        self.assertEqual(completion["state"], "failed")
-        self.assertFalse(bool(completion["final_output"]))
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(completion["state"], "succeeded")
+        self.assertTrue(bool(completion["final_output"]))
+        self.assertTrue(bool(completion["reused"]))
+        self.assertTrue(bool(details["reused"]))
 
     def test_seaart_worker_processes_one_item_via_explicit_adapter_command(
         self,

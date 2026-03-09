@@ -104,6 +104,7 @@ def run_canva_job(
                 "save_path": str(verified_output.resolve()),
                 "ref_img": ref_img,
                 "service_artifact_path": str(verified_output.resolve()),
+                "reused": bool(adapter_result.get("reused", False)),
                 "adapter_mode": (
                     "agent_browser"
                     if bool(job.payload.get("use_agent_browser", False))
@@ -119,6 +120,7 @@ def run_canva_job(
                 "final_output": True,
                 "final_artifact": verified_output.name,
                 "final_artifact_path": str(verified_output.resolve()),
+                "reused": bool(adapter_result.get("reused", False)),
             },
         )
 
