@@ -46,6 +46,18 @@ python -m pytest tests/test_runtime_v2_agent_browser.py tests/test_runtime_v2_de
   - live-ready 서비스(`genspark`)는 `agent-browser` attach + `attach_evidence.json`을 우선 사용
   - 나머지 browser stage2 서비스는 detached row1 probe에서 placeholder adapter fallback으로 닫아 2차 테스트를 자동 완료
 
+### Additional Live Attach Audit
+
+- evidence: `system/runtime_v2_probe/agent-browser-live-attach-03/summary.json`
+- result:
+  - `seaart:9444` -> `AGENT_BROWSER_COMMAND_FAILED` (`Failed to connect via CDP`)
+  - `geminigen:9555` -> `AGENT_BROWSER_COMMAND_FAILED` (`Failed to connect via CDP`)
+  - `canva:9666` -> `AGENT_BROWSER_COMMAND_FAILED` (`Failed to connect via CDP`)
+- interpretation:
+  - 현재 남은 문제는 구현 결함이 아니라 브라우저 운영 환경 blocker입니다.
+  - `agent-browser` 실행 파일 자체는 해결됨 (`APPDATA/npm` fallback path 탐지 구현 완료).
+  - 따라서 후속 작업은 코드 구현이 아니라 해당 포트로 브라우저를 실제 기동하는 운영 단계입니다.
+
 ### Runtime Health Readiness
 
 - `docs/TODO.md` 기준 readiness check 완료

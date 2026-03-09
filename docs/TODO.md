@@ -10,12 +10,13 @@
 - `1행 smoke` readiness 재판정은 완료되었습니다.
   - detached browser recovery run `system/runtime_v2_probe/browser-recover-run-02/probe_result.json`이 `code=OK`로 종료됐습니다.
   - `python -m runtime_v2.cli --readiness-check` 기준 `ready=true`, `code=OK`를 확인했습니다.
-- 다음 active unit: `docs/plans/2026-03-09-agent-browser-closed-loop-development-plan.md` 후속 운영 정리
-  - 현재 최소 closed loop(`dev_plan -> dev_implement -> agent_browser_verify -> dev_replan`)와 safe-tier fail-closed, probe-root smoke는 구현됨
+- agent-browser implementation unit은 완료되었고, 남은 것은 운영 환경 준비입니다.
+  - 최소 closed loop(`dev_plan -> dev_implement -> agent_browser_verify -> dev_replan`)와 safe-tier fail-closed, probe-root smoke는 구현됨
   - stage2 브라우저 워커는 `video_plan["use_agent_browser_services"]` opt-in으로 hidden CLI child 기반 `agent-browser` adapter 경로를 자동 생성할 수 있음
   - stage2 `agent-browser` opt-in 실행은 workspace에 `attach_evidence.json`을 자동 생성해 attach 증거를 남김
   - detached `2차 1행` auto probe `system/runtime_v2_probe/stage2-row1-auto-03/probe_result.json`은 `code=OK`로 완료됨
-  - 남은 일은 live attach 범위를 `genspark` 외 서비스(`seaart/geminigen/canva`)까지 넓혀도 placeholder fallback 없이 닫히게 만드는 것입니다.
+  - live attach 확인 결과 `seaart:9444`, `geminigen:9555`, `canva:9666`는 모두 현재 CDP 포트 미기동 환경 blocker임 (`system/runtime_v2_probe/agent-browser-live-attach-03/summary.json`)
+  - 따라서 남은 항목은 코드 구현이 아니라 브라우저 운영 환경 준비입니다.
   - live readiness 상세 판정은 `docs/plans/2026-03-09-agent-browser-live-readiness-report.md`를 기준으로 관리합니다.
 - stage1 legacy parity active unit:
   - `docs/plans/2026-03-09-runtime-v2-legacy-pipeline-feasibility-plan.md` 기준 `stage1 GPT output/parse/handoff canonical contract` 2차 배치까지 구현됨
