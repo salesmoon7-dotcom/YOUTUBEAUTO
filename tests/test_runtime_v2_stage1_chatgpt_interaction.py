@@ -4,10 +4,47 @@ import json
 import unittest
 from typing import cast
 
+from runtime_v2.stage1.chatgpt_backend import ChatGPTBackend
 from runtime_v2.stage1.chatgpt_interaction import generate_gpt_response_text
 
 
 class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
+    def test_generate_gpt_response_text_accepts_backend_interface(self) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def __init__(self) -> None:
+                self.read_calls = 0
+
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                return {
+                    "ok": True,
+                    "sendClicked": True,
+                    "inputSelector": "#prompt-textarea",
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                self.read_calls += 1
+                if self.read_calls == 1:
+                    return {
+                        "has_stop": True,
+                        "assistant_text": "draft",
+                        "assistant_block_count": 1,
+                    }
+                return {
+                    "has_stop": False,
+                    "assistant_text": "final json",
+                    "assistant_block_count": 1,
+                }
+
+        result = generate_gpt_response_text(
+            prompt="test prompt",
+            port=9222,
+            poll_interval_sec=0.01,
+            backend=FakeBackend(),
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["response_text"], "final json")
+
     def test_generate_gpt_response_text_submits_and_waits_for_stable_text(self) -> None:
         responses = iter(
             [
