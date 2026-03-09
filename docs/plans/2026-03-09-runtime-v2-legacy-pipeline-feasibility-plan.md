@@ -194,4 +194,7 @@
 - `Sheet1!row13` 기준으로 위 3개 artifact가 생성되고, downstream `next_jobs`도 3개(`genspark`, `seaart`, `render`)까지 이어지는 것을 확인했습니다.
 - `stage1-row13-evidence-04`는 `raw_source = gpt_response_text`로 기록되어, placeholder topic-spec fallback이 아니라 실제 GPT text 입력이 `stage1.v1` parsed handoff로 연결되는 것을 확인했습니다.
 - `stage1-row13-evidence-05`는 `browser_evidence.snapshot_path`를 통해 stage1가 자동으로 `gpt_response_text`를 주입하고 same handoff contract로 연결되는 것을 확인했습니다.
-- 남은 일은 실제 browser ChatGPT transcript/DOM output의 richer block/field를 `title/title_for_thumb/description/keywords/bgm/#01...`까지 더 충실하게 매핑하는 것입니다.
+- follow-up remediation:
+  - `runtime_v2/stage1/gpt_response_parser.py`가 `Title: ...`, `Description: ...`, `#01: ...` 같은 inline label/value 형식을 직접 파싱하도록 보강했습니다.
+  - 따라서 실제 transcript/DOM 텍스트가 fenced JSON이 아니어도 richer field를 같은 `stage1.v1` handoff contract로 흡수할 수 있습니다.
+- 현재 남은 일은 inline label/value를 넘어서, 실제 browser DOM/snapshot에서 richer block이 어떤 변형으로 들어오는지 더 넓은 샘플을 수집해 parser 허용 폭을 늘릴지 판단하는 것입니다.
