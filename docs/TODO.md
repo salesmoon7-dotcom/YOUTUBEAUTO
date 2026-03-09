@@ -1,11 +1,12 @@
 # TODO
 
-- 새 active unit: `docs/plans/2026-03-09-runtime-v2-guardrail-drift-remediation-plan.md`
-  - 후속 architecture audit에서 `runtime_v2`의 residual drift를 확인했습니다.
-  - 핵심 P0는 `single writer` 복원과 `failure contract` 동결입니다.
-  - 직접 근거는 `runtime_v2/control_plane.py`, `runtime_v2/latest_run.py`, `runtime_v2/cli.py`, `runtime_v2/manager.py`, `runtime_v2/supervisor.py`, `runtime_v2/workers/agent_browser_worker.py`입니다.
-  - 기존 `docs/plans/2026-03-09-runtime-v2-architecture-robustness-review-plan.md` 완료 기록은 유지하되, 이번 항목은 post-implementation audit 기반 follow-up remediation으로 관리합니다.
-- 이전 canonical plan 기준의 1순위 remediation은 닫혔지만, 이번 post-implementation audit로 새 follow-up remediation unit이 열렸습니다.
+- `docs/plans/2026-03-09-runtime-v2-guardrail-drift-remediation-plan.md`는 완료되었습니다.
+  - Task 1~6을 통해 single writer, failure contract freeze, worker policy leakage, adapter boundary, retry/backoff/circuit canonical source를 정리했습니다.
+  - 추가 follow-up으로 `stage1` worker의 downstream `next_jobs` 생성 제거, CLI latest pointer ownership 제거, stage2 adapter child 내부 recovery 제거까지 반영했습니다.
+  - 검증은 채팅 interruption guardrail에 따라 interrupt-safe 케이스 단위 pytest와 파일 단위 `py_compile`, LSP diagnostics로 수행했습니다.
+- 다음 구조 조사 후보:
+  - `runtime_v2/control_plane.py`와 queue path(`QueueStore` vs `_load_jobs/_save_jobs/_upsert_job`)의 중복 경계는 여전히 디버깅 복잡도 hotspot입니다.
+  - 이 항목은 새 기능이 아니라 구조 단순화 목적의 별도 architecture review unit으로 다루는 것이 안전합니다.
 - `1행 smoke` readiness 재판정은 완료되었습니다.
   - detached browser recovery run `system/runtime_v2_probe/browser-recover-run-02/probe_result.json`이 `code=OK`로 종료됐습니다.
   - `python -m runtime_v2.cli --readiness-check` 기준 `ready=true`, `code=OK`를 확인했습니다.

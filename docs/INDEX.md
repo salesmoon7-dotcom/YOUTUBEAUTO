@@ -25,6 +25,7 @@
 
 ## Current Runtime_v2 Canonical References
 - `sop/SOP_runtime_v2_development_guardrails.md`
+- `plans/2026-03-09-runtime-v2-guardrail-drift-remediation-plan.md`
 - `plans/2026-03-08-browser-session-stability-plan.md`
 - `plans/2026-03-07-runtime-v2-staged-test-plan.md`
 - `plans/2026-03-07-runtime-v2-blocker-fix-plan.md`
