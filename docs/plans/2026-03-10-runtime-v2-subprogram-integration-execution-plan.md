@@ -138,6 +138,8 @@
   - `qwen3_tts`는 이제 `voice_texts`를 직접 소비할 수 있음
   - `canva`는 이제 `stage1_handoff.ref_img_1/ref_img_2`와 multiline `title_for_thumb`를 직접 소비함
   - `stage1_handoff.contract.version`은 이제 항상 `stage1_handoff.v1.0`으로 정규화됩니다.
+  - live `browser_evidence(service=chatgpt, port)` 경로는 이제 `raw_output.json.gpt_capture`에 `status/submit_info/final_state`와 실패 시 `error_code/failure_stage/details`를 기록합니다.
+  - live 의도에서 최종 캡처 실패 시 `topic_spec_fallback`로 진행하지 않고 canonical error code로 fail-close 됩니다.
 
 ### Phase 3. Ready-to-test gate
 
@@ -145,6 +147,9 @@
   1. ChatGPT real response artifact 생성
   2. parsed handoff 필드 채움
   3. downstream 1개 서비스가 handoff-derived payload로 실제 실행 가능
+
+- current progress:
+  - 1번의 파일 스키마와 failure semantics는 준비 완료입니다. 남은 것은 실제 live artifact를 다시 생성하는 운영 단계입니다.
 
 ### Phase 4. Test order
 

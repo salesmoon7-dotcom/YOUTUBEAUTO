@@ -214,6 +214,7 @@ Focus:
 
 - 이후 `real-first test`는 위 3개와 같은 파일 레이아웃을 유지해야 합니다.
 - 특히 `raw_output.json`, `parsed_payload.json`, `stage1_handoff.json` 3종은 항상 남겨야 합니다.
+- live `browser_evidence(service=chatgpt, port)` 경로는 `raw_output.json.gpt_capture`와 `raw_output.json.browser_evidence`를 함께 남겨야 합니다.
 
 ## GPT Readiness Checklist
 
@@ -236,6 +237,12 @@ Focus:
 - [ ] real assistant response가 snapshot placeholder가 아닌지 증명
 - [ ] same run_id 기준 `raw_output -> parsed_payload -> handoff` evidence 확보
 - [ ] downstream 1개 서비스가 handoff-derived payload로 real run 성공
+
+### Latest GPT-only progress
+
+- [x] live capture success/failure metadata가 `raw_output.json.gpt_capture`에 기록됨
+- [x] live 의도에서 capture failure는 fail-close 됨
+- [x] no-port live request도 silent fallback 없이 fail-close 됨
 
 ## Current GPT Verdict
 
