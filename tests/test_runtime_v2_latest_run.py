@@ -101,6 +101,14 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
         self.assertEqual(str(gui_status["run_id"]), "runtime-run-1")
         self.assertEqual(str(result_metadata["run_id"]), "runtime-run-1")
         self.assertEqual(str(result_metadata["code"]), "OK")
+        canonical_handoff = cast(
+            dict[str, object], result_metadata["canonical_handoff"]
+        )
+        self.assertEqual(str(canonical_handoff["schema_version"]), "1.0")
+        self.assertEqual(
+            str(canonical_handoff["legacy_contracts_ref"]),
+            "docs/plans/2026-03-09-legacy-post-gpt-service-contract-survey.md",
+        )
 
     def test_cli_runtime_snapshot_does_not_write_latest_pointers(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -222,6 +230,18 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
         self.assertEqual(str(result["status"]), "ok")
         self.assertFalse(bool(joined["out_of_sync"]))
         self.assertFalse(hasattr(control_plane_module, "write_result_router"))
+        result_metadata = cast(dict[str, object], joined["result_metadata"])
+        canonical_handoff = cast(
+            dict[str, object], result_metadata["canonical_handoff"]
+        )
+        self.assertEqual(str(canonical_handoff["owner_layer"]), "control_plane")
+        self.assertTrue(
+            bool(
+                cast(dict[str, object], canonical_handoff["guardrails"])[
+                    "single_writer"
+                ]
+            )
+        )
 
     def test_load_joined_latest_run_uses_pointer_specific_paths(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

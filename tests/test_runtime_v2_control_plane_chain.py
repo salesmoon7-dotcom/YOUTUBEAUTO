@@ -505,6 +505,11 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertGreater(float(cast(float, latest_metadata["backoff_sec"])), 0.0)
         self.assertEqual(str(latest_metadata["worker_error_code"]), "BROWSER_UNHEALTHY")
         self.assertEqual(str(latest_metadata["completion_state"]), "failed")
+        canonical_handoff = cast(
+            dict[str, object], latest_metadata["canonical_handoff"]
+        )
+        self.assertEqual(str(canonical_handoff["schema_version"]), "1.0")
+        self.assertEqual(str(canonical_handoff["workload"]), "chatgpt")
         self.assertFalse(bool(latest_join["out_of_sync"]))
 
     def test_control_plane_holds_gpt_floor_failure_with_fixed_backoff(
