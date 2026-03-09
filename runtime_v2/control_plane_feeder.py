@@ -442,6 +442,50 @@ def _save_feeder_state(path: Path, payload: dict[str, dict[str, object]]) -> Pat
     return path
 
 
+def archived_contract_counts(inbox_root: Path) -> tuple[int, int]:
+    accepted_root = inbox_root / "accepted"
+    invalid_root = inbox_root / "invalid"
+    accepted_count = _archived_contract_count(accepted_root)
+    invalid_count = _archived_contract_count(invalid_root)
+    return accepted_count, invalid_count
+
+
+def invalid_reason_summary(inbox_root: Path) -> str:
+    invalid_root = inbox_root / "invalid"
+    if not invalid_root.exists():
+        return ""
+    reason_files = sorted(
+        invalid_root.glob("*.reason.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not reason_files:
+        return ""
+    latest = reason_files[0]
+    try:
+        raw_payload = cast(object, json.loads(latest.read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError):
+        return latest.name
+    if not isinstance(raw_payload, dict):
+        return latest.name
+    payload = cast(dict[object, object], raw_payload)
+    code = str(payload.get("code", "invalid"))
+    message = str(payload.get("message", ""))
+    return f"{code}:{message}" if message else code
+
+
+def _archived_contract_count(root: Path) -> int:
+    if not root.exists():
+        return 0
+    exact = list(root.glob("*.job.json"))
+    alternate = [
+        path
+        for path in root.glob("*.job.*.json")
+        if not path.name.endswith(".reason.json")
+    ]
+    return len(exact) + len(alternate)
+
+
 def _mapping_from_obj(value: object) -> dict[str, object] | None:
     if not isinstance(value, dict):
         return None

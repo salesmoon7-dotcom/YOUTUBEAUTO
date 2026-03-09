@@ -9,6 +9,8 @@ from typing import cast
 from runtime_v2.bootstrap import ensure_runtime_bootstrap
 from runtime_v2.config import GpuWorkload, RuntimeConfig
 from runtime_v2.control_plane_feeder import (
+    archived_contract_counts,
+    invalid_reason_summary,
     job_from_explicit_payload,
     payload_paths_are_local,
     seed_local_jobs,
@@ -133,7 +135,7 @@ def run_control_loop_once(
     )
     job = _next_runnable_job(jobs, now)
     if job is None:
-        accepted_count, invalid_count = _archived_contract_counts(
+        accepted_count, invalid_count = archived_contract_counts(
             runtime_config.input_root
         )
         seeded_jobs = seed_local_jobs(runtime_config)
@@ -150,7 +152,7 @@ def run_control_loop_once(
                         "queue_status": "seeded",
                         "accepted_count": accepted_count,
                         "invalid_count": invalid_count,
-                        "invalid_reason": _invalid_reason_summary(
+                        "invalid_reason": invalid_reason_summary(
                             runtime_config.input_root
                         ),
                     },
@@ -181,7 +183,7 @@ def run_control_loop_once(
                         "seeded_jobs": len(seeded_jobs),
                         "accepted_count": accepted_count,
                         "invalid_count": invalid_count,
-                        "invalid_reason": _invalid_reason_summary(
+                        "invalid_reason": invalid_reason_summary(
                             runtime_config.input_root
                         ),
                         "ts": round(time(), 3),
@@ -197,7 +199,7 @@ def run_control_loop_once(
                         ],
                         "accepted_count": accepted_count,
                         "invalid_count": invalid_count,
-                        "invalid_reason": _invalid_reason_summary(
+                        "invalid_reason": invalid_reason_summary(
                             runtime_config.input_root
                         ),
                     },
@@ -216,7 +218,7 @@ def run_control_loop_once(
                 "seeded_jobs": 0,
                 "accepted_count": accepted_count,
                 "invalid_count": invalid_count,
-                "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
+                "invalid_reason": invalid_reason_summary(runtime_config.input_root),
             },
         )
         write_control_plane_runtime_snapshot(
@@ -241,7 +243,7 @@ def run_control_loop_once(
                 "seeded_jobs": 0,
                 "accepted_count": accepted_count,
                 "invalid_count": invalid_count,
-                "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
+                "invalid_reason": invalid_reason_summary(runtime_config.input_root),
                 "ts": round(time(), 3),
             },
         )
@@ -253,7 +255,7 @@ def run_control_loop_once(
                 "queue_status": "idle",
                 "accepted_count": accepted_count,
                 "invalid_count": invalid_count,
-                "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
+                "invalid_reason": invalid_reason_summary(runtime_config.input_root),
             },
         )
         return {"status": "idle", "code": "NO_JOB"}
@@ -325,7 +327,7 @@ def run_control_loop_once(
     next_jobs_entries = _next_jobs_entries(worker_contract)
     next_jobs_count = len(next_jobs_entries)
     completion = _mapping_from_obj(worker_contract.get("completion", {}))
-    accepted_count, invalid_count = _archived_contract_counts(runtime_config.input_root)
+    accepted_count, invalid_count = archived_contract_counts(runtime_config.input_root)
     seeded_downstream: list[JobContract] = []
     success = result.get("status") == "ok" and worker_ok
     if result.get("status") == "ok" and worker_ok:
@@ -454,7 +456,7 @@ def run_control_loop_once(
         else str(completion.get("final_artifact_path", "")),
         "accepted_count": accepted_count,
         "invalid_count": invalid_count,
-        "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
+        "invalid_reason": invalid_reason_summary(runtime_config.input_root),
         "debug_log": str(control_debug_log),
     }
     gui_payload = _build_control_gui_status(
@@ -520,7 +522,7 @@ def run_control_loop_once(
                 "post_gpt_immediate=seaart,genspark,tts; "
                 "requires_upstream_artifacts=geminigen,canva,kenburns,rvc"
             ),
-            "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
+            "invalid_reason": invalid_reason_summary(runtime_config.input_root),
             "browser_evidence": build_agent_browser_evidence(worker_contract)
             if job.workload == "agent_browser_verify"
             else {},
@@ -540,7 +542,7 @@ def run_control_loop_once(
             "result_status": result_status,
             "accepted_count": accepted_count,
             "invalid_count": invalid_count,
-            "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
+            "invalid_reason": invalid_reason_summary(runtime_config.input_root),
             "runtime_result": result,
             "worker_result": worker_result,
             "recovery": recovery,
@@ -621,50 +623,6 @@ def _build_control_gui_status(
         stage=stage,
         exit_code=exit_code,
     )
-
-
-def _archived_contract_counts(inbox_root: Path) -> tuple[int, int]:
-    accepted_root = inbox_root / "accepted"
-    invalid_root = inbox_root / "invalid"
-    accepted_count = _archived_contract_count(accepted_root)
-    invalid_count = _archived_contract_count(invalid_root)
-    return accepted_count, invalid_count
-
-
-def _archived_contract_count(root: Path) -> int:
-    if not root.exists():
-        return 0
-    exact = list(root.glob("*.job.json"))
-    alternate = [
-        path
-        for path in root.glob("*.job.*.json")
-        if not path.name.endswith(".reason.json")
-    ]
-    return len(exact) + len(alternate)
-
-
-def _invalid_reason_summary(inbox_root: Path) -> str:
-    invalid_root = inbox_root / "invalid"
-    if not invalid_root.exists():
-        return ""
-    reason_files = sorted(
-        invalid_root.glob("*.reason.json"),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
-    if not reason_files:
-        return ""
-    latest = reason_files[0]
-    try:
-        raw_payload = cast(object, json.loads(latest.read_text(encoding="utf-8")))
-    except (OSError, json.JSONDecodeError):
-        return latest.name
-    if not isinstance(raw_payload, dict):
-        return latest.name
-    payload = cast(dict[object, object], raw_payload)
-    code = str(payload.get("code", "invalid"))
-    message = str(payload.get("message", ""))
-    return f"{code}:{message}" if message else code
 
 
 def _next_status_for_recovery(recovery: dict[str, object]) -> str:
