@@ -244,6 +244,7 @@ def write_excel_sync_runtime_snapshot(
         metadata=metadata,
         write_completed=True,
         artifact_root=artifact_root,
+        update_pointers=False,
     )
 
 

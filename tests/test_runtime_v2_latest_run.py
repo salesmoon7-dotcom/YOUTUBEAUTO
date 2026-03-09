@@ -17,6 +17,7 @@ from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
 from runtime_v2.latest_run import (
     load_joined_latest_run,
     write_cli_runtime_snapshot,
+    write_excel_sync_runtime_snapshot,
     write_runtime_snapshot,
 )
 
@@ -122,6 +123,42 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
                 debug_log=str(root / "debug.jsonl"),
                 gui_payload=gui_payload,
                 metadata={"run_id": "cli-run-1", "code": "OK", "mode": "selftest"},
+            )
+
+            self.assertTrue(config.gui_status_file.exists())
+            self.assertTrue(config.result_router_file.exists())
+            self.assertFalse(config.latest_active_run_file.exists())
+            self.assertFalse(config.latest_completed_run_file.exists())
+
+    def test_excel_sync_runtime_snapshot_does_not_write_latest_pointers(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _latest_run_config(root)
+            artifact_path = root / "excel" / "rows.json"
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = artifact_path.write_text("{}", encoding="utf-8")
+            gui_payload = build_gui_status_payload(
+                {"status": "ok", "code": "OK", "queue_status": "excel_sync"},
+                run_id="excel-sync-run-1",
+                mode="excel_sync",
+                stage="finished",
+                exit_code=0,
+            )
+
+            write_excel_sync_runtime_snapshot(
+                config,
+                run_id="excel-sync-run-1",
+                status="ok",
+                code="OK",
+                debug_log=str(root / "excel-sync.jsonl"),
+                gui_payload=gui_payload,
+                artifacts=[artifact_path],
+                metadata={
+                    "run_id": "excel-sync-run-1",
+                    "code": "OK",
+                    "mode": "excel_sync",
+                },
+                artifact_root=root,
             )
 
             self.assertTrue(config.gui_status_file.exists())
