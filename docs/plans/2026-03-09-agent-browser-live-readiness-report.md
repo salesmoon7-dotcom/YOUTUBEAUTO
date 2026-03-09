@@ -22,6 +22,7 @@
 - stage2 브라우저 워커 opt-in 경로 추가 완료
   - `video_plan["use_agent_browser_services"]`를 주면 `genspark/seaart/geminigen/canva` payload에 `use_agent_browser`가 자동 주입됩니다.
   - 각 worker는 `use_agent_browser=True`일 때 hidden CLI child(`--agent-browser-stage2-adapter-child`) 기반 adapter command를 자동 구성합니다.
+  - hidden CLI child는 workspace에 `attach_evidence.json`을 자동 생성해 attach 결과를 머신-리더블 증거로 남깁니다.
   - 기본값은 여전히 fail-closed이며, opt-in이 없으면 기존 `native_*_not_implemented` 계약을 유지합니다.
 - 검증 명령:
 
@@ -34,6 +35,7 @@ python -m pytest tests/test_runtime_v2_agent_browser.py tests/test_runtime_v2_de
   - `tests/test_runtime_v2_stage2_contracts.py`의 agent-browser opt-in contract 추가
   - `tests/test_runtime_v2_stage2_workers.py`의 genspark/canva agent-browser adapter mode 회귀 추가
   - `tests/test_runtime_v2_cli_agent_browser_stage2_adapter.py`의 hidden CLI child artifact write 회귀 추가
+  - stage2 worker details/artifacts에 `attach_evidence.json` 포함 회귀 추가
 
 ### Runtime Health Readiness
 
