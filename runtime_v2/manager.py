@@ -13,6 +13,7 @@ from runtime_v2.excel.selector import select_topic_spec
 from runtime_v2.excel.state_store import (
     finalize_excel_status,
     merge_video_plan_to_excel,
+    merge_stage1_handoff_to_excel,
 )
 from runtime_v2.gui_adapter import build_gui_status_payload
 from runtime_v2.latest_run import write_runtime_snapshot
@@ -111,7 +112,7 @@ def merge_stage1_result(
         },
         ensure_ascii=True,
     )
-    return merge_video_plan_to_excel(
+    merged = merge_video_plan_to_excel(
         excel_path,
         sheet_name=sheet_name,
         row_index=row_index,
@@ -119,6 +120,19 @@ def merge_stage1_result(
         summary=summary,
         reason_code=str(video_plan.get("reason_code", "ok")),
     )
+    if not merged:
+        return False
+    handoff_raw = video_plan.get("stage1_handoff")
+    if isinstance(handoff_raw, dict):
+        contract = handoff_raw.get("contract")
+        if isinstance(contract, dict):
+            _ = merge_stage1_handoff_to_excel(
+                excel_path,
+                sheet_name=sheet_name,
+                row_index=row_index,
+                parsed_payload=contract,
+            )
+    return True
 
 
 def finalize_excel_row(

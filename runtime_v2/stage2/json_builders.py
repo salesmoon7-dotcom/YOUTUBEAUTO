@@ -85,6 +85,7 @@ def build_stage2_jobs(
         if isinstance(raw_agent_browser_services, list)
         else set()
     )
+    stage1_handoff = video_plan.get("stage1_handoff")
     for scene_offset, raw_scene in enumerate(typed_scene_plan):
         if not isinstance(raw_scene, dict):
             continue
@@ -104,6 +105,8 @@ def build_stage2_jobs(
             reason_code=str(video_plan.get("reason_code", "ok")),
         )
         payload["service_artifact_path"] = str(service_artifact_path)
+        if isinstance(stage1_handoff, dict):
+            payload["stage1_handoff"] = stage1_handoff
         if workload in agent_browser_services:
             payload["use_agent_browser"] = True
         jobs.append(
@@ -145,6 +148,8 @@ def build_stage2_jobs(
         "render_spec": render_spec,
         "voice_json": _build_voice_json(typed_scene_plan),
     }
+    if isinstance(stage1_handoff, dict):
+        render_payload["stage1_handoff"] = stage1_handoff
     jobs.append(
         build_explicit_job_contract(
             job_id=f"render-{run_id}",
