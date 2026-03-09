@@ -34,6 +34,7 @@
   - inline label/value(`Title: ...`, `#01: ...`) richer field parsing은 반영되었습니다.
   - 남은 일은 실제 browser DOM/snapshot 변형 패턴을 더 수집해 parser 허용 폭을 넓힐지 판단하는 것입니다.
   - 다음 legacy carryover 적용 계획은 `docs/plans/2026-03-09-runtime-v2-legacy-carryover-top3-plan.md`를 기준으로 관리합니다.
+  - legacy carryover top3 safe batch는 완료되었습니다.
   - skill bundle 기준은 `docs/sop/SOP_closed_loop_automation_skill_map.md`를 canonical map으로 사용합니다.
 - 채팅 interruption 대응 규칙 강화:
   - 채팅 세션에서는 실브라우저 relaunch/recovery를 실행하지 않습니다.
