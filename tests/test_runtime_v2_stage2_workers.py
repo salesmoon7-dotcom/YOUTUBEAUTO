@@ -320,6 +320,20 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         self.assertTrue(bool(completion["reused"]))
         self.assertTrue(bool(details["reused"]))
 
+    def test_genspark_worker_surfaces_standard_output_not_created_code(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = root / "exports" / "genspark-missing.png"
+            job = _stage2_job("genspark")
+            job.payload["service_artifact_path"] = str(output_path)
+            job.payload["adapter_command"] = [sys.executable, "-c", "pass"]
+
+            result = run_genspark_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "OUTPUT_NOT_CREATED")
+
     def test_seaart_worker_processes_one_item_via_explicit_adapter_command(
         self,
     ) -> None:

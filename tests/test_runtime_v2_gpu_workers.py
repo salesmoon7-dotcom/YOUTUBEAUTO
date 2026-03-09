@@ -142,6 +142,32 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertTrue(bool(completion["reused"]))
         self.assertTrue(bool(details["reused"]))
 
+    def test_qwen3_worker_surfaces_standard_output_not_created_code(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            image_path = root / "image.png"
+            output_path = root / "speech.wav"
+            _ = image_path.write_bytes(b"png")
+            job = JobContract(
+                job_id="qwen-job-missing-output",
+                workload="qwen3_tts",
+                payload={
+                    "voice_texts": [
+                        {"col": "#01", "text": "hello world", "original_voices": [1]}
+                    ],
+                    "image_path": str(image_path.resolve()),
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "adapter_command": [sys.executable, "-c", "pass"],
+                },
+            )
+
+            result = run_qwen3_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "OUTPUT_NOT_CREATED")
+
     def test_rvc_worker_processes_one_item_via_explicit_adapter_command(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
