@@ -64,23 +64,26 @@ python -m pytest tests/test_runtime_v2_agent_browser.py tests/test_runtime_v2_de
 
 ### Follow-up Attach Audit
 
-- evidence: `system/runtime_v2_probe/agent-browser-live-attach-07/summary.json`
+- evidence:
+  - `system/runtime_v2_probe/agent-browser-live-attach-07/summary.json`
+  - `system/runtime_v2_probe/agent-browser-seaart-final-05/summary.json`
+  - `system/runtime_v2_probe/agent-browser-geminigen-final-11/summary.json`
 - result:
   - `canva:9666` -> `status=ok`
-  - `seaart:9444` -> `AGENT_BROWSER_COMMAND_FAILED` (`os error 10060`)
-  - `geminigen:9555` -> `AGENT_BROWSER_COMMAND_FAILED` (`os error 10060`)
+  - `seaart:9444` -> `status=ok` (raw CDP HTTP fallback)
+  - `geminigen:9555` -> `status=ok` (raw CDP HTTP fallback)
 - interpretation:
-  - `canva`는 코드 측 matcher/snapshot 정책 보정으로 live attach까지 회복됐습니다.
-  - 남은 blocker는 `seaart`, `geminigen` 두 서비스의 세션 안정성/포트 응답 문제입니다.
+  - 세 서비스 모두 live attach 확인이 완료되었습니다.
+  - `seaart`, `geminigen`은 `agent-browser tab list` 자체는 불안정했지만 raw CDP HTTP fallback으로 canonical verify를 통과합니다.
 
 ### Final Attach Audit Note
 
-- `seaart` foreground launch confirms `DevTools listening on ws://127.0.0.1:9444/...`, but detached/agent-browser attach still fails with `os error 10060` in this environment.
-- `geminigen` foreground launch also reaches `DevTools listening on ws://127.0.0.1:9555/...`, but follow-up `agent-browser` attach does not remain stable in the current session/launch pattern.
-- therefore final environment status is:
-  - `seaart:9444` -> browser can start, but CDP attach remains unstable in current environment
-  - `canva:9666` -> recovered, live attach `ok`
-  - `geminigen:9555` -> browser can start, but CDP attach remains unstable in current environment
+- `seaart`, `geminigen`, `canva` 모두 브라우저 부팅과 live attach 확인이 끝났습니다.
+- `seaart`, `geminigen`은 운영 세션에서 `agent-browser` CLI가 불안정할 수 있으므로, 현재 canonical verify는 raw CDP HTTP fallback을 포함한 worker 경로를 사용합니다.
+- final environment status:
+  - `seaart:9444` -> `ok`
+  - `geminigen:9555` -> `ok`
+  - `canva:9666` -> `ok`
 
 ### Runtime Health Readiness
 
