@@ -69,6 +69,15 @@ python -m pytest tests/test_runtime_v2_agent_browser.py tests/test_runtime_v2_de
   - `canva`는 코드 측 matcher/snapshot 정책 보정으로 live attach까지 회복됐습니다.
   - 남은 blocker는 `seaart`, `geminigen` 두 서비스의 세션 안정성/포트 응답 문제입니다.
 
+### Final Attach Audit Note
+
+- `seaart` foreground launch confirms `DevTools listening on ws://127.0.0.1:9444/...` and the service can be recovered with Python-based detached launch.
+- `geminigen` foreground launch does **not** reach `DevTools listening`; instead it falls into Chrome `ProcessSingleton` handling, which indicates an existing profile/process ownership conflict on `D:/YOUTUBE_AUTO/system/geminigen_chrome_userdata`.
+- therefore final environment status is:
+  - `seaart:9444` -> recoverable by alternate launch method, code path complete
+  - `canva:9666` -> recovered, live attach `ok`
+  - `geminigen:9555` -> remaining environment blocker (profile/process singleton conflict)
+
 ### Runtime Health Readiness
 
 - `docs/TODO.md` 기준 readiness check 완료
