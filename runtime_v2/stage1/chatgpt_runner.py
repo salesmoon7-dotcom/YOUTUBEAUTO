@@ -255,6 +255,7 @@ def _stage1_failed(
     error_code: str,
     reason_code: str,
     evidence: dict[str, object] | None = None,
+    raw_output_path: str = "",
 ) -> dict[str, object]:
     stage1_result = stage1_result_payload(
         run_id=run_id,
@@ -265,6 +266,7 @@ def _stage1_failed(
         next_jobs=[],
         error_code=error_code,
         status="error",
+        raw_output_path=raw_output_path,
     )
     details: dict[str, object] = {
         "reason_code": reason_code,
@@ -325,6 +327,7 @@ def run_stage1_chatgpt_job(
                     "gpt_capture": gpt_capture,
                     "raw_output_path": str(raw_output_path.resolve()),
                 },
+                raw_output_path=str(raw_output_path.resolve()),
             )
     is_valid, _ = validate_topic_spec(topic_spec)
     if not is_valid:
@@ -336,7 +339,20 @@ def run_stage1_chatgpt_job(
             error_code="invalid_topic_spec",
             reason_code="invalid_topic_spec",
         )
-    parsed_payload = build_stage1_parsed_payload_from_topic_spec(topic_spec)
+    try:
+        parsed_payload = build_stage1_parsed_payload_from_topic_spec(topic_spec)
+    except ValueError as exc:
+        error_code = str(exc) or "invalid_stage1_output"
+        return _stage1_failed(
+            workspace,
+            debug_log=debug_log,
+            run_id=run_id,
+            row_ref=row_ref,
+            error_code=error_code,
+            reason_code=error_code,
+            evidence={"raw_output_path": str(raw_output_path.resolve())},
+            raw_output_path=str(raw_output_path.resolve()),
+        )
     errors = validate_stage1_parsed_payload(parsed_payload)
     if errors:
         return _stage1_failed(
@@ -347,6 +363,7 @@ def run_stage1_chatgpt_job(
             error_code=errors[0] if errors else "invalid_stage1_output",
             reason_code=errors[0] if errors else "invalid_stage1_output",
             evidence={"raw_output_path": str(raw_output_path.resolve())},
+            raw_output_path=str(raw_output_path.resolve()),
         )
     _ = write_json_atomic(parsed_payload_path, parsed_payload)
     handoff = build_stage1_handoff(

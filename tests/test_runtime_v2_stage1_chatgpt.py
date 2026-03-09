@@ -256,6 +256,24 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             self.assertTrue(Path(cast(str, handoff["raw_output_path"])).exists())
             self.assertTrue(Path(cast(str, handoff["parsed_payload_path"])).exists())
 
+    def test_stage1_failure_preserves_raw_output_path_in_result(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            workspace = Path(tmp_dir)
+            topic_spec = _topic_spec(topic="Money flow")
+            topic_spec["gpt_response_text"] = "not-json-response"
+
+            result = run_stage1_chatgpt_job(
+                topic_spec,
+                workspace,
+                debug_log="logs/stage1-run-1.jsonl",
+            )
+
+        stage1_result = cast(dict[str, object], result["stage1_result"])
+        self.assertEqual(result["status"], "failed")
+        self.assertTrue(
+            str(stage1_result["raw_output_path"]).endswith("raw_output.json")
+        )
+
     def test_stage1_runner_uses_real_gpt_response_text_when_present(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             workspace = Path(tmp_dir)
@@ -518,12 +536,16 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "CHATGPT_BACKEND_UNAVAILABLE")
         details = cast(dict[str, object], result["details"])
+        stage1_result = cast(dict[str, object], details["stage1_result"])
         executor = cast(dict[str, object], details["executor"])
         gpt_capture = cast(dict[str, object], executor["gpt_capture"])
         self.assertEqual(gpt_capture["status"], "failed")
         self.assertEqual(raw_output["source"], "gpt_capture_only")
         self.assertEqual(
             cast(dict[str, object], raw_output["gpt_capture"])["status"], "failed"
+        )
+        self.assertTrue(
+            str(stage1_result["raw_output_path"]).endswith("raw_output.json")
         )
         relaunch_mock.assert_called_once_with("chatgpt")
         sleep_mock.assert_called_once()
