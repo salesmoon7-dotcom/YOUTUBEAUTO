@@ -5,8 +5,9 @@ import os
 import shutil
 import subprocess
 import time
+import urllib.request
 from pathlib import Path
-from typing import Callable
+from typing import Callable, cast
 
 CHATGPT_INPUT_SELECTORS = [
     "#prompt-textarea",
@@ -49,8 +50,10 @@ def generate_gpt_response_text(
     timeout_sec: int = 180,
     poll_interval_sec: float = 2.0,
     command_runner: Callable[[list[str], int], str] | None = None,
+    session_probe: Callable[[int], dict[str, object]] | None = None,
 ) -> dict[str, object]:
     runner = _default_runner if command_runner is None else command_runner
+    probe = _default_session_probe if session_probe is None else session_probe
     try:
         submit_info = _submit_prompt(prompt=prompt, port=port, runner=runner)
     except RuntimeError as exc:
@@ -58,6 +61,7 @@ def generate_gpt_response_text(
             failure_stage="submit",
             error_code="CHATGPT_BACKEND_UNAVAILABLE",
             backend_error=str(exc),
+            final_state=probe(port),
         )
     started = time.time()
     last_text = ""
@@ -72,6 +76,7 @@ def generate_gpt_response_text(
                 error_code="CHATGPT_BACKEND_UNAVAILABLE",
                 backend_error=str(exc),
                 submit_info=submit_info,
+                final_state=probe(port),
             )
         last_state = state
         text = str(state.get("assistant_text", "")).strip()
@@ -105,17 +110,65 @@ def _interaction_failure(
     error_code: str,
     backend_error: str,
     submit_info: dict[str, object] | None = None,
+    final_state: dict[str, object] | None = None,
 ) -> dict[str, object]:
     return {
         "status": "failed",
         "error_code": error_code,
         "failure_stage": failure_stage,
         "submit_info": {} if submit_info is None else submit_info,
-        "final_state": {},
+        "final_state": {} if final_state is None else final_state,
         "details": {
             "backend_error": backend_error,
+            "backend_fallback": "raw_cdp_http",
         },
     }
+
+
+def _default_session_probe(port: int) -> dict[str, object]:
+    tabs = _http_cdp_tab_list(port)
+    assistant_tab = _select_chatgpt_tab(tabs)
+    return {
+        "probe_backend": "raw_cdp_http",
+        "port": port,
+        "tab_count": len(tabs),
+        "selected_tab": assistant_tab,
+    }
+
+
+def _http_cdp_tab_list(port: int) -> list[dict[str, object]]:
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/json/list", timeout=5
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8", "ignore"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, list):
+        return []
+    tabs: list[dict[str, object]] = []
+    for raw_item in payload:
+        if not isinstance(raw_item, dict):
+            continue
+        item = cast(dict[str, object], raw_item)
+        if str(item.get("type", "")) != "page":
+            continue
+        tabs.append(
+            {
+                "title": str(item.get("title", "")),
+                "url": str(item.get("url", "")),
+            }
+        )
+    return tabs
+
+
+def _select_chatgpt_tab(tabs: list[dict[str, object]]) -> dict[str, object]:
+    for tab in tabs:
+        url = str(tab.get("url", "")).lower()
+        title = str(tab.get("title", "")).lower()
+        if "chatgpt.com" in url or "chatgpt" in title:
+            return tab
+    return {}
 
 
 def _submit_prompt(

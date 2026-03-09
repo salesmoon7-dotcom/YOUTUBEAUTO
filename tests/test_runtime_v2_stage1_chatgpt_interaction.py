@@ -59,19 +59,31 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         def fake_runner(command: list[str], timeout_sec: int) -> str:
             raise RuntimeError("os error 10060")
 
+        def fake_probe(port: int) -> dict[str, object]:
+            return {
+                "probe_backend": "raw_cdp_http",
+                "port": port,
+                "tab_count": 1,
+                "selected_tab": {"title": "ChatGPT", "url": "https://chatgpt.com/"},
+            }
+
         result = generate_gpt_response_text(
             prompt="test prompt",
             port=9222,
             poll_interval_sec=0.01,
             command_runner=fake_runner,
+            session_probe=fake_probe,
         )
         details = cast(dict[str, object], result["details"])
+        final_state = cast(dict[str, object], result["final_state"])
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "CHATGPT_BACKEND_UNAVAILABLE")
         self.assertEqual(result["failure_stage"], "submit")
         self.assertIn("10060", str(details["backend_error"]))
+        self.assertEqual(details["backend_fallback"], "raw_cdp_http")
         self.assertEqual(result["submit_info"], {})
+        self.assertEqual(final_state["tab_count"], 1)
 
     def test_generate_gpt_response_text_reports_read_backend_failure(self) -> None:
         responses = iter(
@@ -94,19 +106,31 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                     raise RuntimeError("read timeout")
             raise RuntimeError("unexpected")
 
+        def fake_probe(port: int) -> dict[str, object]:
+            return {
+                "probe_backend": "raw_cdp_http",
+                "port": port,
+                "tab_count": 1,
+                "selected_tab": {"title": "ChatGPT", "url": "https://chatgpt.com/"},
+            }
+
         result = generate_gpt_response_text(
             prompt="test prompt",
             port=9222,
             poll_interval_sec=0.01,
             command_runner=fake_runner,
+            session_probe=fake_probe,
         )
         details = cast(dict[str, object], result["details"])
+        final_state = cast(dict[str, object], result["final_state"])
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "CHATGPT_BACKEND_UNAVAILABLE")
         self.assertEqual(result["failure_stage"], "read")
         self.assertIn("read timeout", str(details["backend_error"]))
+        self.assertEqual(details["backend_fallback"], "raw_cdp_http")
         self.assertTrue(bool(result["submit_info"]))
+        self.assertEqual(final_state["tab_count"], 1)
 
 
 if __name__ == "__main__":
