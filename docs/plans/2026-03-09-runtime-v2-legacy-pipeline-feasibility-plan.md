@@ -177,10 +177,15 @@
 
 ## Current Decision
 
-- `stage1 GPT output/parse/handoff canonical contract` 1차 배치는 구현되었습니다.
+- `stage1 GPT output/parse/handoff canonical contract` 2차 배치까지 구현되었습니다.
 - 실제 evidence:
   - `system/runtime_v2_probe/stage1-row13-evidence-01/raw_output.json`
   - `system/runtime_v2_probe/stage1-row13-evidence-01/parsed_payload.json`
   - `system/runtime_v2_probe/stage1-row13-evidence-01/stage1_handoff.json`
+- 실제 GPT text 연결 evidence:
+  - `system/runtime_v2_probe/stage1-row13-evidence-04/raw_output.json`
+  - `system/runtime_v2_probe/stage1-row13-evidence-04/parsed_payload.json`
+  - `system/runtime_v2_probe/stage1-row13-evidence-04/stage1_handoff.json`
 - `Sheet1!row13` 기준으로 위 3개 artifact가 생성되고, downstream `next_jobs`도 3개(`genspark`, `seaart`, `render`)까지 이어지는 것을 확인했습니다.
-- 남은 일은 이 canonical parsed handoff를 실제 GPT/browser 실행 결과와 연결하고, Excel handoff 필드를 레거시 수준까지 넓히는 것입니다.
+- `stage1-row13-evidence-04`는 `raw_source = gpt_response_text`로 기록되어, placeholder topic-spec fallback이 아니라 실제 GPT text 입력이 `stage1.v1` parsed handoff로 연결되는 것을 확인했습니다.
+- 남은 일은 실제 browser ChatGPT transcript/DOM output을 `gpt_response_text` 공급원으로 자동 연결하고, Excel handoff 필드를 레거시 수준까지 넓히는 것입니다.

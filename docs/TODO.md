@@ -1,6 +1,11 @@
 # TODO
 
-- 현재 canonical plan 기준의 1순위 remediation은 모두 닫혔습니다.
+- 새 active unit: `docs/plans/2026-03-09-runtime-v2-guardrail-drift-remediation-plan.md`
+  - 후속 architecture audit에서 `runtime_v2`의 residual drift를 확인했습니다.
+  - 핵심 P0는 `single writer` 복원과 `failure contract` 동결입니다.
+  - 직접 근거는 `runtime_v2/control_plane.py`, `runtime_v2/latest_run.py`, `runtime_v2/cli.py`, `runtime_v2/manager.py`, `runtime_v2/supervisor.py`, `runtime_v2/workers/agent_browser_worker.py`입니다.
+  - 기존 `docs/plans/2026-03-09-runtime-v2-architecture-robustness-review-plan.md` 완료 기록은 유지하되, 이번 항목은 post-implementation audit 기반 follow-up remediation으로 관리합니다.
+- 이전 canonical plan 기준의 1순위 remediation은 닫혔지만, 이번 post-implementation audit로 새 follow-up remediation unit이 열렸습니다.
 - `1행 smoke` readiness 재판정은 완료되었습니다.
   - detached browser recovery run `system/runtime_v2_probe/browser-recover-run-02/probe_result.json`이 `code=OK`로 종료됐습니다.
   - `python -m runtime_v2.cli --readiness-check` 기준 `ready=true`, `code=OK`를 확인했습니다.
@@ -12,9 +17,10 @@
   - 남은 일은 live attach 범위를 `genspark` 외 서비스(`seaart/geminigen/canva`)까지 넓혀도 placeholder fallback 없이 닫히게 만드는 것입니다.
   - live readiness 상세 판정은 `docs/plans/2026-03-09-agent-browser-live-readiness-report.md`를 기준으로 관리합니다.
 - stage1 legacy parity active unit:
-  - `docs/plans/2026-03-09-runtime-v2-legacy-pipeline-feasibility-plan.md` 기준 `stage1 GPT output/parse/handoff canonical contract` 1차 배치는 구현됨
+  - `docs/plans/2026-03-09-runtime-v2-legacy-pipeline-feasibility-plan.md` 기준 `stage1 GPT output/parse/handoff canonical contract` 2차 배치까지 구현됨
   - 실제 row evidence는 `system/runtime_v2_probe/stage1-row13-evidence-01/`에 생성됨
-  - 남은 일은 real GPT/browser output을 이 canonical handoff에 연결하고, Excel field parity를 레거시 수준까지 확장하는 것입니다.
+  - 실제 GPT text 연결 evidence는 `system/runtime_v2_probe/stage1-row13-evidence-04/`에 생성됨
+  - 남은 일은 real browser ChatGPT transcript/DOM output을 `gpt_response_text` 공급원으로 자동 연결하고, Excel field parity를 레거시 수준까지 확장하는 것입니다.
   - skill bundle 기준은 `docs/sop/SOP_closed_loop_automation_skill_map.md`를 canonical map으로 사용합니다.
 - 채팅 interruption 대응 규칙 강화:
   - 채팅 세션에서는 실브라우저 relaunch/recovery를 실행하지 않습니다.
