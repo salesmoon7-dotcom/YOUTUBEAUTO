@@ -478,6 +478,10 @@ def run_control_loop_once(
             if completion is None
             else str(completion.get("final_artifact_path", "")),
             "completion": {} if completion is None else completion,
+            "legacy_contracts_summary": (
+                "post_gpt_immediate=seaart,genspark,tts; "
+                "requires_upstream_artifacts=geminigen,canva,kenburns,rvc"
+            ),
             "invalid_reason": _invalid_reason_summary(runtime_config.input_root),
             "browser_evidence": build_agent_browser_evidence(worker_contract)
             if job.workload == "agent_browser_verify"

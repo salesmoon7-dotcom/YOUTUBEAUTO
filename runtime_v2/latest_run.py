@@ -93,12 +93,20 @@ def write_runtime_snapshot(
     artifact_root: Path | None = None,
     update_pointers: bool = True,
 ) -> None:
+    normalized_metadata = normalize_runtime_snapshot_metadata(
+        metadata,
+        run_id=run_id,
+        mode=mode,
+        status=status,
+        code=code,
+        debug_log=debug_log,
+    )
     _ = write_gui_status(gui_payload, config.gui_status_file)
     _ = write_result_router(
         artifacts,
         config.artifact_root if artifact_root is None else artifact_root,
         config.result_router_file,
-        metadata=metadata,
+        metadata=normalized_metadata,
     )
     if update_pointers:
         update_latest_run_pointers(
@@ -110,6 +118,65 @@ def write_runtime_snapshot(
             debug_log=debug_log,
             write_completed=write_completed,
         )
+
+
+def build_canonical_handoff_payload(
+    *,
+    run_id: str,
+    mode: str,
+    status: str,
+    code: str,
+    debug_log: str,
+    metadata: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "schema_version": "1.0",
+        "runtime": "runtime_v2",
+        "owner_layer": "control_plane" if mode == "control_loop" else mode,
+        "run_id": run_id,
+        "mode": mode,
+        "status": status,
+        "code": code,
+        "debug_log": debug_log,
+        "job_id": str(metadata.get("job_id", "")),
+        "workload": str(metadata.get("workload", "")),
+        "worker_error_code": str(metadata.get("worker_error_code", "")),
+        "completion_state": str(metadata.get("completion_state", "")),
+        "final_output": bool(metadata.get("final_output", False)),
+        "chain_depth": _to_int(metadata.get("chain_depth", 0)),
+        "next_jobs_count": _to_int(metadata.get("next_jobs_count", 0)),
+        "guardrails": {
+            "single_writer": True,
+            "single_failure_contract": True,
+            "worker_policy_free": True,
+            "single_reference_adapter": True,
+        },
+        "legacy_contracts_ref": "docs/plans/2026-03-09-legacy-post-gpt-service-contract-survey.md",
+        "guardrail_plan_ref": "docs/plans/2026-03-09-runtime-v2-guardrail-drift-remediation-plan.md",
+    }
+
+
+def normalize_runtime_snapshot_metadata(
+    metadata: dict[str, object],
+    *,
+    run_id: str,
+    mode: str,
+    status: str,
+    code: str,
+    debug_log: str,
+) -> dict[str, object]:
+    normalized = dict(metadata)
+    handoff = normalized.get("canonical_handoff")
+    if not isinstance(handoff, dict):
+        normalized["canonical_handoff"] = build_canonical_handoff_payload(
+            run_id=run_id,
+            mode=mode,
+            status=status,
+            code=code,
+            debug_log=debug_log,
+            metadata=normalized,
+        )
+    return normalized
 
 
 def ensure_bootstrap_runtime_snapshot(
@@ -315,3 +382,18 @@ def _path_from_pointer(
     if not raw_value:
         return fallback
     return Path(raw_value)
+
+
+def _to_int(value: object, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return default
+    return default
