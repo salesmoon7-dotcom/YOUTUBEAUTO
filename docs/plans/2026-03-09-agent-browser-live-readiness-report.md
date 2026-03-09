@@ -71,10 +71,10 @@ python -m pytest tests/test_runtime_v2_agent_browser.py tests/test_runtime_v2_de
 
 ### Final Attach Audit Note
 
-- `seaart` foreground launch confirms `DevTools listening on ws://127.0.0.1:9444/...` and the service can be recovered with Python-based detached launch.
+- `seaart` foreground launch confirms `DevTools listening on ws://127.0.0.1:9444/...`, but detached/agent-browser attach still fails with `os error 10060` in this environment.
 - `geminigen` foreground launch does **not** reach `DevTools listening`; instead it falls into Chrome `ProcessSingleton` handling, which indicates an existing profile/process ownership conflict on `D:/YOUTUBE_AUTO/system/geminigen_chrome_userdata`.
 - therefore final environment status is:
-  - `seaart:9444` -> recoverable by alternate launch method, code path complete
+  - `seaart:9444` -> browser can start, but CDP attach remains unstable in current environment
   - `canva:9666` -> recovered, live attach `ok`
   - `geminigen:9555` -> remaining environment blocker (profile/process singleton conflict)
 

@@ -20,9 +20,11 @@
   - stage2 브라우저 워커는 `video_plan["use_agent_browser_services"]` opt-in으로 hidden CLI child 기반 `agent-browser` adapter 경로를 자동 생성할 수 있음
   - stage2 `agent-browser` opt-in 실행은 workspace에 `attach_evidence.json`을 자동 생성해 attach 증거를 남김
   - detached `2차 1행` auto probe `system/runtime_v2_probe/stage2-row1-auto-03/probe_result.json`은 `code=OK`로 완료됨
-  - follow-up attach 결과 `canva:9666`은 회복됐고 `seaart:9444`는 대체 launch 방식으로 attach 가능함을 확인했습니다.
-  - 최종 남은 blocker는 `geminigen:9555` 단일 환경 이슈이며, `D:/YOUTUBE_AUTO/system/geminigen_chrome_userdata` profile의 process singleton 충돌로 판단됩니다.
-  - 따라서 남은 항목은 코드 구현이 아니라 `geminigen` 브라우저 운영 환경 정리입니다.
+  - follow-up attach 결과 `canva:9666`은 회복됐습니다.
+  - 최종 남은 blocker는 `seaart:9444`, `geminigen:9555` 두 환경 이슈입니다.
+  - `seaart:9444`는 브라우저 부팅은 되지만 CDP attach가 현재 환경에서 `os error 10060`으로 불안정합니다.
+  - `geminigen:9555`는 `D:/YOUTUBE_AUTO/system/geminigen_chrome_userdata` profile의 process singleton 충돌로 판단됩니다.
+  - 따라서 남은 항목은 코드 구현이 아니라 `seaart/geminigen` 브라우저 운영 환경 정리입니다.
   - live readiness 상세 판정은 `docs/plans/2026-03-09-agent-browser-live-readiness-report.md`를 기준으로 관리합니다.
 - stage1 legacy parity active unit:
   - `docs/plans/2026-03-09-runtime-v2-legacy-pipeline-feasibility-plan.md` 기준 `stage1 GPT output/parse/handoff canonical contract` 2차 배치까지 구현됨
