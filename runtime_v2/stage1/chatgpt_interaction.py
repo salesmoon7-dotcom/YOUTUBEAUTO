@@ -96,7 +96,11 @@ def generate_gpt_response_text(
                 backend_error=str(exc),
                 final_state=probe(port),
             )
-            if attempt == 1 and relaunch_browser is not None:
+            if (
+                attempt == 1
+                and relaunch_browser is not None
+                and _is_safe_submit_retry_error(str(exc))
+            ):
                 emit(
                     "retry_decision",
                     attempt=attempt,
@@ -318,3 +322,8 @@ def _backend_fallbacks(payload: dict[str, object]) -> list[str]:
         if normalized and normalized not in fallbacks:
             fallbacks.append(normalized)
     return fallbacks
+
+
+def _is_safe_submit_retry_error(message: str) -> bool:
+    normalized = str(message).strip().upper()
+    return normalized in {"NO_SEND", "SEND_DISABLED"}

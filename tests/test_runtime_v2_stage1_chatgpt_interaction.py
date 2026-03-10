@@ -543,7 +543,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             def submit_prompt(self, prompt: str) -> dict[str, object]:
                 self.submit_calls += 1
                 if self.submit_calls == 1:
-                    raise RuntimeError("submit timeout")
+                    raise RuntimeError("NO_SEND")
                 return {
                     "ok": True,
                     "inputSelector": "#prompt-textarea",
@@ -591,6 +591,50 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertIn("retry_decision", event_names)
         self.assertIn("submit_failed", event_names)
         self.assertGreaterEqual(event_names.count("submit_start"), 2)
+
+    def test_generate_gpt_response_text_does_not_retry_ambiguous_submit_failure(
+        self,
+    ) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def __init__(self) -> None:
+                self.submit_calls = 0
+
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                self.submit_calls += 1
+                raise RuntimeError("submit timeout")
+
+            def read_response_state(self) -> dict[str, object]:
+                raise RuntimeError("unexpected")
+
+        relaunch_calls: list[str] = []
+
+        def fake_probe(port: int) -> dict[str, object]:
+            return {
+                "probe_backend": "raw_cdp_http",
+                "port": port,
+                "tab_count": 1,
+                "selected_tab": {"title": "ChatGPT", "url": "https://chatgpt.com/"},
+            }
+
+        backend = FakeBackend()
+        result = generate_gpt_response_text(
+            prompt="test prompt",
+            port=9222,
+            poll_interval_sec=0.01,
+            session_probe=fake_probe,
+            backend=backend,
+            relaunch_browser=lambda: relaunch_calls.append("chatgpt"),
+        )
+
+        timeline = cast(list[dict[str, object]], result["timeline"])
+        event_names = [str(item["event"]) for item in timeline]
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_BACKEND_UNAVAILABLE")
+        self.assertEqual(backend.submit_calls, 1)
+        self.assertEqual(relaunch_calls, [])
+        self.assertNotIn("retry_decision", event_names)
+        self.assertEqual(event_names[-1], "final_state")
 
     def test_generate_gpt_response_text_does_not_resubmit_after_read_failure(
         self,
