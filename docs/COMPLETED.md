@@ -1,5 +1,7 @@
 # COMPLETED
 
+- `docs/sop/SOP_runtime_v2_development_guardrails.md`, `docs/COMPLETED.md` - `warning_worker_error_code_mismatch` 운영 triage 정책 정리 완료; mismatch는 기본 non-blocking 경고로 두되, 반복 발생 또는 재시도 폭증/작업 중단과 동반될 때만 blocking으로 승격한다는 기준과 Oracle/실행 증거/워커 코드 정의/런타임 매핑 순의 신뢰 우선순위를 guardrails 문서에 고정했습니다.
+
 - `docs/reference/error-code-semantics.md`, `docs/INDEX.md` - runtime_v2 error field semantics 정본 문서화 완료; `error_code`, `worker_error_code`, `raw_error_code`, `warning_worker_error_code_mismatch`의 정의, 우선순위, 생성 규칙, 예시를 한 문서에 고정했고 `docs/INDEX.md`에 canonical reference 링크를 추가했습니다. 운영자/개발자는 이제 이 문서 1곳을 기준으로 raw/canonical/error 필드 의미를 해석하면 됩니다.
 
 - `docs/plans/2026-03-11-browser-health-subprogram-review.md` - browser health subprogram review 완료; `runtime_v2/browser/manager.py`, `runtime_v2/browser/supervisor.py`, `runtime_v2/supervisor.py`, `tests/test_runtime_v2_browser_plane.py`를 기준으로 현재 구조가 이미 브라우저 health/recovery 하부프로그램 역할을 수행하고 있음을 정리했고, 각 브라우저의 운영 가능 상태를 포트/CDP 탭/로그인/ready marker/profile lock 기준으로 판정할 수 있다는 점과 아직 메모리·renderer hang·외부 watchdog 축은 미포함이라는 한계를 함께 기록했습니다. 결론은 `supervisor` 산하 전용 browser plane은 필요하지만 동일 책임의 별도 독립 프로그램을 지금 추가할 필요는 없다는 것입니다.
