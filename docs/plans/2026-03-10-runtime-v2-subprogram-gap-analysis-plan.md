@@ -261,4 +261,5 @@ Focus:
 - 따라서 GPT Field Matrix의 “필수 필드 존재”는 현재 코드 산출물 기준으로 증명 가능합니다.
 - live ChatGPT prompt는 이제 legacy-style longform production template를 canonical builder로 사용합니다.
 - backend hardening(`tab preselect + retry`)까지 반영했지만, `real-first`는 아직 success가 아니라 running/hang 상태까지가 최신입니다.
+- completion detection도 이제 `stop-button disappearance` 기반으로 강화되어, 조기 성공 판정을 줄였습니다.
 - raw CDP websocket fallback(`suppress_origin=True`)까지 반영했지만, `real-first`는 여전히 artifact success보다 sequencing/running 상태 정체가 남아 있습니다.

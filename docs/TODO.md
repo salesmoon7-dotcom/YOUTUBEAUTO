@@ -57,6 +57,7 @@
   - `system/runtime_v2_probe/first-test-real-live-06/` 기준 실제 live 시도는 `CHATGPT_BACKEND_UNAVAILABLE`로 fail-close 되었고, evidence chain은 남았습니다.
   - live ChatGPT 경로는 legacy-style longform production prompt를 canonical builder로 사용합니다.
   - `AgentBrowserCdpBackend`는 `tab preselect + retry` 하드닝이 반영되었습니다.
+  - 완료 판정은 `stop-button`이 나타났다 사라진 뒤 텍스트가 안정화될 때만 성공으로 처리합니다.
   - `system/runtime_v2_probe/first-test-real-live-08/` 기준으로는 queue가 `running`까지 진입했지만 성공 artifact는 아직 생성되지 않았습니다.
   - raw CDP websocket fallback(`suppress_origin=True`)도 반영됐지만, `first-test-real-live-09/` 기준 여전히 real-live 성공 artifact는 닫히지 않았습니다.
   - 남은 핵심은 real assistant artifact를 성공으로 다시 확보하는 것입니다.

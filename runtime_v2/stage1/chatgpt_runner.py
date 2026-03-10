@@ -106,7 +106,7 @@ def build_live_chatgpt_prompt(topic_spec: dict[str, object]) -> str:
     topic = str(topic_spec.get("topic", "")).strip()
     return "\n".join(
         [
-            "레거시로직을 참고해서 영상 제작 모드로 진행하세요.",
+            "영상 제작 모드로 진행하세요.",
             "질문형 설명/근거 요약이 아니라, 가이드 최종 출력 포맷 결과만 생성하세요.",
             "출력은 [Voice] 블록부터 시작하세요.",
             "Research Locale: JP",

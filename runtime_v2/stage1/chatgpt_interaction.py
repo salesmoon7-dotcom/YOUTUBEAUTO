@@ -76,6 +76,7 @@ def generate_gpt_response_text(
     started = time.time()
     last_text = ""
     stable_count = 0
+    saw_streaming = False
     last_state: dict[str, object] = {}
     while time.time() - started < timeout_sec:
         try:
@@ -91,7 +92,9 @@ def generate_gpt_response_text(
         last_state = state
         text = str(state.get("assistant_text", "")).strip()
         has_stop = bool(state.get("has_stop", False))
-        if text and not has_stop:
+        if has_stop:
+            saw_streaming = True
+        if text and not has_stop and saw_streaming:
             if text == last_text:
                 stable_count += 1
             else:

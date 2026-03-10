@@ -264,51 +264,69 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(result["response_text"], "final json")
 
     def test_generate_gpt_response_text_submits_and_waits_for_stable_text(self) -> None:
-        responses = iter(
-            [
-                json.dumps(
-                    {
-                        "ok": True,
-                        "inputSelector": "#prompt-textarea",
-                        "sendClicked": True,
-                    }
-                ),
-                json.dumps(
-                    {
+        class FakeBackend(ChatGPTBackend):
+            def __init__(self) -> None:
+                self.read_calls = 0
+
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                return {
+                    "ok": True,
+                    "inputSelector": "#prompt-textarea",
+                    "sendClicked": True,
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                self.read_calls += 1
+                if self.read_calls <= 2:
+                    return {
                         "has_stop": True,
                         "assistant_block_count": 1,
                         "assistant_text": "draft",
                     }
-                ),
-                json.dumps(
-                    {
-                        "has_stop": False,
-                        "assistant_block_count": 1,
-                        "assistant_text": "final json",
-                    }
-                ),
-                json.dumps(
-                    {
-                        "has_stop": False,
-                        "assistant_block_count": 1,
-                        "assistant_text": "final json",
-                    }
-                ),
-            ]
-        )
-
-        def fake_runner(command: list[str], timeout_sec: int) -> str:
-            return next(responses)
+                return {
+                    "has_stop": False,
+                    "assistant_block_count": 1,
+                    "assistant_text": "final json",
+                }
 
         result = generate_gpt_response_text(
             prompt="test prompt",
             port=9222,
             poll_interval_sec=0.01,
-            command_runner=fake_runner,
+            backend=FakeBackend(),
         )
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["response_text"], "final json")
+
+    def test_generate_gpt_response_text_does_not_finish_without_streaming_transition(
+        self,
+    ) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                return {
+                    "ok": True,
+                    "inputSelector": "#prompt-textarea",
+                    "sendClicked": True,
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                return {
+                    "has_stop": False,
+                    "assistant_block_count": 1,
+                    "assistant_text": "final json",
+                }
+
+        result = generate_gpt_response_text(
+            prompt="test prompt",
+            port=9222,
+            timeout_sec=1,
+            poll_interval_sec=0.01,
+            backend=FakeBackend(),
+        )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
 
     def test_generate_gpt_response_text_reports_submit_backend_failure(self) -> None:
         def fake_runner(command: list[str], timeout_sec: int) -> str:
