@@ -102,6 +102,20 @@ def build_video_plan_from_topic_spec(
     return build_video_plan_from_stage1_parsed_payload(parsed_payload, workspace)
 
 
+def build_live_chatgpt_prompt(topic_spec: dict[str, object]) -> str:
+    topic = str(topic_spec.get("topic", "")).strip()
+    return "\n".join(
+        [
+            "레거시로직을 참고해서 영상 제작 모드로 진행하세요.",
+            "질문형 설명/근거 요약이 아니라, 가이드 최종 출력 포맷 결과만 생성하세요.",
+            "출력은 [Voice] 블록부터 시작하세요.",
+            "Research Locale: JP",
+            "자료 조사/출처는 일본어 기준으로만 구성하세요.",
+            f"Topic: {topic}",
+        ]
+    )
+
+
 def attach_gpt_response_text_from_browser_evidence(
     topic_spec: dict[str, object], browser_evidence: dict[str, object]
 ) -> dict[str, object]:
@@ -112,7 +126,7 @@ def attach_gpt_response_text_from_browser_evidence(
         service = str(browser_evidence.get("service", "")).strip()
         raw_port = browser_evidence.get("port", 0)
         if service == "chatgpt" and isinstance(raw_port, int) and raw_port > 0:
-            prompt = str(topic_spec.get("topic", "")).strip()
+            prompt = build_live_chatgpt_prompt(topic_spec)
             result = generate_gpt_response_text(prompt=prompt, port=raw_port)
             if _should_retry_chatgpt_interaction(result):
                 _ = open_browser_for_login("chatgpt")

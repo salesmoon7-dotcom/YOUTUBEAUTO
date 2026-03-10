@@ -1,14 +1,150 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import unittest
+from unittest import mock
 from typing import cast
 
-from runtime_v2.stage1.chatgpt_backend import ChatGPTBackend
+from runtime_v2.stage1.chatgpt_backend import AgentBrowserCdpBackend, ChatGPTBackend
 from runtime_v2.stage1.chatgpt_interaction import generate_gpt_response_text
 
 
 class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
+    def test_agent_browser_backend_preselects_chatgpt_tab_before_eval(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_runner(command: list[str], timeout_sec: int) -> str:
+            calls.append(command)
+            if command[-2:] == ["tab", "2"]:
+                return "ok"
+            if command[-2] == "eval":
+                return json.dumps(
+                    {
+                        "ok": True,
+                        "inputSelector": "#prompt-textarea",
+                        "sendClicked": True,
+                    }
+                )
+            return json.dumps([])
+
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["button[data-testid='send-button']"],
+            stop_selectors=["button[aria-label='Stop streaming']"],
+            response_selectors=["[data-message-author-role='assistant']"],
+            command_runner=fake_runner,
+        )
+
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
+            return_value=[
+                {"title": "Omnibox Popup", "url": "chrome://newtab"},
+                {"title": "ChatGPT", "url": "https://chatgpt.com/c/abc"},
+            ],
+        ):
+            result = backend.submit_prompt("hello")
+
+        self.assertTrue(bool(result["ok"]))
+        self.assertIn(["agent-browser", "--cdp", "9222", "tab", "2"], calls)
+
+    def test_agent_browser_backend_falls_back_to_http_tab_index_when_tab_list_fails(
+        self,
+    ) -> None:
+        calls: list[list[str]] = []
+
+        def fake_runner(command: list[str], timeout_sec: int) -> str:
+            calls.append(command)
+            if command[-2:] == ["tab", "list"]:
+                raise RuntimeError("os error 10060")
+            if command[-2:] == ["tab", "2"]:
+                return "ok"
+            if command[-2] == "eval":
+                return json.dumps(
+                    {
+                        "ok": True,
+                        "inputSelector": "#prompt-textarea",
+                        "sendClicked": True,
+                    }
+                )
+            return "ok"
+
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["button[data-testid='send-button']"],
+            stop_selectors=["button[aria-label='Stop streaming']"],
+            response_selectors=["[data-message-author-role='assistant']"],
+            command_runner=fake_runner,
+        )
+
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
+            return_value=[
+                {"title": "Omnibox Popup", "url": "chrome://newtab"},
+                {"title": "영상 계획 JSON 출력", "url": "https://chatgpt.com/c/abc"},
+            ],
+        ):
+            result = backend.submit_prompt("hello")
+
+        self.assertTrue(bool(result["ok"]))
+        self.assertIn(["agent-browser", "--cdp", "9222", "tab", "list"], calls)
+        self.assertIn(["agent-browser", "--cdp", "9222", "tab", "2"], calls)
+
+    def test_default_runner_wraps_timeout_as_runtime_error(self) -> None:
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_backend.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd=["agent-browser"], timeout=5),
+        ):
+            with self.assertRaises(RuntimeError):
+                AgentBrowserCdpBackend(
+                    port=9222,
+                    input_selectors=["#prompt-textarea"],
+                    send_selectors=["button[data-testid='send-button']"],
+                    stop_selectors=["button[aria-label='Stop streaming']"],
+                    response_selectors=["[data-message-author-role='assistant']"],
+                ).submit_prompt("hello")
+
+    def test_agent_browser_backend_retries_retryable_eval_error(self) -> None:
+        eval_calls = 0
+
+        def fake_runner(command: list[str], timeout_sec: int) -> str:
+            nonlocal eval_calls
+            if command[-2] == "eval":
+                eval_calls += 1
+                if eval_calls == 1:
+                    raise RuntimeError("os error 10060")
+                return json.dumps(
+                    {
+                        "ok": True,
+                        "inputSelector": "#prompt-textarea",
+                        "sendClicked": True,
+                    }
+                )
+            return "ok"
+
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["button[data-testid='send-button']"],
+            stop_selectors=["button[aria-label='Stop streaming']"],
+            response_selectors=["[data-message-author-role='assistant']"],
+            command_runner=fake_runner,
+        )
+
+        with (
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
+                return_value=[{"title": "ChatGPT", "url": "https://chatgpt.com/c/abc"}],
+            ),
+            mock.patch("runtime_v2.stage1.chatgpt_backend.time.sleep"),
+        ):
+            result = backend.submit_prompt("hello")
+
+        self.assertTrue(bool(result["ok"]))
+        self.assertEqual(eval_calls, 2)
+
     def test_generate_gpt_response_text_accepts_backend_interface(self) -> None:
         class FakeBackend(ChatGPTBackend):
             def __init__(self) -> None:

@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from runtime_v2.stage1.chatgpt_runner import (
     attach_gpt_response_text_from_browser_evidence,
+    build_live_chatgpt_prompt,
     build_video_plan_from_topic_spec,
     run_stage1_chatgpt_job,
 )
@@ -58,6 +59,18 @@ BGM: serious piano
 
 
 class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
+    def test_build_live_chatgpt_prompt_uses_longform_instruction_template(self) -> None:
+        prompt = build_live_chatgpt_prompt(
+            {
+                "topic": "국민연금 수령 시기를 앞당기면 손해인가 이득인가",
+            }
+        )
+
+        self.assertIn("영상 제작 모드로 진행하세요.", prompt)
+        self.assertIn("출력은 [Voice] 블록부터 시작하세요.", prompt)
+        self.assertIn("Research Locale: JP", prompt)
+        self.assertIn("Topic: 국민연금 수령 시기를 앞당기면 손해인가 이득인가", prompt)
+
     def test_stage1_runner_only_plans_from_existing_topic_spec(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -405,12 +418,14 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                     "submit_info": {"sendClicked": True},
                     "final_state": {"assistant_block_count": 1},
                 },
-            ):
+            ) as generate_mock:
                 result = run_stage1_chatgpt_job(
                     topic_spec,
                     root / "workspace",
                     debug_log="logs/stage1-run-1.jsonl",
                 )
+
+                called_prompt = cast(str, generate_mock.call_args.kwargs["prompt"])
 
             result_path = Path(cast(str, result["result_path"]))
             result_payload = cast(
@@ -429,6 +444,8 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             parsed_payload = cast(dict[str, object], handoff["contract"])
 
         self.assertEqual(result["status"], "ok")
+        self.assertIn("영상 제작 모드로 진행하세요.", called_prompt)
+        self.assertIn("Research Locale: JP", called_prompt)
         self.assertIn(
             "scene one from gpt", cast(list[object], parsed_payload["scene_prompts"])
         )

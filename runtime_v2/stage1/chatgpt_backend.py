@@ -4,8 +4,15 @@ import json
 import os
 import shutil
 import subprocess
+import time
+import urllib.request
 from pathlib import Path
 from typing import Callable, Protocol
+
+from runtime_v2.agent_browser.result_parser import (
+    parse_tab_list_output,
+    select_best_tab,
+)
 
 
 class ChatGPTBackend(Protocol):
@@ -31,6 +38,7 @@ class AgentBrowserCdpBackend:
         self._stop_selectors = stop_selectors
         self._response_selectors = response_selectors
         self._runner = _default_runner if command_runner is None else command_runner
+        self._max_retries = 2
 
     def submit_prompt(self, prompt: str) -> dict[str, object]:
         payload = json.dumps(
@@ -41,16 +49,7 @@ class AgentBrowserCdpBackend:
             },
             ensure_ascii=False,
         )
-        result = self._runner(
-            [
-                "agent-browser",
-                "--cdp",
-                str(self._port),
-                "eval",
-                _submit_script(payload),
-            ],
-            60,
-        )
+        result = self._run_eval_with_retry(_submit_script(payload))
         parsed = json.loads(result)
         if not bool(parsed.get("ok", False)):
             raise RuntimeError(str(parsed.get("error", "chatgpt_submit_failed")))
@@ -64,22 +63,73 @@ class AgentBrowserCdpBackend:
             },
             ensure_ascii=False,
         )
-        result = self._runner(
-            [
-                "agent-browser",
-                "--cdp",
-                str(self._port),
-                "eval",
-                _response_script(payload),
-            ],
-            60,
-        )
+        result = self._run_eval_with_retry(_response_script(payload))
         parsed = json.loads(result)
         return {
             "has_stop": bool(parsed.get("has_stop", False)),
             "assistant_text": str(parsed.get("assistant_text", "")),
             "assistant_block_count": parsed.get("assistant_block_count", 0),
         }
+
+    def _run_eval_with_retry(self, script: str) -> str:
+        last_error: RuntimeError | None = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                self._ensure_chatgpt_target_selected()
+                return self._runner(
+                    [
+                        "agent-browser",
+                        "--cdp",
+                        str(self._port),
+                        "eval",
+                        script,
+                    ],
+                    60,
+                )
+            except RuntimeError as exc:
+                last_error = exc
+                if (
+                    not _is_retryable_backend_error(str(exc))
+                    or attempt >= self._max_retries
+                ):
+                    raise
+                time.sleep(1.0)
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("chatgpt_backend_failed")
+
+    def _ensure_chatgpt_target_selected(self) -> None:
+        target_index = self._chatgpt_tab_index()
+        if target_index is None:
+            return
+        _ = self._runner(
+            [
+                "agent-browser",
+                "--cdp",
+                str(self._port),
+                "tab",
+                str(target_index),
+            ],
+            15,
+        )
+
+    def _chatgpt_tab_index(self) -> int | None:
+        try:
+            output = self._runner(
+                ["agent-browser", "--cdp", str(self._port), "tab", "list"],
+                15,
+            )
+            parsed = parse_tab_list_output(output)
+            best = select_best_tab(
+                parsed,
+                expected_url_substring="chatgpt.com",
+                expected_title_substring="chatgpt",
+            )
+            if best is not None:
+                return best
+        except RuntimeError:
+            pass
+        return _chatgpt_tab_index_from_http(self._port)
 
 
 def _submit_script(payload: str) -> str:
@@ -127,14 +177,17 @@ def _response_script(payload: str) -> str:
 
 def _default_runner(command: list[str], timeout_sec: int) -> str:
     resolved = _resolve_agent_browser_command(command)
-    completed = subprocess.run(
-        resolved,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        timeout=timeout_sec,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            resolved,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=timeout_sec,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(str(exc)) from exc
     if completed.returncode != 0:
         detail = (
             completed.stderr.strip()
@@ -142,7 +195,51 @@ def _default_runner(command: list[str], timeout_sec: int) -> str:
             or str(completed.returncode)
         )
         raise RuntimeError(detail)
-    return completed.stdout
+    stdout = completed.stdout.strip()
+    if not stdout:
+        return completed.stdout
+    return stdout
+
+
+def _chatgpt_tab_index_from_http(port: int) -> int | None:
+    tabs = _http_cdp_tab_list(port)
+    for index, tab in enumerate(tabs, start=1):
+        url = str(tab.get("url", "")).lower()
+        title = str(tab.get("title", "")).lower()
+        if "chatgpt.com" in url or "chatgpt" in title:
+            return index
+    return None
+
+
+def _http_cdp_tab_list(port: int) -> list[dict[str, object]]:
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/json/list", timeout=5
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8", "ignore"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, list):
+        return []
+    tabs: list[dict[str, object]] = []
+    for raw_item in payload:
+        if not isinstance(raw_item, dict):
+            continue
+        item = raw_item
+        if str(item.get("type", "")) != "page":
+            continue
+        tabs.append(
+            {
+                "title": str(item.get("title", "")),
+                "url": str(item.get("url", "")),
+            }
+        )
+    return tabs
+
+
+def _is_retryable_backend_error(message: str) -> bool:
+    lowered = message.lower()
+    return "10060" in lowered or "timeout" in lowered or "failed to read" in lowered
 
 
 def _resolve_agent_browser_command(command: list[str]) -> list[str]:
