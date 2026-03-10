@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import tempfile
 from pathlib import Path
 from time import time
@@ -13,10 +14,13 @@ def _ensure_checked_at(
     payload: dict[str, object], *, now_fn: Callable[[], float] = time
 ) -> dict[str, object]:
     checked_at = payload.get("checked_at")
-    if isinstance(checked_at, (int, float)):
-        payload["checked_at"] = round(float(checked_at), 3)
-        return payload
-    payload["checked_at"] = round(now_fn(), 3)
+    if not isinstance(checked_at, bool) and isinstance(checked_at, (int, float)):
+        numeric_checked_at = float(checked_at)
+        if math.isfinite(numeric_checked_at):
+            payload["checked_at"] = round(numeric_checked_at, 3)
+            return payload
+    fallback_checked_at = float(now_fn())
+    payload["checked_at"] = round(fallback_checked_at, 3)
     return payload
 
 

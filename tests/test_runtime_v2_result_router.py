@@ -22,6 +22,35 @@ class RuntimeV2ResultRouterTests(unittest.TestCase):
 
         self.assertEqual(payload["checked_at"], 111.222)
 
+    def test_result_router_checked_at_guard_replaces_non_finite_timestamp(self) -> None:
+        payload = _ensure_checked_at(
+            {"runtime": "runtime_v2", "checked_at": float("nan")},
+            now_fn=lambda: 222.3333,
+        )
+
+        self.assertEqual(payload["checked_at"], 222.333)
+
+    def test_result_router_checked_at_guard_replaces_infinite_timestamp(self) -> None:
+        positive = _ensure_checked_at(
+            {"runtime": "runtime_v2", "checked_at": float("inf")},
+            now_fn=lambda: 333.4444,
+        )
+        negative = _ensure_checked_at(
+            {"runtime": "runtime_v2", "checked_at": -float("inf")},
+            now_fn=lambda: 444.5555,
+        )
+
+        self.assertEqual(positive["checked_at"], 333.444)
+        self.assertEqual(negative["checked_at"], 444.555)
+
+    def test_result_router_checked_at_guard_treats_bool_as_invalid(self) -> None:
+        payload = _ensure_checked_at(
+            {"runtime": "runtime_v2", "checked_at": True},
+            now_fn=lambda: 555.6666,
+        )
+
+        self.assertEqual(payload["checked_at"], 555.667)
+
     def test_write_result_router_emits_top_level_checked_at(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
