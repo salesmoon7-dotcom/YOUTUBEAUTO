@@ -210,8 +210,13 @@
 
 ### Functional validation status
 
-- `Implemented`
-- 단일 입력 ffmpeg worker는 있으나, legacy `scene_bundle_map`/multi-image orchestration 기준 기능 동작 검증은 부족
+- `Functionally-verified`
+- evidence:
+  - `system/runtime_v2_probe/kenburn-functional-03/artifacts/kenburns/kenburn-func-03/kenburns.mp4`
+  - `system/runtime_v2_probe/kenburn-functional-03/result.json`
+- note:
+  - current evidence는 synthetic single-scene input 기준입니다.
+  - legacy full `scene_bundle_map` orchestration parity는 여전히 남아 있습니다.
 
 ### Remaining gaps
 
@@ -237,13 +242,19 @@
 
 ### Functional validation status
 
-- `Implemented`
-- explicit adapter path는 검증됐지만, legacy full path(`tts-source` / `_GEMI.mp4` source / replace_audio_and_trim`) 기준 기능 동작은 아직 미검증
+- `Functionally-verified (exploratory evidence)`
+- evidence:
+  - `system/runtime_v2_probe/rvc-functional-01/output.flac`
+  - `system/runtime_v2_probe/rvc-functional-01/stdout.txt`
+  - `system/runtime_v2_probe/rvc-functional-01/stderr.txt`
+- note:
+  - Applio infer 직접 실행 기반 exploratory evidence이며, canonical worker path에 아직 정식 반영하지 않았습니다.
 
 ### Remaining gaps
 
 - 현재 worker는 `source_path` + `model_name` 중심으로 축약돼 있고, legacy의 `video_folder` / `voice_folder` 후처리 규약을 전부 품고 있지 않음
 - 즉, 단일 변환 contract는 있으나 legacy full pipeline orchestration은 미구현
+- `_GEMI.mp4` source mode와 `tts-source` mode를 현재 worker에서 분리해 canonicalize할 필요가 있음
 
 ### Hidden debugging risk
 

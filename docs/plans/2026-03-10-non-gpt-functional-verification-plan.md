@@ -167,6 +167,15 @@
   - bundle input is consumed
   - final video artifact exists
 
+#### Current evidence
+
+- `system/runtime_v2_probe/kenburn-functional-03/artifacts/kenburns/kenburn-func-03/kenburns.mp4`
+- `system/runtime_v2_probe/kenburn-functional-03/result.json`
+
+#### Current status
+
+- `Functionally-verified`
+
 ### RVC
 
 - Required evidence:
@@ -176,6 +185,22 @@
 - Done when:
   - at least one source mode is proven end-to-end
   - preferred target is both modes covered
+
+#### Exploratory note
+
+- `system/runtime_v2_probe/rvc-functional-01/`에서 Applio infer 기반 exploratory evidence는 생성되었습니다.
+- 하지만 아직 `runtime_v2` canonical worker path로 정식 승격한 것은 아닙니다.
+
+#### Current evidence
+
+- `system/runtime_v2_probe/rvc-functional-01/output.flac`
+- `system/runtime_v2_probe/rvc-functional-01/stdout.txt`
+- `system/runtime_v2_probe/rvc-functional-01/stderr.txt`
+
+#### Current status
+
+- `Functionally-verified (exploratory evidence)`
+- canonical worker adoption: not yet
 
 ## Execution Order
 
