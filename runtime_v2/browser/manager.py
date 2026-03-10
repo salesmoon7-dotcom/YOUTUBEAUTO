@@ -205,6 +205,7 @@ class BrowserSession:
     restart_count: int = 0
     consecutive_failures: int = 0
     last_restart_at: float | None = None
+    restart_history: list[float] = field(default_factory=list)
     lock_state: str = "free"
     lock_recovered: bool = False
     lock_pid_alive: bool = False
@@ -212,6 +213,7 @@ class BrowserSession:
     lock_metadata_valid: bool = True
     lock_age_sec: float = 0.0
     last_recovery_action: str = ""
+    blocked_reason: str = ""
 
     def to_dict(self, healthy: bool) -> dict[str, object]:
         return {
@@ -228,6 +230,7 @@ class BrowserSession:
             "restart_count": self.restart_count,
             "consecutive_failures": self.consecutive_failures,
             "last_restart_at": self.last_restart_at,
+            "restart_history": list(self.restart_history),
             "lock_state": self.lock_state,
             "lock_recovered": self.lock_recovered,
             "lock_pid_alive": self.lock_pid_alive,
@@ -235,6 +238,7 @@ class BrowserSession:
             "lock_metadata_valid": self.lock_metadata_valid,
             "lock_age_sec": self.lock_age_sec,
             "last_recovery_action": self.last_recovery_action,
+            "blocked_reason": self.blocked_reason,
         }
 
     @classmethod
@@ -242,6 +246,16 @@ class BrowserSession:
         started_at = payload.get("started_at", time())
         last_seen_at = payload.get("last_seen_at", time())
         last_restart_at = payload.get("last_restart_at")
+        restart_history_raw = payload.get("restart_history", [])
+        restart_history = (
+            [
+                float(item)
+                for item in restart_history_raw
+                if isinstance(item, (int, float, str))
+            ]
+            if isinstance(restart_history_raw, list)
+            else []
+        )
         profile_dir = payload.get("profile_dir", "")
         resolved_profile_dir = (
             Path(str(profile_dir)).resolve() if str(profile_dir).strip() else Path()
@@ -274,6 +288,7 @@ class BrowserSession:
                 if isinstance(last_restart_at, (int, float, str))
                 else None
             ),
+            restart_history=restart_history,
             lock_state=str(payload.get("lock_state", "free")),
             lock_recovered=bool(payload.get("lock_recovered", False)),
             lock_pid_alive=bool(payload.get("lock_pid_alive", False)),
@@ -281,6 +296,7 @@ class BrowserSession:
             lock_metadata_valid=bool(payload.get("lock_metadata_valid", True)),
             lock_age_sec=_to_float(payload.get("lock_age_sec", 0.0), 0.0),
             last_recovery_action=str(payload.get("last_recovery_action", "")),
+            blocked_reason=str(payload.get("blocked_reason", "")),
         )
 
 
@@ -426,6 +442,7 @@ def reconcile_browser_sessions(
                 restart_count=loaded_session.restart_count,
                 consecutive_failures=loaded_session.consecutive_failures,
                 last_restart_at=loaded_session.last_restart_at,
+                restart_history=list(loaded_session.restart_history),
                 lock_state=loaded_session.lock_state,
                 lock_recovered=loaded_session.lock_recovered,
                 lock_pid_alive=loaded_session.lock_pid_alive,
@@ -433,6 +450,7 @@ def reconcile_browser_sessions(
                 lock_metadata_valid=loaded_session.lock_metadata_valid,
                 lock_age_sec=loaded_session.lock_age_sec,
                 last_recovery_action=loaded_session.last_recovery_action,
+                blocked_reason=loaded_session.blocked_reason,
             )
         )
     return reconciled
@@ -766,8 +784,10 @@ class BrowserManager:
         session.restart_count += 1
         session.started_at = now
         session.last_restart_at = now
+        session.restart_history.append(now)
         session.consecutive_failures = 0
         session.status = "running"
+        session.blocked_reason = ""
         _ = _launch_debug_browser(session)
 
     def shutdown(self) -> None:
@@ -805,8 +825,11 @@ class BrowserManager:
                     session.status = next_status
                     session.consecutive_failures = 0
                     session.last_seen_at = now
+                    session.blocked_reason = ""
                 else:
                     session.status = next_status
+                    if next_status != "restart_exhausted":
+                        session.blocked_reason = ""
                     if next_status == "unhealthy":
                         session.consecutive_failures += 1
             snapshots.append(session.to_dict(healthy=healthy))
