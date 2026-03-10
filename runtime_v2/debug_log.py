@@ -46,6 +46,15 @@ def exception_payload(exc: BaseException) -> dict[str, object]:
 
 
 def summarize_runtime_result(result: Mapping[str, object]) -> dict[str, object]:
+    """Build a debug-oriented summary for runtime results.
+
+    Consumer contract:
+    - `error_code` remains for legacy compatibility in debug summaries.
+    - `raw_error_code` is a raw worker-level diagnostic value and is not a stable
+      routing key for downstream policy decisions.
+    - The canonical worker error code lives in runtime result metadata/canonical
+      handoff fields, not in this debug summary.
+    """
     resolved = _resolved_result(result)
     worker_result = _mapping(result.get("worker_result"))
     job = _mapping(result.get("job"))
@@ -63,7 +72,7 @@ def summarize_runtime_result(result: Mapping[str, object]) -> dict[str, object]:
         payload["stage"] = str(worker_result.get("stage", ""))
         raw_error_code = str(worker_result.get("error_code", ""))
         payload["error_code"] = raw_error_code
-        payload["raw_error_code"] = raw_error_code
+        payload["raw_error_code"] = raw_error_code  # raw diagnostic only
         payload["manifest_path"] = str(worker_result.get("manifest_path", ""))
         payload["result_path"] = str(worker_result.get("result_path", ""))
         completion = _mapping(worker_result.get("completion"))
@@ -80,7 +89,7 @@ def summarize_runtime_result(result: Mapping[str, object]) -> dict[str, object]:
             resolved.get("error_code", result.get("error_code", result.get("code", "")))
         )
         payload["error_code"] = raw_error_code
-        payload["raw_error_code"] = raw_error_code
+        payload["raw_error_code"] = raw_error_code  # raw diagnostic only
     if recovery is not None:
         payload["backoff_sec"] = recovery.get("backoff_sec", 0)
         payload["recovery_action"] = str(recovery.get("action", ""))
