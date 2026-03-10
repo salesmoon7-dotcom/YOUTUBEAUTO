@@ -73,7 +73,8 @@
   - `Functionally-verified` evidence가 없는 서비스는 완료로 올리지 않습니다.
   - 현재 판정:
     - `SeaArt` -> `Functionally-verified`
-    - `Genspark`, `TTS`, `GeminiGen`, `Canva` -> mostly `Contract-verified`
+    - `Genspark` -> `Functionally-verified (exploratory evidence)`
+    - `TTS`, `GeminiGen`, `Canva` -> mostly `Contract-verified`
     - `Kenburn`, `RVC` -> mostly `Implemented`
   - 따라서 비-GPT도 아직 전체 완료가 아니며, 서비스별 functional evidence를 더 확보해야 합니다.
   - 공통 `adapter failure matrix` 1차는 반영되었습니다.

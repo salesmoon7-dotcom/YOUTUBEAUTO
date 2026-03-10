@@ -79,13 +79,19 @@
 
 ### Functional validation status
 
-- `Contract-verified`
-- adapter/attach 경로는 확인했지만, 실제 row 기반 end-to-end image generation은 아직 최종 evidence로 닫히지 않음
+- `Functionally-verified (exploratory evidence)`
+- evidence:
+  - `system/runtime_v2_probe/genspark-functional-01/exports/genspark.png`
+  - `system/runtime_v2_probe/genspark-functional-01/functional_evidence/final_screen.png`
+  - `system/runtime_v2_probe/genspark-functional-01/functional_evidence/evidence.json`
+- note:
+  - canonical adapter child에 아직 정식 반영하지 않았으므로, exploratory evidence로만 표기
 
 ### Remaining gaps
 
 - 레거시의 카테고리별 분기(`인물`, `도표`, `슬라이드` 등)는 아직 contract 차원에서 축약 상태
 - 생성 실패/세션 제한/다운로드 실패 분리 부족
+- exploratory helper 결과를 canonical stage2 adapter path에 올릴지 별도 검증 필요
 
 ### Hidden debugging risk
 
