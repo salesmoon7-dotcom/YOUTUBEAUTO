@@ -49,6 +49,20 @@ def _coerce_mapping(value: object) -> dict[str, object] | None:
     return typed
 
 
+def _worker_error_code_mismatch_warning(
+    result_payload: dict[str, object] | None,
+) -> str:
+    if result_payload is None:
+        return ""
+    metadata = _coerce_mapping(result_payload.get("metadata"))
+    if metadata is None:
+        return ""
+    canonical_handoff = _coerce_mapping(metadata.get("canonical_handoff"))
+    if canonical_handoff is None:
+        return ""
+    return str(canonical_handoff.get("warning_worker_error_code_mismatch", "")).strip()
+
+
 def _read_json_list(path: Path) -> list[dict[str, object]]:
     if not path.exists():
         return []
@@ -834,6 +848,9 @@ class RuntimeV2ManagerGUI:
         result_warning = self._snapshot_warning("result", result_payload, fresh_sec=300)
         if result_warning is not None and result_payload is not None:
             warnings.append(result_warning)
+        mismatch_warning = _worker_error_code_mismatch_warning(result_payload)
+        if mismatch_warning:
+            warnings.append(f"worker error mismatch: {mismatch_warning}")
         gui_payload = _read_json(self.config.gui_status_file)
         status_payload = None if gui_payload is None else _coerce_mapping(gui_payload.get("status", {}))
         if gui_payload is not None:
