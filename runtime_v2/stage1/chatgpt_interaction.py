@@ -115,6 +115,7 @@ def generate_gpt_response_text(
             failed["timeline"] = timeline
             return failed
         emit("submit_ok", attempt=attempt, backend="chatgpt_backend")
+        submit_evidence = _decode_submit_success(submit_info)
         for fallback in _backend_fallbacks(submit_info):
             emit(
                 "fallback_transition",
@@ -187,6 +188,7 @@ def generate_gpt_response_text(
                         "status": "ok",
                         "response_text": _response_text_from_state(text, legacy_blocks),
                         "submit_info": submit_info,
+                        "submit_evidence": submit_evidence,
                         "final_state": state,
                     }
                     emit("final_state", final_state="success", final_state_code="ok")
@@ -339,5 +341,19 @@ def _decode_submit_failure(message: str) -> tuple[str, bool, dict[str, object]]:
     no_send_evidence = parsed.get("no_send_evidence", {})
     if isinstance(no_send_evidence, dict):
         extra_details["no_send_evidence"] = no_send_evidence
+    submit_evidence = parsed.get("submit_evidence", {})
+    if isinstance(submit_evidence, dict):
+        extra_details["submit_evidence"] = submit_evidence
     extra_details["retry_safe_submit"] = bool(parsed.get("retry_safe", False))
     return error_code, bool(parsed.get("retry_safe", False)), extra_details
+
+
+def _decode_submit_success(payload: dict[str, object]) -> dict[str, object]:
+    raw = payload.get("submit_evidence", {})
+    if isinstance(raw, dict):
+        return raw
+    return {
+        "classification": "sent",
+        "classification_reason": "send_clicked",
+        "retry_safe_decision": False,
+    }

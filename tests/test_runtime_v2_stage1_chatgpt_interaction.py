@@ -60,12 +60,24 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             command_runner=fake_runner,
         )
 
-        with mock.patch(
-            "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
-            return_value=[
-                {"title": "Omnibox Popup", "url": "chrome://newtab"},
-                {"title": "롱폼", "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}"},
-            ],
+        with (
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
+                return_value=[
+                    {"title": "Omnibox Popup", "url": "chrome://newtab"},
+                    {
+                        "title": "롱폼",
+                        "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}",
+                    },
+                ],
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._select_page_target",
+                return_value={
+                    "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/abc",
+                    "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}",
+                },
+            ),
         ):
             result = backend.submit_prompt("hello")
 
@@ -108,6 +120,10 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
         self.assertEqual(result["sendTestId"], "send-button")
         self.assertEqual(result["sendAriaLabel"], "프롬프트 보내기")
+        submit_evidence = cast(dict[str, object], result["submit_evidence"])
+        self.assertEqual(submit_evidence["classification"], "sent")
+        self.assertFalse(bool(submit_evidence["retry_safe_decision"]))
+        self.assertEqual(submit_evidence["classification_reason"], "send_clicked")
 
     def test_agent_browser_backend_falls_back_to_http_tab_index_when_tab_list_fails(
         self,
@@ -421,6 +437,9 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(payload["error"], "NO_SEND")
         self.assertTrue(bool(payload["retry_safe"]))
         self.assertFalse(bool(payload["no_send_evidence"]["send_found"]))
+        submit_evidence = cast(dict[str, object], payload["submit_evidence"])
+        self.assertEqual(submit_evidence["classification"], "not_sent")
+        self.assertTrue(bool(submit_evidence["retry_safe_decision"]))
 
     def test_agent_browser_backend_marks_send_disabled_as_non_retry_safe(self) -> None:
         def fake_runner(command: list[str], timeout_sec: int) -> str:
@@ -461,6 +480,9 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(payload["error"], "SEND_DISABLED")
         self.assertFalse(bool(payload["retry_safe"]))
         self.assertTrue(bool(payload["no_send_evidence"]["in_flight_marker"]))
+        submit_evidence = cast(dict[str, object], payload["submit_evidence"])
+        self.assertEqual(submit_evidence["classification"], "ambiguous")
+        self.assertFalse(bool(submit_evidence["retry_safe_decision"]))
 
     def test_generate_gpt_response_text_accepts_backend_interface(self) -> None:
         class FakeBackend(ChatGPTBackend):
@@ -728,7 +750,20 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
             def submit_prompt(self, prompt: str) -> dict[str, object]:
                 self.submit_calls += 1
-                raise RuntimeError("submit timeout")
+                raise RuntimeError(
+                    json.dumps(
+                        {
+                            "error": "submit timeout",
+                            "retry_safe": False,
+                            "submit_evidence": {
+                                "classification": "ambiguous",
+                                "classification_reason": "submit timeout",
+                                "retry_safe_decision": False,
+                            },
+                        },
+                        ensure_ascii=True,
+                    )
+                )
 
             def read_response_state(self) -> dict[str, object]:
                 raise RuntimeError("unexpected")
@@ -762,6 +797,11 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(relaunch_calls, [])
         self.assertNotIn("retry_decision", event_names)
         self.assertEqual(event_names[-1], "final_state")
+        submit_evidence = cast(
+            dict[str, object],
+            cast(dict[str, object], result["details"])["submit_evidence"],
+        )
+        self.assertEqual(submit_evidence["classification"], "ambiguous")
 
     def test_generate_gpt_response_text_does_not_resubmit_after_read_failure(
         self,

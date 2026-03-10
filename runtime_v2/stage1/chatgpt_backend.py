@@ -67,6 +67,11 @@ class AgentBrowserCdpBackend:
         if not bool(parsed.get("ok", False)):
             error = str(parsed.get("error", "chatgpt_submit_failed"))
             no_send_evidence = _normalized_no_send_evidence(parsed)
+            submit_evidence = _submit_evidence_record(
+                error=error,
+                parsed=parsed,
+                no_send_evidence=no_send_evidence,
+            )
             if error in {"NO_SEND", "SEND_DISABLED"} and bool(
                 no_send_evidence.get("retry_safe", False)
             ):
@@ -84,6 +89,7 @@ class AgentBrowserCdpBackend:
                         "backend_fallbacks", self._fallback_events_payload()
                     )
                     parsed.setdefault("no_send_evidence", no_send_evidence)
+                    parsed.setdefault("submit_evidence", submit_evidence)
                     return parsed
             raise RuntimeError(
                 json.dumps(
@@ -91,12 +97,21 @@ class AgentBrowserCdpBackend:
                         "error": error,
                         "retry_safe": bool(no_send_evidence.get("retry_safe", False)),
                         "no_send_evidence": no_send_evidence,
+                        "submit_evidence": submit_evidence,
                     },
                     ensure_ascii=True,
                 )
             )
         parsed.setdefault("selected_tab", self._current_selected_tab())
         parsed.setdefault("backend_fallbacks", self._fallback_events_payload())
+        parsed.setdefault(
+            "submit_evidence",
+            _submit_evidence_record(
+                error="",
+                parsed=parsed,
+                no_send_evidence=_normalized_no_send_evidence({}),
+            ),
+        )
         return parsed
 
     def read_response_state(self) -> dict[str, object]:
@@ -492,6 +507,35 @@ def _normalized_no_send_evidence(parsed: dict[str, object]) -> dict[str, object]
         "in_flight_marker": bool(raw.get("in_flight_marker", False)),
         "state_transition": bool(raw.get("state_transition", False)),
         "retry_safe": bool(raw.get("retry_safe", False)),
+    }
+
+
+def _submit_evidence_record(
+    *,
+    error: str,
+    parsed: dict[str, object],
+    no_send_evidence: dict[str, object],
+) -> dict[str, object]:
+    if bool(parsed.get("ok", False)):
+        return {
+            "classification": "sent",
+            "classification_reason": "send_clicked",
+            "retry_safe_decision": False,
+            "send_test_id": str(parsed.get("sendTestId", "")),
+            "send_aria_label": str(parsed.get("sendAriaLabel", "")),
+        }
+    if error == "NO_SEND" and bool(no_send_evidence.get("retry_safe", False)):
+        return {
+            "classification": "not_sent",
+            "classification_reason": "send_control_missing",
+            "retry_safe_decision": True,
+            "no_send_evidence": no_send_evidence,
+        }
+    return {
+        "classification": "ambiguous",
+        "classification_reason": error or "submit_failed",
+        "retry_safe_decision": False,
+        "no_send_evidence": no_send_evidence,
     }
 
 
