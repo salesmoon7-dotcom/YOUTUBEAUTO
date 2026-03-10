@@ -246,6 +246,8 @@ def main() -> int:
             args.browser_recover_detached,
             args.browser_recover_probe_child,
             args.agent_browser_stage2_adapter_child,
+            args.qwen3_adapter_child,
+            args.rvc_adapter_child,
             args.stage2_row1_detached,
             args.stage2_row1_probe_child,
             bool(args.open_browser_login.strip()),

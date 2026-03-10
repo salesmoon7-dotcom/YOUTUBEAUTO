@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,12 +12,61 @@ from runtime_v2 import exit_codes
 from runtime_v2.cli import (
     CliArgs,
     _run_agent_browser_stage2_adapter_child,
+    _run_qwen3_adapter_child,
+    _run_rvc_adapter_child,
     _run_stage2_row1_probe,
+    main,
 )
 from runtime_v2.config import RuntimeConfig
 
 
 class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
+    def test_main_dispatches_qwen3_adapter_child_mode(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            output_path = Path(tmp_dir) / "exports" / "speech.wav"
+            with (
+                patch(
+                    "sys.argv",
+                    [
+                        "runtime_v2.cli",
+                        "--qwen3-adapter-child",
+                        "--service-artifact-path",
+                        str(output_path),
+                    ],
+                ),
+                patch(
+                    "runtime_v2.cli._run_qwen3_adapter_child",
+                    return_value=exit_codes.SUCCESS,
+                ) as child_mock,
+            ):
+                exit_code = main()
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        child_mock.assert_called_once()
+
+    def test_main_dispatches_rvc_adapter_child_mode(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            output_path = Path(tmp_dir) / "exports" / "converted.wav"
+            with (
+                patch(
+                    "sys.argv",
+                    [
+                        "runtime_v2.cli",
+                        "--rvc-adapter-child",
+                        "--service-artifact-path",
+                        str(output_path),
+                    ],
+                ),
+                patch(
+                    "runtime_v2.cli._run_rvc_adapter_child",
+                    return_value=exit_codes.SUCCESS,
+                ) as child_mock,
+            ):
+                exit_code = main()
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        child_mock.assert_called_once()
+
     def test_stage2_adapter_child_writes_functional_evidence_for_genspark(
         self,
     ) -> None:
@@ -194,6 +244,135 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         )
         self.assertEqual(cast(list[object], report["live_ready_services"]), [])
         self.assertTrue(bool(report["probe_success"]))
+
+    def test_qwen3_adapter_child_writes_first_generated_voice_artifact(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "speech.wav"
+            args = CliArgs()
+            args.service_artifact_path = str(output_path)
+            workspace = output_path.parent.parent
+            prompt_path = workspace / "qwen_prompt.json"
+            prompt_path.parent.mkdir(parents=True, exist_ok=True)
+            prompt_path.write_text(
+                json.dumps(
+                    {
+                        "rows": [
+                            {
+                                "voice_texts": [
+                                    {
+                                        "col": "#01",
+                                        "text": "hello world",
+                                        "original_voices": [1],
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+
+            def fake_run(*args: object, **kwargs: object):
+                _ = args
+                _ = kwargs
+                voice_dir = workspace / "project" / "voice"
+                voice_dir.mkdir(parents=True, exist_ok=True)
+                _ = (voice_dir / "#00.txt").write_text("script", encoding="utf-8")
+                _ = (voice_dir / "#01.flac").write_bytes(b"flac")
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "returncode", 0)
+                setattr(completed, "stdout", "ok")
+                setattr(completed, "stderr", "")
+                return completed
+
+            with patch("runtime_v2.cli.subprocess.run", side_effect=fake_run):
+                exit_code = _run_qwen3_adapter_child(args)
+
+            self.assertEqual(exit_code, exit_codes.SUCCESS)
+            self.assertTrue(output_path.exists())
+            self.assertEqual(output_path.read_bytes(), b"flac")
+
+    def test_qwen3_adapter_child_fails_closed_without_prompt_file(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            args = CliArgs()
+            args.service_artifact_path = str(root / "exports" / "speech.wav")
+
+            exit_code = _run_qwen3_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.CLI_USAGE)
+
+    def test_rvc_adapter_child_runs_applio_infer_and_writes_output(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "converted.flac"
+            source_path = root / "source.flac"
+            _ = source_path.write_bytes(b"source")
+            args = CliArgs()
+            args.service_artifact_path = str(output_path)
+            workspace = output_path.parent.parent
+            request_path = workspace / "rvc_request.json"
+            request_path.parent.mkdir(parents=True, exist_ok=True)
+            request_path.write_text(
+                json.dumps(
+                    {"source_path": str(source_path.resolve())}, ensure_ascii=True
+                ),
+                encoding="utf-8",
+            )
+            config_payload = {
+                "applio_python": sys.executable,
+                "applio_core": "applio_core.py",
+                "applio_dir": str(root),
+                "active_model": "main",
+                "models": {"main": {"pth": "voice.pth", "index": "voice.index"}},
+                "inference": {},
+            }
+
+            def fake_run(command: list[str], **kwargs: object):
+                _ = command
+                _ = kwargs
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                _ = output_path.write_bytes(b"converted")
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "returncode", 0)
+                setattr(completed, "stdout", "ok")
+                setattr(completed, "stderr", "")
+                return completed
+
+            def fake_read_text(path_obj: Path, *args: object, **kwargs: object) -> str:
+                _ = args
+                _ = kwargs
+                if path_obj == request_path:
+                    return json.dumps(
+                        {"source_path": str(source_path.resolve())}, ensure_ascii=True
+                    )
+                return json.dumps(config_payload, ensure_ascii=True)
+
+            with (
+                patch(
+                    "runtime_v2.cli.Path.read_text",
+                    autospec=True,
+                    side_effect=fake_read_text,
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+            ):
+                exit_code = _run_rvc_adapter_child(args)
+
+            self.assertEqual(exit_code, exit_codes.SUCCESS)
+            self.assertTrue(output_path.exists())
+            self.assertEqual(output_path.read_bytes(), b"converted")
+
+    def test_rvc_adapter_child_fails_closed_without_request_file(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            args = CliArgs()
+            args.service_artifact_path = str(root / "exports" / "converted.flac")
+
+            exit_code = _run_rvc_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.CLI_USAGE)
 
 
 if __name__ == "__main__":
