@@ -57,6 +57,8 @@ def load_runtime_readiness(
     _, pointer_state = _read_json_dict_with_state(pointer_file)
 
     blockers: list[dict[str, object]] = []
+    stale_sec = max(1, int(runtime_config.running_stale_sec))
+    now = round(time(), 3)
 
     if gpt_status_state == "missing":
         blockers.append(
@@ -88,8 +90,6 @@ def load_runtime_readiness(
             )
             gpt_status = {}
         gpt_checked_at = _to_float(gpt_status.get("checked_at"))
-        stale_sec = max(1, int(runtime_config.running_stale_sec))
-        now = round(time(), 3)
         gpt_status_is_stale = True
         if gpt_checked_at is not None:
             gpt_status_is_stale = now - gpt_checked_at > stale_sec
@@ -252,7 +252,12 @@ def load_runtime_readiness(
             )
 
     latest_code = str(typed_result_metadata.get("code", "UNKNOWN"))
-    if latest_code in {
+    latest_result_payload = _dict_from_object(latest_join.get("result"))
+    latest_result_checked_at = _to_float(latest_result_payload.get("checked_at"))
+    latest_result_is_fresh = True
+    if latest_result_checked_at is not None:
+        latest_result_is_fresh = now - latest_result_checked_at <= stale_sec
+    if latest_result_is_fresh and latest_code in {
         "BROWSER_BLOCKED",
         "BROWSER_RESTART_EXHAUSTED",
         "BROWSER_UNHEALTHY",

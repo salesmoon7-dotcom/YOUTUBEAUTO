@@ -382,6 +382,117 @@ class RuntimeV2EvidenceTests(unittest.TestCase):
         }
         self.assertIn("BROWSER_RESTART_EXHAUSTED", blocker_codes)
 
+    def test_readiness_ignores_stale_restart_exhausted_latest_result(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _evidence_config(root)
+            now_value = round(time(), 3)
+            stale_checked_at = now_value - 301.0
+            config.gui_status_file.parent.mkdir(parents=True, exist_ok=True)
+            config.browser_health_file.parent.mkdir(parents=True, exist_ok=True)
+            config.browser_registry_file.parent.mkdir(parents=True, exist_ok=True)
+            config.gpt_status_file.parent.mkdir(parents=True, exist_ok=True)
+            config.result_router_file.parent.mkdir(parents=True, exist_ok=True)
+            config.latest_completed_run_file.parent.mkdir(parents=True, exist_ok=True)
+            _ = config.gui_status_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "run_id": "run-1",
+                        "checked_at": now_value,
+                        "status": "ok",
+                        "code": "OK",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            _ = config.browser_health_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "run_id": "run-1",
+                        "checked_at": now_value,
+                        "healthy_count": 1,
+                        "unhealthy_count": 0,
+                        "sessions": [],
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            _ = config.browser_registry_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "run_id": "run-1",
+                        "checked_at": now_value,
+                        "sessions": [],
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            _ = config.gpt_status_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "run_id": "run-1",
+                        "checked_at": now_value,
+                        "ok_count": 1,
+                        "min_ok": 1,
+                        "floor_breached": False,
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            _ = config.result_router_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "checked_at": stale_checked_at,
+                        "artifacts": [],
+                        "metadata": {
+                            "run_id": "run-1",
+                            "code": "BROWSER_RESTART_EXHAUSTED",
+                        },
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            _ = config.latest_completed_run_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "checked_at": now_value,
+                        "run_id": "run-1",
+                        "gui_status_path": str(config.gui_status_file),
+                        "result_path": str(config.result_router_file),
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+
+            readiness = load_runtime_readiness(config, completed=True)
+
+        self.assertTrue(bool(readiness["ready"]))
+        blockers = cast(list[object], readiness["blockers"])
+        blocker_codes = {
+            str(cast(dict[object, object], item)["code"])
+            for item in blockers
+            if isinstance(item, dict)
+        }
+        self.assertNotIn("BROWSER_RESTART_EXHAUSTED", blocker_codes)
+
     def test_readiness_fail_closes_when_gpt_status_is_stale(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
