@@ -272,18 +272,21 @@ def write_cli_runtime_snapshot(
     metadata: dict[str, object],
     artifacts: list[Path] | None = None,
 ) -> None:
-    write_runtime_snapshot(
-        config,
+    normalized_metadata = normalize_runtime_snapshot_metadata(
+        metadata,
         run_id=run_id,
         mode=mode,
         status=status,
         code=code,
         debug_log=debug_log,
-        gui_payload=gui_payload,
-        artifacts=[] if artifacts is None else artifacts,
-        metadata=metadata,
-        write_completed=True,
-        update_pointers=False,
+    )
+    cli_gui_path, cli_result_path = _cli_snapshot_paths(debug_log, run_id=run_id)
+    _ = write_gui_status(gui_payload, cli_gui_path)
+    _ = write_result_router(
+        [] if artifacts is None else artifacts,
+        config.artifact_root,
+        cli_result_path,
+        metadata=normalized_metadata,
     )
 
 
@@ -358,6 +361,16 @@ def load_joined_latest_run(
         "out_of_sync": len(out_of_sync_reasons) > 0,
         "reasons": out_of_sync_reasons,
     }
+
+
+def _cli_snapshot_paths(debug_log: str, *, run_id: str) -> tuple[Path, Path]:
+    debug_path = Path(debug_log).resolve()
+    output_root = debug_path.parent / "cli_snapshots"
+    safe_run_id = run_id.strip() or "cli-run"
+    return (
+        output_root / f"{safe_run_id}.gui_status.json",
+        output_root / f"{safe_run_id}.result.json",
+    )
 
 
 def _read_json(path: Path) -> dict[str, object] | None:

@@ -15,6 +15,7 @@ from runtime_v2.contracts.job_contract import JobContract
 from runtime_v2.bootstrap import ensure_runtime_bootstrap
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
 from runtime_v2.latest_run import (
+    _cli_snapshot_paths,
     load_joined_latest_run,
     write_cli_runtime_snapshot,
     write_excel_sync_runtime_snapshot,
@@ -133,10 +134,81 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
                 metadata={"run_id": "cli-run-1", "code": "OK", "mode": "selftest"},
             )
 
-            self.assertTrue(config.gui_status_file.exists())
-            self.assertTrue(config.result_router_file.exists())
+            cli_gui_path, cli_result_path = _cli_snapshot_paths(
+                str(root / "debug.jsonl"), run_id="cli-run-1"
+            )
+
+            self.assertFalse(config.gui_status_file.exists())
+            self.assertFalse(config.result_router_file.exists())
             self.assertFalse(config.latest_active_run_file.exists())
             self.assertFalse(config.latest_completed_run_file.exists())
+            self.assertTrue(cli_gui_path.exists())
+            self.assertTrue(cli_result_path.exists())
+
+    def test_cli_runtime_snapshot_does_not_drift_existing_latest_completed_run(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _latest_run_config(root)
+            config.control_plane_events_file.parent.mkdir(parents=True, exist_ok=True)
+            _ = config.control_plane_events_file.write_text("", encoding="utf-8")
+            artifact_path = root / "artifacts" / "result.mp4"
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = artifact_path.write_bytes(b"mp4")
+            canonical_gui = build_gui_status_payload(
+                {"status": "ok", "code": "OK", "queue_status": "completed"},
+                run_id="control-run-1",
+                mode="control_loop",
+                stage="finished",
+                exit_code=0,
+            )
+
+            _ = write_runtime_snapshot(
+                config,
+                run_id="control-run-1",
+                mode="control_loop",
+                status="ok",
+                code="OK",
+                debug_log=str(root / "control.jsonl"),
+                gui_payload=canonical_gui,
+                artifacts=[artifact_path],
+                metadata={"run_id": "control-run-1", "code": "OK"},
+                write_completed=True,
+                artifact_root=root,
+            )
+
+            cli_gui = build_gui_status_payload(
+                {"status": "failed", "code": "CLI_USAGE", "queue_status": "finished"},
+                run_id="cli-run-2",
+                mode="selftest",
+                stage="finished",
+                exit_code=2,
+            )
+            write_cli_runtime_snapshot(
+                config,
+                run_id="cli-run-2",
+                mode="selftest",
+                status="failed",
+                code="CLI_USAGE",
+                debug_log=str(root / "cli.jsonl"),
+                gui_payload=cli_gui,
+                metadata={
+                    "run_id": "cli-run-2",
+                    "code": "CLI_USAGE",
+                    "mode": "selftest",
+                },
+            )
+
+            latest_join = load_joined_latest_run(config, completed=True)
+
+        self.assertFalse(bool(latest_join["out_of_sync"]))
+        pointer = cast(dict[object, object], latest_join["pointer"])
+        gui_status = cast(dict[object, object], latest_join["gui_status"])
+        result_metadata = cast(dict[object, object], latest_join["result_metadata"])
+        self.assertEqual(str(pointer["run_id"]), "control-run-1")
+        self.assertEqual(str(gui_status["run_id"]), "control-run-1")
+        self.assertEqual(str(result_metadata["run_id"]), "control-run-1")
 
     def test_excel_sync_runtime_snapshot_does_not_write_latest_pointers(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
