@@ -72,6 +72,18 @@ class RuntimeV2Stage1HandoffBridgeTests(unittest.TestCase):
         self.assertIn("shorts_voice", restored)
         self.assertIn("shorts_clip_mapping", restored)
 
+    def test_export_omits_voice_json_when_it_exceeds_excel_cell_budget(self) -> None:
+        payload = _handoff()
+        payload["voice_groups"] = [
+            {"scene_index": index, "voice": "narration" * 200}
+            for index in range(1, 200)
+        ]
+
+        exported = export_stage1_handoff_to_excel_row(payload)
+
+        self.assertEqual(exported["Voice"], "")
+        self.assertIn("voice_texts.json", exported)
+
 
 if __name__ == "__main__":
     _ = unittest.main()

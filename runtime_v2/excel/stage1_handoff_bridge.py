@@ -8,6 +8,8 @@ from runtime_v2.stage1.handoff_schema import (
     validate_stage1_handoff_contract,
 )
 
+MAX_EXCEL_JSON_CELL_LEN = 30000
+
 
 def export_stage1_handoff_to_excel_row(payload: dict[str, object]) -> dict[str, str]:
     normalized = normalize_stage1_handoff_contract(payload)
@@ -15,6 +17,7 @@ def export_stage1_handoff_to_excel_row(payload: dict[str, object]) -> dict[str, 
     if errors:
         raise ValueError(errors[0])
     scene_prompts = cast(list[object], normalized.get("scene_prompts", []))
+    voice_json = json.dumps(normalized.get("voice_groups", []), ensure_ascii=False)
     row = {
         "Title": str(normalized.get("title", "")),
         "Title for Thumb": str(normalized.get("title_for_thumb", "")),
@@ -26,7 +29,7 @@ def export_stage1_handoff_to_excel_row(payload: dict[str, object]) -> dict[str, 
                 if str(item).strip()
             ]
         ),
-        "Voice": json.dumps(normalized.get("voice_groups", []), ensure_ascii=False),
+        "Voice": voice_json if len(voice_json) <= MAX_EXCEL_JSON_CELL_LEN else "",
         "BGM": str(normalized.get("bgm", "")),
         "Ref Img 1": str(normalized.get("ref_img_1", "")),
         "Ref Img 2": str(normalized.get("ref_img_2", "")),
@@ -64,14 +67,18 @@ def import_stage1_handoff_from_excel_row(
         row.get("Ref Img 2", payload.get("ref_img_2", ""))
     ).strip()
     payload["scene_prompts"] = _scene_prompts_from_row(row)
-    raw_voice_texts = str(row.get("voice_texts.json", "")).strip()
+    raw_voice_texts_value = row.get("voice_texts.json", "")
+    raw_voice_texts = (
+        "" if raw_voice_texts_value is None else str(raw_voice_texts_value).strip()
+    )
     if raw_voice_texts:
         payload["voice_texts"] = cast(list[object], json.loads(raw_voice_texts))
     else:
         payload["voice_texts"] = normalize_stage1_handoff_contract(payload)[
             "voice_texts"
         ]
-    raw_voice = str(row.get("Voice", "")).strip()
+    raw_voice_value = row.get("Voice", "")
+    raw_voice = "" if raw_voice_value is None else str(raw_voice_value).strip()
     if raw_voice:
         payload["voice_groups"] = cast(list[object], json.loads(raw_voice))
     errors = validate_stage1_handoff_contract(payload)
