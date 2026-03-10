@@ -142,9 +142,15 @@ Line 1: 썸네일 제목
 [Ref Img 1]
 images/ref1.png
 
+[URL]
+https://chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom/c/69aabf29-fa9c-83a3-bdea-bc5fe34b920
+
 [Voice]
 1. 첫 장면 설명입니다.
 2. 두 번째 장면 설명입니다.
+
+[Video1]
+첫 번째 비디오 프롬프트
 
 [Shorts Description]
 쇼츠 설명입니다.
@@ -156,10 +162,12 @@ images/ref1.png
         self.assertIsNotNone(parsed)
         typed = cast(dict[str, object], parsed)
         self.assertEqual(typed["title"], "머니 제목")
+        self.assertIn("rongpom", str(typed["url"]))
         self.assertEqual(typed["ref_img_1"], "images/ref1.png")
         self.assertEqual(
             typed["scene_prompts"], ["첫 장면 설명입니다.", "두 번째 장면 설명입니다."]
         )
+        self.assertEqual(typed["videos"], ["첫 번째 비디오 프롬프트"])
         self.assertEqual(typed["shorts_description"], "쇼츠 설명입니다.")
 
 

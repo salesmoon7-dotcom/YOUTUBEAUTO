@@ -7,11 +7,11 @@ from typing import cast
 from runtime_v2.stage1.gpt_plan_parser import build_topic_spec_from_gpt_response
 
 _LABEL_PATTERN = re.compile(
-    r"^\[?(Title for Thumb|Title|Description|Keywords|Voice|BGM|Ref Img 1|Ref Img 2|Shorts Description|Shorts Voice|Shorts Clip Mapping|Scene\s*\d+|#\d+|Video\d+)\]?\s*(?:[:\-].*)?$",
+    r"^\[?(Title for Thumb|Title|Description|Keywords|Voice|BGM|URL|Ref Img 1|Ref Img 2|Shorts Description|Shorts Voice|Shorts Clip Mapping|Scene\s*\d+|#\d+|Video\d+)\]?\s*(?:[:\-].*)?$",
     re.IGNORECASE,
 )
 _INLINE_LABEL_PATTERN = re.compile(
-    r"^\[?(Title for Thumb|Title|Description|Keywords|Voice|BGM|Ref Img 1|Ref Img 2|Shorts Description|Shorts Voice|Shorts Clip Mapping|Scene\s*\d+|#\d+|Video\d+)\]?\s*:\s*(.+)$",
+    r"^\[?(Title for Thumb|Title|Description|Keywords|Voice|BGM|URL|Ref Img 1|Ref Img 2|Shorts Description|Shorts Voice|Shorts Clip Mapping|Scene\s*\d+|#\d+|Video\d+)\]?\s*:\s*(.+)$",
     re.IGNORECASE,
 )
 _NUMBERED_LINE_PATTERN = re.compile(r"^\d+\.\s*(.+)$")
@@ -100,12 +100,14 @@ def _parse_block_response(
         or f"{topic} 요약 콘텐츠".strip(),
         "keywords": _split_keywords(_join_label(labels, "keywords"))
         or _keywords(topic),
+        "url": _join_label(labels, "url"),
         "bgm": _join_label(labels, "bgm"),
         "ref_img_1": _join_label(labels, "ref img 1"),
         "ref_img_2": _join_label(labels, "ref img 2"),
         "scene_prompts": scene_prompts or [f"{topic} opening", f"{topic} ending"],
         "voice_groups": voice_groups,
         "story_outline": scene_prompts or [f"{topic} opening", f"{topic} ending"],
+        "videos": _collect_videos(labels),
         "shorts_description": _join_label(labels, "shorts description"),
         "shorts_voice": _join_label(labels, "shorts voice"),
         "shorts_clip_mapping": _join_label(labels, "shorts clip mapping"),
@@ -140,6 +142,20 @@ def _collect_voice_numbered_lines(labels: dict[str, list[str]]) -> list[str]:
             if match is not None:
                 prompts.append(match.group(1).strip())
     return prompts
+
+
+def _collect_videos(labels: dict[str, list[str]]) -> list[str]:
+    video_entries: list[tuple[int, str]] = []
+    for key, value in labels.items():
+        match = re.match(r"^video(\d+)$", key.lower())
+        if match is None:
+            continue
+        index = int(match.group(1))
+        joined = "\n".join(value).strip()
+        if index > 0 and joined:
+            video_entries.append((index, joined))
+    video_entries.sort(key=lambda item: item[0])
+    return [content for _, content in video_entries]
 
 
 def _join_label(labels: dict[str, list[str]], key: str) -> str:

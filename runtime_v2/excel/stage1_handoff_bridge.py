@@ -18,7 +18,10 @@ def export_stage1_handoff_to_excel_row(payload: dict[str, object]) -> dict[str, 
         raise ValueError(errors[0])
     scene_prompts = cast(list[object], normalized.get("scene_prompts", []))
     voice_json = json.dumps(normalized.get("voice_groups", []), ensure_ascii=False)
+    voice_text_lines = cast(list[object], normalized.get("voice_texts", []))
+    videos = cast(list[object], normalized.get("videos", []))
     row = {
+        "URL": str(normalized.get("url", "")),
         "Title": str(normalized.get("title", "")),
         "Title for Thumb": str(normalized.get("title_for_thumb", "")),
         "Description": str(normalized.get("description", "")),
@@ -29,16 +32,31 @@ def export_stage1_handoff_to_excel_row(payload: dict[str, object]) -> dict[str, 
                 if str(item).strip()
             ]
         ),
-        "Voice": voice_json if len(voice_json) <= MAX_EXCEL_JSON_CELL_LEN else "",
+        "Voice": (
+            "\n".join(
+                [
+                    str(cast(dict[str, object], item).get("text", "")).strip() or "n"
+                    for item in voice_text_lines
+                    if isinstance(item, dict)
+                ]
+            )
+            or "n"
+        ),
         "BGM": str(normalized.get("bgm", "")),
         "Ref Img 1": str(normalized.get("ref_img_1", "")),
         "Ref Img 2": str(normalized.get("ref_img_2", "")),
         "voice_texts.json": json.dumps(
             normalized.get("voice_texts", []), ensure_ascii=False
         ),
+        "Shorts Description": str(normalized.get("shorts_description", "")),
+        "Shorts Voice": str(normalized.get("shorts_voice", "")),
+        "Shorts Clip Mapping": str(normalized.get("shorts_clip_mapping", "")),
+        "Shorts\nStatus": "n",
     }
     for index, prompt in enumerate(scene_prompts, start=1):
         row[f"#{index:02d}"] = str(prompt).strip()
+    for index, video in enumerate(videos[:50], start=1):
+        row[f"Video{index}"] = str(video).strip()
     return row
 
 
@@ -46,20 +64,21 @@ def import_stage1_handoff_from_excel_row(
     *, base_payload: dict[str, object], row: dict[str, object]
 ) -> dict[str, object]:
     payload = normalize_stage1_handoff_contract(base_payload)
-    payload["title"] = str(row.get("Title", payload.get("title", ""))).strip()
+    payload["url"] = _cell_text(row.get("URL", payload.get("url", "")))
+    payload["title"] = _cell_text(row.get("Title", payload.get("title", "")))
     payload["title_for_thumb"] = str(
         row.get("Title for Thumb", payload.get("title_for_thumb", ""))
     ).strip()
     payload["description"] = str(
         row.get("Description", payload.get("description", ""))
     ).strip()
-    keywords = str(row.get("Keywords", "")).strip()
+    keywords = _cell_text(row.get("Keywords", ""))
     payload["keywords"] = (
         [item.strip() for item in keywords.split(",") if item.strip()]
         if keywords
         else []
     )
-    payload["bgm"] = str(row.get("BGM", payload.get("bgm", ""))).strip()
+    payload["bgm"] = _cell_text(row.get("BGM", payload.get("bgm", "")))
     payload["ref_img_1"] = str(
         row.get("Ref Img 1", payload.get("ref_img_1", ""))
     ).strip()
@@ -67,20 +86,34 @@ def import_stage1_handoff_from_excel_row(
         row.get("Ref Img 2", payload.get("ref_img_2", ""))
     ).strip()
     payload["scene_prompts"] = _scene_prompts_from_row(row)
-    raw_voice_texts_value = row.get("voice_texts.json", "")
-    raw_voice_texts = (
-        "" if raw_voice_texts_value is None else str(raw_voice_texts_value).strip()
-    )
+    payload["videos"] = _videos_from_row(row)
+    raw_voice_texts = _cell_text(row.get("voice_texts.json", ""))
     if raw_voice_texts:
         payload["voice_texts"] = cast(list[object], json.loads(raw_voice_texts))
     else:
         payload["voice_texts"] = normalize_stage1_handoff_contract(payload)[
             "voice_texts"
         ]
-    raw_voice_value = row.get("Voice", "")
-    raw_voice = "" if raw_voice_value is None else str(raw_voice_value).strip()
-    if raw_voice:
-        payload["voice_groups"] = cast(list[object], json.loads(raw_voice))
+    raw_voice = _cell_text(row.get("Voice", ""))
+    if raw_voice and raw_voice.lower() != "n":
+        voice_lines = [line.strip() for line in raw_voice.splitlines() if line.strip()]
+        payload["voice_texts"] = [
+            {"col": f"#{index + 1:02d}", "text": line, "original_voices": [index + 1]}
+            for index, line in enumerate(voice_lines)
+        ]
+        payload["voice_groups"] = [
+            {"scene_index": index + 1, "voice": line}
+            for index, line in enumerate(voice_lines)
+        ]
+    payload["shorts_description"] = _cell_text(
+        row.get("Shorts Description", payload.get("shorts_description", ""))
+    )
+    payload["shorts_voice"] = _cell_text(
+        row.get("Shorts Voice", payload.get("shorts_voice", ""))
+    )
+    payload["shorts_clip_mapping"] = _cell_text(
+        row.get("Shorts Clip Mapping", payload.get("shorts_clip_mapping", ""))
+    )
     errors = validate_stage1_handoff_contract(payload)
     if errors:
         raise ValueError(errors[0])
@@ -94,8 +127,27 @@ def _scene_prompts_from_row(row: dict[str, object]) -> list[str]:
         key = f"#{index:02d}"
         if key not in row:
             break
-        value = str(row.get(key, "")).strip()
+        value = _cell_text(row.get(key, ""))
         if value:
             prompts.append(value)
         index += 1
     return prompts
+
+
+def _videos_from_row(row: dict[str, object]) -> list[str]:
+    videos: list[str] = []
+    index = 1
+    while index <= 50:
+        key = f"Video{index}"
+        value = _cell_text(row.get(key, ""))
+        if value:
+            videos.append(value)
+        index += 1
+    return videos
+
+
+def _cell_text(value: object) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    return "" if text == "None" else text

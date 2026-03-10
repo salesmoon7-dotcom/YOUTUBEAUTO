@@ -101,6 +101,7 @@ def _build_stage1_parsed_payload_from_parsed_result(
             for item in cast(list[object], parsed_result.get("keywords", []))
             if str(item).strip()
         ],
+        "url": str(parsed_result.get("url", "")).strip(),
         "bgm": str(parsed_result.get("bgm", "")).strip(),
         "scene_prompts": scene_prompts,
         "voice_groups": voice_groups,
@@ -111,6 +112,11 @@ def _build_stage1_parsed_payload_from_parsed_result(
         "story_outline": story_outline,
         "ref_img_1": str(parsed_result.get("ref_img_1", "")).strip(),
         "ref_img_2": str(parsed_result.get("ref_img_2", "")).strip(),
+        "videos": [
+            str(item).strip()
+            for item in cast(list[object], parsed_result.get("videos", []))
+            if str(item).strip()
+        ],
         "shorts_description": str(parsed_result.get("shorts_description", "")).strip(),
         "shorts_voice": str(parsed_result.get("shorts_voice", "")).strip(),
         "shorts_clip_mapping": str(
