@@ -29,8 +29,8 @@ def normalize_stage1_handoff_contract(payload: dict[str, object]) -> dict[str, o
     normalized.setdefault("scene_map", {})
     normalized.setdefault("scene_prompts", [])
     normalized.setdefault("voice_groups", [])
-    normalized.setdefault("voice_lines", [])
-    normalized.setdefault("voice_texts", _voice_texts_from_scene_prompts(normalized))
+    normalized.setdefault("voice_lines", _voice_lines_from_voice_groups(normalized))
+    normalized.setdefault("voice_texts", _voice_texts_from_voice_groups(normalized))
     normalized.setdefault("ref_img_1", "")
     normalized.setdefault("ref_img_2", "")
     normalized.setdefault("videos", [])
@@ -65,18 +65,29 @@ def validate_stage1_handoff_contract(payload: dict[str, object]) -> list[str]:
     return []
 
 
-def _voice_texts_from_scene_prompts(
+def _voice_lines_from_voice_groups(payload: dict[str, object]) -> list[str]:
+    voice_groups = payload.get("voice_groups", [])
+    if not isinstance(voice_groups, list):
+        return []
+    indexed_lines: list[tuple[int, str]] = []
+    for entry in cast(list[object], voice_groups):
+        if not isinstance(entry, dict):
+            continue
+        typed_entry = cast(dict[str, object], entry)
+        scene_index = typed_entry.get("scene_index")
+        voice = str(typed_entry.get("voice", "")).strip()
+        if isinstance(scene_index, int) and scene_index > 0 and voice:
+            indexed_lines.append((scene_index, voice))
+    indexed_lines.sort(key=lambda item: item[0])
+    return [voice for _, voice in indexed_lines]
+
+
+def _voice_texts_from_voice_groups(
     payload: dict[str, object],
 ) -> list[dict[str, object]]:
-    scene_prompts = payload.get("scene_prompts", [])
-    if not isinstance(scene_prompts, list):
-        return []
+    voice_lines = _voice_lines_from_voice_groups(payload)
     return [
-        {
-            "col": f"#{index + 1:02d}",
-            "text": str(prompt).strip(),
-            "original_voices": [index + 1],
-        }
-        for index, prompt in enumerate(scene_prompts)
-        if str(prompt).strip()
+        {"col": f"#{index + 1:02d}", "text": voice, "original_voices": [index + 1]}
+        for index, voice in enumerate(voice_lines)
+        if voice
     ]

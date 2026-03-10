@@ -7,6 +7,7 @@ from runtime_v2.excel.stage1_handoff_bridge import (
     export_stage1_handoff_to_excel_row,
     import_stage1_handoff_from_excel_row,
 )
+from runtime_v2.stage1.handoff_schema import normalize_stage1_handoff_contract
 
 
 def _handoff() -> dict[str, object]:
@@ -42,6 +43,43 @@ def _handoff() -> dict[str, object]:
 
 
 class RuntimeV2Stage1HandoffBridgeTests(unittest.TestCase):
+    def test_handoff_normalization_derives_voice_texts_from_voice_groups(self) -> None:
+        payload = _handoff()
+        payload.pop("voice_texts")
+        payload["scene_prompts"] = ["scene prompt one", "scene prompt two"]
+        payload["voice_groups"] = [
+            {"scene_index": 1, "voice": "narration one"},
+            {"scene_index": 2, "voice": "narration two"},
+        ]
+
+        normalized = normalize_stage1_handoff_contract(payload)
+
+        self.assertEqual(
+            normalized["voice_texts"],
+            [
+                {"col": "#01", "text": "narration one", "original_voices": [1]},
+                {"col": "#02", "text": "narration two", "original_voices": [2]},
+            ],
+        )
+
+    def test_handoff_normalization_sorts_voice_texts_by_scene_index(self) -> None:
+        payload = _handoff()
+        payload.pop("voice_texts")
+        payload["voice_groups"] = [
+            {"scene_index": 2, "voice": "second narration"},
+            {"scene_index": 1, "voice": "first narration"},
+        ]
+
+        normalized = normalize_stage1_handoff_contract(payload)
+
+        self.assertEqual(
+            normalized["voice_texts"],
+            [
+                {"col": "#01", "text": "first narration", "original_voices": [1]},
+                {"col": "#02", "text": "second narration", "original_voices": [2]},
+            ],
+        )
+
     def test_export_stage1_handoff_to_excel_row_includes_downstream_fields(
         self,
     ) -> None:

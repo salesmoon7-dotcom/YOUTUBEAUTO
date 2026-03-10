@@ -99,6 +99,9 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             self.assertIsInstance(contract["voice_texts"], list)
             self.assertIn("ref_img_1", contract)
             self.assertIn("ref_img_2", contract)
+            voice_texts = cast(list[dict[str, object]], contract["voice_texts"])
+            voice_groups = cast(list[dict[str, object]], contract["voice_groups"])
+            self.assertEqual(voice_texts[0]["text"], voice_groups[0]["voice"])
 
     def test_stage1_ignores_channel_hint_and_builds_native_video_plan(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -264,7 +267,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             parsed_payload = cast(dict[str, object], handoff["contract"])
 
             self.assertEqual(result["status"], "ok")
-            self.assertEqual(parsed_payload["version"], "stage1.v1")
+            self.assertEqual(parsed_payload["version"], "stage1_handoff.v1.0")
             self.assertEqual(parsed_payload["title"], "Money flow")
             self.assertTrue(Path(cast(str, handoff["raw_output_path"])).exists())
             self.assertTrue(Path(cast(str, handoff["parsed_payload_path"])).exists())
@@ -628,7 +631,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             workspace = Path(tmp_dir)
 
             with patch(
-                "runtime_v2.stage1.chatgpt_runner.route_video_plan",
+                "runtime_v2.stage1.chatgpt_runner.build_video_plan",
                 side_effect=ValueError("route_failed"),
             ):
                 result = run_stage1_chatgpt_job(
