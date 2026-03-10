@@ -631,13 +631,30 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 json.loads(config.result_router_file.read_text(encoding="utf-8")),
             )
             latest_metadata = cast(dict[str, object], latest_result["metadata"])
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            job_payload = next(
+                item
+                for item in queue_items
+                if str(item["job_id"]) == "chatgpt-restart-exhausted-job"
+            )
 
-        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["status"], "failed")
         self.assertEqual(result["code"], "BROWSER_RESTART_EXHAUSTED")
+        self.assertEqual(str(job_payload["status"]), "failed")
+        self.assertEqual(int(cast(int, job_payload["attempts"])), 1)
+        self.assertEqual(float(cast(float, latest_metadata["backoff_sec"])), 0.0)
         self.assertEqual(
             str(latest_metadata["worker_error_code"]), "BROWSER_RESTART_EXHAUSTED"
         )
-        self.assertEqual(str(latest_metadata["completion_state"]), "blocked")
+        self.assertEqual(str(latest_metadata["completion_state"]), "failed")
 
     def test_control_plane_retries_browser_unhealthy_runtime_preflight_with_backoff(
         self,

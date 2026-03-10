@@ -392,14 +392,19 @@ def run_control_loop_once(
     agent_browser_terminal_block = bool(
         job.workload == "agent_browser_verify" and result.get("status") == "blocked"
     )
+    restart_exhausted_terminal_block = bool(
+        str(worker_contract.get("error_code", "")) == "BROWSER_RESTART_EXHAUSTED"
+        and result.get("status") == "blocked"
+    )
     worker_retryable = (
         False
-        if agent_browser_terminal_block
+        if agent_browser_terminal_block or restart_exhausted_terminal_block
         else bool(worker_contract.get("retryable", False))
     )
     blocked_failure = bool(
         not success
         and not agent_browser_terminal_block
+        and not restart_exhausted_terminal_block
         and (
             result.get("status") == "blocked"
             or str(worker_contract.get("status", "")) == "blocked"
@@ -1481,9 +1486,10 @@ def _worker_result_from_runtime(runtime_result: dict[str, object]) -> dict[str, 
 
 
 def _runtime_preflight_contract(runtime_code: str) -> tuple[str, bool, str]:
+    if runtime_code == "BROWSER_RESTART_EXHAUSTED":
+        return ("failed", False, "failed")
     if runtime_code in {
         "BROWSER_BLOCKED",
-        "BROWSER_RESTART_EXHAUSTED",
         "GPU_LEASE_BUSY",
         "GPT_FLOOR_FAIL",
     }:
