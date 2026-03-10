@@ -106,6 +106,12 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                     "sendClicked": True,
                     "sendTestId": "send-button",
                     "sendAriaLabel": "프롬프트 보내기",
+                    "submitEvidence": {
+                        "pre": {"send_found": True, "send_disabled": False},
+                        "post": {"send_found": True, "send_disabled": True},
+                        "in_flight_observed": True,
+                        "terminal_success_observed": True,
+                    },
                 }
             )
             if command[-2] == "eval"
@@ -123,7 +129,47 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         submit_evidence = cast(dict[str, object], result["submit_evidence"])
         self.assertEqual(submit_evidence["classification"], "sent")
         self.assertFalse(bool(submit_evidence["retry_safe_decision"]))
-        self.assertEqual(submit_evidence["classification_reason"], "send_clicked")
+        self.assertEqual(submit_evidence["classification_reason"], "submit_confirmed")
+        self.assertTrue(bool(submit_evidence["in_flight_observed"]))
+        self.assertTrue(bool(submit_evidence["terminal_success_observed"]))
+
+    def test_submit_evidence_is_ambiguous_without_terminal_success_signal(self) -> None:
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["button[data-testid='send-button']"],
+            stop_selectors=["button[data-testid='stop-button']"],
+            response_selectors=["[data-message-author-role='assistant']"],
+            command_runner=lambda command, timeout_sec: json.dumps(
+                {
+                    "ok": True,
+                    "inputSelector": "#prompt-textarea",
+                    "sendClicked": True,
+                    "sendTestId": "send-button",
+                    "sendAriaLabel": "프롬프트 보내기",
+                    "submitEvidence": {
+                        "pre": {"send_found": True, "send_disabled": False},
+                        "post": {"send_found": True, "send_disabled": False},
+                        "in_flight_observed": True,
+                        "terminal_success_observed": False,
+                    },
+                }
+            )
+            if command[-2] == "eval"
+            else "ok",
+        )
+
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
+            return_value=[{"title": "ChatGPT", "url": "https://chatgpt.com/c/abc"}],
+        ):
+            result = backend.submit_prompt("hello")
+
+        submit_evidence = cast(dict[str, object], result["submit_evidence"])
+        self.assertEqual(submit_evidence["classification"], "ambiguous")
+        self.assertFalse(bool(submit_evidence["retry_safe_decision"]))
+        self.assertTrue(bool(submit_evidence["in_flight_observed"]))
+        self.assertFalse(bool(submit_evidence["terminal_success_observed"]))
 
     def test_agent_browser_backend_falls_back_to_http_tab_index_when_tab_list_fails(
         self,

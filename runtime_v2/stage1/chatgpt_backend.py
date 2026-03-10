@@ -7,7 +7,7 @@ import subprocess
 import time
 import urllib.request
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Callable, Protocol, cast
 
 import websocket
 
@@ -517,12 +517,32 @@ def _submit_evidence_record(
     no_send_evidence: dict[str, object],
 ) -> dict[str, object]:
     if bool(parsed.get("ok", False)):
+        raw_submit_evidence = parsed.get("submitEvidence", {})
+        submit_evidence = (
+            cast(dict[str, object], raw_submit_evidence)
+            if isinstance(raw_submit_evidence, dict)
+            else {}
+        )
+        in_flight_observed = bool(submit_evidence.get("in_flight_observed", False))
+        terminal_success_observed = bool(
+            submit_evidence.get("terminal_success_observed", False)
+        )
+        classification = (
+            "sent" if in_flight_observed and terminal_success_observed else "ambiguous"
+        )
+        classification_reason = (
+            "submit_confirmed" if classification == "sent" else "submit_ui_unconfirmed"
+        )
         return {
-            "classification": "sent",
-            "classification_reason": "send_clicked",
+            "classification": classification,
+            "classification_reason": classification_reason,
             "retry_safe_decision": False,
             "send_test_id": str(parsed.get("sendTestId", "")),
             "send_aria_label": str(parsed.get("sendAriaLabel", "")),
+            "pre": submit_evidence.get("pre", {}),
+            "post": submit_evidence.get("post", {}),
+            "in_flight_observed": in_flight_observed,
+            "terminal_success_observed": terminal_success_observed,
         }
     if error == "NO_SEND" and bool(no_send_evidence.get("retry_safe", False)):
         return {
