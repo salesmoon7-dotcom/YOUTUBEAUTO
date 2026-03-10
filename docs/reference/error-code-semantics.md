@@ -67,8 +67,8 @@ Any new runtime_v2 guardrail tied to error semantics must document the same
 three acceptance fields in the canonical docs before it is adopted:
 
 - owner: the owner layer that enforces the rule
-- failure mode: the exact failure mode the rule solves
-- removal: the condition for removing the rule or folding it into a simpler
+- failure mode: the exact solved failure mode the rule addresses
+- removal: the removal condition for removing the rule or folding it into a simpler
   canonical contract
 
 If any of these fields is missing, the change is treated as guardrail
