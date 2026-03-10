@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
+from datetime import datetime, timezone
 from time import sleep
 from typing import cast
 
@@ -127,14 +129,19 @@ def attach_gpt_response_text_from_browser_evidence(
         raw_port = browser_evidence.get("port", 0)
         if service == "chatgpt" and isinstance(raw_port, int) and raw_port > 0:
             prompt = build_live_chatgpt_prompt(topic_spec)
+            attempt_count = 1
             result = generate_gpt_response_text(prompt=prompt, port=raw_port)
             if _should_retry_chatgpt_interaction(result):
                 _ = open_browser_for_login("chatgpt")
                 sleep(8)
+                attempt_count += 1
                 result = generate_gpt_response_text(prompt=prompt, port=raw_port)
             enriched = dict(topic_spec)
             enriched["gpt_capture"] = _canonical_gpt_capture(
-                result, source="agent_browser_live"
+                result,
+                source="agent_browser_live",
+                topic_spec=topic_spec,
+                attempt_count=attempt_count,
             )
             if str(result.get("status", "")) == "ok":
                 enriched["gpt_response_text"] = str(result.get("response_text", ""))
@@ -152,6 +159,17 @@ def attach_gpt_response_text_from_browser_evidence(
                 "error_code": "CHATGPT_BACKEND_UNAVAILABLE",
                 "failure_stage": "submit",
                 "details": {"backend_error": "missing_chatgpt_live_port"},
+                "capture_meta": _capture_meta(
+                    topic_spec,
+                    source="agent_browser_live",
+                    attempt_count=0,
+                    result={
+                        "status": "failed",
+                        "error_code": "CHATGPT_BACKEND_UNAVAILABLE",
+                        "submit_info": {},
+                        "final_state": {},
+                    },
+                ),
             }
             return enriched
         return dict(topic_spec)
@@ -180,19 +198,78 @@ def _should_retry_chatgpt_interaction(result: dict[str, object]) -> bool:
 
 
 def _canonical_gpt_capture(
-    result: dict[str, object], *, source: str
+    result: dict[str, object],
+    *,
+    source: str,
+    topic_spec: dict[str, object],
+    attempt_count: int,
 ) -> dict[str, object]:
     payload = {
         "status": str(result.get("status", "failed")),
         "source": source,
         "submit_info": result.get("submit_info", {}),
         "final_state": result.get("final_state", {}),
+        "capture_meta": _capture_meta(
+            topic_spec,
+            source=source,
+            attempt_count=attempt_count,
+            result=result,
+        ),
     }
     if str(result.get("status", "")) != "ok":
         payload["error_code"] = str(result.get("error_code", ""))
         payload["failure_stage"] = str(result.get("failure_stage", ""))
         payload["details"] = result.get("details", {})
     return payload
+
+
+def _capture_meta(
+    topic_spec: dict[str, object],
+    *,
+    source: str,
+    attempt_count: int,
+    result: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "run_id": str(topic_spec.get("run_id", "")).strip(),
+        "git_sha": _git_sha(),
+        "backend_mode": source,
+        "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "attempt_count": attempt_count,
+        "fallback_chain": _fallback_chain(result),
+        "final_state_code": _final_state_code(result),
+    }
+
+
+def _fallback_chain(result: dict[str, object]) -> list[str]:
+    chain: list[str] = []
+    submit_info = result.get("submit_info", {})
+    final_state = result.get("final_state", {})
+    for raw_payload in (submit_info, final_state):
+        if not isinstance(raw_payload, dict):
+            continue
+        for item in cast(list[object], raw_payload.get("backend_fallbacks", [])):
+            normalized = str(item).strip()
+            if normalized and normalized not in chain:
+                chain.append(normalized)
+    return chain
+
+
+def _final_state_code(result: dict[str, object]) -> str:
+    if str(result.get("status", "")) == "ok":
+        return "ok"
+    return str(result.get("error_code", "")).strip() or "failed"
+
+
+def _git_sha() -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=Path(__file__).resolve().parents[2],
+            text=True,
+        ).strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
 
 
 def _requires_live_chatgpt_capture(browser_evidence: dict[str, object]) -> bool:

@@ -488,6 +488,14 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertTrue(
             bool(cast(dict[str, object], gpt_capture["submit_info"])["sendClicked"])
         )
+        capture_meta = cast(dict[str, object], gpt_capture["capture_meta"])
+        self.assertEqual(capture_meta["run_id"], "stage1-run-1")
+        self.assertEqual(capture_meta["backend_mode"], "agent_browser_live")
+        self.assertEqual(capture_meta["attempt_count"], 1)
+        self.assertEqual(capture_meta["final_state_code"], "ok")
+        self.assertEqual(capture_meta["fallback_chain"], [])
+        self.assertTrue(str(capture_meta["git_sha"]))
+        self.assertTrue(str(capture_meta["timestamp_utc"]).endswith("Z"))
         self.assertEqual(browser_evidence["service"], "chatgpt")
         self.assertEqual(browser_evidence["port"], 9222)
 
@@ -589,6 +597,15 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         executor = cast(dict[str, object], details["executor"])
         gpt_capture = cast(dict[str, object], executor["gpt_capture"])
         self.assertEqual(gpt_capture["status"], "failed")
+        capture_meta = cast(dict[str, object], gpt_capture["capture_meta"])
+        self.assertEqual(capture_meta["run_id"], "stage1-run-1")
+        self.assertEqual(capture_meta["backend_mode"], "agent_browser_live")
+        self.assertEqual(capture_meta["attempt_count"], 2)
+        self.assertEqual(
+            capture_meta["final_state_code"], "CHATGPT_BACKEND_UNAVAILABLE"
+        )
+        self.assertTrue(str(capture_meta["git_sha"]))
+        self.assertTrue(str(capture_meta["timestamp_utc"]).endswith("Z"))
         self.assertEqual(raw_output["source"], "gpt_capture_only")
         self.assertEqual(
             cast(dict[str, object], raw_output["gpt_capture"])["status"], "failed"
