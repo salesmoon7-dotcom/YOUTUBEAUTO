@@ -165,10 +165,39 @@ https://chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom/c/69aabf29-fa9c
         self.assertIn("rongpom", str(typed["url"]))
         self.assertEqual(typed["ref_img_1"], "images/ref1.png")
         self.assertEqual(
+            typed["voice_lines"], ["첫 장면 설명입니다.", "두 번째 장면 설명입니다."]
+        )
+        self.assertEqual(
             typed["scene_prompts"], ["첫 장면 설명입니다.", "두 번째 장면 설명입니다."]
         )
         self.assertEqual(typed["videos"], ["첫 번째 비디오 프롬프트"])
         self.assertEqual(typed["shorts_description"], "쇼츠 설명입니다.")
+
+    def test_parser_accepts_hash_blocks_with_suffix_text(self) -> None:
+        topic_spec: dict[str, object] = {
+            "topic": "Money flow",
+            "row_ref": "Sheet1!row1",
+            "run_id": "run-1",
+        }
+        response_text = """
+[Title]
+머니 제목
+
+[#01 intro Character] - Voice 1(1) *BGM35
+장면 프롬프트 one
+
+[#02 background] - Voice 2(2)
+장면 프롬프트 two
+"""
+
+        parsed, errors = parse_gpt_response_text(topic_spec, response_text)
+
+        self.assertEqual(errors, [])
+        self.assertIsNotNone(parsed)
+        typed = cast(dict[str, object], parsed)
+        self.assertEqual(
+            typed["scene_prompts"], ["장면 프롬프트 one", "장면 프롬프트 two"]
+        )
 
 
 if __name__ == "__main__":

@@ -76,6 +76,11 @@ def _build_stage1_parsed_payload_from_parsed_result(
         for item in cast(list[object], parsed_result.get("voice_groups", []))
         if isinstance(item, dict)
     ]
+    voice_lines = [
+        str(item).strip()
+        for item in cast(list[object], parsed_result.get("voice_lines", []))
+        if str(item).strip()
+    ]
     story_outline = [
         str(item).strip()
         for item in cast(
@@ -101,10 +106,11 @@ def _build_stage1_parsed_payload_from_parsed_result(
             for item in cast(list[object], parsed_result.get("keywords", []))
             if str(item).strip()
         ],
-        "url": str(parsed_result.get("url", "")).strip(),
+        "url": _resolved_capture_url(topic_spec, parsed_result),
         "bgm": str(parsed_result.get("bgm", "")).strip(),
         "scene_prompts": scene_prompts,
         "voice_groups": voice_groups,
+        "voice_lines": voice_lines,
         "voice_mapping_source": str(
             parsed_result.get("voice_mapping_source", "stage1_parsed")
         ).strip()
@@ -125,6 +131,22 @@ def _build_stage1_parsed_payload_from_parsed_result(
         "reason_code": "ok",
         "excel_snapshot_hash": str(topic_spec.get("excel_snapshot_hash", "")),
     }
+
+
+def _resolved_capture_url(
+    topic_spec: dict[str, object], parsed_result: dict[str, object]
+) -> str:
+    parsed_url = str(parsed_result.get("url", "")).strip()
+    if parsed_url:
+        return parsed_url
+    gpt_capture = topic_spec.get("gpt_capture")
+    if isinstance(gpt_capture, dict):
+        final_state = gpt_capture.get("final_state")
+        if isinstance(final_state, dict):
+            selected_tab = final_state.get("selected_tab")
+            if isinstance(selected_tab, dict):
+                return str(selected_tab.get("url", "")).strip()
+    return ""
 
 
 def _build_stage1_parsed_payload_from_enriched_topic_spec(

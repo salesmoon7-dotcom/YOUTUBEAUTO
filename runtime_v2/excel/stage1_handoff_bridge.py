@@ -18,7 +18,7 @@ def export_stage1_handoff_to_excel_row(payload: dict[str, object]) -> dict[str, 
         raise ValueError(errors[0])
     scene_prompts = cast(list[object], normalized.get("scene_prompts", []))
     voice_json = json.dumps(normalized.get("voice_groups", []), ensure_ascii=False)
-    voice_text_lines = cast(list[object], normalized.get("voice_texts", []))
+    voice_lines = cast(list[object], normalized.get("voice_lines", []))
     videos = cast(list[object], normalized.get("videos", []))
     row = {
         "URL": str(normalized.get("url", "")),
@@ -34,11 +34,7 @@ def export_stage1_handoff_to_excel_row(payload: dict[str, object]) -> dict[str, 
         ),
         "Voice": (
             "\n".join(
-                [
-                    str(cast(dict[str, object], item).get("text", "")).strip() or "n"
-                    for item in voice_text_lines
-                    if isinstance(item, dict)
-                ]
+                [str(item).strip() or "n" for item in voice_lines if str(item).strip()]
             )
             or "n"
         ),
@@ -97,6 +93,7 @@ def import_stage1_handoff_from_excel_row(
     raw_voice = _cell_text(row.get("Voice", ""))
     if raw_voice and raw_voice.lower() != "n":
         voice_lines = [line.strip() for line in raw_voice.splitlines() if line.strip()]
+        payload["voice_lines"] = voice_lines
         payload["voice_texts"] = [
             {"col": f"#{index + 1:02d}", "text": line, "original_voices": [index + 1]}
             for index, line in enumerate(voice_lines)

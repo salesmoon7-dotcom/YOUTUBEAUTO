@@ -104,9 +104,10 @@ def generate_gpt_response_text(
                 stable_count = 0
             last_text = text
             if stable_count >= 1:
+                legacy_blocks = state.get("legacy_blocks", [])
                 return {
                     "status": "ok",
-                    "response_text": text,
+                    "response_text": _response_text_from_state(text, legacy_blocks),
                     "submit_info": submit_info,
                     "final_state": state,
                 }
@@ -185,3 +186,20 @@ def _select_chatgpt_tab(tabs: list[dict[str, object]]) -> dict[str, object]:
         if "chatgpt.com" in url or "chatgpt" in title:
             return tab
     return {}
+
+
+def _response_text_from_state(text: str, legacy_blocks: object) -> str:
+    if isinstance(legacy_blocks, list):
+        parts: list[str] = []
+        for item in legacy_blocks:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label", "")).strip()
+            body = str(item.get("body", "")).strip()
+            if label and body:
+                if body.startswith("COPY\n"):
+                    body = body[len("COPY\n") :]
+                parts.append(f"{label}\n{body}")
+        if parts:
+            return "\n\n".join(parts)
+    return text

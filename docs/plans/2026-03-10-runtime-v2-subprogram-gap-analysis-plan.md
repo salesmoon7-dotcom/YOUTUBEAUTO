@@ -185,6 +185,11 @@ Focus:
 - `stage1_handoff.contract`는 이미 downstream이 읽기 좋은 canonical field 집합을 갖고 있습니다.
 - 현재 진짜 gap은 **field 존재 자체**보다 `gpt_response_text`를 실제 browser interaction layer가 얼마나 안정적으로 만들어 주는가입니다.
 - `ref_img_1/ref_img_2`는 schema/default는 있지만 ChatGPT canonical producer로서 아직 실질 생산 경로가 없습니다.
+- Oracle 확인 결과, `Voice / Video1~50 / #01~#500`의 레거시 의미는 다음으로 고정합니다.
+  - `Voice` = 일본어 대사
+  - `Video1~50` = 영어 비디오 프롬프트
+  - `#01~#500` = scene/image prompt
+  - 현재 정규 parser와 Excel bridge도 이 분리 의미를 따르도록 정리되었습니다.
 
 ## GPT Failure Matrix
 

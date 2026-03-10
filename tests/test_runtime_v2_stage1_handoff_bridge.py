@@ -26,9 +26,10 @@ def _handoff() -> dict[str, object]:
             {"scene_index": 2, "voice": "narration"},
         ],
         "voice_texts": [
-            {"col": "#01", "text": "scene one", "original_voices": [1]},
-            {"col": "#02", "text": "scene two", "original_voices": [2]},
+            {"col": "#01", "text": "voice one", "original_voices": [1]},
+            {"col": "#02", "text": "voice two", "original_voices": [2]},
         ],
+        "voice_lines": ["voice one", "voice two"],
         "url": "https://chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom/c/69aabf29-fa9c-83a3-bdea-bc5fe34b920",
         "ref_img_1": "images/ref1.png",
         "ref_img_2": "images/ref2.png",
@@ -57,7 +58,7 @@ class RuntimeV2Stage1HandoffBridgeTests(unittest.TestCase):
         self.assertEqual(row["Shorts Voice"], "shorts voice")
         self.assertEqual(row["Shorts Clip Mapping"], "1 | #01")
         self.assertEqual(row["Shorts\nStatus"], "n")
-        self.assertIn("scene one", row["Voice"])
+        self.assertIn("voice one", row["Voice"])
         self.assertEqual(row["#01"], "scene one")
         self.assertIn("voice_texts.json", row)
 
@@ -79,6 +80,7 @@ class RuntimeV2Stage1HandoffBridgeTests(unittest.TestCase):
         self.assertEqual(
             restored["shorts_clip_mapping"], payload["shorts_clip_mapping"]
         )
+        self.assertEqual(restored["voice_lines"], payload["voice_lines"])
         restored_voice_texts = cast(list[dict[str, object]], restored["voice_texts"])
         payload_voice_texts = cast(list[dict[str, object]], payload["voice_texts"])
         self.assertEqual(
@@ -105,10 +107,11 @@ class RuntimeV2Stage1HandoffBridgeTests(unittest.TestCase):
 
         exported = export_stage1_handoff_to_excel_row(payload)
 
-        self.assertIn("scene one", exported["Voice"])
+        self.assertIn("voice one", exported["Voice"])
         self.assertIn("voice_texts.json", exported)
 
         payload["voice_texts"] = []
+        payload["voice_lines"] = []
         exported = export_stage1_handoff_to_excel_row(payload)
         self.assertEqual(exported["Voice"], "n")
 

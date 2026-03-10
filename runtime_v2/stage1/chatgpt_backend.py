@@ -77,6 +77,7 @@ class AgentBrowserCdpBackend:
                 if bool(parsed.get("ok", False)):
                     return parsed
             raise RuntimeError(error)
+        parsed.setdefault("selected_tab", self._current_selected_tab())
         return parsed
 
     def read_response_state(self) -> dict[str, object]:
@@ -93,6 +94,7 @@ class AgentBrowserCdpBackend:
             "has_stop": bool(parsed.get("has_stop", False)),
             "assistant_text": str(parsed.get("assistant_text", "")),
             "assistant_block_count": parsed.get("assistant_block_count", 0),
+            "selected_tab": self._current_selected_tab(),
         }
 
     def _run_eval_with_retry(self, script: str) -> str:
@@ -178,6 +180,13 @@ class AgentBrowserCdpBackend:
             expected_title_substring=self._expected_title_substring,
         )
 
+    def _current_selected_tab(self) -> dict[str, str]:
+        try:
+            return _select_page_target(self._port, self._expected_url_substring)
+        except RuntimeError:
+            generic = _select_generic_chatgpt_target(self._port)
+            return {} if generic is None else generic
+
 
 def _submit_script(payload: str) -> str:
     return (
@@ -230,7 +239,9 @@ def _response_script(payload: str) -> str:
         "const assistantBlocks = blocks.filter(el => !el.closest('form'));"
         "const last = assistantBlocks.length ? assistantBlocks[assistantBlocks.length - 1] : null;"
         "const text = last ? ((last.innerText || last.textContent || '').trim()) : '';"
-        "return JSON.stringify({has_stop: hasStop, assistant_block_count: assistantBlocks.length, assistant_text: text});"
+        "const legacyLabels = ['[Voice]','[Title]','[Title for Thumb]','[Description]','[Keywords]','[BGM]','[URL]','[Ref Img 1]','[Ref Img 2]','[Shorts Description]','[Shorts Voice]','[Shorts Clip Mapping]'];"
+        "const legacyBlocks = Array.from(document.querySelectorAll('p')).map((p)=>{ const label=(p.innerText||p.textContent||'').trim(); if(!(legacyLabels.includes(label) || /^\\[Video\\d+/.test(label) || /^\\[#\\d+/.test(label))) return null; let next=p.nextElementSibling; while(next && next.tagName!=='PRE') next=next.nextElementSibling; return {label, body: next ? ((next.innerText||next.textContent||'').trim()) : ''}; }).filter(Boolean);"
+        "return JSON.stringify({has_stop: hasStop, assistant_block_count: assistantBlocks.length, assistant_text: text, legacy_blocks: legacyBlocks});"
         "})()"
     )
 

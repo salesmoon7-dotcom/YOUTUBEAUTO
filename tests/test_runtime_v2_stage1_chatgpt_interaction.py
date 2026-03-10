@@ -12,10 +12,28 @@ from runtime_v2.stage1.chatgpt_backend import (
     CHATGPT_LONGFORM_TITLE_SUBSTRING,
     CHATGPT_LONGFORM_URL_SUBSTRING,
 )
-from runtime_v2.stage1.chatgpt_interaction import generate_gpt_response_text
+from runtime_v2.stage1.chatgpt_interaction import (
+    _response_text_from_state,
+    generate_gpt_response_text,
+)
 
 
 class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
+    def test_response_text_from_state_prefers_legacy_blocks(self) -> None:
+        response = _response_text_from_state(
+            "plain text",
+            [
+                {"label": "[Title]", "body": "COPY\n머니 제목"},
+                {
+                    "label": "[#01 intro Character] - Voice 1(1)",
+                    "body": "COPY\nscene prompt one",
+                },
+            ],
+        )
+
+        self.assertIn("[Title]\n머니 제목", response)
+        self.assertIn("[#01 intro Character] - Voice 1(1)\nscene prompt one", response)
+
     def test_agent_browser_backend_preselects_chatgpt_tab_before_eval(self) -> None:
         calls: list[list[str]] = []
 
@@ -53,6 +71,10 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
         self.assertTrue(bool(result["ok"]))
         self.assertIn(["agent-browser", "--cdp", "9222", "tab", "2"], calls)
+        self.assertIn(
+            CHATGPT_LONGFORM_URL_SUBSTRING,
+            str(cast(dict[str, object], result["selected_tab"])["url"]),
+        )
 
     def test_submit_script_prefers_send_button_over_stop_button(self) -> None:
         backend = AgentBrowserCdpBackend(
@@ -134,18 +156,15 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertIn(["agent-browser", "--cdp", "9222", "tab", "2"], calls)
 
     def test_default_runner_wraps_timeout_as_runtime_error(self) -> None:
+        backend_module = __import__(
+            "runtime_v2.stage1.chatgpt_backend", fromlist=["_default_runner"]
+        )
         with mock.patch(
             "runtime_v2.stage1.chatgpt_backend.subprocess.run",
             side_effect=subprocess.TimeoutExpired(cmd=["agent-browser"], timeout=5),
         ):
             with self.assertRaises(RuntimeError):
-                AgentBrowserCdpBackend(
-                    port=9222,
-                    input_selectors=["#prompt-textarea"],
-                    send_selectors=["button[data-testid='send-button']"],
-                    stop_selectors=["button[aria-label='Stop streaming']"],
-                    response_selectors=["[data-message-author-role='assistant']"],
-                ).submit_prompt("hello")
+                backend_module._default_runner(["agent-browser"], 5)
 
     def test_agent_browser_backend_retries_retryable_eval_error(self) -> None:
         eval_calls = 0
@@ -425,8 +444,12 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
 
     def test_generate_gpt_response_text_reports_submit_backend_failure(self) -> None:
-        def fake_runner(command: list[str], timeout_sec: int) -> str:
-            raise RuntimeError("os error 10060")
+        class FakeBackend(ChatGPTBackend):
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                raise RuntimeError("os error 10060")
+
+            def read_response_state(self) -> dict[str, object]:
+                raise RuntimeError("unexpected")
 
         def fake_probe(port: int) -> dict[str, object]:
             return {
@@ -440,8 +463,8 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             prompt="test prompt",
             port=9222,
             poll_interval_sec=0.01,
-            command_runner=fake_runner,
             session_probe=fake_probe,
+            backend=FakeBackend(),
         )
         details = cast(dict[str, object], result["details"])
         final_state = cast(dict[str, object], result["final_state"])
@@ -455,25 +478,16 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(final_state["tab_count"], 1)
 
     def test_generate_gpt_response_text_reports_read_backend_failure(self) -> None:
-        responses = iter(
-            [
-                json.dumps(
-                    {
-                        "ok": True,
-                        "inputSelector": "#prompt-textarea",
-                        "sendClicked": True,
-                    }
-                )
-            ]
-        )
+        class FakeBackend(ChatGPTBackend):
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                return {
+                    "ok": True,
+                    "inputSelector": "#prompt-textarea",
+                    "sendClicked": True,
+                }
 
-        def fake_runner(command: list[str], timeout_sec: int) -> str:
-            if command[-2] == "eval":
-                try:
-                    return next(responses)
-                except StopIteration:
-                    raise RuntimeError("read timeout")
-            raise RuntimeError("unexpected")
+            def read_response_state(self) -> dict[str, object]:
+                raise RuntimeError("read timeout")
 
         def fake_probe(port: int) -> dict[str, object]:
             return {
@@ -487,8 +501,8 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             prompt="test prompt",
             port=9222,
             poll_interval_sec=0.01,
-            command_runner=fake_runner,
             session_probe=fake_probe,
+            backend=FakeBackend(),
         )
         details = cast(dict[str, object], result["details"])
         final_state = cast(dict[str, object], result["final_state"])

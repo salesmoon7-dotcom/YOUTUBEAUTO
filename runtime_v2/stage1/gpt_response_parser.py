@@ -6,8 +6,12 @@ from typing import cast
 
 from runtime_v2.stage1.gpt_plan_parser import build_topic_spec_from_gpt_response
 
-_LABEL_PATTERN = re.compile(
-    r"^\[?(Title for Thumb|Title|Description|Keywords|Voice|BGM|URL|Ref Img 1|Ref Img 2|Shorts Description|Shorts Voice|Shorts Clip Mapping|Scene\s*\d+|#\d+|Video\d+)\]?\s*(?:[:\-].*)?$",
+_BLOCK_HEADER_PATTERN = re.compile(
+    r"^\[(Title for Thumb|Title|Description|Keywords|Voice|BGM|URL|Ref Img 1|Ref Img 2|Shorts Description|Shorts Voice|Shorts Clip Mapping|Scene\s*\d+|#\d+|Video\d+)(?:[^\]]*)\]\s*(?:[:\-].*)?$",
+    re.IGNORECASE,
+)
+_PLAIN_LABEL_PATTERN = re.compile(
+    r"^(Title for Thumb|Title|Description|Keywords|Voice|BGM|URL|Ref Img 1|Ref Img 2|Shorts Description|Shorts Voice|Shorts Clip Mapping|Scene\s*\d+|#\d+|Video\d+)\s*(?:[:\-].*)?$",
     re.IGNORECASE,
 )
 _INLINE_LABEL_PATTERN = re.compile(
@@ -76,7 +80,9 @@ def _parse_block_response(
             current_label = inline_match.group(1).strip().lower()
             labels.setdefault(current_label, []).append(inline_match.group(2).strip())
             continue
-        label_match = _LABEL_PATTERN.match(line)
+        label_match = _BLOCK_HEADER_PATTERN.match(line) or _PLAIN_LABEL_PATTERN.match(
+            line
+        )
         if label_match:
             current_label = label_match.group(1).strip().lower()
             labels.setdefault(current_label, [])
@@ -86,7 +92,8 @@ def _parse_block_response(
     scene_prompts = _collect_scene_prompts(labels)
     if not scene_prompts:
         scene_prompts = _collect_voice_numbered_lines(labels)
-    voice_text = "\n".join(labels.get("voice", []))
+    voice_lines = _collect_voice_numbered_lines(labels)
+    voice_text = "\n".join(voice_lines or labels.get("voice", []))
     voice_groups = [
         {"scene_index": index + 1, "voice": voice_text or "narration"}
         for index in range(len(scene_prompts))
@@ -107,6 +114,7 @@ def _parse_block_response(
         "scene_prompts": scene_prompts or [f"{topic} opening", f"{topic} ending"],
         "voice_groups": voice_groups,
         "story_outline": scene_prompts or [f"{topic} opening", f"{topic} ending"],
+        "voice_lines": voice_lines,
         "videos": _collect_videos(labels),
         "shorts_description": _join_label(labels, "shorts description"),
         "shorts_voice": _join_label(labels, "shorts voice"),
