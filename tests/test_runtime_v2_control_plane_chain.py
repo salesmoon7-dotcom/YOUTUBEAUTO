@@ -594,6 +594,51 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertEqual(str(latest_metadata["status"]), "blocked")
         self.assertEqual(str(latest_metadata["completion_state"]), "blocked")
 
+    def test_control_plane_preserves_restart_exhausted_reason_in_result_metadata(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            seed_control_job(
+                JobContract(
+                    job_id="chatgpt-restart-exhausted-job",
+                    workload="chatgpt",
+                    checkpoint_key="seed:chatgpt-restart-exhausted-job",
+                    payload={
+                        "run_id": "chatgpt-run-restart-exhausted",
+                        "topic_spec": {"topic": "restart-exhausted"},
+                    },
+                ),
+                config=config,
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={
+                    "status": "blocked",
+                    "code": "BROWSER_RESTART_EXHAUSTED",
+                },
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-restart-exhausted",
+                )
+
+            latest_result = cast(
+                dict[str, object],
+                json.loads(config.result_router_file.read_text(encoding="utf-8")),
+            )
+            latest_metadata = cast(dict[str, object], latest_result["metadata"])
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["code"], "BROWSER_RESTART_EXHAUSTED")
+        self.assertEqual(
+            str(latest_metadata["worker_error_code"]), "BROWSER_RESTART_EXHAUSTED"
+        )
+        self.assertEqual(str(latest_metadata["completion_state"]), "blocked")
+
     def test_control_plane_retries_browser_unhealthy_runtime_preflight_with_backoff(
         self,
     ) -> None:
