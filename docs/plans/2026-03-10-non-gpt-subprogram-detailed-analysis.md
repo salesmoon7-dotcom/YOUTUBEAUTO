@@ -117,12 +117,14 @@
   - `system/runtime_v2_probe/qwen3-functional-01/result.json`
 - note:
   - canonical worker path evidence: `system/runtime_v2_probe/qwen3-canonical-03/`
+  - handoff-derived downstream real-run evidence: `system/runtime_v2_probe/downstream-real-qwen3-01/`
 
 ### Remaining gaps
 
 - 현재는 adapter command 기반 success 중심 검증이고, 실제 출력 폴더 규약(`voice/#NN`, `#00.txt`) 자체를 강제하지 않음
 - line 단위 subtitle/txt 산출물 계약이 아직 worker completion schema에 반영되지 않음
 - legacy output 규약의 추가 메타(`voice folder` manifest 등)를 canonical completion schema에 더 반영할지는 후속 판단 필요
+- worker-level/1회 downstream closeout은 확보됐지만, full orchestration parity는 아직 후속 범위입니다.
 
 ### Hidden debugging risk
 

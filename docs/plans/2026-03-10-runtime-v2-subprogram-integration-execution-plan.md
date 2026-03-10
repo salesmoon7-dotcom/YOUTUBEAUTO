@@ -165,12 +165,16 @@
   - post-fallback execution attempted: `system/runtime_v2_probe/first-test-real-live-09/`
     - raw websocket handshake 자체는 성공 가능함을 확인했습니다.
     - 다만 real-live 전체 흐름은 아직 성공 artifact 대신 `running` 정체와 `NO_JOB` 혼재를 보여, 남은 blocker가 `agent-browser eval` 단일 문제가 아니라 control pass sequencing / long-running interaction 상태 관리까지 포함함을 드러냈습니다.
-  - live custom GPT page direct interaction succeeded: `system/runtime_v2_probe/first-test-real-live-success-01/`
-    - custom GPT 탭에서 정본 프롬프트를 1회 입력하고 `stop-button` 소멸까지 대기한 뒤, assistant 출력 block을 직접 추출했습니다.
-    - extracted legacy-style blocks로 `raw_output.json`, `parsed_payload.json`, `stage1_handoff.json`, `video_plan.json`까지 생성했습니다.
-    - 이어서 실제 `4 머니.xlsx` `Sheet1!row13`에 export하고 `excel_roundtrip.json`까지 검증했습니다.
-    - 이때 row13 `Status`는 전체 파이프라인 완료 의미의 `Done`이 아니라 GPT 단계 완료 의미의 `OK`가 맞습니다.
-    - 따라서 GPT 측 `raw_output -> parsed_payload -> handoff -> video_plan -> Excel row13 -> roundtrip` real-first gate는 이제 실증거 기준으로 닫혔습니다.
+- live custom GPT page direct interaction succeeded: `system/runtime_v2_probe/first-test-real-live-success-01/`
+  - custom GPT 탭에서 정본 프롬프트를 1회 입력하고 `stop-button` 소멸까지 대기한 뒤, assistant 출력 block을 직접 추출했습니다.
+  - extracted legacy-style blocks로 `raw_output.json`, `parsed_payload.json`, `stage1_handoff.json`, `video_plan.json`까지 생성했습니다.
+  - 이어서 실제 `4 머니.xlsx` `Sheet1!row13`에 export하고 `excel_roundtrip.json`까지 검증했습니다.
+  - 이때 row13 `Status`는 전체 파이프라인 완료 의미의 `Done`이 아니라 GPT 단계 완료 의미의 `OK`가 맞습니다.
+  - 따라서 GPT 측 `raw_output -> parsed_payload -> handoff -> video_plan -> Excel row13 -> roundtrip` real-first gate는 이제 실증거 기준으로 닫혔습니다.
+- downstream real-run closeout succeeded: `system/runtime_v2_probe/downstream-real-qwen3-01/`
+  - `first-test-real-live-success-01/stage1_handoff.json`의 실제 GPT handoff를 입력으로 `qwen3_tts` canonical worker를 1회 실행했습니다.
+  - `input.json`, worker `job.json`, `result.json`, `manifest.json`, 최종 artifact `exports/speech.flac`가 같은 probe root 아래 남았습니다.
+  - 이로써 `handoff-derived payload -> downstream 1 item real run` 조건도 실증거 기준으로 닫혔습니다.
 
 ### Phase 4. Test order
 
@@ -205,8 +209,12 @@
 - downstream 1개 item real run evidence 확보
 - 문서/TODO/COMPLETED가 같은 의미를 사용함
 
+## Completion note
+
+- 위 Done Definition 4개는 `first-test-real-live-success-01/`와 `downstream-real-qwen3-01/` evidence로 충족되었습니다.
+- 이후 남는 일은 새 active integration plan이 아니라 follow-up optimization/coverage 성격으로 분리합니다.
+
 ## Current remediation note
 
-- 현재 후속 remediation active unit은 `docs/plans/2026-03-10-runtime-v2-remediation-priority-plan.md`입니다.
-- 우선순위는 `GeminiGen truthful evidence` -> `silent fallback + child exit semantics` -> `latest-run single writer` -> `doc alignment` 순서입니다.
+- `docs/plans/2026-03-10-runtime-v2-remediation-priority-plan.md` 배치는 완료되었습니다.
 - `24h soak`는 구현 미완이 아니라 weekend deferred operational gate로 분리합니다.
