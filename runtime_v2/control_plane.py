@@ -439,7 +439,7 @@ def run_control_loop_once(
         retryable=worker_retryable,
     )
     result_status = "ok" if success else "blocked" if blocked_failure else "failed"
-    runtime_error_code = str(result.get("code", "FAILED"))
+    runtime_error_code = str(result.get("code", "FAILED")).strip()
     canonical_worker_error_code = select_worker_error_code(
         {
             "worker_error_code": worker_contract.get(
@@ -448,6 +448,13 @@ def run_control_loop_once(
             "error_code": runtime_error_code,
         }
     )
+    if (
+        not success
+        and result_status == "failed"
+        and runtime_error_code == "OK"
+        and canonical_worker_error_code not in {"", "OK", "FAILED"}
+    ):
+        runtime_error_code = canonical_worker_error_code
 
     if can_transition(job.status, next_status):
         previous_status = job.status
