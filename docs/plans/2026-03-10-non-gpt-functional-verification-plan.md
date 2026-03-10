@@ -128,6 +128,7 @@
 
 - direct helper inspection 기준 현재 페이지에서 식별되는 첫 번째 이미지가 실제 생성 산출물이 아니라 사이트 로고(`logo-with-text.png`)입니다.
 - 따라서 현재 helper만으로는 진실한 functional evidence를 만들 수 없습니다.
+- attach-only `agent-browser` child는 이제 placeholder success를 만들지 않고 fail-closed로 종료합니다.
 - 실제 생성 산출물 선택 규칙을 추가로 정의하기 전까지는 `Contract-verified` 상태를 유지합니다.
 
 ### Canva

@@ -204,3 +204,9 @@
 - `Sheet1!row13` 기준 real first test evidence 확보
 - downstream 1개 item real run evidence 확보
 - 문서/TODO/COMPLETED가 같은 의미를 사용함
+
+## Current remediation note
+
+- 현재 후속 remediation active unit은 `docs/plans/2026-03-10-runtime-v2-remediation-priority-plan.md`입니다.
+- 우선순위는 `GeminiGen truthful evidence` -> `silent fallback + child exit semantics` -> `latest-run single writer` -> `doc alignment` 순서입니다.
+- `24h soak`는 구현 미완이 아니라 weekend deferred operational gate로 분리합니다.

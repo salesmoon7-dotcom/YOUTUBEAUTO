@@ -149,6 +149,7 @@
 
 - direct helper inspection 기준 현재 페이지에서 첫 번째로 노출되는 이미지가 실제 생성 산출물이 아니라 사이트 로고(`logo-with-text.png`)입니다.
 - 따라서 current helper로는 truthful functional evidence를 만들 수 없습니다.
+- attach-only `agent-browser` child는 이제 placeholder artifact로 성공 처리하지 않고 fail-closed로 막습니다.
 - 실 생성 산출물 선택 규칙을 더 정의하기 전까지는 `Functionally-verified`로 올리지 않습니다.
 
 ### Remaining gaps
