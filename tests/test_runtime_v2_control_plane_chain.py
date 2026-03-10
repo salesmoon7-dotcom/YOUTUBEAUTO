@@ -656,6 +656,52 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         )
         self.assertEqual(str(latest_metadata["completion_state"]), "failed")
 
+    def test_control_plane_normalizes_placeholder_worker_error_code(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            seed_control_job(
+                JobContract(
+                    job_id="chatgpt-placeholder-worker-error-job",
+                    workload="chatgpt",
+                    checkpoint_key="seed:chatgpt-placeholder-worker-error-job",
+                    payload={
+                        "run_id": "chatgpt-run-placeholder-worker-error",
+                        "topic_spec": {"topic": "placeholder-error"},
+                    },
+                ),
+                config=config,
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={
+                    "status": "blocked",
+                    "code": "BROWSER_RESTART_EXHAUSTED",
+                    "worker_result": {
+                        "status": "blocked",
+                        "stage": "browser_preflight",
+                        "error_code": "-",
+                    },
+                },
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-placeholder-worker-error",
+                )
+
+            latest_result = cast(
+                dict[str, object],
+                json.loads(config.result_router_file.read_text(encoding="utf-8")),
+            )
+            latest_metadata = cast(dict[str, object], latest_result["metadata"])
+
+        self.assertEqual(result["code"], "BROWSER_RESTART_EXHAUSTED")
+        self.assertEqual(
+            str(latest_metadata["worker_error_code"]), "BROWSER_RESTART_EXHAUSTED"
+        )
+
     def test_control_plane_does_not_seed_replan_for_restart_exhausted_browser_verify(
         self,
     ) -> None:
