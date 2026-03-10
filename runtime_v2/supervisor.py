@@ -105,7 +105,12 @@ def _required_browser_summary(
         if matched is None or not bool(matched.get("healthy", False)):
             unhealthy.append(service)
             status = "" if matched is None else str(matched.get("status", ""))
-            if status in {"login_required", "busy_lock", "unknown_lock"}:
+            if status in {
+                "login_required",
+                "busy_lock",
+                "unknown_lock",
+                "restart_exhausted",
+            }:
                 blocked.append(service)
     return {
         "all_healthy": len(unhealthy) == 0,
