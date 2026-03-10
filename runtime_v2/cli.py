@@ -950,7 +950,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
     )
     if not attach_ok:
         return exit_codes.BROWSER_UNHEALTHY
-    if service == "seaart":
+    if service in {"seaart", "genspark", "canva"}:
         try:
             _ = write_functional_evidence_bundle(
                 workspace=workspace,

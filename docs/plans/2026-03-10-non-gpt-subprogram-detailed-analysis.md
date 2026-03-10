@@ -79,13 +79,11 @@
 
 ### Functional validation status
 
-- `Functionally-verified (exploratory evidence)`
+- `Functionally-verified`
 - evidence:
-  - `system/runtime_v2_probe/genspark-functional-01/exports/genspark.png`
-  - `system/runtime_v2_probe/genspark-functional-01/functional_evidence/final_screen.png`
-  - `system/runtime_v2_probe/genspark-functional-01/functional_evidence/evidence.json`
-- note:
-  - canonical adapter child에 아직 정식 반영하지 않았으므로, exploratory evidence로만 표기
+  - `system/runtime_v2_probe/genspark-functional-02/exports/genspark.png`
+  - `system/runtime_v2_probe/genspark-functional-02/functional_evidence/final_screen.png`
+  - `system/runtime_v2_probe/genspark-functional-02/functional_evidence/evidence.json`
 
 ### Remaining gaps
 
@@ -111,7 +109,7 @@
 
 ### Functional validation status
 
-- `Functionally-verified (exploratory evidence)`
+- `Functionally-verified`
 - evidence:
   - `system/runtime_v2_probe/qwen3-functional-01/episode/voice/#01.flac`
   - `system/runtime_v2_probe/qwen3-functional-01/episode/voice/#02.flac`
@@ -178,13 +176,11 @@
 
 ### Functional validation status
 
-- `Functionally-verified (exploratory evidence)`
+- `Functionally-verified`
 - evidence:
-  - `system/runtime_v2_probe/canva-functional-02/exports/THUMB.png`
-  - `system/runtime_v2_probe/canva-functional-02/functional_evidence/final_screen.png`
-  - `system/runtime_v2_probe/canva-functional-02/functional_evidence/evidence.json`
-- note:
-  - canonical adapter child에는 아직 정식 반영하지 않았으므로 exploratory evidence로만 표기
+  - `system/runtime_v2_probe/canva-functional-03/exports/THUMB.png`
+  - `system/runtime_v2_probe/canva-functional-03/functional_evidence/final_screen.png`
+  - `system/runtime_v2_probe/canva-functional-03/functional_evidence/evidence.json`
 
 ### Remaining gaps
 

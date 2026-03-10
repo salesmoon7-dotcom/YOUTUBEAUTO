@@ -17,7 +17,7 @@ from runtime_v2.config import RuntimeConfig
 
 
 class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
-    def test_stage2_adapter_child_writes_placeholder_artifact_after_verify(
+    def test_stage2_adapter_child_writes_functional_evidence_for_genspark(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -34,15 +34,17 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 "runtime_v2.cli.run_agent_browser_verify_job",
                 return_value={"status": "ok"},
             ):
-                with patch("runtime_v2.cli.Path.cwd", return_value=root):
+                with (
+                    patch("runtime_v2.cli.Path.cwd", return_value=root),
+                    patch(
+                        "runtime_v2.cli.write_functional_evidence_bundle",
+                        return_value={"service": "genspark", "sha256": "ok"},
+                    ) as evidence_mock,
+                ):
                     exit_code = _run_agent_browser_stage2_adapter_child(args)
 
             self.assertEqual(exit_code, exit_codes.SUCCESS)
-            self.assertTrue(output_path.exists())
-            self.assertIn(
-                "agent-browser-stage2-placeholder",
-                output_path.read_text(encoding="utf-8"),
-            )
+            evidence_mock.assert_called_once()
             evidence = json.loads(
                 (root / "attach_evidence.json").read_text(encoding="utf-8")
             )
@@ -85,6 +87,33 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             self.assertFalse(bool(evidence["recovery_attempted"]))
             self.assertFalse(bool(evidence["placeholder_artifact"]))
             self.assertFalse(output_path.exists())
+
+    def test_stage2_adapter_child_writes_functional_evidence_for_canva(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+
+            with patch(
+                "runtime_v2.cli.run_agent_browser_verify_job",
+                return_value={"status": "ok"},
+            ):
+                with (
+                    patch("runtime_v2.cli.Path.cwd", return_value=root),
+                    patch(
+                        "runtime_v2.cli.write_functional_evidence_bundle",
+                        return_value={"service": "canva", "sha256": "ok"},
+                    ) as evidence_mock,
+                ):
+                    exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        evidence_mock.assert_called_once()
 
     def test_stage2_row1_probe_records_all_browser_results(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
