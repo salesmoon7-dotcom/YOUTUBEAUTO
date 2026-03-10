@@ -989,9 +989,14 @@ def _run_qwen3_adapter_child(args: CliArgs) -> int:
     target_path = Path(args.service_artifact_path.strip())
     if not args.service_artifact_path.strip():
         return exit_codes.CLI_USAGE
-    workspace = (
-        target_path.parent.parent if len(target_path.parents) >= 2 else Path.cwd()
-    )
+    cwd_workspace = Path.cwd()
+    workspace = cwd_workspace
+    if not (cwd_workspace / "qwen_prompt.json").exists():
+        workspace = (
+            target_path.parent.parent
+            if len(target_path.parents) >= 2
+            else cwd_workspace
+        )
     project_root = workspace / "project"
     project_root.mkdir(parents=True, exist_ok=True)
     prompt_path = workspace / "qwen_prompt.json"
@@ -1045,9 +1050,14 @@ def _run_rvc_adapter_child(args: CliArgs) -> int:
     if not args.service_artifact_path.strip():
         return exit_codes.CLI_USAGE
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    workspace = (
-        target_path.parent.parent if len(target_path.parents) >= 2 else Path.cwd()
-    )
+    cwd_workspace = Path.cwd()
+    workspace = cwd_workspace
+    if not (cwd_workspace / "rvc_request.json").exists():
+        workspace = (
+            target_path.parent.parent
+            if len(target_path.parents) >= 2
+            else cwd_workspace
+        )
     request_path = workspace / "rvc_request.json"
     if not request_path.exists():
         return exit_codes.CLI_USAGE

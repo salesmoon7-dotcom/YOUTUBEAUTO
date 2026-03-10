@@ -325,6 +325,59 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             self.assertTrue(output_path.exists())
             self.assertEqual(output_path.read_bytes(), b"flac")
 
+    def test_qwen3_adapter_child_prefers_cwd_workspace_when_output_path_is_external(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            workspace = root / "worker"
+            workspace.mkdir(parents=True, exist_ok=True)
+            output_path = root / "exports" / "speech.wav"
+            args = CliArgs()
+            args.service_artifact_path = str(output_path)
+            prompt_path = workspace / "qwen_prompt.json"
+            prompt_path.write_text(
+                json.dumps(
+                    {
+                        "rows": [
+                            {
+                                "voice_texts": [
+                                    {
+                                        "col": "#01",
+                                        "text": "hello",
+                                        "original_voices": [1],
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+
+            def fake_run(*args: object, **kwargs: object):
+                _ = args
+                _ = kwargs
+                voice_dir = workspace / "project" / "voice"
+                voice_dir.mkdir(parents=True, exist_ok=True)
+                _ = (voice_dir / "#01.flac").write_bytes(b"flac")
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "returncode", 0)
+                setattr(completed, "stdout", "ok")
+                setattr(completed, "stderr", "")
+                return completed
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=workspace),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+            ):
+                exit_code = _run_qwen3_adapter_child(args)
+
+            self.assertEqual(exit_code, exit_codes.SUCCESS)
+            self.assertTrue(output_path.exists())
+            self.assertEqual(output_path.read_bytes(), b"flac")
+
     def test_qwen3_adapter_child_fails_closed_without_prompt_file(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -409,6 +462,69 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 return json.dumps(config_payload, ensure_ascii=True)
 
             with (
+                patch(
+                    "runtime_v2.cli.Path.read_text",
+                    autospec=True,
+                    side_effect=fake_read_text,
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+            ):
+                exit_code = _run_rvc_adapter_child(args)
+
+            self.assertEqual(exit_code, exit_codes.SUCCESS)
+            self.assertTrue(output_path.exists())
+            self.assertEqual(output_path.read_bytes(), b"converted")
+
+    def test_rvc_adapter_child_prefers_cwd_workspace_when_output_path_is_external(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            workspace = root / "worker"
+            workspace.mkdir(parents=True, exist_ok=True)
+            output_path = root / "exports" / "converted.flac"
+            source_path = root / "source.flac"
+            _ = source_path.write_bytes(b"source")
+            args = CliArgs()
+            args.service_artifact_path = str(output_path)
+            request_path = workspace / "rvc_request.json"
+            request_path.write_text(
+                json.dumps(
+                    {"source_path": str(source_path.resolve())}, ensure_ascii=True
+                ),
+                encoding="utf-8",
+            )
+            config_payload = {
+                "applio_python": sys.executable,
+                "applio_core": "applio_core.py",
+                "applio_dir": str(root),
+                "active_model": "main",
+                "models": {"main": {"pth": "voice.pth", "index": "voice.index"}},
+                "inference": {},
+            }
+
+            def fake_read_text(path_obj: Path, *args: object, **kwargs: object) -> str:
+                _ = args
+                _ = kwargs
+                if path_obj == request_path:
+                    return json.dumps(
+                        {"source_path": str(source_path.resolve())}, ensure_ascii=True
+                    )
+                return json.dumps(config_payload, ensure_ascii=True)
+
+            def fake_run(command: list[str], **kwargs: object):
+                _ = command
+                _ = kwargs
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                _ = output_path.write_bytes(b"converted")
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "returncode", 0)
+                setattr(completed, "stdout", "ok")
+                setattr(completed, "stderr", "")
+                return completed
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=workspace),
                 patch(
                     "runtime_v2.cli.Path.read_text",
                     autospec=True,
