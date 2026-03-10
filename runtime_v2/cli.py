@@ -41,6 +41,7 @@ from runtime_v2.n8n_adapter import (
     post_callback,
     write_mock_callback,
 )
+from runtime_v2.preflight import write_preflight_report
 from runtime_v2.stage2.canva_worker import run_canva_job
 from runtime_v2.stage2.geminigen_worker import run_geminigen_job
 from runtime_v2.stage2.agent_browser_adapter import (
@@ -270,12 +271,13 @@ def main() -> int:
         return exit_codes.CLI_USAGE
     if args.excel_once and args.row_index < 0:
         return exit_codes.CLI_USAGE
+    config = _build_runtime_config(args)
+    _ = write_preflight_report(config)
     if args.open_browser_login.strip():
         payload = open_browser_for_login(args.open_browser_login.strip())
         print(json.dumps(payload, ensure_ascii=True))
         return exit_codes.SUCCESS
     if args.readiness_check:
-        config = _build_runtime_config(args)
         readiness = load_runtime_readiness(config, completed=True)
         print(json.dumps(readiness, ensure_ascii=True))
         return exit_code_from_readiness(readiness)
@@ -308,7 +310,6 @@ def main() -> int:
     else:
         mode = "once"
     run_id = str(uuid4())
-    config = _build_runtime_config(args)
     if args.browser_recover_probe_child:
         report = _run_browser_recovery_probe(
             config=config,

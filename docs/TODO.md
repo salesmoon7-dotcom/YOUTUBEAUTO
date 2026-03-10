@@ -45,6 +45,7 @@
 - 브라우저 불안정성 분석 기준: `docs/plans/2026-03-10-browser-instability-debug-cost-plan.md`
   - 디버깅 비용 증폭기는 `Profile/Lock Drift`, `Ready/Login Heuristics`, `DOM/Artifact Capture Heuristics` 3축으로 분류합니다.
   - 분류 전에 임시 fallback/휴리스틱 추가는 하지 않습니다.
+  - warn-only `single preflight` 1차는 구현되었습니다 (`runtime_v2/preflight.py`, `runtime_v2/cli.py`).
 - 후속 판단 기준: `docs/plans/2026-03-09-runtime-v2-remaining-issues-priority-plan.md`
   - 즉시 실행 배치는 완료되었습니다.
   - probe 출력은 `code=OK`와 별도로 `live_readiness`, `placeholder_services`, `live_ready_services`를 통해 해석해야 합니다.

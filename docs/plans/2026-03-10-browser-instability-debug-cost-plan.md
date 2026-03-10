@@ -110,3 +110,17 @@
 
 - 이후 브라우저 관련 디버깅이 발생하면, 먼저 이 문서의 3축 중 하나로 분류한 뒤 evidence를 수집합니다.
 - 수집 없이 임시 수정하지 않습니다.
+
+## Follow-up implementation
+
+- warn-only `single preflight` 1차가 반영되었습니다.
+- 위치:
+  - `runtime_v2/preflight.py`
+  - `runtime_v2/cli.py`
+- 역할:
+  - effective config snapshot 생성
+  - 외부 경로 존재 여부 경고
+  - browser service/profile/port drift 경고
+  - 결과를 `preflight_report.json`으로 기록
+- 주의:
+  - 이 preflight는 동작을 바꾸지 않고 검출/보고만 합니다.
