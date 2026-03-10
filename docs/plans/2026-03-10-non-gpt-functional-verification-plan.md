@@ -112,7 +112,7 @@
 #### Current status
 
 - `Functionally-verified (exploratory evidence)`
-- canonical worker adoption: not yet
+- canonical worker adoption: complete (`runtime_v2` worker now auto-builds the CLI adapter-child path when `service_artifact_path` is present)
 
 ### GeminiGen
 
@@ -194,7 +194,7 @@
 #### Current status
 
 - `Functionally-verified (exploratory evidence)`
-- canonical worker adoption: not yet
+- canonical worker adoption: complete (`runtime_v2` worker now auto-builds the CLI adapter-child path when `service_artifact_path` is present)
 
 ## Execution Order
 
