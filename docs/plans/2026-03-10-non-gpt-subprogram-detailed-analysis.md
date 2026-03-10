@@ -29,6 +29,7 @@
   - `Contract-verified`: 입력/출력/실패 계약 테스트는 있음
   - `Functionally-verified`: 실제 기능 동작 또는 이에 준하는 강한 evidence가 있음
 - **프로그램 하나가 준비됐다고 전체 비-GPT가 완료된 것으로 간주하지 않습니다.**
+- exploratory helper/evidence 실험은 가능하지만, **직접 code path에 적용하는 것은 검증 후에만** 허용합니다.
 
 ## 1. SeaArt
 

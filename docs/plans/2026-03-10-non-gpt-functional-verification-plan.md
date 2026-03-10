@@ -75,6 +75,12 @@
   - `status=ok`
   - output image exists
 
+#### Exploratory note
+
+- `system/runtime_v2_probe/genspark-functional-01/`에서 direct helper 기반 evidence bundle은 생성되었습니다.
+- 하지만 아직 `runtime_v2`의 canonical stage2 adapter child에 정식 반영하지 않았습니다.
+- 이유: 사용자 지시대로 **검증된 경로만 적용**해야 하므로, 탐색 결과는 먼저 문서로만 남기고 이후 별도 검증/승인 단위에서 반영합니다.
+
 ### TTS (`qwen3_tts`)
 
 - Required evidence:
