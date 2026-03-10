@@ -75,7 +75,8 @@
     - `SeaArt` -> `Functionally-verified`
     - `Genspark` -> `Functionally-verified (exploratory evidence)`
     - `Canva` -> `Functionally-verified (exploratory evidence)`
-    - `TTS`, `GeminiGen` -> mostly `Contract-verified`
+    - `TTS` -> `Functionally-verified (exploratory evidence)`
+    - `GeminiGen` -> mostly `Contract-verified`
     - `Kenburn`, `RVC` -> mostly `Implemented`
   - 따라서 비-GPT도 아직 전체 완료가 아니며, 서비스별 functional evidence를 더 확보해야 합니다.
   - 공통 `adapter failure matrix` 1차는 반영되었습니다.

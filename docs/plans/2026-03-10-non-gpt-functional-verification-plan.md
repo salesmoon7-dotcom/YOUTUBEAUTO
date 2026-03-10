@@ -103,6 +103,23 @@
   - audio artifact exists
   - downstream consumer can resolve the produced path(s)
 
+#### Exploratory note
+
+- `system/runtime_v2_probe/qwen3-functional-01/`에서 legacy folder mode를 이용한 exploratory evidence는 생성되었습니다.
+- 하지만 아직 `runtime_v2` canonical worker path로 정식 승격한 것은 아닙니다.
+
+#### Current evidence
+
+- `system/runtime_v2_probe/qwen3-functional-01/episode/voice/#01.flac`
+- `system/runtime_v2_probe/qwen3-functional-01/episode/voice/#02.flac`
+- `system/runtime_v2_probe/qwen3-functional-01/episode/voice/#00.txt`
+- `system/runtime_v2_probe/qwen3-functional-01/result.json`
+
+#### Current status
+
+- `Functionally-verified (exploratory evidence)`
+- canonical worker adoption: not yet
+
 ### GeminiGen
 
 - Required evidence:

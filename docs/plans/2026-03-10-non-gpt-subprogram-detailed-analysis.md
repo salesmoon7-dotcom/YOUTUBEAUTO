@@ -111,14 +111,20 @@
 
 ### Functional validation status
 
-- `Contract-verified`
-- `voice_texts` direct-consume 테스트는 있음
-- 하지만 실제 legacy output 규약(`voice/#NN.flac`, `#NN.txt`, `#00.txt`) 기준 기능 동작 evidence는 아직 없음
+- `Functionally-verified (exploratory evidence)`
+- evidence:
+  - `system/runtime_v2_probe/qwen3-functional-01/episode/voice/#01.flac`
+  - `system/runtime_v2_probe/qwen3-functional-01/episode/voice/#02.flac`
+  - `system/runtime_v2_probe/qwen3-functional-01/episode/voice/#00.txt`
+  - `system/runtime_v2_probe/qwen3-functional-01/result.json`
+- note:
+  - legacy folder mode를 통한 exploratory evidence이며, canonical worker path에 아직 정식 승격한 것은 아님
 
 ### Remaining gaps
 
 - 현재는 adapter command 기반 success 중심 검증이고, 실제 출력 폴더 규약(`voice/#NN`, `#00.txt`) 자체를 강제하지 않음
 - line 단위 subtitle/txt 산출물 계약이 아직 worker completion schema에 반영되지 않음
+- runtime_v2 canonical worker가 실제 `voice/#NN.flac`, `#00.txt`를 직접 생성하는 경로는 아직 없음
 
 ### Hidden debugging risk
 
