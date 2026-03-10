@@ -4,6 +4,7 @@ from collections.abc import Callable
 import math
 import threading
 from time import time
+from types import TracebackType
 from typing import cast
 
 from runtime_v2.browser.manager import BrowserManager
@@ -414,14 +415,17 @@ def _run_worker_with_lease_heartbeat(
     worker_runner: WorkerRunner,
 ) -> tuple[dict[str, object], Lease]:
     result_box: dict[str, dict[str, object]] = {}
-    error_box: dict[str, BaseException] = {}
+    error_box: dict[str, tuple[Exception, TracebackType | None]] = {}
+    terminal_box: dict[str, tuple[BaseException, TracebackType | None]] = {}
     done = threading.Event()
 
     def _target() -> None:
         try:
             result_box["worker_result"] = worker_runner()
+        except Exception as exc:
+            error_box.setdefault("error", (exc, exc.__traceback__))
         except BaseException as exc:
-            error_box["error"] = exc
+            terminal_box.setdefault("error", (exc, exc.__traceback__))
         finally:
             done.set()
 
@@ -449,8 +453,12 @@ def _run_worker_with_lease_heartbeat(
         current_lease = renewed
 
     thread.join()
+    if "error" in terminal_box:
+        exc, tb = terminal_box["error"]
+        raise exc.with_traceback(tb)
     if "error" in error_box:
-        raise error_box["error"]
+        exc, tb = error_box["error"]
+        raise exc.with_traceback(tb)
     if renew_failed:
         return {
             "status": "failed",
