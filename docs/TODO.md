@@ -60,7 +60,8 @@
   - 완료 판정은 `stop-button`이 나타났다 사라진 뒤 텍스트가 안정화될 때만 성공으로 처리합니다.
   - `system/runtime_v2_probe/first-test-real-live-08/` 기준으로는 queue가 `running`까지 진입했지만 성공 artifact는 아직 생성되지 않았습니다.
   - raw CDP websocket fallback(`suppress_origin=True`)도 반영됐지만, `first-test-real-live-09/` 기준 여전히 real-live 성공 artifact는 닫히지 않았습니다.
-  - 남은 핵심은 real assistant artifact를 성공으로 다시 확보하는 것입니다.
+  - `system/runtime_v2_probe/first-test-real-live-success-01/`에서 실제 custom GPT output 기반 `raw_output -> parsed_payload -> handoff -> video_plan` bundle 생성까지 완료했습니다.
+  - 남은 핵심은 downstream 1개 서비스의 real run 성공입니다.
   - `1차 테스트`는 그 계층이 닫힌 뒤 `mock -> smoke -> real` 순서로 다시 진행합니다.
 - 새 준비 보완 계획: `docs/plans/2026-03-10-runtime-v2-subprogram-gap-analysis-plan.md`
   - 테스트 전에 `field matrix`, `failure matrix`, `golden evidence`, `readiness checklist`를 완성해 디버깅 비용을 줄입니다.

@@ -233,9 +233,9 @@ Focus:
 
 ### Real Ready
 
-- [ ] 실제 ChatGPT assistant response artifact 생성
-- [ ] real assistant response가 snapshot placeholder가 아닌지 증명
-- [ ] same run_id 기준 `raw_output -> parsed_payload -> handoff` evidence 확보
+- [x] 실제 ChatGPT assistant response artifact 생성
+- [x] real assistant response가 snapshot placeholder가 아닌지 증명
+- [x] same run_id 기준 `raw_output -> parsed_payload -> handoff` evidence 확보
 - [ ] downstream 1개 서비스가 handoff-derived payload로 real run 성공
 
 ### Latest GPT-only progress
@@ -243,6 +243,7 @@ Focus:
 - [x] live capture success/failure metadata가 `raw_output.json.gpt_capture`에 기록됨
 - [x] live 의도에서 capture failure는 fail-close 됨
 - [x] no-port live request도 silent fallback 없이 fail-close 됨
+- [x] `first-test-real-live-success-01/`에서 actual live assistant output을 block 단위로 추출하고 `video_plan.json`까지 생성함
 - [x] live fail-closed에서도 `raw_output.json`과 `result.json.details.stage1_result.raw_output_path`가 남음
 - [ ] `system/runtime_v2_probe/first-test-real-live-06/` 기준 real assistant artifact는 아직 실패(`CHATGPT_BACKEND_UNAVAILABLE`)
 

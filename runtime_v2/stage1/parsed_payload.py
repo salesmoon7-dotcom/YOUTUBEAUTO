@@ -109,6 +109,13 @@ def _build_stage1_parsed_payload_from_parsed_result(
         ).strip()
         or "stage1_parsed",
         "story_outline": story_outline,
+        "ref_img_1": str(parsed_result.get("ref_img_1", "")).strip(),
+        "ref_img_2": str(parsed_result.get("ref_img_2", "")).strip(),
+        "shorts_description": str(parsed_result.get("shorts_description", "")).strip(),
+        "shorts_voice": str(parsed_result.get("shorts_voice", "")).strip(),
+        "shorts_clip_mapping": str(
+            parsed_result.get("shorts_clip_mapping", "")
+        ).strip(),
         "reason_code": "ok",
         "excel_snapshot_hash": str(topic_spec.get("excel_snapshot_hash", "")),
     }

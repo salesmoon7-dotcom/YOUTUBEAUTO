@@ -30,6 +30,9 @@ def _handoff() -> dict[str, object]:
         ],
         "ref_img_1": "images/ref1.png",
         "ref_img_2": "images/ref2.png",
+        "shorts_description": "shorts desc",
+        "shorts_voice": "shorts voice",
+        "shorts_clip_mapping": "1 | #01",
         "reason_code": "ok",
     }
 

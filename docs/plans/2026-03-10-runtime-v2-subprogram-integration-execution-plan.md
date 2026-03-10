@@ -165,6 +165,10 @@
   - post-fallback execution attempted: `system/runtime_v2_probe/first-test-real-live-09/`
     - raw websocket handshake 자체는 성공 가능함을 확인했습니다.
     - 다만 real-live 전체 흐름은 아직 성공 artifact 대신 `running` 정체와 `NO_JOB` 혼재를 보여, 남은 blocker가 `agent-browser eval` 단일 문제가 아니라 control pass sequencing / long-running interaction 상태 관리까지 포함함을 드러냈습니다.
+  - live custom GPT page direct interaction succeeded: `system/runtime_v2_probe/first-test-real-live-success-01/`
+    - custom GPT 탭에서 정본 프롬프트를 1회 입력하고 `stop-button` 소멸까지 대기한 뒤, assistant 출력 block을 직접 추출했습니다.
+    - extracted legacy-style blocks로 `raw_output.json`, `parsed_payload.json`, `stage1_handoff.json`, `video_plan.json`까지 생성했습니다.
+    - 따라서 GPT 측 `raw_output -> parsed_payload -> handoff -> video_plan` real-first gate는 이제 실증거 기준으로 닫혔습니다.
 
 ### Phase 4. Test order
 

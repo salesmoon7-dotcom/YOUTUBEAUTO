@@ -126,6 +126,42 @@ Shorts Clip Mapping: #01 -> Shorts 1\n#02 -> Shorts 2
         self.assertEqual(typed["shorts_voice"], "쇼츠 내레이션 문장")
         self.assertIn("#01 -> Shorts 1", str(typed["shorts_clip_mapping"]))
 
+    def test_parser_extracts_bracketed_legacy_blocks(self) -> None:
+        topic_spec: dict[str, object] = {
+            "topic": "Money flow",
+            "row_ref": "Sheet1!row1",
+            "run_id": "run-1",
+        }
+        response_text = """
+[Title]
+머니 제목
+
+[Title for Thumb]
+Line 1: 썸네일 제목
+
+[Ref Img 1]
+images/ref1.png
+
+[Voice]
+1. 첫 장면 설명입니다.
+2. 두 번째 장면 설명입니다.
+
+[Shorts Description]
+쇼츠 설명입니다.
+"""
+
+        parsed, errors = parse_gpt_response_text(topic_spec, response_text)
+
+        self.assertEqual(errors, [])
+        self.assertIsNotNone(parsed)
+        typed = cast(dict[str, object], parsed)
+        self.assertEqual(typed["title"], "머니 제목")
+        self.assertEqual(typed["ref_img_1"], "images/ref1.png")
+        self.assertEqual(
+            typed["scene_prompts"], ["첫 장면 설명입니다.", "두 번째 장면 설명입니다."]
+        )
+        self.assertEqual(typed["shorts_description"], "쇼츠 설명입니다.")
+
 
 if __name__ == "__main__":
     _ = unittest.main()

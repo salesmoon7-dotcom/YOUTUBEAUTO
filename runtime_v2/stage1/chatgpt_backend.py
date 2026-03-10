@@ -20,6 +20,7 @@ CHATGPT_LONGFORM_URL_SUBSTRING = (
     "chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom"
 )
 CHATGPT_LONGFORM_TITLE_SUBSTRING = "롱폼"
+CHATGPT_LONGFORM_URL = f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}"
 
 
 class ChatGPTBackend(Protocol):
@@ -61,9 +62,21 @@ class AgentBrowserCdpBackend:
             ensure_ascii=False,
         )
         result = self._run_eval_with_retry(_submit_script(payload))
-        parsed = json.loads(result)
+        parsed = _decode_backend_json(result)
         if not bool(parsed.get("ok", False)):
-            raise RuntimeError(str(parsed.get("error", "chatgpt_submit_failed")))
+            error = str(parsed.get("error", "chatgpt_submit_failed"))
+            if error in {"NO_SEND", "SEND_DISABLED"}:
+                raw_target = _select_page_target(
+                    self._port, self._expected_url_substring
+                )
+                parsed = _decode_backend_json(
+                    _run_raw_cdp_eval(
+                        raw_target["webSocketDebuggerUrl"], _submit_script(payload)
+                    )
+                )
+                if bool(parsed.get("ok", False)):
+                    return parsed
+            raise RuntimeError(error)
         return parsed
 
     def read_response_state(self) -> dict[str, object]:
@@ -75,7 +88,7 @@ class AgentBrowserCdpBackend:
             ensure_ascii=False,
         )
         result = self._run_eval_with_retry(_response_script(payload))
-        parsed = json.loads(result)
+        parsed = _decode_backend_json(result)
         return {
             "has_stop": bool(parsed.get("has_stop", False)),
             "assistant_text": str(parsed.get("assistant_text", "")),
@@ -112,6 +125,7 @@ class AgentBrowserCdpBackend:
         raise RuntimeError("chatgpt_backend_failed")
 
     def _ensure_chatgpt_target_selected(self) -> None:
+        self._ensure_custom_gpt_page()
         target_index = self._chatgpt_tab_index()
         if target_index is None:
             return
@@ -125,6 +139,22 @@ class AgentBrowserCdpBackend:
             ],
             15,
         )
+
+    def _ensure_custom_gpt_page(self) -> None:
+        try:
+            _select_page_target(self._port, self._expected_url_substring)
+            return
+        except RuntimeError:
+            pass
+        generic = _select_generic_chatgpt_target(self._port)
+        if generic is None:
+            return
+        _run_raw_cdp_method(
+            generic["webSocketDebuggerUrl"],
+            "Page.navigate",
+            {"url": CHATGPT_LONGFORM_URL},
+        )
+        time.sleep(2.0)
 
     def _chatgpt_tab_index(self) -> int | None:
         try:
@@ -161,10 +191,12 @@ def _submit_script(payload: str) -> str:
         "input.focus();"
         "if (input.classList && input.classList.contains('ProseMirror')) {"
         "  const sel = window.getSelection(); const range = document.createRange(); range.selectNodeContents(input); sel.removeAllRanges(); sel.addRange(range); document.execCommand('delete'); document.execCommand('insertText', false, config.prompt);"
+        "  input.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,cancelable:true,data:config.prompt,inputType:'insertText'}));"
+        "  input.textContent = config.prompt;"
         "} else if (input.tagName === 'TEXTAREA') { input.value = config.prompt; } else { input.textContent = config.prompt; }"
         "input.dispatchEvent(new InputEvent('input',{bubbles:true,data:config.prompt,inputType:'insertText'}));"
         "input.dispatchEvent(new Event('change',{bubbles:true}));"
-        "input.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,key:'Enter'}));"
+        "input.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,key:'Enter',code:'Enter'}));"
         "input.dispatchEvent(new KeyboardEvent('keyup',{bubbles:true,key:'a'}));"
         "let send = null;"
         "for (const selector of sendSelectors) {"
@@ -178,6 +210,9 @@ def _submit_script(payload: str) -> str:
         "if (send.disabled) return JSON.stringify({ok:false,error:'SEND_DISABLED'});"
         "['pointerdown','mousedown','pointerup','mouseup','click'].forEach(type => send.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,view:window})));"
         "if (typeof send.click === 'function') send.click();"
+        "input.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,key:'Enter',code:'Enter'}));"
+        "input.dispatchEvent(new KeyboardEvent('keypress',{bubbles:true,key:'Enter',code:'Enter'}));"
+        "input.dispatchEvent(new KeyboardEvent('keyup',{bubbles:true,key:'Enter',code:'Enter'}));"
         "return JSON.stringify({ok:true,inputSelector: selectors.find(s => document.querySelector(s)===input) || '', sendClicked:true, sendTestId: send.getAttribute ? (send.getAttribute('data-testid') || '') : '', sendAriaLabel: send.getAttribute ? (send.getAttribute('aria-label') || '') : ''});"
         "})()"
     )
@@ -298,15 +333,42 @@ def _select_page_target(port: int, expected_url_substring: str) -> dict[str, str
     raise RuntimeError("CDP_TARGET_NOT_FOUND")
 
 
-def _run_raw_cdp_eval(ws_url: str, script: str) -> str:
+def _select_generic_chatgpt_target(port: int) -> dict[str, str] | None:
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/json/list", timeout=10
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8", "ignore"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, list):
+        return None
+    for raw_item in payload:
+        if not isinstance(raw_item, dict):
+            continue
+        item = raw_item
+        if str(item.get("type", "")) != "page":
+            continue
+        url = str(item.get("url", "")).strip()
+        ws_url = str(item.get("webSocketDebuggerUrl", "")).strip()
+        if not ws_url:
+            continue
+        if url.startswith("https://chatgpt.com/"):
+            return {"webSocketDebuggerUrl": ws_url, "url": url}
+    return None
+
+
+def _run_raw_cdp_method(
+    ws_url: str, method: str, params: dict[str, object]
+) -> dict[str, object]:
     ws = websocket.create_connection(ws_url, timeout=30, suppress_origin=True)
     try:
         ws.send(
             json.dumps(
                 {
                     "id": 1,
-                    "method": "Runtime.evaluate",
-                    "params": {"expression": script, "returnByValue": True},
+                    "method": method,
+                    "params": params,
                 },
                 ensure_ascii=True,
             )
@@ -315,23 +377,43 @@ def _run_raw_cdp_eval(ws_url: str, script: str) -> str:
             response = json.loads(ws.recv())
             if response.get("id") != 1:
                 continue
+            if not isinstance(response, dict):
+                raise RuntimeError("CDP_METHOD_INVALID")
+            if response.get("error") is not None:
+                raise RuntimeError("CDP_METHOD_ERROR")
             result = response.get("result", {})
-            if not isinstance(result, dict):
-                raise RuntimeError("CDP_EVAL_INVALID")
-            exception = result.get("exceptionDetails")
-            if exception is not None:
-                raise RuntimeError("CDP_EVAL_EXCEPTION")
-            inner = result.get("result", {})
-            if not isinstance(inner, dict):
-                raise RuntimeError("CDP_EVAL_INVALID")
-            return str(inner.get("value", ""))
+            return result if isinstance(result, dict) else {}
     finally:
         ws.close()
+
+
+def _run_raw_cdp_eval(ws_url: str, script: str) -> str:
+    result = _run_raw_cdp_method(
+        ws_url,
+        "Runtime.evaluate",
+        {"expression": script, "returnByValue": True},
+    )
+    exception = result.get("exceptionDetails")
+    if exception is not None:
+        raise RuntimeError("CDP_EVAL_EXCEPTION")
+    inner = result.get("result", {})
+    if not isinstance(inner, dict):
+        raise RuntimeError("CDP_EVAL_INVALID")
+    return str(inner.get("value", ""))
 
 
 def _is_retryable_backend_error(message: str) -> bool:
     lowered = message.lower()
     return "10060" in lowered or "timeout" in lowered or "failed to read" in lowered
+
+
+def _decode_backend_json(result: str) -> dict[str, object]:
+    parsed = json.loads(result)
+    if isinstance(parsed, str):
+        parsed = json.loads(parsed)
+    if not isinstance(parsed, dict):
+        raise RuntimeError("chatgpt_backend_invalid_json")
+    return parsed
 
 
 def _resolve_agent_browser_command(command: list[str]) -> list[str]:

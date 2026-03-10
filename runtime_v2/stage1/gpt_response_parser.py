@@ -7,13 +7,14 @@ from typing import cast
 from runtime_v2.stage1.gpt_plan_parser import build_topic_spec_from_gpt_response
 
 _LABEL_PATTERN = re.compile(
-    r"^(Title for Thumb|Title|Description|Keywords|Voice|BGM|Shorts Description|Shorts Voice|Shorts Clip Mapping|Scene\s*\d+|#\d+)\s*:?\s*$",
+    r"^\[?(Title for Thumb|Title|Description|Keywords|Voice|BGM|Ref Img 1|Ref Img 2|Shorts Description|Shorts Voice|Shorts Clip Mapping|Scene\s*\d+|#\d+|Video\d+)\]?\s*(?:[:\-].*)?$",
     re.IGNORECASE,
 )
 _INLINE_LABEL_PATTERN = re.compile(
-    r"^(Title for Thumb|Title|Description|Keywords|Voice|BGM|Shorts Description|Shorts Voice|Shorts Clip Mapping|Scene\s*\d+|#\d+)\s*:\s*(.+)$",
+    r"^\[?(Title for Thumb|Title|Description|Keywords|Voice|BGM|Ref Img 1|Ref Img 2|Shorts Description|Shorts Voice|Shorts Clip Mapping|Scene\s*\d+|#\d+|Video\d+)\]?\s*:\s*(.+)$",
     re.IGNORECASE,
 )
+_NUMBERED_LINE_PATTERN = re.compile(r"^\d+\.\s*(.+)$")
 
 
 def parse_gpt_response_text(
@@ -83,6 +84,8 @@ def _parse_block_response(
         if current_label:
             labels.setdefault(current_label, []).append(line)
     scene_prompts = _collect_scene_prompts(labels)
+    if not scene_prompts:
+        scene_prompts = _collect_voice_numbered_lines(labels)
     voice_text = "\n".join(labels.get("voice", []))
     voice_groups = [
         {"scene_index": index + 1, "voice": voice_text or "narration"}
@@ -98,6 +101,8 @@ def _parse_block_response(
         "keywords": _split_keywords(_join_label(labels, "keywords"))
         or _keywords(topic),
         "bgm": _join_label(labels, "bgm"),
+        "ref_img_1": _join_label(labels, "ref img 1"),
+        "ref_img_2": _join_label(labels, "ref img 2"),
         "scene_prompts": scene_prompts or [f"{topic} opening", f"{topic} ending"],
         "voice_groups": voice_groups,
         "story_outline": scene_prompts or [f"{topic} opening", f"{topic} ending"],
@@ -121,6 +126,20 @@ def _collect_scene_prompts(labels: dict[str, list[str]]) -> list[str]:
             scene_entries.append((index, joined))
     scene_entries.sort(key=lambda item: item[0])
     return [content for _, content in scene_entries]
+
+
+def _collect_voice_numbered_lines(labels: dict[str, list[str]]) -> list[str]:
+    lines = labels.get("voice", [])
+    prompts: list[str] = []
+    for line in lines:
+        for raw_part in line.splitlines():
+            part = raw_part.strip()
+            if not part:
+                continue
+            match = _NUMBERED_LINE_PATTERN.match(part)
+            if match is not None:
+                prompts.append(match.group(1).strip())
+    return prompts
 
 
 def _join_label(labels: dict[str, list[str]], key: str) -> str:
