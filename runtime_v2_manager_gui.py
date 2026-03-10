@@ -137,6 +137,13 @@ def _to_float(value: object, default: float = 0.0) -> float:
     return default
 
 
+def _display_worker_error_code(code: str) -> str:
+    normalized = code.strip()
+    if normalized == "BROWSER_RESTART_EXHAUSTED":
+        return "BROWSER_RESTART_EXHAUSTED(restart budget exhausted)"
+    return normalized
+
+
 class RuntimeV2ManagerGUI:
     SETTINGS_FILE: Path = BASE_DIR / "system" / "runtime_v2" / "config" / "manager_gui_settings.json"
 
@@ -727,6 +734,7 @@ class RuntimeV2ManagerGUI:
             worker_error_code = str(gui_payload.get("worker_error_code", "")).strip()
             if not worker_error_code and status_payload is not None:
                 worker_error_code = str(status_payload.get("worker_error_code", "")).strip()
+            worker_error_display = _display_worker_error_code(worker_error_code)
             result_path = str(gui_payload.get("result_path", "")).strip()
             if not result_path and status_payload is not None:
                 result_path = str(status_payload.get("result_path", "")).strip()
@@ -738,14 +746,14 @@ class RuntimeV2ManagerGUI:
                 "GUI",
                 status=str(gui_payload.get("stage", "대기")),
                 detail=(
-                    f"exit={gui_payload.get('exit_code', '?')} stage={worker_stage} err={worker_error_code or '-'} "
+                    f"exit={gui_payload.get('exit_code', '?')} stage={worker_stage} err={worker_error_display or '-'} "
                     f"retry={backoff_sec}s"
                 )[:40],
             )
             if worker_error_code or str(gui_payload.get("exit_code", 0)) != "0":
                 path_ref = result_path or manifest_path or "-"
                 self.last_result_text.set(
-                    f"실패정보: stage={worker_stage} error={worker_error_code or '-'} path={path_ref}"
+                    f"실패정보: stage={worker_stage} error={worker_error_display or '-'} path={path_ref}"
                 )
 
         browser_health = _read_json(self.config.browser_health_file)
@@ -777,8 +785,11 @@ class RuntimeV2ManagerGUI:
                 done_state = str(record.get("completion_state", "-") or "-")
                 final_output = bool(record.get("final_output", False))
                 final_artifact = str(record.get("final_artifact", "") or "-")
+                worker_error_display = _display_worker_error_code(
+                    str(record.get("worker_error_code", "-") or "-")
+                )
                 new_lines.append(
-                    f"summary job={record.get('job_id', '?')} ok={record.get('success', False)} stage={record.get('worker_stage', '-')} err={record.get('worker_error_code', '-')} tries={record.get('attempts', 0)} backoff={record.get('backoff_sec', 0)} art={record.get('artifact_count', 0)} next={record.get('next_jobs_count', 0)} routed={record.get('routed_count', 0)} depth={record.get('chain_depth', 0)} from={record.get('routed_from', '-') or '-'} done={done_state} final={final_output} file={final_artifact}"
+                    f"summary job={record.get('job_id', '?')} ok={record.get('success', False)} stage={record.get('worker_stage', '-')} err={worker_error_display} tries={record.get('attempts', 0)} backoff={record.get('backoff_sec', 0)} art={record.get('artifact_count', 0)} next={record.get('next_jobs_count', 0)} routed={record.get('routed_count', 0)} depth={record.get('chain_depth', 0)} from={record.get('routed_from', '-') or '-'} done={done_state} final={final_output} file={final_artifact}"
                 )
             else:
                 new_lines.append(
@@ -835,12 +846,13 @@ class RuntimeV2ManagerGUI:
             worker_error_code = str(gui_payload.get("worker_error_code", "")).strip()
             if not worker_error_code and status_payload is not None:
                 worker_error_code = str(status_payload.get("worker_error_code", "")).strip()
+            worker_error_display = _display_worker_error_code(worker_error_code)
             result_path = str(gui_payload.get("result_path", "")).strip()
             if not result_path and status_payload is not None:
                 result_path = str(status_payload.get("result_path", "")).strip()
             if worker_error_code or worker_stage:
                 warnings.append(
-                    f"job failure: stage={worker_stage or '-'} error={worker_error_code or '-'} path={result_path or '-'}"
+                    f"job failure: stage={worker_stage or '-'} error={worker_error_display or '-'} path={result_path or '-'}"
                 )
         self.warning_text.set(" | ".join(warnings) if warnings else "경고 없음")
 
