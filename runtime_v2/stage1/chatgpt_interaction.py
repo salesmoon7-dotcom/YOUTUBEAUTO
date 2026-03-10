@@ -54,6 +54,7 @@ def generate_gpt_response_text(
     command_runner: Callable[[list[str], int], str] | None = None,
     session_probe: Callable[[int], dict[str, object]] | None = None,
     backend: ChatGPTBackend | None = None,
+    relaunch_browser: Callable[[], None] | None = None,
 ) -> dict[str, object]:
     probe = _default_session_probe if session_probe is None else session_probe
     timeline: list[dict[str, object]] = []
@@ -83,51 +84,27 @@ def generate_gpt_response_text(
         if backend is None
         else backend
     )
-    emit("submit_start", attempt=1, backend="chatgpt_backend")
-    try:
-        submit_info = interaction_backend.submit_prompt(prompt)
-    except RuntimeError as exc:
-        emit("submit_failed", attempt=1, backend="chatgpt_backend")
-        failed = _interaction_failure(
-            failure_stage="submit",
-            error_code="CHATGPT_BACKEND_UNAVAILABLE",
-            backend_error=str(exc),
-            final_state=probe(port),
-        )
-        emit(
-            "final_state",
-            final_state="failed",
-            final_state_code=str(failed.get("error_code", "failed")),
-        )
-        failed["timeline"] = timeline
-        return failed
-    emit("submit_ok", attempt=1, backend="chatgpt_backend")
-    for fallback in _backend_fallbacks(submit_info):
-        emit(
-            "fallback_transition",
-            attempt_from=1,
-            backend_from="chatgpt_backend",
-            attempt_to=1,
-            backend_to=fallback,
-            reason=fallback,
-        )
-    started = time.time()
-    last_text = ""
-    stable_count = 0
-    saw_streaming = False
-    last_state: dict[str, object] = {}
-    while time.time() - started < timeout_sec:
+    for attempt in (1, 2):
+        emit("submit_start", attempt=attempt, backend="chatgpt_backend")
         try:
-            state = interaction_backend.read_response_state()
+            submit_info = interaction_backend.submit_prompt(prompt)
         except RuntimeError as exc:
+            emit("submit_failed", attempt=attempt, backend="chatgpt_backend")
             failed = _interaction_failure(
-                failure_stage="read",
+                failure_stage="submit",
                 error_code="CHATGPT_BACKEND_UNAVAILABLE",
                 backend_error=str(exc),
-                submit_info=submit_info,
                 final_state=probe(port),
             )
-            emit("read_failed", attempt=1, backend="chatgpt_backend")
+            if attempt == 1 and relaunch_browser is not None:
+                emit(
+                    "retry_decision",
+                    attempt=attempt,
+                    backend="chatgpt_backend",
+                    reason="submit_failure",
+                )
+                relaunch_browser()
+                continue
             emit(
                 "final_state",
                 final_state="failed",
@@ -135,61 +112,115 @@ def generate_gpt_response_text(
             )
             failed["timeline"] = timeline
             return failed
-        last_state = state
-        for fallback in _backend_fallbacks(state):
+        emit("submit_ok", attempt=attempt, backend="chatgpt_backend")
+        for fallback in _backend_fallbacks(submit_info):
             emit(
                 "fallback_transition",
-                attempt_from=1,
+                attempt_from=attempt,
                 backend_from="chatgpt_backend",
-                attempt_to=1,
+                attempt_to=attempt,
                 backend_to=fallback,
                 reason=fallback,
             )
-        text = str(state.get("assistant_text", "")).strip()
-        has_stop = bool(state.get("has_stop", False))
-        if has_stop:
-            if not saw_streaming:
-                emit("streaming_seen", attempt=1, backend="chatgpt_backend")
-                emit(
-                    "stop_gate",
-                    gate_state="blocked",
-                    reason="streaming_active",
+        started = time.time()
+        last_text = ""
+        stable_count = 0
+        saw_streaming = False
+        last_state: dict[str, object] = {}
+        while time.time() - started < timeout_sec:
+            try:
+                state = interaction_backend.read_response_state()
+            except RuntimeError as exc:
+                emit("read_failed", attempt=attempt, backend="chatgpt_backend")
+                failed = _interaction_failure(
+                    failure_stage="read",
+                    error_code="CHATGPT_BACKEND_UNAVAILABLE",
+                    backend_error=str(exc),
+                    submit_info=submit_info,
+                    final_state=probe(port),
                 )
-            saw_streaming = True
-        if text and not has_stop and saw_streaming:
-            if text == last_text:
-                stable_count += 1
-            else:
-                stable_count = 0
-            last_text = text
-            if stable_count >= 1:
-                legacy_blocks = state.get("legacy_blocks", [])
                 emit(
-                    "response_stable",
-                    attempt=1,
-                    backend="chatgpt_backend",
-                    final_state_code="ok",
+                    "final_state",
+                    final_state="failed",
+                    final_state_code=str(failed.get("error_code", "failed")),
                 )
-                result: dict[str, object] = {
-                    "status": "ok",
-                    "response_text": _response_text_from_state(text, legacy_blocks),
-                    "submit_info": submit_info,
-                    "final_state": state,
-                }
-                emit("final_state", final_state="success", final_state_code="ok")
-                result["timeline"] = timeline
-                return result
-        time.sleep(poll_interval_sec)
+                failed["timeline"] = timeline
+                return failed
+            last_state = state
+            for fallback in _backend_fallbacks(state):
+                emit(
+                    "fallback_transition",
+                    attempt_from=attempt,
+                    backend_from="chatgpt_backend",
+                    attempt_to=attempt,
+                    backend_to=fallback,
+                    reason=fallback,
+                )
+            text = str(state.get("assistant_text", "")).strip()
+            has_stop = bool(state.get("has_stop", False))
+            if has_stop:
+                if not saw_streaming:
+                    emit("streaming_seen", attempt=attempt, backend="chatgpt_backend")
+                    emit(
+                        "stop_gate",
+                        gate_state="blocked",
+                        reason="streaming_active",
+                    )
+                saw_streaming = True
+            if text and not has_stop and saw_streaming:
+                if text == last_text:
+                    stable_count += 1
+                else:
+                    stable_count = 0
+                last_text = text
+                if stable_count >= 1:
+                    legacy_blocks = state.get("legacy_blocks", [])
+                    emit(
+                        "response_stable",
+                        attempt=attempt,
+                        backend="chatgpt_backend",
+                        final_state_code="ok",
+                    )
+                    result: dict[str, object] = {
+                        "status": "ok",
+                        "response_text": _response_text_from_state(text, legacy_blocks),
+                        "submit_info": submit_info,
+                        "final_state": state,
+                    }
+                    emit("final_state", final_state="success", final_state_code="ok")
+                    result["timeline"] = timeline
+                    return result
+            time.sleep(poll_interval_sec)
+        else:
+            emit(
+                "final_state",
+                final_state="failed",
+                final_state_code="CHATGPT_RESPONSE_TIMEOUT",
+            )
+            return {
+                "status": "failed",
+                "error_code": "CHATGPT_RESPONSE_TIMEOUT",
+                "failure_stage": "read",
+                "submit_info": submit_info,
+                "final_state": last_state,
+                "timeline": timeline,
+            }
     emit(
-        "final_state", final_state="failed", final_state_code="CHATGPT_RESPONSE_TIMEOUT"
+        "final_state",
+        final_state="failed",
+        final_state_code="CHATGPT_BACKEND_UNAVAILABLE",
     )
     return {
         "status": "failed",
-        "error_code": "CHATGPT_RESPONSE_TIMEOUT",
+        "error_code": "CHATGPT_BACKEND_UNAVAILABLE",
         "failure_stage": "read",
-        "submit_info": submit_info,
-        "final_state": last_state,
+        "submit_info": {},
+        "final_state": probe(port),
         "timeline": timeline,
+        "details": {
+            "backend_error": "retry_exhausted",
+            "backend_fallback": "raw_cdp_http",
+        },
     }
 
 

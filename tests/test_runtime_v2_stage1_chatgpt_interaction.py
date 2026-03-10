@@ -534,6 +534,112 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertIn("read_failed", event_names)
         self.assertEqual(event_names[-1], "final_state")
 
+    def test_generate_gpt_response_text_retries_once_with_relauncher(self) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def __init__(self) -> None:
+                self.submit_calls = 0
+                self.read_calls = 0
+
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                self.submit_calls += 1
+                if self.submit_calls == 1:
+                    raise RuntimeError("submit timeout")
+                return {
+                    "ok": True,
+                    "inputSelector": "#prompt-textarea",
+                    "sendClicked": True,
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                self.read_calls += 1
+                if self.read_calls == 1:
+                    return {
+                        "has_stop": True,
+                        "assistant_block_count": 1,
+                        "assistant_text": "draft",
+                    }
+                return {
+                    "has_stop": False,
+                    "assistant_block_count": 1,
+                    "assistant_text": "final json",
+                }
+
+        relaunch_calls: list[str] = []
+
+        def fake_probe(port: int) -> dict[str, object]:
+            return {
+                "probe_backend": "raw_cdp_http",
+                "port": port,
+                "tab_count": 1,
+                "selected_tab": {"title": "ChatGPT", "url": "https://chatgpt.com/"},
+            }
+
+        result = generate_gpt_response_text(
+            prompt="test prompt",
+            port=9222,
+            poll_interval_sec=0.01,
+            session_probe=fake_probe,
+            backend=FakeBackend(),
+            relaunch_browser=lambda: relaunch_calls.append("chatgpt"),
+        )
+
+        timeline = cast(list[dict[str, object]], result["timeline"])
+        event_names = [str(item["event"]) for item in timeline]
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(relaunch_calls, ["chatgpt"])
+        self.assertIn("retry_decision", event_names)
+        self.assertIn("submit_failed", event_names)
+        self.assertGreaterEqual(event_names.count("submit_start"), 2)
+
+    def test_generate_gpt_response_text_does_not_resubmit_after_read_failure(
+        self,
+    ) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def __init__(self) -> None:
+                self.submit_calls = 0
+
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                self.submit_calls += 1
+                return {
+                    "ok": True,
+                    "inputSelector": "#prompt-textarea",
+                    "sendClicked": True,
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                raise RuntimeError("read timeout")
+
+        relaunch_calls: list[str] = []
+
+        def fake_probe(port: int) -> dict[str, object]:
+            return {
+                "probe_backend": "raw_cdp_http",
+                "port": port,
+                "tab_count": 1,
+                "selected_tab": {"title": "ChatGPT", "url": "https://chatgpt.com/"},
+            }
+
+        backend = FakeBackend()
+        result = generate_gpt_response_text(
+            prompt="test prompt",
+            port=9222,
+            poll_interval_sec=0.01,
+            session_probe=fake_probe,
+            backend=backend,
+            relaunch_browser=lambda: relaunch_calls.append("chatgpt"),
+        )
+
+        timeline = cast(list[dict[str, object]], result["timeline"])
+        event_names = [str(item["event"]) for item in timeline]
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_BACKEND_UNAVAILABLE")
+        self.assertEqual(backend.submit_calls, 1)
+        self.assertEqual(relaunch_calls, [])
+        self.assertNotIn("retry_decision", event_names)
+        self.assertEqual(event_names[-1], "final_state")
+
 
 if __name__ == "__main__":
     _ = unittest.main()

@@ -129,19 +129,17 @@ def attach_gpt_response_text_from_browser_evidence(
         raw_port = browser_evidence.get("port", 0)
         if service == "chatgpt" and isinstance(raw_port, int) and raw_port > 0:
             prompt = build_live_chatgpt_prompt(topic_spec)
-            attempt_count = 1
-            result = generate_gpt_response_text(prompt=prompt, port=raw_port)
-            if _should_retry_chatgpt_interaction(result):
-                _ = open_browser_for_login("chatgpt")
-                sleep(8)
-                attempt_count += 1
-                result = generate_gpt_response_text(prompt=prompt, port=raw_port)
+            result = generate_gpt_response_text(
+                prompt=prompt,
+                port=raw_port,
+                relaunch_browser=lambda: _relaunch_chatgpt_browser(),
+            )
             enriched = dict(topic_spec)
             enriched["gpt_capture"] = _canonical_gpt_capture(
                 result,
                 source="agent_browser_live",
                 topic_spec=topic_spec,
-                attempt_count=attempt_count,
+                attempt_count=_capture_attempt_count(result),
             )
             enriched["gpt_timeline"] = result.get("timeline", [])
             if str(result.get("status", "")) == "ok":
@@ -196,6 +194,25 @@ def _should_retry_chatgpt_interaction(result: dict[str, object]) -> bool:
         return False
     failure_stage = str(result.get("failure_stage", "")).strip()
     return failure_stage in {"submit", "read"}
+
+
+def _relaunch_chatgpt_browser() -> None:
+    _ = open_browser_for_login("chatgpt")
+    sleep(8)
+
+
+def _capture_attempt_count(result: dict[str, object]) -> int:
+    timeline = result.get("timeline", [])
+    if not isinstance(timeline, list):
+        return 1
+    attempts = [
+        int(item.get("attempt", 0))
+        for item in cast(list[object], timeline)
+        if isinstance(item, dict) and isinstance(item.get("attempt"), int)
+    ]
+    if attempts:
+        return max(attempts)
+    return 1
 
 
 def _canonical_gpt_capture(

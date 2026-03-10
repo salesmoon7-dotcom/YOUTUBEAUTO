@@ -530,21 +530,33 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             with (
                 patch(
                     "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
-                    side_effect=[
-                        {
-                            "status": "failed",
-                            "error_code": "CHATGPT_BACKEND_UNAVAILABLE",
-                            "failure_stage": "read",
-                            "details": {"backend_error": "os error 10060"},
-                            "submit_info": {},
-                            "final_state": {},
-                        },
-                        {
-                            "status": "ok",
-                            "response_text": _gpt_response_text(),
-                            "final_state": {"assistant_block_count": 1},
-                        },
-                    ],
+                    return_value={
+                        "status": "ok",
+                        "response_text": _gpt_response_text(),
+                        "final_state": {"assistant_block_count": 1},
+                        "timeline": [
+                            {
+                                "ts": "2026-03-10T00:00:00Z",
+                                "seq": 1,
+                                "event": "submit_start",
+                            },
+                            {
+                                "ts": "2026-03-10T00:00:01Z",
+                                "seq": 2,
+                                "event": "retry_decision",
+                            },
+                            {
+                                "ts": "2026-03-10T00:00:02Z",
+                                "seq": 3,
+                                "event": "submit_start",
+                            },
+                            {
+                                "ts": "2026-03-10T00:00:03Z",
+                                "seq": 4,
+                                "event": "final_state",
+                            },
+                        ],
+                    },
                 ) as generate_mock,
                 patch(
                     "runtime_v2.stage1.chatgpt_runner.open_browser_for_login"
@@ -558,9 +570,9 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                 )
 
         self.assertEqual(result["status"], "ok")
-        self.assertEqual(generate_mock.call_count, 2)
-        relaunch_mock.assert_called_once_with("chatgpt")
-        sleep_mock.assert_called_once()
+        self.assertEqual(generate_mock.call_count, 1)
+        relaunch_mock.assert_not_called()
+        sleep_mock.assert_not_called()
 
     def test_stage1_runner_fails_closed_when_live_chatgpt_capture_stays_failed(
         self,
@@ -573,58 +585,46 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             with (
                 patch(
                     "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
-                    side_effect=[
-                        {
-                            "status": "failed",
-                            "error_code": "CHATGPT_BACKEND_UNAVAILABLE",
-                            "failure_stage": "read",
-                            "details": {"backend_error": "os error 10060"},
-                            "submit_info": {},
-                            "final_state": {},
-                            "timeline": [
-                                {
-                                    "ts": "2026-03-10T00:00:00Z",
-                                    "seq": 1,
-                                    "event": "submit_start",
-                                },
-                                {
-                                    "ts": "2026-03-10T00:00:01Z",
-                                    "seq": 2,
-                                    "event": "read_failed",
-                                },
-                                {
-                                    "ts": "2026-03-10T00:00:02Z",
-                                    "seq": 3,
-                                    "event": "final_state",
-                                },
-                            ],
-                        },
-                        {
-                            "status": "failed",
-                            "error_code": "CHATGPT_BACKEND_UNAVAILABLE",
-                            "failure_stage": "read",
-                            "details": {"backend_error": "os error 10060"},
-                            "submit_info": {},
-                            "final_state": {},
-                            "timeline": [
-                                {
-                                    "ts": "2026-03-10T00:00:03Z",
-                                    "seq": 1,
-                                    "event": "submit_start",
-                                },
-                                {
-                                    "ts": "2026-03-10T00:00:04Z",
-                                    "seq": 2,
-                                    "event": "read_failed",
-                                },
-                                {
-                                    "ts": "2026-03-10T00:00:05Z",
-                                    "seq": 3,
-                                    "event": "final_state",
-                                },
-                            ],
-                        },
-                    ],
+                    return_value={
+                        "status": "failed",
+                        "error_code": "CHATGPT_BACKEND_UNAVAILABLE",
+                        "failure_stage": "read",
+                        "details": {"backend_error": "os error 10060"},
+                        "submit_info": {},
+                        "final_state": {},
+                        "timeline": [
+                            {
+                                "ts": "2026-03-10T00:00:00Z",
+                                "seq": 1,
+                                "event": "submit_start",
+                                "attempt": 1,
+                            },
+                            {
+                                "ts": "2026-03-10T00:00:01Z",
+                                "seq": 2,
+                                "event": "retry_decision",
+                                "attempt": 1,
+                            },
+                            {
+                                "ts": "2026-03-10T00:00:02Z",
+                                "seq": 3,
+                                "event": "submit_start",
+                                "attempt": 2,
+                            },
+                            {
+                                "ts": "2026-03-10T00:00:03Z",
+                                "seq": 4,
+                                "event": "read_failed",
+                                "attempt": 2,
+                            },
+                            {
+                                "ts": "2026-03-10T00:00:04Z",
+                                "seq": 5,
+                                "event": "final_state",
+                                "attempt": 2,
+                            },
+                        ],
+                    },
                 ),
                 patch(
                     "runtime_v2.stage1.chatgpt_runner.open_browser_for_login"
@@ -679,8 +679,8 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertTrue(
             str(stage1_result["raw_output_path"]).endswith("raw_output.json")
         )
-        relaunch_mock.assert_called_once_with("chatgpt")
-        sleep_mock.assert_called_once()
+        relaunch_mock.assert_not_called()
+        sleep_mock.assert_not_called()
 
     def test_stage1_runner_fails_closed_when_chatgpt_live_request_has_no_port(
         self,
