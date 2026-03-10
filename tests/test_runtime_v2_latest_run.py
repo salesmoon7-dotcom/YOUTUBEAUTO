@@ -93,6 +93,9 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
             )
 
             latest_join = load_joined_latest_run(config, completed=True)
+            result_payload = json.loads(
+                config.result_router_file.read_text(encoding="utf-8")
+            )
 
         self.assertFalse(bool(latest_join["out_of_sync"]))
         pointer = cast(dict[object, object], latest_join["pointer"])
@@ -102,6 +105,7 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
         self.assertEqual(str(gui_status["run_id"]), "runtime-run-1")
         self.assertEqual(str(result_metadata["run_id"]), "runtime-run-1")
         self.assertEqual(str(result_metadata["code"]), "OK")
+        self.assertIsInstance(result_payload["checked_at"], float)
         canonical_handoff = cast(
             dict[str, object], result_metadata["canonical_handoff"]
         )
