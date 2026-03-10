@@ -655,6 +655,70 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertEqual(str(escalation_events[0]["action"]), "escalate")
         self.assertEqual(str(escalation_events[0]["action_result"]), "blocked")
 
+    def test_supervisor_blocks_restart_when_budget_is_exhausted(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            profile_dir = Path(tmp_dir) / "chatgpt-primary"
+            profile_dir.mkdir(parents=True, exist_ok=True)
+            session = BrowserSession(
+                service="chatgpt",
+                group="llm",
+                session_id="primary",
+                port=9222,
+                profile_dir=str(profile_dir.resolve()),
+                status="unhealthy",
+                consecutive_failures=1,
+                restart_history=[100.0, 200.0, 250.0],
+            )
+            manager = BrowserManager(sessions=[session])
+            manager.running = True
+            supervisor = BrowserSupervisor(manager)
+            events_file = Path(tmp_dir) / "control_plane_events.jsonl"
+
+            with (
+                patch.object(
+                    manager,
+                    "session_snapshots",
+                    side_effect=[
+                        [session.to_dict(healthy=False)],
+                        [session.to_dict(healthy=False)],
+                    ],
+                ),
+                patch.object(manager, "restart") as restart,
+            ):
+                result = supervisor.tick(
+                    registry_file=Path(tmp_dir) / "browser_session_registry.json",
+                    health_file=Path(tmp_dir) / "browser_health.json",
+                    events_file=events_file,
+                    run_id="browser-run-restart-budget",
+                    recover_unhealthy=True,
+                    restart_threshold=1,
+                    cooldown_sec=0,
+                    restart_budget=3,
+                    restart_window_sec=300,
+                    now_fn=lambda: 300.0,
+                )
+
+            restart.assert_not_called()
+            sessions = cast(list[dict[object, object]], result["sessions"])
+            self.assertEqual(str(sessions[0]["status"]), "restart_exhausted")
+            self.assertEqual(
+                str(sessions[0]["blocked_reason"]), "restart_budget_exhausted"
+            )
+            event_lines = [
+                json.loads(line)
+                for line in events_file.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            exhausted_events = [
+                cast(dict[object, object], entry)
+                for entry in event_lines
+                if isinstance(entry, dict)
+                and entry.get("event") == "browser_restart_budget_exhausted"
+            ]
+            self.assertEqual(len(exhausted_events), 1)
+            self.assertEqual(str(exhausted_events[0]["status"]), "restart_exhausted")
+            self.assertEqual(str(exhausted_events[0]["action_result"]), "blocked")
+
     def test_same_profile_is_not_opened_by_two_browser_processes(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             profile_dir = str((Path(tmp_dir) / "chrome_seaart").resolve())
@@ -862,6 +926,39 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["code"], "BROWSER_UNHEALTHY")
         self.assertEqual(str(completion["state"]), "failed")
+
+    def test_run_once_blocks_browser_workload_when_restart_budget_is_exhausted(
+        self,
+    ) -> None:
+        browser_runtime = {
+            "sessions": [
+                {
+                    "service": "chatgpt",
+                    "healthy": False,
+                    "status": "restart_exhausted",
+                    "lock_state": "free",
+                    "blocked_reason": "restart_budget_exhausted",
+                }
+            ]
+        }
+        with patch("runtime_v2.supervisor.BrowserManager.start"):
+            with patch(
+                "runtime_v2.supervisor.BrowserSupervisor.tick",
+                return_value=browser_runtime,
+            ):
+                result = run_once(
+                    owner="runtime_v2",
+                    run_id="chatgpt-run-restart-exhausted",
+                    workload="chatgpt",
+                    config=RuntimeConfig(),
+                    worker_runner=lambda: {"status": "ok"},
+                )
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["code"], "BROWSER_BLOCKED")
+        worker_result = cast(dict[object, object], result["worker_result"])
+        details = cast(dict[object, object], worker_result["details"])
+        self.assertEqual(details["blocked_services"], ["chatgpt"])
 
     def test_profile_storage_policy_reports_in_project_vs_external_paths(self) -> None:
         policy = build_profile_storage_report()
