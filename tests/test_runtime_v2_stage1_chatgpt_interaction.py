@@ -419,6 +419,13 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["response_text"], "final json")
+        timeline = cast(list[dict[str, object]], result["timeline"])
+        event_names = [str(item["event"]) for item in timeline]
+        self.assertEqual(event_names[0], "submit_start")
+        self.assertIn("submit_ok", event_names)
+        self.assertIn("streaming_seen", event_names)
+        self.assertIn("response_stable", event_names)
+        self.assertEqual(event_names[-1], "final_state")
 
     def test_generate_gpt_response_text_does_not_finish_without_streaming_transition(
         self,
@@ -520,6 +527,12 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(details["backend_fallback"], "raw_cdp_http")
         self.assertTrue(bool(result["submit_info"]))
         self.assertEqual(final_state["tab_count"], 1)
+        timeline = cast(list[dict[str, object]], result["timeline"])
+        event_names = [str(item["event"]) for item in timeline]
+        self.assertEqual(event_names[0], "submit_start")
+        self.assertIn("submit_ok", event_names)
+        self.assertIn("read_failed", event_names)
+        self.assertEqual(event_names[-1], "final_state")
 
 
 if __name__ == "__main__":

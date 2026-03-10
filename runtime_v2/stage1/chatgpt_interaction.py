@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 import urllib.request
+from datetime import datetime, timezone
 from typing import Callable, cast
 
 from runtime_v2.stage1.chatgpt_backend import AgentBrowserCdpBackend, ChatGPTBackend
@@ -55,6 +56,21 @@ def generate_gpt_response_text(
     backend: ChatGPTBackend | None = None,
 ) -> dict[str, object]:
     probe = _default_session_probe if session_probe is None else session_probe
+    timeline: list[dict[str, object]] = []
+    sequence = 0
+
+    def emit(event: str, **fields: object) -> None:
+        nonlocal sequence
+        sequence += 1
+        timeline.append(
+            {
+                "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "seq": sequence,
+                "event": event,
+                **fields,
+            }
+        )
+
     interaction_backend = (
         AgentBrowserCdpBackend(
             port=port,
@@ -67,14 +83,33 @@ def generate_gpt_response_text(
         if backend is None
         else backend
     )
+    emit("submit_start", attempt=1, backend="chatgpt_backend")
     try:
         submit_info = interaction_backend.submit_prompt(prompt)
     except RuntimeError as exc:
-        return _interaction_failure(
+        emit("submit_failed", attempt=1, backend="chatgpt_backend")
+        failed = _interaction_failure(
             failure_stage="submit",
             error_code="CHATGPT_BACKEND_UNAVAILABLE",
             backend_error=str(exc),
             final_state=probe(port),
+        )
+        emit(
+            "final_state",
+            final_state="failed",
+            final_state_code=str(failed.get("error_code", "failed")),
+        )
+        failed["timeline"] = timeline
+        return failed
+    emit("submit_ok", attempt=1, backend="chatgpt_backend")
+    for fallback in _backend_fallbacks(submit_info):
+        emit(
+            "fallback_transition",
+            attempt_from=1,
+            backend_from="chatgpt_backend",
+            attempt_to=1,
+            backend_to=fallback,
+            reason=fallback,
         )
     started = time.time()
     last_text = ""
@@ -85,17 +120,41 @@ def generate_gpt_response_text(
         try:
             state = interaction_backend.read_response_state()
         except RuntimeError as exc:
-            return _interaction_failure(
+            failed = _interaction_failure(
                 failure_stage="read",
                 error_code="CHATGPT_BACKEND_UNAVAILABLE",
                 backend_error=str(exc),
                 submit_info=submit_info,
                 final_state=probe(port),
             )
+            emit("read_failed", attempt=1, backend="chatgpt_backend")
+            emit(
+                "final_state",
+                final_state="failed",
+                final_state_code=str(failed.get("error_code", "failed")),
+            )
+            failed["timeline"] = timeline
+            return failed
         last_state = state
+        for fallback in _backend_fallbacks(state):
+            emit(
+                "fallback_transition",
+                attempt_from=1,
+                backend_from="chatgpt_backend",
+                attempt_to=1,
+                backend_to=fallback,
+                reason=fallback,
+            )
         text = str(state.get("assistant_text", "")).strip()
         has_stop = bool(state.get("has_stop", False))
         if has_stop:
+            if not saw_streaming:
+                emit("streaming_seen", attempt=1, backend="chatgpt_backend")
+                emit(
+                    "stop_gate",
+                    gate_state="blocked",
+                    reason="streaming_active",
+                )
             saw_streaming = True
         if text and not has_stop and saw_streaming:
             if text == last_text:
@@ -105,19 +164,32 @@ def generate_gpt_response_text(
             last_text = text
             if stable_count >= 1:
                 legacy_blocks = state.get("legacy_blocks", [])
-                return {
+                emit(
+                    "response_stable",
+                    attempt=1,
+                    backend="chatgpt_backend",
+                    final_state_code="ok",
+                )
+                result: dict[str, object] = {
                     "status": "ok",
                     "response_text": _response_text_from_state(text, legacy_blocks),
                     "submit_info": submit_info,
                     "final_state": state,
                 }
+                emit("final_state", final_state="success", final_state_code="ok")
+                result["timeline"] = timeline
+                return result
         time.sleep(poll_interval_sec)
+    emit(
+        "final_state", final_state="failed", final_state_code="CHATGPT_RESPONSE_TIMEOUT"
+    )
     return {
         "status": "failed",
         "error_code": "CHATGPT_RESPONSE_TIMEOUT",
         "failure_stage": "read",
         "submit_info": submit_info,
         "final_state": last_state,
+        "timeline": timeline,
     }
 
 
@@ -203,3 +275,15 @@ def _response_text_from_state(text: str, legacy_blocks: object) -> str:
         if parts:
             return "\n\n".join(parts)
     return text
+
+
+def _backend_fallbacks(payload: dict[str, object]) -> list[str]:
+    raw = payload.get("backend_fallbacks", [])
+    if not isinstance(raw, list):
+        return []
+    fallbacks: list[str] = []
+    for item in cast(list[object], raw):
+        normalized = str(item).strip()
+        if normalized and normalized not in fallbacks:
+            fallbacks.append(normalized)
+    return fallbacks

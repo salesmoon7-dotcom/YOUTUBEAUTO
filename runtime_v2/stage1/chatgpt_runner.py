@@ -143,6 +143,7 @@ def attach_gpt_response_text_from_browser_evidence(
                 topic_spec=topic_spec,
                 attempt_count=attempt_count,
             )
+            enriched["gpt_timeline"] = result.get("timeline", [])
             if str(result.get("status", "")) == "ok":
                 enriched["gpt_response_text"] = str(result.get("response_text", ""))
                 enriched["gpt_response_source"] = "agent_browser_live"
@@ -272,6 +273,36 @@ def _git_sha() -> str:
         return ""
 
 
+def _write_gpt_timeline_if_present(
+    topic_spec: dict[str, object], timeline_path: Path
+) -> str:
+    gpt_capture = topic_spec.get("gpt_capture")
+    raw_timeline = topic_spec.get("gpt_timeline")
+    if not isinstance(gpt_capture, dict) or not isinstance(raw_timeline, list):
+        return ""
+    run_id = str(topic_spec.get("run_id", "")).strip()
+    capture_id = f"{run_id}:chatgpt_capture" if run_id else "chatgpt_capture"
+    lines: list[str] = []
+    for item in cast(list[object], raw_timeline):
+        if not isinstance(item, dict):
+            continue
+        record = {
+            "run_id": run_id,
+            "capture_id": capture_id,
+            **cast(dict[str, object], item),
+        }
+        lines.append(json.dumps(record, ensure_ascii=True))
+    if not lines:
+        return ""
+    try:
+        timeline_path.parent.mkdir(parents=True, exist_ok=True)
+        timeline_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except OSError:
+        return ""
+    cast(dict[str, object], gpt_capture)["timeline_path"] = str(timeline_path.resolve())
+    return str(timeline_path.resolve())
+
+
 def _requires_live_chatgpt_capture(browser_evidence: dict[str, object]) -> bool:
     if str(browser_evidence.get("snapshot_path", "")).strip():
         return False
@@ -392,8 +423,10 @@ def run_stage1_chatgpt_job(
     run_id = str(topic_spec.get("run_id", "")).strip()
     row_ref = str(topic_spec.get("row_ref", "")).strip()
     raw_output_path = workspace / "raw_output.json"
+    timeline_path = workspace / "chatgpt_timeline.jsonl"
     parsed_payload_path = workspace / "parsed_payload.json"
     handoff_path = workspace / "stage1_handoff.json"
+    _ = _write_gpt_timeline_if_present(topic_spec, timeline_path)
     raw_output = build_stage1_raw_output_artifact(topic_spec)
     _ = write_json_atomic(raw_output_path, raw_output)
     if _requires_live_chatgpt_capture(browser_evidence):
@@ -417,6 +450,9 @@ def run_stage1_chatgpt_job(
                 evidence={
                     "gpt_capture": gpt_capture,
                     "raw_output_path": str(raw_output_path.resolve()),
+                    "timeline_path": str(timeline_path.resolve())
+                    if timeline_path.exists()
+                    else "",
                 },
                 raw_output_path=str(raw_output_path.resolve()),
             )

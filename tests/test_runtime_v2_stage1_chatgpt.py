@@ -448,6 +448,19 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                     "response_text": _gpt_response_text(),
                     "submit_info": {"sendClicked": True},
                     "final_state": {"assistant_block_count": 1},
+                    "timeline": [
+                        {
+                            "ts": "2026-03-10T00:00:00Z",
+                            "seq": 1,
+                            "event": "submit_start",
+                        },
+                        {"ts": "2026-03-10T00:00:01Z", "seq": 2, "event": "submit_ok"},
+                        {
+                            "ts": "2026-03-10T00:00:02Z",
+                            "seq": 3,
+                            "event": "final_state",
+                        },
+                    ],
                 },
             ) as generate_mock:
                 result = run_stage1_chatgpt_job(
@@ -468,6 +481,13 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                     (root / "workspace" / "raw_output.json").read_text(encoding="utf-8")
                 ),
             )
+            gpt_capture = cast(dict[str, object], raw_output["gpt_capture"])
+            timeline_path = Path(str(gpt_capture["timeline_path"]))
+            timeline_lines = [
+                json.loads(line)
+                for line in timeline_path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
             handoff = cast(
                 dict[str, object],
                 cast(dict[str, object], result_payload["details"])["stage1_handoff"],
@@ -480,7 +500,6 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertIn(
             "scene one from gpt", cast(list[object], parsed_payload["scene_prompts"])
         )
-        gpt_capture = cast(dict[str, object], raw_output["gpt_capture"])
         browser_evidence = cast(dict[str, object], raw_output["browser_evidence"])
         self.assertEqual(raw_output["source"], "gpt_response_text")
         self.assertEqual(gpt_capture["status"], "ok")
@@ -496,6 +515,9 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertEqual(capture_meta["fallback_chain"], [])
         self.assertTrue(str(capture_meta["git_sha"]))
         self.assertTrue(str(capture_meta["timestamp_utc"]).endswith("Z"))
+        self.assertEqual(timeline_lines[0]["event"], "submit_start")
+        self.assertEqual(timeline_lines[0]["run_id"], "stage1-run-1")
+        self.assertEqual(timeline_lines[-1]["event"], "final_state")
         self.assertEqual(browser_evidence["service"], "chatgpt")
         self.assertEqual(browser_evidence["port"], 9222)
 
@@ -559,6 +581,23 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                             "details": {"backend_error": "os error 10060"},
                             "submit_info": {},
                             "final_state": {},
+                            "timeline": [
+                                {
+                                    "ts": "2026-03-10T00:00:00Z",
+                                    "seq": 1,
+                                    "event": "submit_start",
+                                },
+                                {
+                                    "ts": "2026-03-10T00:00:01Z",
+                                    "seq": 2,
+                                    "event": "read_failed",
+                                },
+                                {
+                                    "ts": "2026-03-10T00:00:02Z",
+                                    "seq": 3,
+                                    "event": "final_state",
+                                },
+                            ],
                         },
                         {
                             "status": "failed",
@@ -567,6 +606,23 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                             "details": {"backend_error": "os error 10060"},
                             "submit_info": {},
                             "final_state": {},
+                            "timeline": [
+                                {
+                                    "ts": "2026-03-10T00:00:03Z",
+                                    "seq": 1,
+                                    "event": "submit_start",
+                                },
+                                {
+                                    "ts": "2026-03-10T00:00:04Z",
+                                    "seq": 2,
+                                    "event": "read_failed",
+                                },
+                                {
+                                    "ts": "2026-03-10T00:00:05Z",
+                                    "seq": 3,
+                                    "event": "final_state",
+                                },
+                            ],
                         },
                     ],
                 ),
@@ -589,13 +645,19 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                         )
                     ),
                 )
+                gpt_capture = cast(dict[str, object], raw_output["gpt_capture"])
+                timeline_path = Path(str(gpt_capture["timeline_path"]))
+                timeline_lines = [
+                    json.loads(line)
+                    for line in timeline_path.read_text(encoding="utf-8").splitlines()
+                    if line.strip()
+                ]
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "CHATGPT_BACKEND_UNAVAILABLE")
         details = cast(dict[str, object], result["details"])
         stage1_result = cast(dict[str, object], details["stage1_result"])
         executor = cast(dict[str, object], details["executor"])
-        gpt_capture = cast(dict[str, object], executor["gpt_capture"])
         self.assertEqual(gpt_capture["status"], "failed")
         capture_meta = cast(dict[str, object], gpt_capture["capture_meta"])
         self.assertEqual(capture_meta["run_id"], "stage1-run-1")
@@ -606,6 +668,10 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         )
         self.assertTrue(str(capture_meta["git_sha"]))
         self.assertTrue(str(capture_meta["timestamp_utc"]).endswith("Z"))
+        event_names = [str(item["event"]) for item in timeline_lines]
+        self.assertIn("submit_start", event_names)
+        self.assertIn("read_failed", event_names)
+        self.assertEqual(event_names[-1], "final_state")
         self.assertEqual(raw_output["source"], "gpt_capture_only")
         self.assertEqual(
             cast(dict[str, object], raw_output["gpt_capture"])["status"], "failed"
