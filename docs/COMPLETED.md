@@ -1,5 +1,7 @@
 # COMPLETED
 
+- `docs/reference/error-code-semantics.md`, `docs/INDEX.md` - runtime_v2 error field semantics 정본 문서화 완료; `error_code`, `worker_error_code`, `raw_error_code`, `warning_worker_error_code_mismatch`의 정의, 우선순위, 생성 규칙, 예시를 한 문서에 고정했고 `docs/INDEX.md`에 canonical reference 링크를 추가했습니다. 운영자/개발자는 이제 이 문서 1곳을 기준으로 raw/canonical/error 필드 의미를 해석하면 됩니다.
+
 - `docs/plans/2026-03-11-browser-health-subprogram-review.md` - browser health subprogram review 완료; `runtime_v2/browser/manager.py`, `runtime_v2/browser/supervisor.py`, `runtime_v2/supervisor.py`, `tests/test_runtime_v2_browser_plane.py`를 기준으로 현재 구조가 이미 브라우저 health/recovery 하부프로그램 역할을 수행하고 있음을 정리했고, 각 브라우저의 운영 가능 상태를 포트/CDP 탭/로그인/ready marker/profile lock 기준으로 판정할 수 있다는 점과 아직 메모리·renderer hang·외부 watchdog 축은 미포함이라는 한계를 함께 기록했습니다. 결론은 `supervisor` 산하 전용 browser plane은 필요하지만 동일 책임의 별도 독립 프로그램을 지금 추가할 필요는 없다는 것입니다.
 
 - `docs/TODO.md`, `docs/COMPLETED.md`, `docs/plans/2026-03-11-document-structure-and-harness-sop-cleanup.md` - TODO active-unit 표현 정리 완료; 이미 완료되었거나 후속 판단만 남은 묶음이 `새 active unit`처럼 읽히던 부분을 `완료된 unit 기록`, `후속 판단 기준`, `follow-up note`, `완료된 active integration plan`, `완료된 비-GPT functional verification 계획` 같은 표현으로 정리했습니다. 상태 의미, 우선순위, no-go 결정은 바꾸지 않고 라벨/시제만 정리했으며, `docs/TODO.md`와 기록 문서들에 대한 diagnostics `No diagnostics found`를 확인했습니다.
