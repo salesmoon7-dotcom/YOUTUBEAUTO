@@ -45,6 +45,9 @@ def load_runtime_readiness(
     latest_join = load_joined_latest_run(runtime_config, completed=completed)
     result_metadata = latest_join.get("result_metadata")
     typed_result_metadata = _dict_from_object(result_metadata, default_code="UNKNOWN")
+    snapshot_run_id, snapshot_run_id_source = resolve_snapshot_run_id(
+        latest_join, typed_result_metadata
+    )
     gpt_status, gpt_status_state = _read_json_dict_with_state(
         runtime_config.gpt_status_file
     )
@@ -164,6 +167,8 @@ def load_runtime_readiness(
                 "code": "LATEST_RUN_DRIFT",
                 "reason": "run_id_mismatch",
                 "details": [str(reason) for reason in reasons],
+                "snapshot_run_id": snapshot_run_id,
+                "snapshot_run_id_source": snapshot_run_id_source,
                 "expected_run_id": pointer_run_id,
                 "gui_run_id": gui_run_id,
                 "result_run_id": result_run_id,
@@ -283,6 +288,8 @@ def load_runtime_readiness(
     return {
         "ready": len(blockers) == 0,
         "code": primary_code,
+        "snapshot_run_id": snapshot_run_id,
+        "snapshot_run_id_source": snapshot_run_id_source,
         "blockers": blockers,
         "latest": latest_join,
         "result_metadata": typed_result_metadata,
@@ -303,6 +310,29 @@ def load_runtime_readiness(
             ),
         },
     }
+
+
+def resolve_snapshot_run_id(
+    latest_join: dict[str, object], result_metadata: dict[str, object]
+) -> tuple[str, str]:
+    canonical_handoff = _dict_from_object(result_metadata.get("canonical_handoff"))
+    evidence_run_id = str(result_metadata.get("run_id", "")).strip()
+    handoff_run_id = str(canonical_handoff.get("run_id", "")).strip()
+    pointer_run_id = str(
+        _dict_from_object(latest_join.get("pointer")).get("run_id", "")
+    ).strip()
+    gui_run_id = str(
+        _dict_from_object(latest_join.get("gui_status")).get("run_id", "")
+    ).strip()
+    for source, value in (
+        ("result_metadata.run_id", evidence_run_id),
+        ("canonical_handoff.run_id", handoff_run_id),
+        ("latest.pointer.run_id", pointer_run_id),
+        ("latest.gui_status.run_id", gui_run_id),
+    ):
+        if value:
+            return value, source
+    return "", ""
 
 
 def _read_json_dict_with_state(

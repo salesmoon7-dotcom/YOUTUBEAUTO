@@ -7,6 +7,9 @@
 - 다음 구조 조사 후보:
   - `runtime_v2/control_plane.py` 자체의 크기와 다책임 구조는 여전히 디버깅 복잡도 hotspot입니다.
   - 이 항목은 새 기능이 아니라 구조 분해 목적의 별도 architecture review unit으로만 다시 열 수 있습니다.
+- `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md`
+  - Task 4 `Single Meaning Snapshot Review` 1차는 진행 중입니다.
+  - readiness/review 응답은 이제 `snapshot_run_id`를 단일 값으로 정규화하는 방향으로 정리되고 있습니다.
 - 완료된 unit 기록: `docs/plans/2026-03-09-control-plane-feeder-decomposition-plan.md`
   - 1차 분해 범위는 feeder discovery / explicit contract parsing / feeder state I/O만입니다.
   - `run_control_loop_once()`, failure contract, recovery, downstream chaining, snapshot writer는 `control_plane.py`에 남깁니다.
