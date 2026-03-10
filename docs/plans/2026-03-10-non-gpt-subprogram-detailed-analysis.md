@@ -122,7 +122,7 @@
 
 - 현재는 adapter command 기반 success 중심 검증이고, 실제 출력 폴더 규약(`voice/#NN`, `#00.txt`) 자체를 강제하지 않음
 - line 단위 subtitle/txt 산출물 계약이 아직 worker completion schema에 반영되지 않음
-- runtime_v2 canonical worker가 실제 `voice/#NN.flac`, `#00.txt`를 직접 생성하는 경로는 아직 없음
+- canonical worker는 이제 자체 adapter child를 자동 생성할 수 있지만, 그 경로의 실제 기능 evidence는 아직 exploratory evidence 수준입니다.
 
 ### Hidden debugging risk
 
@@ -251,6 +251,7 @@
 - 현재 worker는 `source_path` + `model_name` 중심으로 축약돼 있고, legacy의 `video_folder` / `voice_folder` 후처리 규약을 전부 품고 있지 않음
 - 즉, 단일 변환 contract는 있으나 legacy full pipeline orchestration은 미구현
 - `_GEMI.mp4` source mode와 `tts-source` mode를 현재 worker에서 분리해 canonicalize할 필요가 있음
+- canonical worker는 이제 자체 adapter child를 자동 생성할 수 있지만, 그 경로의 실제 기능 evidence는 아직 exploratory evidence 수준입니다.
 
 ### Hidden debugging risk
 

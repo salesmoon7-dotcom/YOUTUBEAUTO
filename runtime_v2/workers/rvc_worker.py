@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import cast
 
@@ -65,6 +66,17 @@ def run_rvc_job(
         },
     )
     adapter_command_raw = job.payload.get("adapter_command")
+    if (not isinstance(adapter_command_raw, list) or not adapter_command_raw) and str(
+        job.payload.get("service_artifact_path", "")
+    ).strip():
+        adapter_command_raw = [
+            sys.executable,
+            "-m",
+            "runtime_v2.cli",
+            "--rvc-adapter-child",
+            "--service-artifact-path",
+            str(job.payload.get("service_artifact_path", "")),
+        ]
     if isinstance(adapter_command_raw, list) and adapter_command_raw:
         adapter_command_items = cast(list[object], adapter_command_raw)
         adapter_command = [str(item) for item in adapter_command_items]

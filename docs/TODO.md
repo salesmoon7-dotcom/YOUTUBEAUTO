@@ -84,6 +84,7 @@
     - `Kenburn` -> `Functionally-verified`
     - `RVC` -> `Functionally-verified (exploratory evidence)`
   - 따라서 비-GPT도 아직 전체 완료가 아니며, 서비스별 functional evidence를 더 확보해야 합니다.
+  - `TTS`, `RVC` canonical worker는 이제 자체 adapter child를 자동 생성할 수 있지만, 실제 기능 evidence는 아직 exploratory 수준입니다.
   - 공통 `adapter failure matrix` 1차는 반영되었습니다.
     - `ADAPTER_TIMEOUT`, `ADAPTER_NOT_FOUND`, `ADAPTER_NONZERO_EXIT`, `OUTPUT_PATH_INVALID`, `OUTPUT_OUTSIDE_ROOT`, `OUTPUT_NOT_CREATED`, `OUTPUT_UNCHANGED_REUSED`
 - 비-GPT functional verification 계획: `docs/plans/2026-03-10-non-gpt-functional-verification-plan.md`

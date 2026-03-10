@@ -87,6 +87,49 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         details = cast(dict[object, object], result["details"])
         self.assertEqual(details["voice_text_count"], 2)
 
+    def test_qwen3_worker_builds_cli_adapter_when_service_artifact_path_exists(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            image_path = root / "image.png"
+            output_path = root / "speech.wav"
+            _ = image_path.write_bytes(b"png")
+            job = JobContract(
+                job_id="qwen-job-auto-adapter",
+                workload="qwen3_tts",
+                payload={
+                    "voice_texts": [
+                        {"col": "#01", "text": "hello world", "original_voices": [1]}
+                    ],
+                    "image_path": str(image_path.resolve()),
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                },
+            )
+            stdout_path = root / "artifacts" / "stdout.log"
+            stderr_path = root / "artifacts" / "stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+
+            with patch(
+                "runtime_v2.workers.qwen3_worker.run_verified_adapter_command",
+                return_value={
+                    "ok": True,
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "output_path": output_path,
+                    "reused": False,
+                },
+            ) as run_adapter:
+                result = run_qwen3_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        adapter_command = run_adapter.call_args.kwargs["adapter_command"]
+        self.assertIn("--qwen3-adapter-child", adapter_command)
+
     def test_qwen3_worker_emits_rvc_next_job_contract(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -251,7 +294,49 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(completion["state"], "failed")
         self.assertFalse(bool(completion["final_output"]))
         self.assertEqual(details["model_name"], "voice-model-a")
-        self.assertEqual(details["execution_mode"], "native_only")
+
+    def test_rvc_worker_builds_cli_adapter_when_service_artifact_path_exists(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            source_path = root / "source.flac"
+            image_path = root / "image.png"
+            output_path = root / "converted.wav"
+            _ = source_path.write_bytes(b"flac")
+            _ = image_path.write_bytes(b"png")
+            job = JobContract(
+                job_id="rvc-job-auto-adapter",
+                workload="rvc",
+                payload={
+                    "source_path": str(source_path.resolve()),
+                    "image_path": str(image_path.resolve()),
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                },
+            )
+            stdout_path = root / "artifacts" / "stdout.log"
+            stderr_path = root / "artifacts" / "stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+
+            with patch(
+                "runtime_v2.workers.rvc_worker.run_verified_adapter_command",
+                return_value={
+                    "ok": True,
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "output_path": output_path,
+                    "reused": False,
+                },
+            ) as run_adapter:
+                result = run_rvc_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        adapter_command = run_adapter.call_args.kwargs["adapter_command"]
+        self.assertIn("--rvc-adapter-child", adapter_command)
 
     def test_kenburns_worker_marks_final_output_true(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

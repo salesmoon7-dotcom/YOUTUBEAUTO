@@ -71,6 +71,8 @@ class CliArgs(argparse.Namespace):
     browser_recover_detached: bool
     browser_recover_probe_child: bool
     agent_browser_stage2_adapter_child: bool
+    qwen3_adapter_child: bool
+    rvc_adapter_child: bool
     stage2_row1_detached: bool
     stage2_row1_probe_child: bool
     callback_url: str
@@ -107,6 +109,8 @@ class CliArgs(argparse.Namespace):
         self.browser_recover_detached = False
         self.browser_recover_probe_child = False
         self.agent_browser_stage2_adapter_child = False
+        self.qwen3_adapter_child = False
+        self.rvc_adapter_child = False
         self.stage2_row1_detached = False
         self.stage2_row1_probe_child = False
         self.callback_url = ""
@@ -195,6 +199,12 @@ def main() -> int:
         action="store_true",
         help=argparse.SUPPRESS,
     )
+    _ = parser.add_argument(
+        "--qwen3-adapter-child", action="store_true", help=argparse.SUPPRESS
+    )
+    _ = parser.add_argument(
+        "--rvc-adapter-child", action="store_true", help=argparse.SUPPRESS
+    )
     _ = parser.add_argument("--stage2-row1-detached", action="store_true")
     _ = parser.add_argument(
         "--stage2-row1-probe-child", action="store_true", help=argparse.SUPPRESS
@@ -274,6 +284,10 @@ def main() -> int:
 
     if args.agent_browser_stage2_adapter_child:
         return _run_agent_browser_stage2_adapter_child(args)
+    if args.qwen3_adapter_child:
+        return _run_qwen3_adapter_child(args)
+    if args.rvc_adapter_child:
+        return _run_rvc_adapter_child(args)
 
     if args.selftest_detached:
         return _spawn_detached_probe(args, mode="selftest")
@@ -964,6 +978,144 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
     else:
         target_path.parent.mkdir(parents=True, exist_ok=True)
         _write_stage2_placeholder_artifact(target_path)
+    return exit_codes.SUCCESS
+
+
+def _run_qwen3_adapter_child(args: CliArgs) -> int:
+    target_path = Path(args.service_artifact_path.strip())
+    if not args.service_artifact_path.strip():
+        return exit_codes.CLI_USAGE
+    workspace = (
+        target_path.parent.parent if len(target_path.parents) >= 2 else Path.cwd()
+    )
+    project_root = workspace / "project"
+    project_root.mkdir(parents=True, exist_ok=True)
+    prompt_path = workspace / "qwen_prompt.json"
+    if not prompt_path.exists():
+        return exit_codes.CLI_USAGE
+    prompt_payload = json.loads(prompt_path.read_text(encoding="utf-8"))
+    rows = (
+        cast(list[object], prompt_payload.get("rows", []))
+        if isinstance(prompt_payload.get("rows", []), list)
+        else []
+    )
+    if not rows:
+        return exit_codes.CLI_USAGE
+    row = cast(dict[str, object], rows[0])
+    (project_root / "voice_texts.json").write_text(
+        json.dumps(row.get("voice_texts", []), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    result_path = workspace / "qwen3_result.json"
+    command = [
+        r"D:/qwen3_tts_env/Scripts/python.exe",
+        r"D:/YOUTUBE_AUTO/scripts/qwen3_tts_automation.py",
+        "--folder",
+        str(project_root.resolve()),
+        "--result-json",
+        str(result_path.resolve()),
+    ]
+    completed = subprocess.run(
+        command, capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
+    (workspace / "qwen3_stdout.log").write_text(completed.stdout, encoding="utf-8")
+    (workspace / "qwen3_stderr.log").write_text(completed.stderr, encoding="utf-8")
+    if completed.returncode != 0:
+        return 1
+    voice_dir = project_root / "voice"
+    candidates = sorted(
+        list(voice_dir.glob("#*.flac"))
+        + list(voice_dir.glob("#*.wav"))
+        + list(voice_dir.glob("#*.mp3"))
+    )
+    candidates = [path for path in candidates if path.name != "#00.txt"]
+    if not candidates:
+        return 1
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_bytes(candidates[0].read_bytes())
+    return exit_codes.SUCCESS
+
+
+def _run_rvc_adapter_child(args: CliArgs) -> int:
+    target_path = Path(args.service_artifact_path.strip())
+    if not args.service_artifact_path.strip():
+        return exit_codes.CLI_USAGE
+    workspace = (
+        target_path.parent.parent if len(target_path.parents) >= 2 else Path.cwd()
+    )
+    request_path = workspace / "rvc_request.json"
+    if not request_path.exists():
+        return exit_codes.CLI_USAGE
+    request = json.loads(request_path.read_text(encoding="utf-8"))
+    config = json.loads(
+        Path(r"D:/YOUTUBE_AUTO/system/config/rvc_config.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    model = cast(
+        dict[str, object],
+        cast(dict[str, object], config["models"])[str(config["active_model"])],
+    )
+    inference = cast(dict[str, object], config.get("inference", {}))
+    command = [
+        str(config["applio_python"]),
+        str(config["applio_core"]),
+        "infer",
+        "--input_path",
+        str(request["source_path"]),
+        "--output_path",
+        str(target_path.resolve()),
+        "--pth_path",
+        str(model["pth"]),
+        "--index_path",
+        str(model.get("index", "")),
+        "--sid",
+        str(inference.get("sid", 0)),
+        "--pitch",
+        str(inference.get("pitch", 0)),
+        "--index_rate",
+        str(inference.get("index_rate", 0.65)),
+        "--volume_envelope",
+        str(inference.get("volume_envelope", 0.1)),
+        "--protect",
+        str(inference.get("protect", 0.45)),
+        "--f0_method",
+        str(inference.get("f0_method", "rmvpe")),
+        "--clean_audio",
+        str(inference.get("clean_audio", True)),
+        "--clean_strength",
+        str(inference.get("clean_strength", 0.6)),
+        "--split_audio",
+        str(inference.get("split_audio", True)),
+        "--f0_autotune",
+        str(inference.get("f0_autotune", False)),
+        "--f0_autotune_strength",
+        str(inference.get("f0_autotune_strength", 1.0)),
+        "--proposed_pitch",
+        str(inference.get("proposed_pitch", False)),
+        "--proposed_pitch_threshold",
+        str(
+            int(cast(int | float | str, inference.get("proposed_pitch_threshold", 155)))
+        ),
+        "--export_format",
+        str(inference.get("export_format", "FLAC")),
+        "--embedder_model",
+        str(inference.get("embedder_model", "japanese-hubert-base")),
+        "--post_process",
+        str(inference.get("post_process", True)),
+    ]
+    completed = subprocess.run(
+        command,
+        cwd=str(config["applio_dir"]),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    (workspace / "rvc_stdout.log").write_text(completed.stdout, encoding="utf-8")
+    (workspace / "rvc_stderr.log").write_text(completed.stderr, encoding="utf-8")
+    if completed.returncode != 0 or not target_path.exists():
+        return 1
     return exit_codes.SUCCESS
 
 
