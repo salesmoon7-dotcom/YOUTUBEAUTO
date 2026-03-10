@@ -4,8 +4,20 @@ import json
 import tempfile
 from pathlib import Path
 from time import time
+from typing import Callable
 
 from runtime_v2.contracts.artifact_contract import artifact_record
+
+
+def _ensure_checked_at(
+    payload: dict[str, object], *, now_fn: Callable[[], float] = time
+) -> dict[str, object]:
+    checked_at = payload.get("checked_at")
+    if isinstance(checked_at, (int, float)):
+        payload["checked_at"] = round(float(checked_at), 3)
+        return payload
+    payload["checked_at"] = round(now_fn(), 3)
+    return payload
 
 
 def write_result_router(
@@ -18,10 +30,10 @@ def write_result_router(
     payload: dict[str, object] = {
         "schema_version": "1.0",
         "runtime": "runtime_v2",
-        "checked_at": round(time(), 3),
         "artifacts": [artifact_record(path, artifact_root) for path in artifacts],
         "metadata": metadata_payload,
     }
+    payload = _ensure_checked_at(payload)
     output_file.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
         "w",
@@ -37,7 +49,9 @@ def write_result_router(
     return output_file
 
 
-def attach_failure_summary(metadata: dict[str, object], failure_summary_path: str) -> dict[str, object]:
+def attach_failure_summary(
+    metadata: dict[str, object], failure_summary_path: str
+) -> dict[str, object]:
     payload = dict(metadata)
     payload["failure_summary_path"] = failure_summary_path
     return payload
