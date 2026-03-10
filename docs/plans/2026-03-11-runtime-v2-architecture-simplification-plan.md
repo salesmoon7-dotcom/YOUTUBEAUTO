@@ -89,6 +89,8 @@ git commit -m "fix: freeze runtime_v2 recovery ownership"
 
 ### Task 3: Guardrail Accumulation Controls
 
+Status: COMPLETE (confirmed by Oracle review in this session)
+
 **Files:**
 - Modify: `docs/sop/SOP_runtime_v2_development_guardrails.md`
 - Modify: `docs/reference/error-code-semantics.md`
