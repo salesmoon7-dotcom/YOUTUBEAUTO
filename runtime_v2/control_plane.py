@@ -18,7 +18,10 @@ from runtime_v2.control_plane_feeder import (
 from runtime_v2.debug_log import append_debug_event, debug_log_path
 from runtime_v2.error_codes import select_worker_error_code
 from runtime_v2.gui_adapter import build_gui_status_payload
-from runtime_v2.latest_run import write_control_plane_runtime_snapshot
+from runtime_v2.latest_run import (
+    normalize_runtime_snapshot_metadata,
+    write_control_plane_runtime_snapshot,
+)
 from runtime_v2.agent_browser.evidence import build_agent_browser_evidence
 from runtime_v2.gpt_autospawn import apply_autospawn_decision
 from runtime_v2.gpt_pool_monitor import tick_gpt_status
@@ -507,15 +510,9 @@ def run_control_loop_once(
         latest_artifacts = worker_artifacts
     elif artifact_path is not None:
         latest_artifacts = [artifact_path]
-    write_control_plane_runtime_snapshot(
-        runtime_config,
-        run_id=run_id,
-        status=result_status,
-        code="OK" if success else runtime_error_code,
-        debug_log=str(control_debug_log),
-        gui_payload=gui_payload,
-        artifacts=latest_artifacts,
-        metadata={
+    snapshot_metadata = cast(
+        dict[str, object],
+        {
             "run_id": run_id,
             "mode": "control_loop",
             "status": result_status,
@@ -562,6 +559,35 @@ def run_control_loop_once(
             "ts": round(time(), 3),
         },
     )
+    normalized_snapshot_metadata = normalize_runtime_snapshot_metadata(
+        snapshot_metadata,
+        run_id=run_id,
+        mode="control_loop",
+        status=result_status,
+        code="OK" if success else runtime_error_code,
+        debug_log=str(control_debug_log),
+    )
+    raw_worker_error_code = str(worker_contract.get("error_code", "")).strip()
+    mismatch_warning = ""
+    if (
+        raw_worker_error_code
+        and runtime_error_code
+        and raw_worker_error_code != runtime_error_code
+    ):
+        mismatch_warning = (
+            f"worker_error_code={raw_worker_error_code} error_code={runtime_error_code}"
+        )
+
+    write_control_plane_runtime_snapshot(
+        runtime_config,
+        run_id=run_id,
+        status=result_status,
+        code="OK" if success else runtime_error_code,
+        debug_log=str(control_debug_log),
+        gui_payload=gui_payload,
+        artifacts=latest_artifacts,
+        metadata=normalized_snapshot_metadata,
+    )
     _ = append_debug_event(
         control_debug_log,
         event="control_loop_result",
@@ -581,6 +607,7 @@ def run_control_loop_once(
             "recovery": recovery,
             "artifact_path": None if artifact_path is None else str(artifact_path),
             "seeded_downstream": [item.to_dict() for item in seeded_downstream],
+            "warning_worker_error_code_mismatch": mismatch_warning,
         },
     )
     _ = _append_control_event(

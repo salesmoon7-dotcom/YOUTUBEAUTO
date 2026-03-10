@@ -656,6 +656,63 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         )
         self.assertEqual(str(latest_metadata["completion_state"]), "failed")
 
+    def test_control_plane_writes_mismatch_warning_to_debug_log(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            seed_control_job(
+                JobContract(
+                    job_id="chatgpt-mismatch-warning-job",
+                    workload="chatgpt",
+                    checkpoint_key="seed:chatgpt-mismatch-warning-job",
+                    payload={
+                        "run_id": "chatgpt-run-mismatch-warning",
+                        "topic_spec": {"topic": "mismatch-warning"},
+                    },
+                ),
+                config=config,
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={
+                    "status": "blocked",
+                    "code": "BROWSER_RESTART_EXHAUSTED",
+                    "worker_result": {
+                        "status": "blocked",
+                        "stage": "browser_preflight",
+                        "error_code": "BROWSER_BLOCKED",
+                    },
+                },
+            ):
+                _ = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-mismatch-warning",
+                )
+
+            debug_log_file = (
+                config.debug_log_root / "control-run-mismatch-warning.jsonl"
+            )
+            raw_entries = [
+                json.loads(line)
+                for line in debug_log_file.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            entries = cast(list[object], raw_entries)
+            control_entries = [
+                cast(dict[object, object], entry)
+                for entry in entries
+                if isinstance(entry, dict)
+                and entry.get("event") == "control_loop_result"
+            ]
+
+        self.assertEqual(len(control_entries), 1)
+        self.assertEqual(
+            str(control_entries[0]["warning_worker_error_code_mismatch"]),
+            "worker_error_code=BROWSER_BLOCKED error_code=BROWSER_RESTART_EXHAUSTED",
+        )
+
     def test_control_plane_normalizes_placeholder_worker_error_code(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
