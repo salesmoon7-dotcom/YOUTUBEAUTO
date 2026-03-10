@@ -117,7 +117,7 @@ def inspect_browser_plane_owner() -> dict[str, object]:
         lock_state = "owned"
     elif not metadata_valid:
         lock_state = "unknown"
-    elif (not pid_alive) and lock_age_sec >= _browser_plane_lock_stale_sec():
+    elif not pid_alive:
         lock_state = "stale"
     else:
         lock_state = "busy"

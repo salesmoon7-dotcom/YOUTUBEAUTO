@@ -500,6 +500,53 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             all(session.status == "external" for session in manager.sessions)
         )
 
+    def test_manager_takes_over_dead_browser_owner_without_waiting_for_lock_age(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            lock_file = Path(tmp_dir) / "browser_plane.lock"
+            _ = lock_file.write_text(
+                json.dumps(
+                    {
+                        "pid": 999999,
+                        "acquired_at": round(time(), 3),
+                        "last_heartbeat_at": round(time(), 3),
+                        "run_id": "dead-owner",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            manager = BrowserManager(
+                sessions=[
+                    BrowserSession(
+                        service="chatgpt",
+                        group="llm",
+                        session_id="primary",
+                        port=9222,
+                        profile_dir=str((Path(tmp_dir) / "chatgpt-primary").resolve()),
+                        status="stopped",
+                    )
+                ]
+            )
+
+            with (
+                patch.dict(
+                    os.environ,
+                    {"RUNTIME_V2_BROWSER_PLANE_LOCK": str(lock_file.resolve())},
+                    clear=False,
+                ),
+                patch("runtime_v2.browser.manager._pid_is_running", return_value=False),
+                patch(
+                    "runtime_v2.browser.manager._launch_debug_browser",
+                    return_value=True,
+                ) as launch_browser,
+            ):
+                manager.start()
+
+        launch_browser.assert_called_once()
+        self.assertEqual(manager.sessions[0].status, "running")
+
     def test_supervisor_takes_over_stale_browser_owner_and_emits_event(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             lock_file = Path(tmp_dir) / "browser_plane.lock"
