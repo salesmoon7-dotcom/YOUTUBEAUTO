@@ -3,10 +3,14 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 from time import time
 
-from runtime_v2.browser.manager import default_browser_sessions_by_service
+from runtime_v2.browser.manager import (
+    BrowserSession,
+    default_browser_sessions_by_service,
+)
 from runtime_v2.config import RuntimeConfig
 
 
@@ -73,7 +77,7 @@ def _collect_preflight_warnings(
     app_config_path: Path,
     qwen_config_path: Path,
     rvc_config_path: Path,
-    sessions: dict[str, object],
+    sessions: Mapping[str, BrowserSession],
 ) -> list[dict[str, object]]:
     warnings: list[dict[str, object]] = []
     for label, path in {
