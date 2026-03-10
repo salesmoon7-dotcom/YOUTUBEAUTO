@@ -9,6 +9,8 @@ import urllib.request
 from pathlib import Path
 from typing import Callable, Protocol
 
+import websocket
+
 from runtime_v2.agent_browser.result_parser import (
     parse_tab_list_output,
     select_best_tab,
@@ -92,8 +94,10 @@ class AgentBrowserCdpBackend:
                     not _is_retryable_backend_error(str(exc))
                     or attempt >= self._max_retries
                 ):
-                    raise
+                    break
                 time.sleep(1.0)
+        raw_target = _select_page_target(self._port, "chatgpt.com")
+        return _run_raw_cdp_eval(raw_target["webSocketDebuggerUrl"], script)
         if last_error is not None:
             raise last_error
         raise RuntimeError("chatgpt_backend_failed")
@@ -235,6 +239,65 @@ def _http_cdp_tab_list(port: int) -> list[dict[str, object]]:
             }
         )
     return tabs
+
+
+def _select_page_target(port: int, expected_url_substring: str) -> dict[str, str]:
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/json/list", timeout=10
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8", "ignore"))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError(str(exc)) from exc
+    if not isinstance(payload, list):
+        raise RuntimeError("CDP_TARGET_NOT_FOUND")
+    for raw_item in payload:
+        if not isinstance(raw_item, dict):
+            continue
+        item = raw_item
+        if str(item.get("type", "")) != "page":
+            continue
+        if expected_url_substring not in str(item.get("url", "")):
+            continue
+        ws_url = str(item.get("webSocketDebuggerUrl", "")).strip()
+        if not ws_url:
+            continue
+        return {
+            "webSocketDebuggerUrl": ws_url,
+            "url": str(item.get("url", "")),
+        }
+    raise RuntimeError("CDP_TARGET_NOT_FOUND")
+
+
+def _run_raw_cdp_eval(ws_url: str, script: str) -> str:
+    ws = websocket.create_connection(ws_url, timeout=30, suppress_origin=True)
+    try:
+        ws.send(
+            json.dumps(
+                {
+                    "id": 1,
+                    "method": "Runtime.evaluate",
+                    "params": {"expression": script, "returnByValue": True},
+                },
+                ensure_ascii=True,
+            )
+        )
+        while True:
+            response = json.loads(ws.recv())
+            if response.get("id") != 1:
+                continue
+            result = response.get("result", {})
+            if not isinstance(result, dict):
+                raise RuntimeError("CDP_EVAL_INVALID")
+            exception = result.get("exceptionDetails")
+            if exception is not None:
+                raise RuntimeError("CDP_EVAL_EXCEPTION")
+            inner = result.get("result", {})
+            if not isinstance(inner, dict):
+                raise RuntimeError("CDP_EVAL_INVALID")
+            return str(inner.get("value", ""))
+    finally:
+        ws.close()
 
 
 def _is_retryable_backend_error(message: str) -> bool:

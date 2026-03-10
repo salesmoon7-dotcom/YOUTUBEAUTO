@@ -145,6 +145,88 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertTrue(bool(result["ok"]))
         self.assertEqual(eval_calls, 2)
 
+    def test_agent_browser_backend_falls_back_to_raw_cdp_eval_after_retry_failures(
+        self,
+    ) -> None:
+        eval_calls = 0
+
+        def fake_runner(command: list[str], timeout_sec: int) -> str:
+            nonlocal eval_calls
+            if command[-2:] == ["tab", "2"]:
+                return "ok"
+            if command[-2] == "eval":
+                eval_calls += 1
+                raise RuntimeError("os error 10060")
+            if command[-2:] == ["tab", "list"]:
+                return "[1] Omnibox Popup - chrome://newtab\n[2] ChatGPT - https://chatgpt.com/c/abc"
+            return "ok"
+
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["button[data-testid='send-button']"],
+            stop_selectors=["button[aria-label='Stop streaming']"],
+            response_selectors=["[data-message-author-role='assistant']"],
+            command_runner=fake_runner,
+        )
+
+        with (
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._select_page_target",
+                return_value={
+                    "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/abc",
+                    "url": "https://chatgpt.com/c/abc",
+                },
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_eval",
+                return_value=json.dumps(
+                    {
+                        "ok": True,
+                        "inputSelector": "#prompt-textarea",
+                        "sendClicked": True,
+                    }
+                ),
+            ),
+            mock.patch("runtime_v2.stage1.chatgpt_backend.time.sleep"),
+        ):
+            result = backend.submit_prompt("hello")
+
+        self.assertTrue(bool(result["ok"]))
+        self.assertEqual(eval_calls, 3)
+
+    def test_raw_cdp_eval_suppresses_origin_header(self) -> None:
+        sent_messages: list[str] = []
+
+        class FakeSocket:
+            def send(self, payload: str) -> None:
+                sent_messages.append(payload)
+
+            def recv(self) -> str:
+                return json.dumps(
+                    {
+                        "id": 1,
+                        "result": {"result": {"value": "ChatGPT"}},
+                    }
+                )
+
+            def close(self) -> None:
+                return None
+
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_backend.websocket.create_connection",
+            return_value=FakeSocket(),
+        ) as create_connection:
+            result = __import__(
+                "runtime_v2.stage1.chatgpt_backend", fromlist=["_run_raw_cdp_eval"]
+            )._run_raw_cdp_eval("ws://127.0.0.1/devtools/page/abc", "document.title")
+
+        self.assertEqual(result, "ChatGPT")
+        create_connection.assert_called_once_with(
+            "ws://127.0.0.1/devtools/page/abc", timeout=30, suppress_origin=True
+        )
+        self.assertTrue(sent_messages)
+
     def test_generate_gpt_response_text_accepts_backend_interface(self) -> None:
         class FakeBackend(ChatGPTBackend):
             def __init__(self) -> None:

@@ -58,6 +58,7 @@
   - live ChatGPT 경로는 legacy-style longform production prompt를 canonical builder로 사용합니다.
   - `AgentBrowserCdpBackend`는 `tab preselect + retry` 하드닝이 반영되었습니다.
   - `system/runtime_v2_probe/first-test-real-live-08/` 기준으로는 queue가 `running`까지 진입했지만 성공 artifact는 아직 생성되지 않았습니다.
+  - raw CDP websocket fallback(`suppress_origin=True`)도 반영됐지만, `first-test-real-live-09/` 기준 여전히 real-live 성공 artifact는 닫히지 않았습니다.
   - 남은 핵심은 real assistant artifact를 성공으로 다시 확보하는 것입니다.
   - `1차 테스트`는 그 계층이 닫힌 뒤 `mock -> smoke -> real` 순서로 다시 진행합니다.
 - 새 준비 보완 계획: `docs/plans/2026-03-10-runtime-v2-subprogram-gap-analysis-plan.md`
@@ -67,7 +68,8 @@
   - 현재 비-GPT는 “대체로 준비됨”이 아니라 서비스별로 `Implemented` / `Contract-verified` / `Functionally-verified`로 구분해 관리합니다.
   - `Functionally-verified` evidence가 없는 서비스는 완료로 올리지 않습니다.
   - 현재 판정:
-    - `SeaArt`, `Genspark`, `TTS`, `GeminiGen`, `Canva` -> mostly `Contract-verified`
+    - `SeaArt` -> `Functionally-verified`
+    - `Genspark`, `TTS`, `GeminiGen`, `Canva` -> mostly `Contract-verified`
     - `Kenburn`, `RVC` -> mostly `Implemented`
   - 따라서 비-GPT도 아직 전체 완료가 아니며, 서비스별 functional evidence를 더 확보해야 합니다.
   - 공통 `adapter failure matrix` 1차는 반영되었습니다.

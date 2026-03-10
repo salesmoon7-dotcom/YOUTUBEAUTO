@@ -160,6 +160,10 @@
   - post-hardening execution attempted: `system/runtime_v2_probe/first-test-real-live-08/`
     - queue는 `running`까지 진입해 이전보다 깊게 들어갔습니다.
     - 하지만 성공 artifact는 아직 생성하지 못해, depth 증가와 잔여 blocker를 동시에 확인했습니다.
+  - raw CDP websocket fallback applied: `Runtime.evaluate`는 이제 `suppress_origin=True`로 origin 403을 우회할 수 있습니다.
+  - post-fallback execution attempted: `system/runtime_v2_probe/first-test-real-live-09/`
+    - raw websocket handshake 자체는 성공 가능함을 확인했습니다.
+    - 다만 real-live 전체 흐름은 아직 성공 artifact 대신 `running` 정체와 `NO_JOB` 혼재를 보여, 남은 blocker가 `agent-browser eval` 단일 문제가 아니라 control pass sequencing / long-running interaction 상태 관리까지 포함함을 드러냈습니다.
 
 ### Phase 4. Test order
 
