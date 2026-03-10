@@ -12,12 +12,14 @@ import runtime_v2.control_plane as control_plane_module
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.control_plane import run_control_loop_once, seed_control_job
 from runtime_v2.contracts.job_contract import JobContract
+from runtime_v2 import exit_codes
 from runtime_v2.bootstrap import ensure_runtime_bootstrap
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
 from runtime_v2.latest_run import (
     _cli_snapshot_paths,
     load_joined_latest_run,
     write_cli_runtime_snapshot,
+    write_latest_run_pointer,
     write_excel_sync_runtime_snapshot,
     write_runtime_snapshot,
 )
@@ -213,6 +215,64 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
         self.assertEqual(str(pointer["run_id"]), "control-run-1")
         self.assertEqual(str(gui_status["run_id"]), "control-run-1")
         self.assertEqual(str(result_metadata["run_id"]), "control-run-1")
+
+    def test_cli_runtime_snapshot_promotes_error_code_into_worker_error_code(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _latest_run_config(root)
+            gui_payload = build_gui_status_payload(
+                {
+                    "status": "blocked",
+                    "code": "BROWSER_RESTART_EXHAUSTED",
+                    "queue_status": "finished",
+                    "error_code": "BROWSER_RESTART_EXHAUSTED",
+                },
+                run_id="cli-run-restart-exhausted",
+                mode="browser_recover",
+                stage="finished",
+                exit_code=exit_codes.BROWSER_BLOCKED,
+            )
+
+            write_cli_runtime_snapshot(
+                config,
+                run_id="cli-run-restart-exhausted",
+                mode="browser_recover",
+                status="blocked",
+                code="BROWSER_RESTART_EXHAUSTED",
+                debug_log=str(root / "browser_recover.jsonl"),
+                gui_payload=gui_payload,
+                metadata={
+                    "run_id": "cli-run-restart-exhausted",
+                    "code": "BROWSER_RESTART_EXHAUSTED",
+                    "error_code": "BROWSER_RESTART_EXHAUSTED",
+                    "mode": "browser_recover",
+                },
+            )
+
+            cli_gui_path, cli_result_path = _cli_snapshot_paths(
+                str(root / "browser_recover.jsonl"),
+                run_id="cli-run-restart-exhausted",
+            )
+            _ = write_latest_run_pointer(
+                {
+                    "run_id": "cli-run-restart-exhausted",
+                    "gui_status_path": str(cli_gui_path),
+                    "result_path": str(cli_result_path),
+                },
+                config.latest_active_run_file,
+            )
+            cli_join = load_joined_latest_run(config, completed=False)
+
+        result_metadata = cast(dict[str, object], cli_join["result_metadata"])
+        canonical_handoff = cast(
+            dict[str, object], result_metadata["canonical_handoff"]
+        )
+        self.assertEqual(
+            str(canonical_handoff["worker_error_code"]),
+            "BROWSER_RESTART_EXHAUSTED",
+        )
 
     def test_excel_sync_runtime_snapshot_does_not_write_latest_pointers(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

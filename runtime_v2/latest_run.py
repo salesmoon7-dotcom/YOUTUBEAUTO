@@ -129,6 +129,9 @@ def build_canonical_handoff_payload(
     debug_log: str,
     metadata: dict[str, object],
 ) -> dict[str, object]:
+    worker_error_code = str(metadata.get("worker_error_code", "")).strip()
+    if not worker_error_code:
+        worker_error_code = str(metadata.get("error_code", "")).strip()
     return {
         "schema_version": "1.0",
         "runtime": "runtime_v2",
@@ -140,7 +143,7 @@ def build_canonical_handoff_payload(
         "debug_log": debug_log,
         "job_id": str(metadata.get("job_id", "")),
         "workload": str(metadata.get("workload", "")),
-        "worker_error_code": str(metadata.get("worker_error_code", "")),
+        "worker_error_code": worker_error_code,
         "completion_state": str(metadata.get("completion_state", "")),
         "final_output": bool(metadata.get("final_output", False)),
         "chain_depth": _to_int(metadata.get("chain_depth", 0)),
