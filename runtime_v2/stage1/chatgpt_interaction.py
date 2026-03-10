@@ -18,6 +18,7 @@ CHATGPT_INPUT_SELECTORS = [
 
 CHATGPT_SEND_SELECTORS = [
     "button[data-testid='send-button']",
+    "button[aria-label='프롬프트 보내기']",
     "#composer-submit-button",
     "button[aria-label='메시지 보내기']",
     "button[aria-label='Send Message']",

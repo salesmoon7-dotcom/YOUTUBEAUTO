@@ -16,6 +16,11 @@ from runtime_v2.agent_browser.result_parser import (
     select_best_tab,
 )
 
+CHATGPT_LONGFORM_URL_SUBSTRING = (
+    "chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom"
+)
+CHATGPT_LONGFORM_TITLE_SUBSTRING = "롱폼"
+
 
 class ChatGPTBackend(Protocol):
     def submit_prompt(self, prompt: str) -> dict[str, object]: ...
@@ -32,6 +37,8 @@ class AgentBrowserCdpBackend:
         send_selectors: list[str],
         stop_selectors: list[str],
         response_selectors: list[str],
+        expected_url_substring: str = CHATGPT_LONGFORM_URL_SUBSTRING,
+        expected_title_substring: str = CHATGPT_LONGFORM_TITLE_SUBSTRING,
         command_runner: Callable[[list[str], int], str] | None = None,
     ) -> None:
         self._port = port
@@ -39,6 +46,8 @@ class AgentBrowserCdpBackend:
         self._send_selectors = send_selectors
         self._stop_selectors = stop_selectors
         self._response_selectors = response_selectors
+        self._expected_url_substring = expected_url_substring
+        self._expected_title_substring = expected_title_substring
         self._runner = _default_runner if command_runner is None else command_runner
         self._max_retries = 2
 
@@ -96,7 +105,7 @@ class AgentBrowserCdpBackend:
                 ):
                     break
                 time.sleep(1.0)
-        raw_target = _select_page_target(self._port, "chatgpt.com")
+        raw_target = _select_page_target(self._port, self._expected_url_substring)
         return _run_raw_cdp_eval(raw_target["webSocketDebuggerUrl"], script)
         if last_error is not None:
             raise last_error
@@ -126,14 +135,18 @@ class AgentBrowserCdpBackend:
             parsed = parse_tab_list_output(output)
             best = select_best_tab(
                 parsed,
-                expected_url_substring="chatgpt.com",
-                expected_title_substring="chatgpt",
+                expected_url_substring=self._expected_url_substring,
+                expected_title_substring=self._expected_title_substring,
             )
             if best is not None:
                 return best
         except RuntimeError:
             pass
-        return _chatgpt_tab_index_from_http(self._port)
+        return _chatgpt_tab_index_from_http(
+            self._port,
+            expected_url_substring=self._expected_url_substring,
+            expected_title_substring=self._expected_title_substring,
+        )
 
 
 def _submit_script(payload: str) -> str:
@@ -151,13 +164,21 @@ def _submit_script(payload: str) -> str:
         "} else if (input.tagName === 'TEXTAREA') { input.value = config.prompt; } else { input.textContent = config.prompt; }"
         "input.dispatchEvent(new InputEvent('input',{bubbles:true,data:config.prompt,inputType:'insertText'}));"
         "input.dispatchEvent(new Event('change',{bubbles:true}));"
+        "input.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,key:'Enter'}));"
         "input.dispatchEvent(new KeyboardEvent('keyup',{bubbles:true,key:'a'}));"
         "let send = null;"
-        "for (const selector of sendSelectors) { send = document.querySelector(selector); if (send) break; }"
+        "for (const selector of sendSelectors) {"
+        "  const candidate = document.querySelector(selector);"
+        "  if (!candidate) continue;"
+        "  if (candidate.getAttribute && candidate.getAttribute('data-testid') === 'stop-button') continue;"
+        "  send = candidate;"
+        "  break;"
+        "}"
         "if (!send) return JSON.stringify({ok:false,error:'NO_SEND'});"
         "if (send.disabled) return JSON.stringify({ok:false,error:'SEND_DISABLED'});"
-        "send.click();"
-        "return JSON.stringify({ok:true,inputSelector: selectors.find(s => document.querySelector(s)===input) || '', sendClicked:true});"
+        "['pointerdown','mousedown','pointerup','mouseup','click'].forEach(type => send.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,view:window})));"
+        "if (typeof send.click === 'function') send.click();"
+        "return JSON.stringify({ok:true,inputSelector: selectors.find(s => document.querySelector(s)===input) || '', sendClicked:true, sendTestId: send.getAttribute ? (send.getAttribute('data-testid') || '') : '', sendAriaLabel: send.getAttribute ? (send.getAttribute('aria-label') || '') : ''});"
         "})()"
     )
 
@@ -205,12 +226,20 @@ def _default_runner(command: list[str], timeout_sec: int) -> str:
     return stdout
 
 
-def _chatgpt_tab_index_from_http(port: int) -> int | None:
+def _chatgpt_tab_index_from_http(
+    port: int,
+    *,
+    expected_url_substring: str,
+    expected_title_substring: str,
+) -> int | None:
     tabs = _http_cdp_tab_list(port)
     for index, tab in enumerate(tabs, start=1):
         url = str(tab.get("url", "")).lower()
         title = str(tab.get("title", "")).lower()
-        if "chatgpt.com" in url or "chatgpt" in title:
+        if (
+            expected_url_substring.lower() in url
+            or expected_title_substring.lower() in title
+        ):
             return index
     return None
 

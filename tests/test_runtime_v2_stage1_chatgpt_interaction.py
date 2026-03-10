@@ -6,7 +6,12 @@ import unittest
 from unittest import mock
 from typing import cast
 
-from runtime_v2.stage1.chatgpt_backend import AgentBrowserCdpBackend, ChatGPTBackend
+from runtime_v2.stage1.chatgpt_backend import (
+    AgentBrowserCdpBackend,
+    ChatGPTBackend,
+    CHATGPT_LONGFORM_TITLE_SUBSTRING,
+    CHATGPT_LONGFORM_URL_SUBSTRING,
+)
 from runtime_v2.stage1.chatgpt_interaction import generate_gpt_response_text
 
 
@@ -41,13 +46,46 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
             return_value=[
                 {"title": "Omnibox Popup", "url": "chrome://newtab"},
-                {"title": "ChatGPT", "url": "https://chatgpt.com/c/abc"},
+                {"title": "롱폼", "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}"},
             ],
         ):
             result = backend.submit_prompt("hello")
 
         self.assertTrue(bool(result["ok"]))
         self.assertIn(["agent-browser", "--cdp", "9222", "tab", "2"], calls)
+
+    def test_submit_script_prefers_send_button_over_stop_button(self) -> None:
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=[
+                "button[data-testid='send-button']",
+                "button[aria-label='프롬프트 보내기']",
+                "#composer-submit-button",
+            ],
+            stop_selectors=["button[data-testid='stop-button']"],
+            response_selectors=["[data-message-author-role='assistant']"],
+            command_runner=lambda command, timeout_sec: json.dumps(
+                {
+                    "ok": True,
+                    "inputSelector": "#prompt-textarea",
+                    "sendClicked": True,
+                    "sendTestId": "send-button",
+                    "sendAriaLabel": "프롬프트 보내기",
+                }
+            )
+            if command[-2] == "eval"
+            else "ok",
+        )
+
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
+            return_value=[{"title": "ChatGPT", "url": "https://chatgpt.com/c/abc"}],
+        ):
+            result = backend.submit_prompt("hello")
+
+        self.assertEqual(result["sendTestId"], "send-button")
+        self.assertEqual(result["sendAriaLabel"], "프롬프트 보내기")
 
     def test_agent_browser_backend_falls_back_to_http_tab_index_when_tab_list_fails(
         self,
@@ -83,7 +121,10 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
             return_value=[
                 {"title": "Omnibox Popup", "url": "chrome://newtab"},
-                {"title": "영상 계획 JSON 출력", "url": "https://chatgpt.com/c/abc"},
+                {
+                    "title": CHATGPT_LONGFORM_TITLE_SUBSTRING,
+                    "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}",
+                },
             ],
         ):
             result = backend.submit_prompt("hello")
@@ -158,7 +199,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                 eval_calls += 1
                 raise RuntimeError("os error 10060")
             if command[-2:] == ["tab", "list"]:
-                return "[1] Omnibox Popup - chrome://newtab\n[2] ChatGPT - https://chatgpt.com/c/abc"
+                return f"[1] Omnibox Popup - chrome://newtab\n[2] {CHATGPT_LONGFORM_TITLE_SUBSTRING} - https://{CHATGPT_LONGFORM_URL_SUBSTRING}"
             return "ok"
 
         backend = AgentBrowserCdpBackend(
@@ -175,7 +216,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                 "runtime_v2.stage1.chatgpt_backend._select_page_target",
                 return_value={
                     "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/abc",
-                    "url": "https://chatgpt.com/c/abc",
+                    "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}",
                 },
             ),
             mock.patch(
