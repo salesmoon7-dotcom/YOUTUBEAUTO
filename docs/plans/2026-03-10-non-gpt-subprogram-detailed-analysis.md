@@ -121,10 +121,10 @@
 
 ### Remaining gaps
 
-- 현재는 adapter command 기반 success 중심 검증이고, 실제 출력 폴더 규약(`voice/#NN`, `#00.txt`) 자체를 강제하지 않음
-- line 단위 subtitle/txt 산출물 계약이 아직 worker completion schema에 반영되지 않음
-- legacy output 규약의 추가 메타(`voice folder` manifest 등)를 canonical completion schema에 더 반영할지는 후속 판단 필요
-- worker-level/1회 downstream closeout은 확보됐지만, full orchestration parity는 아직 후속 범위입니다.
+- 현재 남은 항목은 active blocker가 아니라 follow-up optimization 성격입니다.
+- adapter command 기반 success 외에 실제 출력 폴더 규약(`voice/#NN`, `#00.txt`)을 더 강제할지는 후속 판단 범위입니다.
+- line 단위 subtitle/txt 산출물 계약과 legacy output 메타(`voice folder` manifest 등)를 canonical completion schema에 더 반영할지는 후속 판단 범위입니다.
+- worker-level/1회 downstream closeout은 확보됐고, full orchestration parity만 후속 범위로 남습니다.
 
 ### Hidden debugging risk
 
