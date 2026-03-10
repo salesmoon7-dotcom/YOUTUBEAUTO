@@ -141,6 +141,12 @@
 - `Contract-verified`
 - 실제 row 기반 이미지->video end-to-end evidence는 아직 없음
 
+### Current blocker note
+
+- direct helper inspection 기준 현재 페이지에서 첫 번째로 노출되는 이미지가 실제 생성 산출물이 아니라 사이트 로고(`logo-with-text.png`)입니다.
+- 따라서 current helper로는 truthful functional evidence를 만들 수 없습니다.
+- 실 생성 산출물 선택 규칙을 더 정의하기 전까지는 `Functionally-verified`로 올리지 않습니다.
+
 ### Remaining gaps
 
 - 입력 이미지 선택 우선순위는 구현됐지만, 실제 legacy prompt JSON completeness와 1:1인지 미확인
@@ -166,9 +172,13 @@
 
 ### Functional validation status
 
-- `Contract-verified`
-- thumb_data/ref_img direct-consume 테스트는 있음
-- 실제 `THUMB.png` 산출 evidence는 아직 별도 필요
+- `Functionally-verified (exploratory evidence)`
+- evidence:
+  - `system/runtime_v2_probe/canva-functional-02/exports/THUMB.png`
+  - `system/runtime_v2_probe/canva-functional-02/functional_evidence/final_screen.png`
+  - `system/runtime_v2_probe/canva-functional-02/functional_evidence/evidence.json`
+- note:
+  - canonical adapter child에는 아직 정식 반영하지 않았으므로 exploratory evidence로만 표기
 
 ### Remaining gaps
 
