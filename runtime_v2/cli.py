@@ -391,7 +391,7 @@ def main() -> int:
             )
         else:
             result = run_once(owner=args.owner, run_id=run_id, config=config)
-    except BaseException as exc:
+    except Exception as exc:
         _ = append_debug_event(
             debug_log,
             event="cli_exception",

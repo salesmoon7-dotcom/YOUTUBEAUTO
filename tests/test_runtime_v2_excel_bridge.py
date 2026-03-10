@@ -242,6 +242,32 @@ class RuntimeV2ExcelBridgeTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             run_control_loop_once.assert_not_called()
 
+    def test_main_does_not_swallow_keyboard_interrupt(self) -> None:
+        with patch(
+            "sys.argv",
+            [
+                "runtime_v2.cli",
+                "--selftest",
+            ],
+        ):
+            with patch("runtime_v2.cli.run_selftest", side_effect=KeyboardInterrupt()):
+                with self.assertRaises(KeyboardInterrupt):
+                    _ = main()
+
+    def test_main_does_not_swallow_system_exit(self) -> None:
+        with patch(
+            "sys.argv",
+            [
+                "runtime_v2.cli",
+                "--selftest",
+            ],
+        ):
+            with patch("runtime_v2.cli.run_selftest", side_effect=SystemExit(7)):
+                with self.assertRaises(SystemExit) as raised:
+                    _ = main()
+
+        self.assertEqual(raised.exception.code, 7)
+
     def test_preflight_login_guard_checks_only_required_services(self) -> None:
         browser_runtime = {
             "sessions": [
