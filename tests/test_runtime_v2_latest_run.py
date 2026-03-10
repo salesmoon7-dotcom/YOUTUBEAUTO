@@ -18,6 +18,7 @@ from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
 from runtime_v2.latest_run import (
     _cli_snapshot_paths,
     _select_worker_error_code,
+    build_canonical_handoff_payload,
     load_joined_latest_run,
     write_cli_runtime_snapshot,
     write_latest_run_pointer,
@@ -305,6 +306,55 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
             ),
             "BROWSER_RESTART_EXHAUSTED",
         )
+
+    def test_canonical_handoff_records_worker_error_code_mismatch_warning(self) -> None:
+        payload = build_canonical_handoff_payload(
+            run_id="run-1",
+            mode="browser_recover",
+            status="blocked",
+            code="BROWSER_RESTART_EXHAUSTED",
+            debug_log="debug.jsonl",
+            metadata={
+                "worker_error_code": "BROWSER_RESTART_EXHAUSTED",
+                "error_code": "BROWSER_BLOCKED",
+            },
+        )
+
+        self.assertEqual(
+            payload["warning_worker_error_code_mismatch"],
+            "worker_error_code=BROWSER_RESTART_EXHAUSTED error_code=BROWSER_BLOCKED",
+        )
+
+    def test_canonical_handoff_omits_worker_error_code_mismatch_warning_when_equal(
+        self,
+    ) -> None:
+        payload = build_canonical_handoff_payload(
+            run_id="run-1",
+            mode="browser_recover",
+            status="blocked",
+            code="BROWSER_RESTART_EXHAUSTED",
+            debug_log="debug.jsonl",
+            metadata={
+                "worker_error_code": "BROWSER_RESTART_EXHAUSTED",
+                "error_code": "BROWSER_RESTART_EXHAUSTED",
+            },
+        )
+
+        self.assertNotIn("warning_worker_error_code_mismatch", payload)
+
+    def test_canonical_handoff_omits_worker_error_code_mismatch_warning_when_missing(
+        self,
+    ) -> None:
+        payload = build_canonical_handoff_payload(
+            run_id="run-1",
+            mode="browser_recover",
+            status="blocked",
+            code="BROWSER_RESTART_EXHAUSTED",
+            debug_log="debug.jsonl",
+            metadata={"error_code": "BROWSER_RESTART_EXHAUSTED"},
+        )
+
+        self.assertNotIn("warning_worker_error_code_mismatch", payload)
         self.assertEqual(
             _select_worker_error_code(
                 {

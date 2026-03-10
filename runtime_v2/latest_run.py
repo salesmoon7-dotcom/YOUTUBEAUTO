@@ -129,8 +129,10 @@ def build_canonical_handoff_payload(
     debug_log: str,
     metadata: dict[str, object],
 ) -> dict[str, object]:
+    raw_worker_error_code = str(metadata.get("worker_error_code", "")).strip()
+    raw_error_code = str(metadata.get("error_code", "")).strip()
     worker_error_code = _select_worker_error_code(metadata)
-    return {
+    payload: dict[str, object] = {
         "schema_version": "1.0",
         "runtime": "runtime_v2",
         "owner_layer": "control_plane" if mode == "control_loop" else mode,
@@ -155,6 +157,15 @@ def build_canonical_handoff_payload(
         "legacy_contracts_ref": "docs/plans/2026-03-09-legacy-post-gpt-service-contract-survey.md",
         "guardrail_plan_ref": "docs/plans/2026-03-09-runtime-v2-guardrail-drift-remediation-plan.md",
     }
+    if (
+        raw_worker_error_code
+        and raw_error_code
+        and raw_worker_error_code != raw_error_code
+    ):
+        payload["warning_worker_error_code_mismatch"] = (
+            f"worker_error_code={raw_worker_error_code} error_code={raw_error_code}"
+        )
+    return cast(dict[str, object], payload)
 
 
 def _select_worker_error_code(metadata: dict[str, object]) -> str:
