@@ -73,13 +73,13 @@
 - 추가 확인:
   - `agent-browser --cdp 9222 eval ...` 는 현재 ChatGPT 세션에서 `os error 10060`으로 불안정합니다.
   - Selenium attach도 foreground Chrome과 별개로 내부 session bootstrap에서 read timeout이 발생했습니다.
-  - 따라서 남은 실제 blocker는 `ChatGPT` 브라우저 입력/응답 자동화 백엔드 안정화입니다.
+- 위 문단은 당시 blocker 기록입니다. 현재는 `first-test-real-live-success-01/`와 `downstream-real-qwen3-01/` evidence로 active integration closeout이 끝났으므로, `ChatGPT` backend 안정화는 follow-up optimization scope로만 남깁니다.
   - immediate safe action applied: `runtime_v2/stage1/chatgpt_interaction.py` now surfaces backend instability as canonical failure contract (`CHATGPT_BACKEND_UNAVAILABLE` + `failure_stage=submit/read`) instead of raw `RuntimeError` propagation.
   - `runtime_v2/stage1/chatgpt_runner.py`도 이 canonical failure contract를 해석해 browser relaunch/retry 여부를 결정하도록 맞췄습니다.
   - 따라서 현재 1차 조치의 목적은 “포트 불안정을 숨기지 않고, 상위 계층이 같은 의미로 재시도하게 만드는 것”입니다.
   - follow-up applied: `chatgpt_interaction`는 이제 `session_probe` backend를 통해 raw CDP HTTP(`/json/list`) 상태를 `final_state`로 기록할 수 있습니다. 즉, `agent-browser` eval 실패와 raw CDP 관측 상태를 같은 failure contract에서 함께 보게 됩니다.
   - follow-up complete: `submit/read` 실행은 `runtime_v2/stage1/chatgpt_backend.py`의 `ChatGPTBackend` 인터페이스 뒤로 숨겨졌고, 현행 `AgentBrowserCdpBackend`가 기본 구현입니다.
-  - 남은 핵심은 backend 종류를 더 늘리는 것보다, 실제 real-first test evidence를 다시 확보하는 것입니다.
+- 당시 남은 핵심은 backend 종류를 더 늘리는 것보다, 실제 real-first test evidence를 다시 확보하는 것이었습니다. 이 항목은 현재 closeout evidence로 충족되었습니다.
 
 ## Program-by-Program Integration Matrix
 

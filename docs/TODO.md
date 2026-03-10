@@ -6,12 +6,12 @@
   - 검증은 채팅 interruption guardrail에 따라 interrupt-safe 케이스 단위 pytest와 파일 단위 `py_compile`, LSP diagnostics로 수행했습니다.
 - 다음 구조 조사 후보:
   - `runtime_v2/control_plane.py` 자체의 크기와 다책임 구조는 여전히 디버깅 복잡도 hotspot입니다.
-  - 이 항목은 새 기능이 아니라 구조 분해 목적의 별도 architecture review unit으로 다루는 것이 안전합니다.
+  - 이 항목은 새 기능이 아니라 구조 분해 목적의 별도 architecture review unit으로만 다시 열 수 있습니다.
 - 새 active unit: `docs/plans/2026-03-09-control-plane-feeder-decomposition-plan.md`
   - 1차 분해 범위는 feeder discovery / explicit contract parsing / feeder state I/O만입니다.
   - `run_control_loop_once()`, failure contract, recovery, downstream chaining, snapshot writer는 `control_plane.py`에 남깁니다.
-  - 1차 배치는 완료되었습니다. Oracle 최종 판단은 현재 시점에서 2차 분해는 `no-go`입니다.
-  - 분해 재개 조건: `_run_worker()` 왕복 디버깅이 반복되거나, workload 3개 이상 추가로 dispatch 충돌이 실제 발생하거나, worker 선택 정책 자체를 교체해야 할 때입니다.
+  - 1차 배치는 완료되었습니다. 현재 결정은 `2차 분해 no-go`이며, 이 문구는 영구 금지가 아니라 현 시점의 결정 기록입니다.
+  - 재검토 조건: `_run_worker()` 왕복 디버깅이 반복되거나, workload 3개 이상 추가로 dispatch 충돌이 실제 발생하거나, worker 선택 정책 자체를 교체해야 할 때만 다시 엽니다.
 - `1행 smoke` readiness 재판정은 완료되었습니다.
   - detached browser recovery run `system/runtime_v2_probe/browser-recover-run-02/probe_result.json`이 `code=OK`로 종료됐습니다.
   - `python -m runtime_v2.cli --readiness-check` 기준 `ready=true`, `code=OK`를 확인했습니다.
@@ -34,7 +34,7 @@
   - inline label/value(`Title: ...`, `#01: ...`) richer field parsing은 반영되었습니다.
   - downstream field matrix용 `stage1_handoff` SSOT schema, Excel export/import bridge, roundtrip contract test는 구현되었습니다.
   - `qwen3_tts`의 `voice_texts` direct-consume, `canva`의 `title_for_thumb/ref_img_1/ref_img_2` direct-consume도 반영되었습니다.
-  - 남은 일은 실제 browser DOM/snapshot 변형 패턴을 더 수집해 parser 허용 폭을 넓히고, ChatGPT interaction backend를 안정화하는 것입니다.
+  - 후속 판단 메모: 실제 browser DOM/snapshot 변형 패턴 샘플이 더 쌓일 때만 parser 허용 폭 확장을 재검토합니다.
   - 다음 legacy carryover 적용 계획은 `docs/plans/2026-03-09-runtime-v2-legacy-carryover-top3-plan.md`를 기준으로 관리합니다.
   - legacy carryover top3 safe batch는 완료되었습니다.
   - skill bundle 기준은 `docs/sop/SOP_closed_loop_automation_skill_map.md`를 canonical map으로 사용합니다.
@@ -45,7 +45,8 @@
 - 새 active unit: `docs/plans/2026-03-09-runtime-v2-remaining-issues-priority-plan.md`
   - 즉시 실행 배치는 완료되었습니다.
   - probe 출력은 `code=OK`와 별도로 `live_readiness`, `placeholder_services`, `live_ready_services`를 통해 해석해야 합니다.
-  - 현재 남은 우선순위는 stage1 richer field의 추가 샘플 확장 판단이며, `control_plane` 2차 분해는 여전히 no-go입니다.
+  - 현재 남은 것은 active 구현이 아니라 후속 판단 기록이며, `stage1 richer field` 샘플 확장은 새 변형 증거가 누적될 때만 재검토합니다.
+  - `control_plane` 2차 분해는 여전히 no-go decision입니다.
 - 새 active integration plan: `docs/plans/2026-03-10-runtime-v2-subprogram-integration-execution-plan.md`
   - 이 배치는 완료되었습니다.
   - 레거시는 실패한 복잡계로 간주하고 구현체가 아니라 계약/파싱 참고 자료로만 사용합니다.
@@ -70,27 +71,24 @@
   - `seed_excel_row -> control_plane -> merge_stage1_result` main path hook도 연결되어, GPT 결과 Excel 반영이 정규 경로로 자동 수행됩니다.
   - `#167`, `#195`, `#210`도 각각 동일 번호의 Excel 헤더 열에 실제로 들어가는 것을 확인했습니다.
   - `1차 테스트` closeout evidence는 `system/runtime_v2_probe/downstream-real-qwen3-01/`까지 확보되었습니다.
+  - 따라서 ChatGPT interaction backend 후속은 active blocker가 아니라 follow-up optimization scope로만 남깁니다.
 - 새 준비 보완 계획: `docs/plans/2026-03-10-runtime-v2-subprogram-gap-analysis-plan.md`
   - 테스트 전에 `field matrix`, `failure matrix`, `golden evidence`, `readiness checklist`를 완성해 디버깅 비용을 줄입니다.
   - 이 계획이 먼저 닫힌 뒤에야 실제 테스트를 반복 실행하는 것이 맞습니다.
 - 비-GPT 상세 분석 기준: `docs/plans/2026-03-10-non-gpt-subprogram-detailed-analysis.md`
   - 현재 비-GPT는 “대체로 준비됨”이 아니라 서비스별로 `Implemented` / `Contract-verified` / `Functionally-verified`로 구분해 관리합니다.
-  - `Functionally-verified` evidence가 없는 서비스는 완료로 올리지 않습니다.
   - 현재 판정:
     - `SeaArt` -> `Functionally-verified`
     - `Genspark` -> `Functionally-verified`
     - `Canva` -> `Functionally-verified`
-    - `TTS` -> `Functionally-verified (canonical worker evidence)`
+    - `TTS` -> `Functionally-verified`
     - `GeminiGen` -> `Functionally-verified (exploratory evidence)`
     - `Kenburn` -> `Functionally-verified`
-    - `RVC` -> `Functionally-verified (canonical worker evidence)`
-  - 따라서 비-GPT도 아직 전체 완료가 아니며, 서비스별 functional evidence를 더 확보해야 합니다.
-  - `TTS`, `RVC`는 canonical worker functional evidence는 확보됐지만, full upstream/downstream orchestration closeout은 아직 남아 있습니다.
+    - `RVC` -> `Functionally-verified`
   - 공통 `adapter failure matrix` 1차는 반영되었습니다.
     - `ADAPTER_TIMEOUT`, `ADAPTER_NOT_FOUND`, `ADAPTER_NONZERO_EXIT`, `OUTPUT_PATH_INVALID`, `OUTPUT_OUTSIDE_ROOT`, `OUTPUT_NOT_CREATED`, `OUTPUT_UNCHANGED_REUSED`
 - 비-GPT functional verification 계획: `docs/plans/2026-03-10-non-gpt-functional-verification-plan.md`
-  - 비-GPT 완료 판단은 서비스별 `Functionally-verified` evidence 확보 전까지 보류합니다.
-  - 다음 실행 순서는 `SeaArt -> Genspark -> TTS -> GeminiGen -> Canva -> Kenburn -> RVC` 입니다.
+  - 비-GPT 범위는 현재 계획 기준으로 완료되었습니다.
 - `docs/plans/2026-03-10-runtime-v2-remediation-priority-plan.md` 배치는 완료되었습니다.
   - 이 completed 표기는 remediation 문서 정리 배치가 끝났다는 뜻이며, downstream integration 전체 완료를 뜻하지는 않습니다.
   - `GeminiGen truthful evidence` fail-close, `silent fallback + child exit semantics`, `latest-run single writer`, `documentation status drift`는 모두 반영되었습니다.
