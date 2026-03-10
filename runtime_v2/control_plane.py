@@ -1481,7 +1481,12 @@ def _worker_result_from_runtime(runtime_result: dict[str, object]) -> dict[str, 
 
 
 def _runtime_preflight_contract(runtime_code: str) -> tuple[str, bool, str]:
-    if runtime_code in {"BROWSER_BLOCKED", "GPU_LEASE_BUSY", "GPT_FLOOR_FAIL"}:
+    if runtime_code in {
+        "BROWSER_BLOCKED",
+        "BROWSER_RESTART_EXHAUSTED",
+        "GPU_LEASE_BUSY",
+        "GPT_FLOOR_FAIL",
+    }:
         return ("blocked", True, "blocked")
     return ("failed", True, "failed")
 

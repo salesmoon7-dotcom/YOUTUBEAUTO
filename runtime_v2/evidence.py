@@ -252,7 +252,12 @@ def load_runtime_readiness(
             )
 
     latest_code = str(typed_result_metadata.get("code", "UNKNOWN"))
-    if latest_code in {"BROWSER_BLOCKED", "BROWSER_UNHEALTHY", "GPT_FLOOR_FAIL"}:
+    if latest_code in {
+        "BROWSER_BLOCKED",
+        "BROWSER_RESTART_EXHAUSTED",
+        "BROWSER_UNHEALTHY",
+        "GPT_FLOOR_FAIL",
+    }:
         blockers.append(
             {
                 "axis": "latest_result",
