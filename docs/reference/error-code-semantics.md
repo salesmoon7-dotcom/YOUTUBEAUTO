@@ -61,6 +61,19 @@ condition rather than a tie.
   conflicting raw values and is surfaced in latest-run metadata, manager GUI,
   and control-plane debug logs.
 
+## Guardrail Addition Contract
+
+Any new runtime_v2 guardrail tied to error semantics must document the same
+three acceptance fields in the canonical docs before it is adopted:
+
+- owner: the owner layer that enforces the rule
+- failure mode: the exact failure mode the rule solves
+- removal: the condition for removing the rule or folding it into a simpler
+  canonical contract
+
+If any of these fields is missing, the change is treated as guardrail
+accumulation drift rather than an accepted contract update.
+
 ## Documented Runtime_v2 Error Code IDs
 
 The following IDs are intentionally documented here using the exact code tokens:

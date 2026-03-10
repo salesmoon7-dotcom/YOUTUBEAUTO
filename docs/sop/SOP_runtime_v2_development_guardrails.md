@@ -56,6 +56,15 @@
 - 외부 참고 호출은 adapter 경로 하나로만 통과시키고, 직접 분산 호출을 늘리지 않습니다.
 - fail-open보다 fail-closed를 우선합니다. 판단 불가면 진행보다 보류/차단을 선택합니다.
 
+## Guardrail Addition Acceptance Criteria
+
+- 새 guardrail은 "문제가 생겼으니 규칙 하나 더 추가" 방식으로 누적하지 않습니다. 추가 전 반드시 canonical 문서에 아래 3가지를 함께 기록합니다.
+  - owner: 어떤 owner layer가 이 guardrail을 최종 소유하고 집행하는지 명시합니다.
+  - failure mode: 이 guardrail이 정확히 어떤 failure mode 하나를 줄이거나 막는지 적습니다.
+  - removal: 어떤 조건이 충족되면 이 guardrail을 제거하거나 더 넓은 canonical contract로 흡수할지 적습니다.
+- 위 3가지 중 하나라도 비어 있으면 새 guardrail을 받지 않고, 기존 owner/failure contract 재정렬 또는 evidence 보강을 먼저 검토합니다.
+- 임시 보정, 예외 분기, fallback guardrail은 removal 조건 없이 carryover하지 않습니다.
+
 ## 10 Mandatory Session Rules
 
 1. 수정 전에 이번 이슈의 single owner 레이어를 먼저 정합니다.
