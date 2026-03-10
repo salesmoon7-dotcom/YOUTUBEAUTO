@@ -295,6 +295,35 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
 
         self.assertEqual(selected, "BROWSER_RESTART_EXHAUSTED")
 
+    def test_select_worker_error_code_ignores_placeholder_values(self) -> None:
+        self.assertEqual(
+            _select_worker_error_code(
+                {
+                    "worker_error_code": "-",
+                    "error_code": "BROWSER_RESTART_EXHAUSTED",
+                }
+            ),
+            "BROWSER_RESTART_EXHAUSTED",
+        )
+        self.assertEqual(
+            _select_worker_error_code(
+                {
+                    "worker_error_code": " failed ",
+                    "error_code": "BROWSER_RESTART_EXHAUSTED",
+                }
+            ),
+            "BROWSER_RESTART_EXHAUSTED",
+        )
+        self.assertEqual(
+            _select_worker_error_code(
+                {
+                    "worker_error_code": "Unknown",
+                    "error_code": "BROWSER_RESTART_EXHAUSTED",
+                }
+            ),
+            "BROWSER_RESTART_EXHAUSTED",
+        )
+
     def test_excel_sync_runtime_snapshot_does_not_write_latest_pointers(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
