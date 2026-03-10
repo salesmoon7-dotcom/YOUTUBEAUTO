@@ -17,6 +17,7 @@ from runtime_v2.bootstrap import ensure_runtime_bootstrap
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
 from runtime_v2.latest_run import (
     _cli_snapshot_paths,
+    _select_worker_error_code,
     load_joined_latest_run,
     write_cli_runtime_snapshot,
     write_latest_run_pointer,
@@ -273,6 +274,26 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
             str(canonical_handoff["worker_error_code"]),
             "BROWSER_RESTART_EXHAUSTED",
         )
+
+    def test_select_worker_error_code_prefers_explicit_worker_code(self) -> None:
+        selected = _select_worker_error_code(
+            {
+                "worker_error_code": "BROWSER_RESTART_EXHAUSTED",
+                "error_code": "BROWSER_BLOCKED",
+            }
+        )
+
+        self.assertEqual(selected, "BROWSER_RESTART_EXHAUSTED")
+
+    def test_select_worker_error_code_falls_back_to_error_code_when_blank(self) -> None:
+        selected = _select_worker_error_code(
+            {
+                "worker_error_code": "   ",
+                "error_code": "BROWSER_RESTART_EXHAUSTED",
+            }
+        )
+
+        self.assertEqual(selected, "BROWSER_RESTART_EXHAUSTED")
 
     def test_excel_sync_runtime_snapshot_does_not_write_latest_pointers(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

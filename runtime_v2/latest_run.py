@@ -129,9 +129,7 @@ def build_canonical_handoff_payload(
     debug_log: str,
     metadata: dict[str, object],
 ) -> dict[str, object]:
-    worker_error_code = str(metadata.get("worker_error_code", "")).strip()
-    if not worker_error_code:
-        worker_error_code = str(metadata.get("error_code", "")).strip()
+    worker_error_code = _select_worker_error_code(metadata)
     return {
         "schema_version": "1.0",
         "runtime": "runtime_v2",
@@ -157,6 +155,13 @@ def build_canonical_handoff_payload(
         "legacy_contracts_ref": "docs/plans/2026-03-09-legacy-post-gpt-service-contract-survey.md",
         "guardrail_plan_ref": "docs/plans/2026-03-09-runtime-v2-guardrail-drift-remediation-plan.md",
     }
+
+
+def _select_worker_error_code(metadata: dict[str, object]) -> str:
+    explicit_worker_error_code = str(metadata.get("worker_error_code", "")).strip()
+    if explicit_worker_error_code:
+        return explicit_worker_error_code
+    return str(metadata.get("error_code", "")).strip()
 
 
 def normalize_runtime_snapshot_metadata(
