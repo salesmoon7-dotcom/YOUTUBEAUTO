@@ -98,6 +98,34 @@ BGM: serious piano
             ["십세부터 오십세까지 설명", "육십세부터 구십세까지 설명"],
         )
 
+    def test_parser_extracts_shorts_blocks_from_legacy_response(self) -> None:
+        topic_spec: dict[str, object] = {
+            "topic": "Money flow",
+            "row_ref": "Sheet1!row1",
+            "run_id": "run-1",
+        }
+        response_text = """
+Title: 머니 제목
+Title for Thumb: 머니 썸네일 제목
+Description: 머니 설명
+Keywords: 머니, 연금, 생활비
+BGM: serious piano
+#01: 십세부터 오십세까지 설명
+#02: 육십세부터 구십세까지 설명
+Shorts Description: 쇼츠 설명 요약
+Shorts Voice: 쇼츠 내레이션 문장
+Shorts Clip Mapping: #01 -> Shorts 1\n#02 -> Shorts 2
+"""
+
+        parsed, errors = parse_gpt_response_text(topic_spec, response_text)
+
+        self.assertEqual(errors, [])
+        self.assertIsNotNone(parsed)
+        typed = cast(dict[str, object], parsed)
+        self.assertEqual(typed["shorts_description"], "쇼츠 설명 요약")
+        self.assertEqual(typed["shorts_voice"], "쇼츠 내레이션 문장")
+        self.assertIn("#01 -> Shorts 1", str(typed["shorts_clip_mapping"]))
+
 
 if __name__ == "__main__":
     _ = unittest.main()

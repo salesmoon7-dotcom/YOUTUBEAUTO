@@ -30,6 +30,9 @@ def normalize_stage1_handoff_contract(payload: dict[str, object]) -> dict[str, o
     normalized.setdefault("voice_texts", _voice_texts_from_scene_prompts(normalized))
     normalized.setdefault("ref_img_1", "")
     normalized.setdefault("ref_img_2", "")
+    normalized.setdefault("shorts_description", "")
+    normalized.setdefault("shorts_voice", "")
+    normalized.setdefault("shorts_clip_mapping", "")
     return normalized
 
 

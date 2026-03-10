@@ -49,7 +49,8 @@ class RuntimeV2Stage1HandoffBridgeTests(unittest.TestCase):
 
     def test_stage1_handoff_roundtrip_preserves_contract_fields(self) -> None:
         payload = _handoff()
-        row = export_stage1_handoff_to_excel_row(payload)
+        exported = export_stage1_handoff_to_excel_row(payload)
+        row: dict[str, object] = {key: value for key, value in exported.items()}
         restored = import_stage1_handoff_from_excel_row(base_payload=payload, row=row)
 
         self.assertEqual(restored["title"], payload["title"])
@@ -57,6 +58,16 @@ class RuntimeV2Stage1HandoffBridgeTests(unittest.TestCase):
         self.assertEqual(restored["bgm"], payload["bgm"])
         self.assertEqual(restored["ref_img_1"], payload["ref_img_1"])
         self.assertEqual(restored["scene_prompts"], payload["scene_prompts"])
+
+    def test_handoff_normalization_adds_shorts_fields(self) -> None:
+        payload = _handoff()
+        exported = export_stage1_handoff_to_excel_row(payload)
+        row: dict[str, object] = {key: value for key, value in exported.items()}
+        restored = import_stage1_handoff_from_excel_row(base_payload=payload, row=row)
+
+        self.assertIn("shorts_description", restored)
+        self.assertIn("shorts_voice", restored)
+        self.assertIn("shorts_clip_mapping", restored)
 
 
 if __name__ == "__main__":

@@ -7,11 +7,11 @@ from typing import cast
 from runtime_v2.stage1.gpt_plan_parser import build_topic_spec_from_gpt_response
 
 _LABEL_PATTERN = re.compile(
-    r"^(Title for Thumb|Title|Description|Keywords|Voice|BGM|Scene\s*\d+|#\d+)\s*:?\s*$",
+    r"^(Title for Thumb|Title|Description|Keywords|Voice|BGM|Shorts Description|Shorts Voice|Shorts Clip Mapping|Scene\s*\d+|#\d+)\s*:?\s*$",
     re.IGNORECASE,
 )
 _INLINE_LABEL_PATTERN = re.compile(
-    r"^(Title for Thumb|Title|Description|Keywords|Voice|BGM|Scene\s*\d+|#\d+)\s*:\s*(.+)$",
+    r"^(Title for Thumb|Title|Description|Keywords|Voice|BGM|Shorts Description|Shorts Voice|Shorts Clip Mapping|Scene\s*\d+|#\d+)\s*:\s*(.+)$",
     re.IGNORECASE,
 )
 
@@ -101,6 +101,9 @@ def _parse_block_response(
         "scene_prompts": scene_prompts or [f"{topic} opening", f"{topic} ending"],
         "voice_groups": voice_groups,
         "story_outline": scene_prompts or [f"{topic} opening", f"{topic} ending"],
+        "shorts_description": _join_label(labels, "shorts description"),
+        "shorts_voice": _join_label(labels, "shorts voice"),
+        "shorts_clip_mapping": _join_label(labels, "shorts clip mapping"),
     }
 
 
