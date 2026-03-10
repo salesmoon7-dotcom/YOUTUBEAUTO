@@ -90,3 +90,8 @@
 - 비-GPT functional verification 계획: `docs/plans/2026-03-10-non-gpt-functional-verification-plan.md`
   - 비-GPT 완료 판단은 서비스별 `Functionally-verified` evidence 확보 전까지 보류합니다.
   - 다음 실행 순서는 `SeaArt -> Genspark -> TTS -> GeminiGen -> Canva -> Kenburn -> RVC` 입니다.
+- 새 active remediation unit: `docs/plans/2026-03-10-runtime-v2-remediation-priority-plan.md`
+  - 현재 우선순위는 `GeminiGen truthful evidence` -> `silent fallback + child exit semantics` -> `latest-run single writer` -> `documentation status drift` 입니다.
+  - `GeminiGen` attach-only child는 이제 placeholder success를 만들지 않고 fail-closed로 막습니다.
+  - `TTS`, `RVC`는 canonical worker adoption은 완료됐지만 functional evidence는 여전히 exploratory 수준입니다.
+  - `24h soak verification gap`은 이번 구현 범위에서 제외하고 주말 운영 게이트로 미룹니다.
