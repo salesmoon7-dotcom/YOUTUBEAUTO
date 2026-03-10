@@ -124,7 +124,7 @@ git commit -m "test: add runtime_v2 guardrail contract checks"
 
 ### Task 4: Single Meaning Snapshot Review
 
-Status: In progress in another session (do not close from this session)
+Status: COMPLETE
 
 **Files:**
 - Modify: `runtime_v2/latest_run.py`
@@ -164,6 +164,12 @@ Expected: PASS
 - `tests/test_runtime_v2_evidence.py` now locks this with two regressions:
   - resolver prefers `result_metadata.run_id`
   - drifted inputs still expose one normalized `snapshot_run_id`
+- `runtime_v2/debug_log.py` now marks `error_code_source` together with `raw_error_code`, so raw vs canonical meaning is explicit in debug summaries.
+- verification bundle passed:
+  - `python -m pytest tests/test_runtime_v2_latest_run.py -q`
+  - `python -m pytest tests/test_runtime_v2_evidence.py -q`
+  - `python -m pytest tests/test_runtime_v2_debug_log.py -q`
+  - `python -m py_compile runtime_v2/latest_run.py runtime_v2/evidence.py runtime_v2/debug_log.py`
 
 **Step 5: Commit**
 

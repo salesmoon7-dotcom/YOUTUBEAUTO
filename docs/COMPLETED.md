@@ -1,5 +1,7 @@
 # COMPLETED
 
+- `runtime_v2/latest_run.py`, `runtime_v2/evidence.py`, `runtime_v2/debug_log.py`, `tests/test_runtime_v2_latest_run.py`, `tests/test_runtime_v2_evidence.py`, `tests/test_runtime_v2_debug_log.py`, `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md`, `docs/COMPLETED.md` - Task 4(`Single Meaning Snapshot Review`) 완료; `snapshot_run_id`를 단일 resolver로 정규화했고, `debug_log`에 `error_code_source`를 추가해 raw/canonical 의미 경계를 분명히 했습니다. 계획 문서에 적힌 targeted verification bundle(`latest_run`, `evidence`, `debug_log`, `py_compile`)도 모두 통과했습니다.
+
 - `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md`, `docs/COMPLETED.md` - Task 3(`Guardrail Accumulation Controls`) 완료 재판정 반영; Oracle 최종 판정 기준으로 canonical 문서의 `owner / failure mode / removal` 계약과 전용 테스트 `tests/test_runtime_v2_guardrail_contract.py` 존재가 모두 충족되어 더 이상 `NOT YET`로 둘 이유가 없음을 기록했습니다.
 
 - `docs/plans/2026-03-11-control-plane-hotspot-review.md`, `docs/TODO.md`, `docs/COMPLETED.md` - Task 5 control-plane hotspot review 완료; `runtime_v2/control_plane.py`를 코드 수정 없이 review artifact로 정리했고, 현재 파일에 남겨야 할 canonical 책임을 `final meaning owner`, `recovery/backoff owner`, `latest snapshot/event single writer`로 고정했습니다. 또한 향후 분해 후보는 `_run_worker()` dispatch 표면과 next-job/asset-manifest 보조 경로로 한정했고, 재오픈 조건도 기존 TODO 결정과 동일하게 `_run_worker()` 반복 디버깅, workload 3개 이상 추가에 따른 dispatch 충돌, worker 선택 정책 교체 필요 3가지로만 유지했습니다.
