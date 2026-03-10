@@ -128,7 +128,15 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         adapter_command = run_adapter.call_args.kwargs["adapter_command"]
+        adapter_extra_env = cast(
+            dict[object, object], run_adapter.call_args.kwargs["extra_env"]
+        )
         self.assertIn("--qwen3-adapter-child", adapter_command)
+        self.assertTrue(
+            str(adapter_extra_env["PYTHONPATH"]).startswith(
+                str(Path("D:/YOUTUBEAUTO").resolve())
+            )
+        )
 
     def test_qwen3_worker_keeps_explicit_adapter_command_when_present(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -173,6 +181,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(
             run_adapter.call_args.kwargs["adapter_command"], explicit_command
         )
+        self.assertIsNone(run_adapter.call_args.kwargs["extra_env"])
 
     def test_qwen3_worker_emits_rvc_next_job_contract(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -380,7 +389,15 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         adapter_command = run_adapter.call_args.kwargs["adapter_command"]
+        adapter_extra_env = cast(
+            dict[object, object], run_adapter.call_args.kwargs["extra_env"]
+        )
         self.assertIn("--rvc-adapter-child", adapter_command)
+        self.assertTrue(
+            str(adapter_extra_env["PYTHONPATH"]).startswith(
+                str(Path("D:/YOUTUBEAUTO").resolve())
+            )
+        )
 
     def test_rvc_worker_keeps_explicit_adapter_command_when_present(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -425,6 +442,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(
             run_adapter.call_args.kwargs["adapter_command"], explicit_command
         )
+        self.assertIsNone(run_adapter.call_args.kwargs["extra_env"])
 
     def test_kenburns_worker_marks_final_output_true(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

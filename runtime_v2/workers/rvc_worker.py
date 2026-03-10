@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import cast
@@ -14,6 +15,16 @@ from runtime_v2.workers.job_runtime import (
     write_json_atomic,
 )
 from runtime_v2.workers.native_only import native_not_implemented_result
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _canonical_adapter_env() -> dict[str, str]:
+    repo_root = str(REPO_ROOT.resolve())
+    current = os.environ.get("PYTHONPATH", "").strip()
+    pythonpath = repo_root if not current else f"{repo_root}{os.pathsep}{current}"
+    return {"PYTHONPATH": pythonpath}
 
 
 def run_rvc_job(
@@ -66,6 +77,7 @@ def run_rvc_job(
         },
     )
     adapter_command_raw = job.payload.get("adapter_command")
+    adapter_extra_env: dict[str, str] | None = None
     if (not isinstance(adapter_command_raw, list) or not adapter_command_raw) and str(
         job.payload.get("service_artifact_path", "")
     ).strip():
@@ -77,6 +89,7 @@ def run_rvc_job(
             "--service-artifact-path",
             str(job.payload.get("service_artifact_path", "")),
         ]
+        adapter_extra_env = _canonical_adapter_env()
     if isinstance(adapter_command_raw, list) and adapter_command_raw:
         adapter_command_items = cast(list[object], adapter_command_raw)
         adapter_command = [str(item) for item in adapter_command_items]
@@ -85,6 +98,7 @@ def run_rvc_job(
             adapter_command=adapter_command,
             service_artifact_path=str(job.payload.get("service_artifact_path", "")),
             adapter_error_code="rvc_adapter_failed",
+            extra_env=adapter_extra_env,
         )
         stdout_path = Path(str(adapter_result["stdout_path"]))
         stderr_path = Path(str(adapter_result["stderr_path"]))

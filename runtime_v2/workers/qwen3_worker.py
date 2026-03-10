@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import cast
@@ -15,6 +16,9 @@ from runtime_v2.workers.native_only import (
     native_not_implemented_result,
     write_native_request,
 )
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _int_value(raw_value: object, default: int) -> int:
@@ -61,6 +65,13 @@ def _voice_texts_payload(payload: dict[str, object]) -> list[dict[str, object]]:
     return [{"col": "#01", "text": script_text, "original_voices": [1]}]
 
 
+def _canonical_adapter_env() -> dict[str, str]:
+    repo_root = str(REPO_ROOT.resolve())
+    current = os.environ.get("PYTHONPATH", "").strip()
+    pythonpath = repo_root if not current else f"{repo_root}{os.pathsep}{current}"
+    return {"PYTHONPATH": pythonpath}
+
+
 def run_qwen3_job(
     job: JobContract | None = None, artifact_root: Path | None = None
 ) -> dict[str, object]:
@@ -97,6 +108,7 @@ def run_qwen3_job(
     request_file = write_native_request(workspace, job.payload)
     prompt_file = write_json_atomic(workspace / "qwen_prompt.json", prompt_payload)
     adapter_command_raw = job.payload.get("adapter_command")
+    adapter_extra_env: dict[str, str] | None = None
     if (not isinstance(adapter_command_raw, list) or not adapter_command_raw) and str(
         job.payload.get("service_artifact_path", "")
     ).strip():
@@ -108,6 +120,7 @@ def run_qwen3_job(
             "--service-artifact-path",
             str(job.payload.get("service_artifact_path", "")),
         ]
+        adapter_extra_env = _canonical_adapter_env()
     if isinstance(adapter_command_raw, list) and adapter_command_raw:
         adapter_command_items = cast(list[object], adapter_command_raw)
         adapter_command = [str(item) for item in adapter_command_items]
@@ -116,6 +129,7 @@ def run_qwen3_job(
             adapter_command=adapter_command,
             service_artifact_path=str(job.payload.get("service_artifact_path", "")),
             adapter_error_code="qwen3_tts_adapter_failed",
+            extra_env=adapter_extra_env,
         )
         stdout_path = Path(str(adapter_result["stdout_path"]))
         stderr_path = Path(str(adapter_result["stderr_path"]))

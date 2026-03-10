@@ -110,6 +110,7 @@ def run_verified_adapter_command(
     adapter_command: list[str],
     service_artifact_path: str,
     adapter_error_code: str,
+    extra_env: dict[str, str] | None = None,
     timeout_sec: int = 3600,
 ) -> dict[str, object]:
     target_path, target_error = _resolve_output_target_info(service_artifact_path)
@@ -117,6 +118,7 @@ def run_verified_adapter_command(
     process_result = run_external_process(
         adapter_command,
         cwd=workspace,
+        extra_env=extra_env,
         timeout_sec=timeout_sec,
     )
     stdout_path = workspace / "adapter_stdout.log"
