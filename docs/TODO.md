@@ -64,9 +64,11 @@
   - `system/runtime_v2_probe/first-test-real-live-06/` 기준 실제 live 시도는 `CHATGPT_BACKEND_UNAVAILABLE`로 fail-close 되었고, evidence chain은 남았습니다.
   - live ChatGPT 경로는 legacy-style longform production prompt를 canonical builder로 사용합니다.
   - `AgentBrowserCdpBackend`는 `tab preselect + retry` 하드닝이 반영되었습니다.
+  - `NO_SEND`/`SEND_DISABLED`지만 stop-button이 보이는 경우는 `submit in-flight`로 해석하도록 stop-gate 하드닝을 반영했습니다.
   - 완료 판정은 `stop-button`이 나타났다 사라진 뒤 텍스트가 안정화될 때만 성공으로 처리합니다.
   - `system/runtime_v2_probe/first-test-real-live-08/` 기준으로는 queue가 `running`까지 진입했지만 성공 artifact는 아직 생성되지 않았습니다.
   - raw CDP websocket fallback(`suppress_origin=True`)도 반영됐지만, `first-test-real-live-09/` 기준 여전히 real-live 성공 artifact는 닫히지 않았습니다.
+  - raw CDP method timeout은 이제 canonical failure contract 안에서 `RuntimeError`로 감싸져 예외 누수가 줄었습니다.
   - `system/runtime_v2_probe/first-test-real-live-success-01/`에서 실제 custom GPT output 기반 `raw_output -> parsed_payload -> handoff -> video_plan` bundle 생성까지 완료했습니다.
   - 같은 결과를 `4 머니.xlsx` `Sheet1!row13`에 export하고 `excel_roundtrip.json`까지 검증했습니다.
   - row13 `Status`는 전체 완료(`Done`)가 아니라 GPT 단계 완료 의미의 `OK`가 맞습니다.
