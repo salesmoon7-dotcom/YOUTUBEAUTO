@@ -1,5 +1,7 @@
 # COMPLETED
 
+- `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md`, `docs/COMPLETED.md` - architecture simplification plan 상태 재판정 완료; Oracle 검토 기준으로 Task 1(`Run Identity Audit Lock`)은 완료로 확정했고, Task 4(`Single Meaning Snapshot Review`)는 다른 세션에서 진행 중이라 이번 세션에서는 완료 처리하지 않았으며, Task 6(`Final Verification Gate`)는 최종 번들 수준 검증이 아직 명시적으로 닫히지 않아 `NOT YET`로 유지했습니다.
+
 - `docs/sop/SOP_runtime_v2_development_guardrails.md`, `docs/COMPLETED.md` - `warning_worker_error_code_mismatch` 운영 triage 정책 정리 완료; mismatch는 기본 non-blocking 경고로 두되, 반복 발생 또는 재시도 폭증/작업 중단과 동반될 때만 blocking으로 승격한다는 기준과 Oracle/실행 증거/워커 코드 정의/런타임 매핑 순의 신뢰 우선순위를 guardrails 문서에 고정했습니다.
 
 - `docs/reference/error-code-semantics.md`, `docs/INDEX.md` - runtime_v2 error field semantics 정본 문서화 완료; `error_code`, `worker_error_code`, `raw_error_code`, `warning_worker_error_code_mismatch`의 정의, 우선순위, 생성 규칙, 예시를 한 문서에 고정했고 `docs/INDEX.md`에 canonical reference 링크를 추가했습니다. 운영자/개발자는 이제 이 문서 1곳을 기준으로 raw/canonical/error 필드 의미를 해석하면 됩니다.
