@@ -61,7 +61,9 @@ def summarize_runtime_result(result: Mapping[str, object]) -> dict[str, object]:
     if worker_result is not None:
         payload["worker_status"] = str(worker_result.get("status", ""))
         payload["stage"] = str(worker_result.get("stage", ""))
-        payload["error_code"] = str(worker_result.get("error_code", ""))
+        raw_error_code = str(worker_result.get("error_code", ""))
+        payload["error_code"] = raw_error_code
+        payload["raw_error_code"] = raw_error_code
         payload["manifest_path"] = str(worker_result.get("manifest_path", ""))
         payload["result_path"] = str(worker_result.get("result_path", ""))
         completion = _mapping(worker_result.get("completion"))
@@ -74,9 +76,11 @@ def summarize_runtime_result(result: Mapping[str, object]) -> dict[str, object]:
             )
     else:
         payload["stage"] = str(resolved.get("stage", result.get("stage", "")))
-        payload["error_code"] = str(
+        raw_error_code = str(
             resolved.get("error_code", result.get("error_code", result.get("code", "")))
         )
+        payload["error_code"] = raw_error_code
+        payload["raw_error_code"] = raw_error_code
     if recovery is not None:
         payload["backoff_sec"] = recovery.get("backoff_sec", 0)
         payload["recovery_action"] = str(recovery.get("action", ""))
