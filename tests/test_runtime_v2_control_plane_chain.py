@@ -656,6 +656,67 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         )
         self.assertEqual(str(latest_metadata["completion_state"]), "failed")
 
+    def test_control_plane_does_not_seed_replan_for_restart_exhausted_browser_verify(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            seed_control_job(
+                JobContract(
+                    job_id="agent-browser-restart-exhausted-job",
+                    workload="agent_browser_verify",
+                    checkpoint_key="seed:agent-browser-restart-exhausted-job",
+                    payload={
+                        "run_id": "agent-browser-restart-exhausted-run",
+                        "service": "chatgpt",
+                        "expected_url_substring": "chatgpt.com",
+                        "replan_on_failure": True,
+                        "verification": ["browser-check"],
+                        "browser_checks": [{"service": "chatgpt"}],
+                    },
+                ),
+                config=config,
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={
+                    "status": "blocked",
+                    "code": "BROWSER_RESTART_EXHAUSTED",
+                },
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-agent-browser-restart-exhausted",
+                )
+
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            job_payload = next(
+                item
+                for item in queue_items
+                if str(item["job_id"]) == "agent-browser-restart-exhausted-job"
+            )
+            replan_jobs = [
+                item
+                for item in queue_items
+                if str(item.get("workload", "")) == "dev_replan"
+            ]
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "BROWSER_RESTART_EXHAUSTED")
+        self.assertEqual(str(job_payload["status"]), "failed")
+        self.assertEqual(replan_jobs, [])
+
     def test_control_plane_retries_browser_unhealthy_runtime_preflight_with_backoff(
         self,
     ) -> None:

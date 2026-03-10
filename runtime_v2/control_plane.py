@@ -377,8 +377,14 @@ def run_control_loop_once(
                     events_file,
                 )
     elif not success:
+        restart_exhausted_terminal_block = bool(
+            str(worker_contract.get("error_code", "")) == "BROWSER_RESTART_EXHAUSTED"
+            and result.get("status") == "blocked"
+        )
         failure_next_jobs = worker_contract.get("next_jobs", [])
-        if not isinstance(failure_next_jobs, list) or not failure_next_jobs:
+        if restart_exhausted_terminal_block:
+            failure_next_jobs = []
+        elif not isinstance(failure_next_jobs, list) or not failure_next_jobs:
             failure_next_jobs = _agent_browser_failure_next_jobs(job)
         if failure_next_jobs:
             seeded_downstream = _seed_declared_next_jobs(
