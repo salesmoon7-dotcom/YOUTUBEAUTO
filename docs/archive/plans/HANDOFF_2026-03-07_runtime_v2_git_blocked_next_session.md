@@ -46,7 +46,7 @@
 ## 5) Vendor / Kimoring Validation State
 
 - Plan source of truth remains `docs/plans/2026-03-06-phase1-bootstrap-execution.md`.
-- Existing handoff source of truth remains `docs/plans/HANDOFF_2026-03-06_runtime_v2_phase1_to_phase2.md`.
+- Existing handoff source of truth remains `docs/archive/plans/HANDOFF_2026-03-06_runtime_v2_phase1_to_phase2.md`.
 - Kimoring-style checks already reviewed in-session:
   - no type suppression markers found in current `runtime_v2` changes
   - no empty catch blocks introduced in current `runtime_v2` changes

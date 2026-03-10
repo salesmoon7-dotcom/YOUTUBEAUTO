@@ -62,7 +62,7 @@ GREEN 진행 결과:
 - `runtime_v2/agent_browser/command_builder.py`
 - `runtime_v2/agent_browser/result_parser.py`
 - `runtime_v2/workers/agent_browser_worker.py`
-- `docs/plans/2026-03-09-agent-browser-implementation-handoff.md`
+- `docs/archive/plans/2026-03-09-agent-browser-implementation-handoff.md`
 
 ### Modified
 
@@ -213,6 +213,6 @@ python -m pytest tests/test_runtime_v2_control_plane_chain.py::RuntimeV2ControlP
 ## Recommended Resume Prompt
 
 ```text
-docs/plans/2026-03-09-agent-browser-implementation-handoff.md 읽고 그대로 이어서 구현하세요.
+docs/archive/plans/2026-03-09-agent-browser-implementation-handoff.md 읽고 그대로 이어서 구현하세요.
 우선 diagnostics 깨끗하게 만들고, 그 다음 agent_browser_verify worker의 실제 preflight/order 테스트를 추가한 뒤 관련 pytest를 다시 돌리세요.
 ```
