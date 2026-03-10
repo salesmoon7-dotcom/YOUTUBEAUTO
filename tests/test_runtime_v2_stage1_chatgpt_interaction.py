@@ -302,7 +302,17 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             if command[-2:] == ["tab", "2"]:
                 return "ok"
             if command[-2] == "eval":
-                return json.dumps({"ok": False, "error": "NO_SEND"})
+                return json.dumps(
+                    {
+                        "ok": False,
+                        "error": "NO_SEND",
+                        "noSendEvidence": {
+                            "retry_safe": True,
+                            "send_found": False,
+                            "in_flight_marker": False,
+                        },
+                    }
+                )
             return "ok"
 
         backend = AgentBrowserCdpBackend(
@@ -347,6 +357,110 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             result = backend.submit_prompt("hello")
 
         self.assertTrue(bool(result["ok"]))
+
+    def test_agent_browser_backend_emits_retry_safe_no_send_evidence(self) -> None:
+        def fake_runner(command: list[str], timeout_sec: int) -> str:
+            if command[-2:] == ["tab", "2"]:
+                return "ok"
+            if command[-2] == "eval":
+                return json.dumps(
+                    {
+                        "ok": False,
+                        "error": "NO_SEND",
+                        "noSendEvidence": {
+                            "retry_safe": True,
+                            "send_found": False,
+                            "in_flight_marker": False,
+                        },
+                    }
+                )
+            return "ok"
+
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["button[data-testid='send-button']"],
+            stop_selectors=["button[data-testid='stop-button']"],
+            response_selectors=["[data-message-author-role='assistant']"],
+            command_runner=fake_runner,
+        )
+
+        with (
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
+                return_value=[{"title": "ChatGPT", "url": "https://chatgpt.com/c/abc"}],
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._select_page_target",
+                return_value={
+                    "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/abc",
+                    "url": "https://chatgpt.com/c/abc",
+                },
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_eval",
+                return_value=json.dumps(
+                    json.dumps(
+                        {
+                            "ok": False,
+                            "error": "NO_SEND",
+                            "noSendEvidence": {
+                                "retry_safe": True,
+                                "send_found": False,
+                                "in_flight_marker": False,
+                            },
+                        }
+                    )
+                ),
+            ),
+        ):
+            with self.assertRaises(RuntimeError) as raised:
+                backend.submit_prompt("hello")
+
+        payload = json.loads(str(raised.exception))
+        self.assertEqual(payload["error"], "NO_SEND")
+        self.assertTrue(bool(payload["retry_safe"]))
+        self.assertFalse(bool(payload["no_send_evidence"]["send_found"]))
+
+    def test_agent_browser_backend_marks_send_disabled_as_non_retry_safe(self) -> None:
+        def fake_runner(command: list[str], timeout_sec: int) -> str:
+            if command[-2:] == ["tab", "2"]:
+                return "ok"
+            if command[-2] == "eval":
+                return json.dumps(
+                    {
+                        "ok": False,
+                        "error": "SEND_DISABLED",
+                        "noSendEvidence": {
+                            "retry_safe": False,
+                            "send_found": True,
+                            "send_disabled": True,
+                            "in_flight_marker": True,
+                        },
+                    }
+                )
+            return "ok"
+
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["button[data-testid='send-button']"],
+            stop_selectors=["button[data-testid='stop-button']"],
+            response_selectors=["[data-message-author-role='assistant']"],
+            command_runner=fake_runner,
+        )
+
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
+            return_value=[{"title": "ChatGPT", "url": "https://chatgpt.com/c/abc"}],
+        ):
+            with self.assertRaises(RuntimeError) as raised:
+                backend.submit_prompt("hello")
+
+        payload = json.loads(str(raised.exception))
+        self.assertEqual(payload["error"], "SEND_DISABLED")
+        self.assertFalse(bool(payload["retry_safe"]))
+        self.assertTrue(bool(payload["no_send_evidence"]["in_flight_marker"]))
 
     def test_generate_gpt_response_text_accepts_backend_interface(self) -> None:
         class FakeBackend(ChatGPTBackend):
@@ -543,7 +657,20 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             def submit_prompt(self, prompt: str) -> dict[str, object]:
                 self.submit_calls += 1
                 if self.submit_calls == 1:
-                    raise RuntimeError("NO_SEND")
+                    raise RuntimeError(
+                        json.dumps(
+                            {
+                                "error": "NO_SEND",
+                                "retry_safe": True,
+                                "no_send_evidence": {
+                                    "send_found": False,
+                                    "in_flight_marker": False,
+                                    "retry_safe": True,
+                                },
+                            },
+                            ensure_ascii=True,
+                        )
+                    )
                 return {
                     "ok": True,
                     "inputSelector": "#prompt-textarea",

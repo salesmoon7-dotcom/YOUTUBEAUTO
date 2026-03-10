@@ -89,23 +89,21 @@ def generate_gpt_response_text(
         try:
             submit_info = interaction_backend.submit_prompt(prompt)
         except RuntimeError as exc:
+            error_code, retry_safe, extra_details = _decode_submit_failure(str(exc))
             emit("submit_failed", attempt=attempt, backend="chatgpt_backend")
             failed = _interaction_failure(
                 failure_stage="submit",
                 error_code="CHATGPT_BACKEND_UNAVAILABLE",
-                backend_error=str(exc),
+                backend_error=error_code,
                 final_state=probe(port),
+                extra_details=extra_details,
             )
-            if (
-                attempt == 1
-                and relaunch_browser is not None
-                and _is_safe_submit_retry_error(str(exc))
-            ):
+            if attempt == 1 and relaunch_browser is not None and retry_safe:
                 emit(
                     "retry_decision",
                     attempt=attempt,
                     backend="chatgpt_backend",
-                    reason="submit_failure",
+                    reason=error_code,
                 )
                 relaunch_browser()
                 continue
@@ -235,17 +233,21 @@ def _interaction_failure(
     backend_error: str,
     submit_info: dict[str, object] | None = None,
     final_state: dict[str, object] | None = None,
+    extra_details: dict[str, object] | None = None,
 ) -> dict[str, object]:
+    details: dict[str, object] = {
+        "backend_error": backend_error,
+        "backend_fallback": "raw_cdp_http",
+    }
+    if extra_details:
+        details.update(extra_details)
     return {
         "status": "failed",
         "error_code": error_code,
         "failure_stage": failure_stage,
         "submit_info": {} if submit_info is None else submit_info,
         "final_state": {} if final_state is None else final_state,
-        "details": {
-            "backend_error": backend_error,
-            "backend_fallback": "raw_cdp_http",
-        },
+        "details": details,
     }
 
 
@@ -324,6 +326,18 @@ def _backend_fallbacks(payload: dict[str, object]) -> list[str]:
     return fallbacks
 
 
-def _is_safe_submit_retry_error(message: str) -> bool:
-    normalized = str(message).strip().upper()
-    return normalized in {"NO_SEND", "SEND_DISABLED"}
+def _decode_submit_failure(message: str) -> tuple[str, bool, dict[str, object]]:
+    raw = str(message).strip()
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return raw, False, {}
+    if not isinstance(parsed, dict):
+        return raw, False, {}
+    error_code = str(parsed.get("error", raw)).strip() or raw
+    extra_details: dict[str, object] = {}
+    no_send_evidence = parsed.get("no_send_evidence", {})
+    if isinstance(no_send_evidence, dict):
+        extra_details["no_send_evidence"] = no_send_evidence
+    extra_details["retry_safe_submit"] = bool(parsed.get("retry_safe", False))
+    return error_code, bool(parsed.get("retry_safe", False)), extra_details

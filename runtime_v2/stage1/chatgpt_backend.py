@@ -66,7 +66,10 @@ class AgentBrowserCdpBackend:
         parsed = _decode_backend_json(result)
         if not bool(parsed.get("ok", False)):
             error = str(parsed.get("error", "chatgpt_submit_failed"))
-            if error in {"NO_SEND", "SEND_DISABLED"}:
+            no_send_evidence = _normalized_no_send_evidence(parsed)
+            if error in {"NO_SEND", "SEND_DISABLED"} and bool(
+                no_send_evidence.get("retry_safe", False)
+            ):
                 raw_target = _select_page_target(
                     self._port, self._expected_url_substring
                 )
@@ -80,8 +83,18 @@ class AgentBrowserCdpBackend:
                     parsed.setdefault(
                         "backend_fallbacks", self._fallback_events_payload()
                     )
+                    parsed.setdefault("no_send_evidence", no_send_evidence)
                     return parsed
-            raise RuntimeError(error)
+            raise RuntimeError(
+                json.dumps(
+                    {
+                        "error": error,
+                        "retry_safe": bool(no_send_evidence.get("retry_safe", False)),
+                        "no_send_evidence": no_send_evidence,
+                    },
+                    ensure_ascii=True,
+                )
+            )
         parsed.setdefault("selected_tab", self._current_selected_tab())
         parsed.setdefault("backend_fallbacks", self._fallback_events_payload())
         return parsed
@@ -221,6 +234,14 @@ def _submit_script(payload: str) -> str:
         "input.dispatchEvent(new Event('change',{bubbles:true}));"
         "input.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,key:'Enter',code:'Enter'}));"
         "input.dispatchEvent(new KeyboardEvent('keyup',{bubbles:true,key:'a'}));"
+        "const snapshot = (candidate) => {"
+        "  if (!candidate) return {send_found:false, send_disabled:false, aria_disabled:'', aria_busy:'', class_name:'', button_text:'', pointer_events:'', visible:false, is_connected:false, in_flight_marker:false, state_transition:false, retry_safe:true};"
+        "  const className = String(candidate.className || '');"
+        "  const ariaDisabled = candidate.getAttribute ? (candidate.getAttribute('aria-disabled') || '') : '';"
+        "  const ariaBusy = candidate.getAttribute ? (candidate.getAttribute('aria-busy') || '') : '';"
+        "  const inFlight = !!(candidate.querySelector && candidate.querySelector('[role=\"progressbar\"], .spinner, .loading')) || className.toLowerCase().includes('loading') || ariaBusy === 'true';"
+        "  return {send_found:true, send_disabled:!!candidate.disabled, aria_disabled:ariaDisabled, aria_busy:ariaBusy, class_name:className, button_text:String(candidate.innerText || candidate.textContent || candidate.value || '').trim(), pointer_events:String((window.getComputedStyle && window.getComputedStyle(candidate).pointerEvents) || ''), visible:!!candidate.offsetParent, is_connected:!!candidate.isConnected, in_flight_marker:inFlight, state_transition:false, retry_safe:!candidate.disabled && !inFlight};"
+        "};"
         "let send = null;"
         "for (const selector of sendSelectors) {"
         "  const candidate = document.querySelector(selector);"
@@ -229,8 +250,8 @@ def _submit_script(payload: str) -> str:
         "  send = candidate;"
         "  break;"
         "}"
-        "if (!send) return JSON.stringify({ok:false,error:'NO_SEND'});"
-        "if (send.disabled) return JSON.stringify({ok:false,error:'SEND_DISABLED'});"
+        "if (!send) return JSON.stringify({ok:false,error:'NO_SEND',noSendEvidence:snapshot(null)});"
+        "if (send.disabled) return JSON.stringify({ok:false,error:'SEND_DISABLED',noSendEvidence:snapshot(send)});"
         "['pointerdown','mousedown','pointerup','mouseup','click'].forEach(type => send.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,view:window})));"
         "if (typeof send.click === 'function') send.click();"
         "input.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,key:'Enter',code:'Enter'}));"
@@ -439,6 +460,39 @@ def _decode_backend_json(result: str) -> dict[str, object]:
     if not isinstance(parsed, dict):
         raise RuntimeError("chatgpt_backend_invalid_json")
     return parsed
+
+
+def _normalized_no_send_evidence(parsed: dict[str, object]) -> dict[str, object]:
+    raw = parsed.get("noSendEvidence", {})
+    if not isinstance(raw, dict):
+        return {
+            "send_found": False,
+            "send_disabled": False,
+            "aria_disabled": "",
+            "aria_busy": "",
+            "class_name": "",
+            "button_text": "",
+            "pointer_events": "",
+            "visible": False,
+            "is_connected": False,
+            "in_flight_marker": False,
+            "state_transition": False,
+            "retry_safe": False,
+        }
+    return {
+        "send_found": bool(raw.get("send_found", False)),
+        "send_disabled": bool(raw.get("send_disabled", False)),
+        "aria_disabled": str(raw.get("aria_disabled", "")),
+        "aria_busy": str(raw.get("aria_busy", "")),
+        "class_name": str(raw.get("class_name", "")),
+        "button_text": str(raw.get("button_text", "")),
+        "pointer_events": str(raw.get("pointer_events", "")),
+        "visible": bool(raw.get("visible", False)),
+        "is_connected": bool(raw.get("is_connected", False)),
+        "in_flight_marker": bool(raw.get("in_flight_marker", False)),
+        "state_transition": bool(raw.get("state_transition", False)),
+        "retry_safe": bool(raw.get("retry_safe", False)),
+    }
 
 
 def _resolve_agent_browser_command(command: list[str]) -> list[str]:
