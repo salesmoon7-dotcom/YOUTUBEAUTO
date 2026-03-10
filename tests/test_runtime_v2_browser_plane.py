@@ -1159,6 +1159,47 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertTrue(bool(snapshots["chatgpt"]["healthy"]))
         self.assertTrue(bool(snapshots["seaart"]["healthy"]))
 
+    def test_supervisor_tick_returns_health_state_not_policy_contract(self) -> None:
+        session = BrowserSession(
+            service="chatgpt",
+            group="llm",
+            session_id="primary",
+            port=9222,
+            profile_dir=str(
+                (Path("runtime_v2") / "sessions" / "chatgpt-primary").resolve()
+            ),
+            status="running",
+        )
+        manager = BrowserManager(sessions=[session])
+        manager.running = True
+        supervisor = BrowserSupervisor(manager)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            with (
+                patch(
+                    "runtime_v2.browser.manager._probe_local_port", return_value=False
+                ),
+                patch(
+                    "runtime_v2.browser.manager._launch_debug_browser",
+                    return_value=False,
+                ),
+            ):
+                result = supervisor.tick(
+                    registry_file=root / "browser_session_registry.json",
+                    health_file=root / "browser_health.json",
+                    run_id="browser-run-owner-freeze",
+                    recover_unhealthy=False,
+                )
+
+        self.assertEqual(
+            set(result.keys()),
+            {"restarted_services", "initial_summary", "final_summary", "sessions"},
+        )
+        self.assertNotIn("retryable", result)
+        self.assertNotIn("next_jobs", result)
+        self.assertNotIn("completion", result)
+
     def test_registry_load_normalizes_profile_dir_to_absolute_path(self) -> None:
         session = BrowserSession(
             service="chatgpt",
