@@ -57,3 +57,15 @@
   - intent routing vs closed-loop skill bundles,
   - active runtime evidence vs target-state harness references.
 - This cleanup intentionally stops short of restoring missing harness scripts/workflows/policy files because current-checkout evidence does not prove they are critical runtime dependencies.
+
+## Latest Progress
+- The documentation cleanup was committed as five semantic docs commits:
+  - `ecb4b66` `docs: simplify top-level routing guidance`
+  - `06a4a36` `docs: clarify runtime_v2 harness reference status`
+  - `50d114d` `docs: separate skill routing from closed-loop bundles`
+  - `e6f9ee5` `docs: archive completed handoff plans`
+  - `b44cd6e` `docs: record archive cleanup pass`
+- Those commits were pushed to `origin/main` after verification.
+- The first-pass archived handoff set now lives under `docs/archive/plans/`.
+- `docs/TODO.md` wording was then cleaned up so already-completed units no longer read like current active implementation work.
+- That TODO cleanup was limited to status labels and wording only; it did not change technical scope, priority, or no-go decisions.

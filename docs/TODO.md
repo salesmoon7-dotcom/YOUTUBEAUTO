@@ -7,7 +7,7 @@
 - 다음 구조 조사 후보:
   - `runtime_v2/control_plane.py` 자체의 크기와 다책임 구조는 여전히 디버깅 복잡도 hotspot입니다.
   - 이 항목은 새 기능이 아니라 구조 분해 목적의 별도 architecture review unit으로만 다시 열 수 있습니다.
-- 새 active unit: `docs/plans/2026-03-09-control-plane-feeder-decomposition-plan.md`
+- 완료된 unit 기록: `docs/plans/2026-03-09-control-plane-feeder-decomposition-plan.md`
   - 1차 분해 범위는 feeder discovery / explicit contract parsing / feeder state I/O만입니다.
   - `run_control_loop_once()`, failure contract, recovery, downstream chaining, snapshot writer는 `control_plane.py`에 남깁니다.
   - 1차 배치는 완료되었습니다. 현재 결정은 `2차 분해 no-go`이며, 이 문구는 영구 금지가 아니라 현 시점의 결정 기록입니다.
@@ -26,7 +26,7 @@
     - `canva:9666` -> `system/runtime_v2_probe/agent-browser-live-attach-07/summary.json`
   - live readiness 상세 판정은 `docs/plans/2026-03-09-agent-browser-live-readiness-report.md`를 기준으로 관리합니다.
   - latest evidence 기준 `ChatGPT/Genspark/Seaart/Geminigen/Canva` 모두 canonical live attach 확인이 끝났습니다.
-- stage1 legacy parity active unit:
+- stage1 legacy parity follow-up note:
   - `docs/plans/2026-03-09-runtime-v2-legacy-pipeline-feasibility-plan.md` 기준 `stage1 GPT output/parse/handoff canonical contract` 2차 배치까지 구현됨
   - 실제 row evidence는 `system/runtime_v2_probe/stage1-row13-evidence-01/`에 생성됨
   - 실제 GPT text 연결 evidence는 `system/runtime_v2_probe/stage1-row13-evidence-04/`에 생성됨
@@ -42,12 +42,12 @@
   - 채팅 세션에서는 실브라우저 relaunch/recovery를 실행하지 않습니다.
   - readiness blocker가 실브라우저 복구를 요구하면 detached 또는 수동 smoke 단계에서만 수행합니다.
 - 테스트 실행은 `docs/plans/2026-03-08-browser-session-stability-plan.md`의 `Test Tier Execution Contract`를 따릅니다. 채팅 세션 기본 검증은 `safe`만 허용하고, `isolated`는 개별 실행, `manual`은 채팅 세션 밖에서만 다룹니다.
-- 새 active unit: `docs/plans/2026-03-09-runtime-v2-remaining-issues-priority-plan.md`
+- 후속 판단 기준: `docs/plans/2026-03-09-runtime-v2-remaining-issues-priority-plan.md`
   - 즉시 실행 배치는 완료되었습니다.
   - probe 출력은 `code=OK`와 별도로 `live_readiness`, `placeholder_services`, `live_ready_services`를 통해 해석해야 합니다.
   - 현재 남은 것은 active 구현이 아니라 후속 판단 기록이며, `stage1 richer field` 샘플 확장은 새 변형 증거가 누적될 때만 재검토합니다.
   - `control_plane` 2차 분해는 여전히 no-go decision입니다.
-- 새 active integration plan: `docs/plans/2026-03-10-runtime-v2-subprogram-integration-execution-plan.md`
+- 완료된 active integration plan: `docs/plans/2026-03-10-runtime-v2-subprogram-integration-execution-plan.md`
   - 이 배치는 완료되었습니다.
   - 레거시는 실패한 복잡계로 간주하고 구현체가 아니라 계약/파싱 참고 자료로만 사용합니다.
   - `first-test-real-live-success-01/`에서 GPT real-first gate를 닫았고, `downstream-real-qwen3-01/`에서 handoff-derived payload 기반 downstream 1개 real run evidence까지 확보했습니다.
@@ -72,7 +72,7 @@
   - `#167`, `#195`, `#210`도 각각 동일 번호의 Excel 헤더 열에 실제로 들어가는 것을 확인했습니다.
   - `1차 테스트` closeout evidence는 `system/runtime_v2_probe/downstream-real-qwen3-01/`까지 확보되었습니다.
   - 따라서 ChatGPT interaction backend 후속은 active blocker가 아니라 follow-up optimization scope로만 남깁니다.
-- 새 준비 보완 계획: `docs/plans/2026-03-10-runtime-v2-subprogram-gap-analysis-plan.md`
+- 준비 보완 기준: `docs/plans/2026-03-10-runtime-v2-subprogram-gap-analysis-plan.md`
   - 테스트 전에 `field matrix`, `failure matrix`, `golden evidence`, `readiness checklist`를 완성해 디버깅 비용을 줄입니다.
   - 이 계획이 먼저 닫힌 뒤에야 실제 테스트를 반복 실행하는 것이 맞습니다.
 - 비-GPT 상세 분석 기준: `docs/plans/2026-03-10-non-gpt-subprogram-detailed-analysis.md`
@@ -87,7 +87,7 @@
     - `RVC` -> `Functionally-verified`
   - 공통 `adapter failure matrix` 1차는 반영되었습니다.
     - `ADAPTER_TIMEOUT`, `ADAPTER_NOT_FOUND`, `ADAPTER_NONZERO_EXIT`, `OUTPUT_PATH_INVALID`, `OUTPUT_OUTSIDE_ROOT`, `OUTPUT_NOT_CREATED`, `OUTPUT_UNCHANGED_REUSED`
-- 비-GPT functional verification 계획: `docs/plans/2026-03-10-non-gpt-functional-verification-plan.md`
+- 완료된 비-GPT functional verification 계획: `docs/plans/2026-03-10-non-gpt-functional-verification-plan.md`
   - 비-GPT 범위는 현재 계획 기준으로 완료되었습니다.
 - `docs/plans/2026-03-10-runtime-v2-remediation-priority-plan.md` 배치는 완료되었습니다.
   - 이 completed 표기는 remediation 문서 정리 배치가 끝났다는 뜻이며, downstream integration 전체 완료를 뜻하지는 않습니다.
