@@ -62,6 +62,7 @@
   - raw CDP websocket fallback(`suppress_origin=True`)도 반영됐지만, `first-test-real-live-09/` 기준 여전히 real-live 성공 artifact는 닫히지 않았습니다.
   - `system/runtime_v2_probe/first-test-real-live-success-01/`에서 실제 custom GPT output 기반 `raw_output -> parsed_payload -> handoff -> video_plan` bundle 생성까지 완료했습니다.
   - 같은 결과를 `4 머니.xlsx` `Sheet1!row13`에 export하고 `excel_roundtrip.json`까지 검증했습니다.
+  - row13 `Status`는 전체 완료(`Done`)가 아니라 GPT 단계 완료 의미의 `OK`가 맞습니다.
   - 최종 Excel shape(`URL`, `Voice`, `Video1~50`, `#01~#500`, `Shorts*`)도 현재 브리지에 반영 완료되었습니다.
   - `Voice / Video1~50 / #01~#500`의 의미는 레거시 기준으로 각각 일본어 대사 / 영어 비디오 프롬프트 / scene-image prompt로 고정했습니다.
   - `#167`, `#195`, `#210`도 각각 동일 번호의 Excel 헤더 열에 실제로 들어가는 것을 확인했습니다.

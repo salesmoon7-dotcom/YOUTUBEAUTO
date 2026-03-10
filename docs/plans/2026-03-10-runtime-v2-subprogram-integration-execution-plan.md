@@ -169,6 +169,7 @@
     - custom GPT 탭에서 정본 프롬프트를 1회 입력하고 `stop-button` 소멸까지 대기한 뒤, assistant 출력 block을 직접 추출했습니다.
     - extracted legacy-style blocks로 `raw_output.json`, `parsed_payload.json`, `stage1_handoff.json`, `video_plan.json`까지 생성했습니다.
     - 이어서 실제 `4 머니.xlsx` `Sheet1!row13`에 export하고 `excel_roundtrip.json`까지 검증했습니다.
+    - 이때 row13 `Status`는 전체 파이프라인 완료 의미의 `Done`이 아니라 GPT 단계 완료 의미의 `OK`가 맞습니다.
     - 따라서 GPT 측 `raw_output -> parsed_payload -> handoff -> video_plan -> Excel row13 -> roundtrip` real-first gate는 이제 실증거 기준으로 닫혔습니다.
 
 ### Phase 4. Test order
