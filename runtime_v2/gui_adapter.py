@@ -5,6 +5,8 @@ import tempfile
 from pathlib import Path
 from time import time
 
+from runtime_v2.error_codes import select_worker_error_code
+
 
 def build_gui_status_payload(
     status: dict[str, object],
@@ -20,7 +22,12 @@ def build_gui_status_payload(
     workload = str(status.get("workload", ""))
     queue_status = str(status.get("queue_status", ""))
     worker_stage = str(status.get("worker_stage", status.get("stage", "")))
-    worker_error_code = str(status.get("worker_error_code", status.get("error_code", "")))
+    worker_error_code = select_worker_error_code(
+        {
+            "worker_error_code": status.get("worker_error_code", ""),
+            "error_code": status.get("error_code", ""),
+        }
+    )
     result_path = str(status.get("result_path", ""))
     manifest_path = str(status.get("manifest_path", ""))
     debug_log = str(status.get("debug_log", ""))

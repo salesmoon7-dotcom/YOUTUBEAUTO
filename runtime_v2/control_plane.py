@@ -16,6 +16,7 @@ from runtime_v2.control_plane_feeder import (
     seed_local_jobs,
 )
 from runtime_v2.debug_log import append_debug_event, debug_log_path
+from runtime_v2.error_codes import select_worker_error_code
 from runtime_v2.gui_adapter import build_gui_status_payload
 from runtime_v2.latest_run import write_control_plane_runtime_snapshot
 from runtime_v2.agent_browser.evidence import build_agent_browser_evidence
@@ -435,6 +436,15 @@ def run_control_loop_once(
         retryable=worker_retryable,
     )
     result_status = "ok" if success else "blocked" if blocked_failure else "failed"
+    runtime_error_code = str(result.get("code", "FAILED"))
+    canonical_worker_error_code = select_worker_error_code(
+        {
+            "worker_error_code": worker_contract.get(
+                "error_code", worker_result.get("error_code", "")
+            ),
+            "error_code": runtime_error_code,
+        }
+    )
 
     if can_transition(job.status, next_status):
         previous_status = job.status
@@ -456,9 +466,7 @@ def run_control_loop_once(
     control_debug_log = debug_log_path(runtime_config.debug_log_root, run_id)
     gui_status: dict[str, object] = {
         "status": result_status,
-        "code": "OK"
-        if success
-        else str(worker_contract.get("error_code", result.get("code", "FAILED"))),
+        "code": "OK" if success else runtime_error_code,
         "queue_status": job.status,
         "job_id": job.job_id,
         "workload": job.workload,
@@ -469,7 +477,7 @@ def run_control_loop_once(
         "worker_stage": str(
             worker_contract.get("stage", result.get("status", "unknown"))
         ),
-        "worker_error_code": str(worker_contract.get("error_code", "")),
+        "worker_error_code": canonical_worker_error_code,
         "manifest_path": worker_manifest_path,
         "result_path": worker_result_path,
         "backoff_sec": backoff_sec,
@@ -503,9 +511,7 @@ def run_control_loop_once(
         runtime_config,
         run_id=run_id,
         status=result_status,
-        code="OK"
-        if success
-        else str(worker_contract.get("error_code", result.get("code", "FAILED"))),
+        code="OK" if success else runtime_error_code,
         debug_log=str(control_debug_log),
         gui_payload=gui_payload,
         artifacts=latest_artifacts,
@@ -513,9 +519,7 @@ def run_control_loop_once(
             "run_id": run_id,
             "mode": "control_loop",
             "status": result_status,
-            "code": "OK"
-            if success
-            else str(worker_contract.get("error_code", result.get("code", "FAILED"))),
+            "code": "OK" if success else runtime_error_code,
             "job_id": job.job_id,
             "workload": job.workload,
             "success": bool(success),
@@ -528,7 +532,7 @@ def run_control_loop_once(
             "worker_stage": str(
                 worker_contract.get("stage", result.get("status", "unknown"))
             ),
-            "worker_error_code": str(worker_contract.get("error_code", "")),
+            "worker_error_code": canonical_worker_error_code,
             "manifest_path": worker_manifest_path,
             "result_path": worker_result_path,
             "attempts": job.attempts,
@@ -589,7 +593,7 @@ def run_control_loop_once(
             "worker_stage": str(
                 worker_contract.get("stage", result.get("status", "unknown"))
             ),
-            "worker_error_code": str(worker_contract.get("error_code", "")),
+            "worker_error_code": canonical_worker_error_code,
             "attempts": job.attempts,
             "backoff_sec": backoff_sec,
             "artifact_count": len(latest_artifacts),
@@ -615,9 +619,7 @@ def run_control_loop_once(
     )
     return {
         "status": result_status,
-        "code": "OK"
-        if success
-        else str(worker_contract.get("error_code", result.get("code", "FAILED"))),
+        "code": "OK" if success else runtime_error_code,
         "job": job.to_dict(),
         "result": result,
         "worker_result": worker_result,

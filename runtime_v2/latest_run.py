@@ -7,6 +7,7 @@ from time import time
 from typing import cast
 
 from runtime_v2.config import RuntimeConfig
+from runtime_v2.error_codes import select_worker_error_code
 from runtime_v2.gui_adapter import write_gui_status
 from runtime_v2.result_router import write_result_router
 
@@ -131,7 +132,7 @@ def build_canonical_handoff_payload(
 ) -> dict[str, object]:
     raw_worker_error_code = str(metadata.get("worker_error_code", "")).strip()
     raw_error_code = str(metadata.get("error_code", "")).strip()
-    worker_error_code = _select_worker_error_code(metadata)
+    worker_error_code = select_worker_error_code(metadata)
     payload: dict[str, object] = {
         "schema_version": "1.0",
         "runtime": "runtime_v2",
@@ -169,26 +170,7 @@ def build_canonical_handoff_payload(
 
 
 def _select_worker_error_code(metadata: dict[str, object]) -> str:
-    explicit_worker_error_code = str(metadata.get("worker_error_code", "")).strip()
-    normalized_worker_error_code = explicit_worker_error_code.lower()
-    meaningless_worker_codes = {
-        "-",
-        "--",
-        "n/a",
-        "na",
-        "none",
-        "null",
-        "unknown",
-        "failed",
-        "error",
-        "undefined",
-    }
-    if (
-        explicit_worker_error_code
-        and normalized_worker_error_code not in meaningless_worker_codes
-    ):
-        return explicit_worker_error_code
-    return str(metadata.get("error_code", "")).strip()
+    return select_worker_error_code(metadata)
 
 
 def normalize_runtime_snapshot_metadata(
