@@ -511,12 +511,16 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertEqual(capture_meta["run_id"], "stage1-run-1")
         self.assertEqual(capture_meta["backend_mode"], "agent_browser_live")
         self.assertEqual(capture_meta["attempt_count"], 1)
+        self.assertEqual(capture_meta["attempt_key"], "attempt-1")
         self.assertEqual(capture_meta["final_state_code"], "ok")
         self.assertEqual(capture_meta["fallback_chain"], [])
         self.assertTrue(str(capture_meta["git_sha"]))
         self.assertTrue(str(capture_meta["timestamp_utc"]).endswith("Z"))
         self.assertEqual(timeline_lines[0]["event"], "submit_start")
         self.assertEqual(timeline_lines[0]["run_id"], "stage1-run-1")
+        self.assertTrue(
+            all(str(item.get("attempt_key", "")).strip() for item in timeline_lines)
+        )
         self.assertEqual(timeline_lines[-1]["event"], "final_state")
         self.assertEqual(browser_evidence["service"], "chatgpt")
         self.assertEqual(browser_evidence["port"], 9222)
@@ -663,12 +667,16 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertEqual(capture_meta["run_id"], "stage1-run-1")
         self.assertEqual(capture_meta["backend_mode"], "agent_browser_live")
         self.assertEqual(capture_meta["attempt_count"], 2)
+        self.assertEqual(capture_meta["attempt_key"], "attempt-2")
         self.assertEqual(
             capture_meta["final_state_code"], "CHATGPT_BACKEND_UNAVAILABLE"
         )
         self.assertTrue(str(capture_meta["git_sha"]))
         self.assertTrue(str(capture_meta["timestamp_utc"]).endswith("Z"))
         event_names = [str(item["event"]) for item in timeline_lines]
+        self.assertTrue(
+            all(str(item.get("attempt_key", "")).strip() for item in timeline_lines)
+        )
         self.assertIn("submit_start", event_names)
         self.assertIn("read_failed", event_names)
         self.assertEqual(event_names[-1], "final_state")

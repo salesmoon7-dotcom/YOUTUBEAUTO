@@ -254,6 +254,7 @@ def _capture_meta(
         "backend_mode": source,
         "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "attempt_count": attempt_count,
+        "attempt_key": _capture_attempt_key(result, attempt_count=attempt_count),
         "fallback_chain": _fallback_chain(result),
         "final_state_code": _final_state_code(result),
     }
@@ -300,13 +301,24 @@ def _write_gpt_timeline_if_present(
     run_id = str(topic_spec.get("run_id", "")).strip()
     capture_id = f"{run_id}:chatgpt_capture" if run_id else "chatgpt_capture"
     lines: list[str] = []
+    last_attempt_key = "attempt-1"
     for item in cast(list[object], raw_timeline):
         if not isinstance(item, dict):
             continue
+        normalized_item = dict(cast(dict[str, object], item))
+        if "attempt_key" not in normalized_item:
+            raw_attempt = normalized_item.get("attempt")
+            if isinstance(raw_attempt, int):
+                normalized_item["attempt_key"] = f"attempt-{raw_attempt}"
+            else:
+                normalized_item["attempt_key"] = last_attempt_key
+        attempt_key = str(normalized_item.get("attempt_key", "")).strip()
+        if attempt_key:
+            last_attempt_key = attempt_key
         record = {
             "run_id": run_id,
             "capture_id": capture_id,
-            **cast(dict[str, object], item),
+            **normalized_item,
         }
         lines.append(json.dumps(record, ensure_ascii=True))
     if not lines:
@@ -325,6 +337,18 @@ def _requires_live_chatgpt_capture(browser_evidence: dict[str, object]) -> bool:
         return False
     service = str(browser_evidence.get("service", "")).strip()
     return service == "chatgpt"
+
+
+def _capture_attempt_key(result: dict[str, object], *, attempt_count: int) -> str:
+    timeline = result.get("timeline", [])
+    if isinstance(timeline, list):
+        for item in reversed(cast(list[object], timeline)):
+            if not isinstance(item, dict):
+                continue
+            attempt_key = str(item.get("attempt_key", "")).strip()
+            if attempt_key:
+                return attempt_key
+    return f"attempt-{attempt_count}"
 
 
 def build_video_plan_from_stage1_parsed_payload(
