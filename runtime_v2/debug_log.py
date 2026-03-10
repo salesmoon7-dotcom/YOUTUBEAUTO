@@ -73,6 +73,7 @@ def summarize_runtime_result(result: Mapping[str, object]) -> dict[str, object]:
         raw_error_code = str(worker_result.get("error_code", ""))
         payload["error_code"] = raw_error_code
         payload["raw_error_code"] = raw_error_code  # raw diagnostic only
+        payload["error_code_source"] = "worker_result.error_code"
         payload["manifest_path"] = str(worker_result.get("manifest_path", ""))
         payload["result_path"] = str(worker_result.get("result_path", ""))
         completion = _mapping(worker_result.get("completion"))
@@ -90,6 +91,7 @@ def summarize_runtime_result(result: Mapping[str, object]) -> dict[str, object]:
         )
         payload["error_code"] = raw_error_code
         payload["raw_error_code"] = raw_error_code  # raw diagnostic only
+        payload["error_code_source"] = "resolved_result.error_code"
     if recovery is not None:
         payload["backoff_sec"] = recovery.get("backoff_sec", 0)
         payload["recovery_action"] = str(recovery.get("action", ""))

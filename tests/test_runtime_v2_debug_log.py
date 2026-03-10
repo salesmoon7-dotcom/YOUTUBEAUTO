@@ -23,8 +23,10 @@ class RuntimeV2DebugLogTests(unittest.TestCase):
 
         self.assertIn("error_code", summary)
         self.assertIn("raw_error_code", summary)
+        self.assertIn("error_code_source", summary)
         self.assertEqual(summary["error_code"], "vendor_specific_error")
         self.assertEqual(summary["raw_error_code"], "vendor_specific_error")
+        self.assertEqual(summary["error_code_source"], "worker_result.error_code")
 
     def test_summarize_runtime_result_exposes_raw_error_code_from_worker_result(
         self,
@@ -57,6 +59,7 @@ class RuntimeV2DebugLogTests(unittest.TestCase):
 
         self.assertEqual(summary["error_code"], "BROWSER_BLOCKED")
         self.assertEqual(summary["raw_error_code"], "BROWSER_BLOCKED")
+        self.assertEqual(summary["error_code_source"], "resolved_result.error_code")
 
     def test_summarize_runtime_result_keeps_resolved_fallback_when_worker_result_missing(
         self,
