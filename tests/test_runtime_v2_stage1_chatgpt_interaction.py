@@ -319,26 +319,21 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
     def test_raw_cdp_method_timeout_is_wrapped_as_runtime_error(self) -> None:
         from runtime_v2.stage1 import chatgpt_backend as backend_module
+        import websocket
 
         class _FakeSocket:
             def send(self, payload: str) -> None:
                 _ = payload
 
             def recv(self) -> str:
-                raise subprocess.TimeoutExpired(cmd=["ws"], timeout=30)
+                raise websocket.WebSocketTimeoutException("Connection timed out")
 
             def close(self) -> None:
                 return None
 
-        with (
-            mock.patch(
-                "runtime_v2.stage1.chatgpt_backend.websocket.create_connection",
-                return_value=_FakeSocket(),
-            ),
-            mock.patch(
-                "runtime_v2.stage1.chatgpt_backend.websocket.WebSocketTimeoutException",
-                new=TimeoutError,
-            ),
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_backend.websocket.create_connection",
+            return_value=_FakeSocket(),
         ):
             with self.assertRaises(RuntimeError):
                 backend_module._run_raw_cdp_method(
