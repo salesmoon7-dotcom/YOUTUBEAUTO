@@ -63,6 +63,12 @@ def generate_gpt_response_text(
     def emit(event: str, **fields: object) -> None:
         nonlocal sequence
         sequence += 1
+        if "attempt_key" not in fields:
+            raw_attempt = fields.get("attempt")
+            if not isinstance(raw_attempt, int):
+                raw_attempt = fields.get("attempt_from")
+            if isinstance(raw_attempt, int):
+                fields["attempt_key"] = _attempt_key(raw_attempt)
         timeline.append(
             {
                 "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -90,6 +96,9 @@ def generate_gpt_response_text(
             submit_info = interaction_backend.submit_prompt(prompt)
         except RuntimeError as exc:
             error_code, retry_safe, extra_details = _decode_submit_failure(str(exc))
+            submit_evidence = extra_details.get("submit_evidence")
+            if isinstance(submit_evidence, dict):
+                submit_evidence["attempt_key"] = _attempt_key(attempt)
             emit("submit_failed", attempt=attempt, backend="chatgpt_backend")
             failed = _interaction_failure(
                 failure_stage="submit",
@@ -109,13 +118,14 @@ def generate_gpt_response_text(
                 continue
             emit(
                 "final_state",
+                attempt=attempt,
                 final_state="failed",
                 final_state_code=str(failed.get("error_code", "failed")),
             )
             failed["timeline"] = timeline
             return failed
         emit("submit_ok", attempt=attempt, backend="chatgpt_backend")
-        submit_evidence = _decode_submit_success(submit_info)
+        submit_evidence = _decode_submit_success(submit_info, attempt=attempt)
         for fallback in _backend_fallbacks(submit_info):
             emit(
                 "fallback_transition",
@@ -144,6 +154,7 @@ def generate_gpt_response_text(
                 )
                 emit(
                     "final_state",
+                    attempt=attempt,
                     final_state="failed",
                     final_state_code=str(failed.get("error_code", "failed")),
                 )
@@ -166,6 +177,7 @@ def generate_gpt_response_text(
                     emit("streaming_seen", attempt=attempt, backend="chatgpt_backend")
                     emit(
                         "stop_gate",
+                        attempt=attempt,
                         gate_state="blocked",
                         reason="streaming_active",
                     )
@@ -191,13 +203,19 @@ def generate_gpt_response_text(
                         "submit_evidence": submit_evidence,
                         "final_state": state,
                     }
-                    emit("final_state", final_state="success", final_state_code="ok")
+                    emit(
+                        "final_state",
+                        attempt=attempt,
+                        final_state="success",
+                        final_state_code="ok",
+                    )
                     result["timeline"] = timeline
                     return result
             time.sleep(poll_interval_sec)
         else:
             emit(
                 "final_state",
+                attempt=attempt,
                 final_state="failed",
                 final_state_code="CHATGPT_RESPONSE_TIMEOUT",
             )
@@ -211,6 +229,7 @@ def generate_gpt_response_text(
             }
     emit(
         "final_state",
+        attempt=2,
         final_state="failed",
         final_state_code="CHATGPT_BACKEND_UNAVAILABLE",
     )
@@ -348,12 +367,21 @@ def _decode_submit_failure(message: str) -> tuple[str, bool, dict[str, object]]:
     return error_code, bool(parsed.get("retry_safe", False)), extra_details
 
 
-def _decode_submit_success(payload: dict[str, object]) -> dict[str, object]:
+def _decode_submit_success(
+    payload: dict[str, object], *, attempt: int
+) -> dict[str, object]:
     raw = payload.get("submit_evidence", {})
     if isinstance(raw, dict):
-        return raw
+        submit_evidence = dict(raw)
+        submit_evidence["attempt_key"] = _attempt_key(attempt)
+        return submit_evidence
     return {
+        "attempt_key": _attempt_key(attempt),
         "classification": "sent",
         "classification_reason": "send_clicked",
         "retry_safe_decision": False,
     }
+
+
+def _attempt_key(attempt: int) -> str:
+    return f"attempt-{attempt}"

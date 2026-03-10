@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from threading import Lock
 from time import time
 from typing import Callable
 from typing import cast
@@ -159,6 +160,33 @@ def _prune_restart_history(
 class BrowserSupervisor:
     def __init__(self, manager: BrowserManager) -> None:
         self.manager: BrowserManager = manager
+        self._restart_inflight_lock: Lock = Lock()
+        self._restart_inflight: set[str] = set()
+
+    def _restart_guard_key(self, service: str, session_id: str) -> str:
+        return f"{service}:{session_id}"
+
+    def _begin_restart(self, service: str, session_id: str) -> bool:
+        key = self._restart_guard_key(service, session_id)
+        with self._restart_inflight_lock:
+            if key in self._restart_inflight:
+                return False
+            self._restart_inflight.add(key)
+        return True
+
+    def _finish_restart(self, service: str, session_id: str) -> None:
+        key = self._restart_guard_key(service, session_id)
+        with self._restart_inflight_lock:
+            self._restart_inflight.discard(key)
+
+    def _restart_session(self, service: str, session_id: str) -> bool:
+        if not self._begin_restart(service, session_id):
+            return False
+        try:
+            self.manager.restart(service)
+            return True
+        finally:
+            self._finish_restart(service, session_id)
 
     def ensure_healthy(
         self,
@@ -191,8 +219,8 @@ class BrowserSupervisor:
             for service in unhealthy_services:
                 session = self.manager._session_by_service(service)
                 if session.status in {"unhealthy", "stopped", "stale_lock_recovered"}:
-                    self.manager.restart(service)
-                    restarted_services.append(service)
+                    if self._restart_session(session.service, session.session_id):
+                        restarted_services.append(service)
 
         final_sessions = self.manager.session_snapshots(
             forced_unhealthy_services=forced_services if not recover_unhealthy else None
@@ -324,7 +352,8 @@ class BrowserSupervisor:
                     )
                     continue
                 if should_restart:
-                    self.manager.restart(session.service)
+                    if not self._restart_session(session.service, session.session_id):
+                        continue
                     restarted_services.append(session.service)
                     if session.lock_recovered:
                         _append_browser_event(

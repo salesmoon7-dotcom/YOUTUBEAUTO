@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from time import time
@@ -24,7 +25,7 @@ from runtime_v2.browser.manager import (
 )
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.browser.registry import load_browser_registry
-from runtime_v2.browser.supervisor import BrowserSupervisor
+from runtime_v2.browser.supervisor import BrowserSupervisor, _prune_restart_history
 from runtime_v2.evidence import load_latest_result_metadata
 from runtime_v2.supervisor import run_once
 
@@ -718,6 +719,61 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             self.assertEqual(len(exhausted_events), 1)
             self.assertEqual(str(exhausted_events[0]["status"]), "restart_exhausted")
             self.assertEqual(str(exhausted_events[0]["action_result"]), "blocked")
+
+    def test_restart_window_boundary_keeps_exact_cutoff_and_excludes_older_entry(
+        self,
+    ) -> None:
+        retained = _prune_restart_history(
+            [299.999, 300.0, 300.001],
+            now=600.0,
+            window_sec=300,
+        )
+
+        self.assertEqual(retained, [300.0, 300.001])
+
+    def test_restart_guard_skips_duplicate_same_session_restart(self) -> None:
+        session = BrowserSession(
+            service="chatgpt",
+            group="llm",
+            session_id="primary",
+            port=9222,
+            profile_dir=str(
+                (Path("runtime_v2") / "sessions" / "chatgpt-primary").resolve()
+            ),
+            status="unhealthy",
+        )
+        manager = BrowserManager(sessions=[session])
+        supervisor = BrowserSupervisor(manager)
+        restart_started = threading.Event()
+        release_restart = threading.Event()
+        calls: list[str] = []
+
+        def slow_restart(service: str) -> None:
+            calls.append(service)
+            restart_started.set()
+            release_restart.wait(timeout=2)
+
+        with patch.object(manager, "restart", side_effect=slow_restart):
+            first_result: list[bool] = []
+
+            def run_first() -> None:
+                first_result.append(
+                    supervisor._restart_session(session.service, session.session_id)
+                )
+
+            first_thread = threading.Thread(target=run_first)
+            first_thread.start()
+            self.assertTrue(restart_started.wait(timeout=2))
+
+            second_result = supervisor._restart_session(
+                session.service, session.session_id
+            )
+            release_restart.set()
+            first_thread.join(timeout=2)
+
+        self.assertEqual(calls, ["chatgpt"])
+        self.assertEqual(first_result, [True])
+        self.assertFalse(second_result)
 
     def test_same_profile_is_not_opened_by_two_browser_processes(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

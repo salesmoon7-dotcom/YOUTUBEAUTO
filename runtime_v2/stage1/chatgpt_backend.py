@@ -534,6 +534,7 @@ def _submit_evidence_record(
             "submit_confirmed" if classification == "sent" else "submit_ui_unconfirmed"
         )
         return {
+            "attempt_key": "attempt-1",
             "classification": classification,
             "classification_reason": classification_reason,
             "retry_safe_decision": False,
@@ -546,12 +547,14 @@ def _submit_evidence_record(
         }
     if error == "NO_SEND" and bool(no_send_evidence.get("retry_safe", False)):
         return {
+            "attempt_key": "attempt-1",
             "classification": "not_sent",
             "classification_reason": "send_control_missing",
             "retry_safe_decision": True,
             "no_send_evidence": no_send_evidence,
         }
     return {
+        "attempt_key": "attempt-1",
         "classification": "ambiguous",
         "classification_reason": error or "submit_failed",
         "retry_safe_decision": False,

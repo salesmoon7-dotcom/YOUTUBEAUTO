@@ -130,6 +130,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(submit_evidence["classification"], "sent")
         self.assertFalse(bool(submit_evidence["retry_safe_decision"]))
         self.assertEqual(submit_evidence["classification_reason"], "submit_confirmed")
+        self.assertEqual(submit_evidence["attempt_key"], "attempt-1")
         self.assertTrue(bool(submit_evidence["in_flight_observed"]))
         self.assertTrue(bool(submit_evidence["terminal_success_observed"]))
 
@@ -168,6 +169,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         submit_evidence = cast(dict[str, object], result["submit_evidence"])
         self.assertEqual(submit_evidence["classification"], "ambiguous")
         self.assertFalse(bool(submit_evidence["retry_safe_decision"]))
+        self.assertEqual(submit_evidence["attempt_key"], "attempt-1")
         self.assertTrue(bool(submit_evidence["in_flight_observed"]))
         self.assertFalse(bool(submit_evidence["terminal_success_observed"]))
 
@@ -486,6 +488,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         submit_evidence = cast(dict[str, object], payload["submit_evidence"])
         self.assertEqual(submit_evidence["classification"], "not_sent")
         self.assertTrue(bool(submit_evidence["retry_safe_decision"]))
+        self.assertEqual(submit_evidence["attempt_key"], "attempt-1")
 
     def test_agent_browser_backend_marks_send_disabled_as_non_retry_safe(self) -> None:
         def fake_runner(command: list[str], timeout_sec: int) -> str:
@@ -529,6 +532,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         submit_evidence = cast(dict[str, object], payload["submit_evidence"])
         self.assertEqual(submit_evidence["classification"], "ambiguous")
         self.assertFalse(bool(submit_evidence["retry_safe_decision"]))
+        self.assertEqual(submit_evidence["attempt_key"], "attempt-1")
 
     def test_generate_gpt_response_text_accepts_backend_interface(self) -> None:
         class FakeBackend(ChatGPTBackend):
@@ -786,6 +790,8 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertIn("retry_decision", event_names)
         self.assertIn("submit_failed", event_names)
         self.assertGreaterEqual(event_names.count("submit_start"), 2)
+        attempt_keys = {str(item.get("attempt_key", "")) for item in timeline}
+        self.assertEqual(attempt_keys, {"attempt-1", "attempt-2"})
 
     def test_generate_gpt_response_text_does_not_retry_ambiguous_submit_failure(
         self,
@@ -848,6 +854,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             cast(dict[str, object], result["details"])["submit_evidence"],
         )
         self.assertEqual(submit_evidence["classification"], "ambiguous")
+        self.assertEqual(submit_evidence["attempt_key"], "attempt-1")
 
     def test_generate_gpt_response_text_does_not_resubmit_after_read_failure(
         self,
