@@ -1,5 +1,9 @@
 # COMPLETED
 
+- `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md`, `docs/COMPLETED.md` - Task 3(`Guardrail Accumulation Controls`) 완료 재판정 반영; Oracle 최종 판정 기준으로 canonical 문서의 `owner / failure mode / removal` 계약과 전용 테스트 `tests/test_runtime_v2_guardrail_contract.py` 존재가 모두 충족되어 더 이상 `NOT YET`로 둘 이유가 없음을 기록했습니다.
+
+- `docs/plans/2026-03-11-control-plane-hotspot-review.md`, `docs/TODO.md`, `docs/COMPLETED.md` - Task 5 control-plane hotspot review 완료; `runtime_v2/control_plane.py`를 코드 수정 없이 review artifact로 정리했고, 현재 파일에 남겨야 할 canonical 책임을 `final meaning owner`, `recovery/backoff owner`, `latest snapshot/event single writer`로 고정했습니다. 또한 향후 분해 후보는 `_run_worker()` dispatch 표면과 next-job/asset-manifest 보조 경로로 한정했고, 재오픈 조건도 기존 TODO 결정과 동일하게 `_run_worker()` 반복 디버깅, workload 3개 이상 추가에 따른 dispatch 충돌, worker 선택 정책 교체 필요 3가지로만 유지했습니다.
+
 - `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md`, `docs/COMPLETED.md` - architecture simplification plan 상태 재판정 완료; Oracle 검토 기준으로 Task 1(`Run Identity Audit Lock`)은 완료로 확정했고, Task 4(`Single Meaning Snapshot Review`)는 다른 세션에서 진행 중이라 이번 세션에서는 완료 처리하지 않았으며, Task 6(`Final Verification Gate`)는 최종 번들 수준 검증이 아직 명시적으로 닫히지 않아 `NOT YET`로 유지했습니다.
 
 - `docs/sop/SOP_runtime_v2_development_guardrails.md`, `docs/COMPLETED.md` - `warning_worker_error_code_mismatch` 운영 triage 정책 정리 완료; mismatch는 기본 non-blocking 경고로 두되, 반복 발생 또는 재시도 폭증/작업 중단과 동반될 때만 blocking으로 승격한다는 기준과 Oracle/실행 증거/워커 코드 정의/런타임 매핑 순의 신뢰 우선순위를 guardrails 문서에 고정했습니다.
