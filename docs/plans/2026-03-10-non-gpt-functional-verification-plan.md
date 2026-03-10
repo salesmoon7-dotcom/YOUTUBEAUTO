@@ -1,0 +1,175 @@
+# Non-GPT Functional Verification Plan
+
+## Goal
+
+- 비-`GPT` 하부프로그램 전체를 `Implemented`나 `Contract-verified` 수준이 아니라, 실제로 **Functionally-verified** 상태까지 올립니다.
+- 각 프로그램마다 최소 1개의 실제 동작 evidence를 확보하고, 그 evidence가 없으면 완료로 올리지 않습니다.
+
+## Scope
+
+- 대상 프로그램:
+  - `SeaArt`
+  - `Genspark`
+  - `TTS`
+  - `GeminiGen`
+  - `Canva`
+  - `Kenburn`
+  - `RVC`
+
+## Principles
+
+- 레거시 구현체 직접 호출 금지
+- `runtime_v2` 내부 계약/adapter/worker만 사용
+- fail-closed 유지
+- single writer / single failure contract 유지
+- evidence 없으면 완료 주장 금지
+
+## Verification Levels
+
+### 1. Implemented
+
+- worker/bridge/adapter 경로가 존재함
+- 단위 테스트가 일부 존재할 수 있음
+
+### 2. Contract-verified
+
+- 입력/출력/실패 계약 테스트가 있음
+- adapter/bridge schema가 고정됨
+
+### 3. Functionally-verified
+
+- 실제 row/asset 기준 최소 1회 실행 evidence가 있음
+- final artifact 또는 equivalent runtime evidence가 있음
+- expected downstream handoff까지 이어짐
+
+## Service-by-Service Definition of Done
+
+### SeaArt
+
+- Required evidence:
+  - 실제 row 기준 image generation artifact 1개
+  - adapter transcript / stdout / stderr
+  - final `service_artifact_path`
+- Done when:
+  - `status=ok`
+  - output image exists
+  - downstream handoff path preserved
+
+### Genspark
+
+- Required evidence:
+  - 실제 row 기준 image generation artifact 1개
+  - category/model branch evidence
+  - final `service_artifact_path`
+- Done when:
+  - `status=ok`
+  - output image exists
+
+### TTS (`qwen3_tts`)
+
+- Required evidence:
+  - `voice_texts` 기반 실제 오디오 산출물
+  - `voice/#NN.*` equivalent output evidence
+  - `#00.txt` 또는 equivalent script bundle evidence
+- Done when:
+  - multiple voice lines are consumed
+  - audio artifact exists
+  - downstream consumer can resolve the produced path(s)
+
+### GeminiGen
+
+- Required evidence:
+  - 실제 이미지 입력 기반 video artifact 1개 (`_GEMI.mp4` equivalent)
+  - input image selection evidence
+  - final video artifact path
+- Done when:
+  - `status=ok`
+  - video artifact exists
+
+### Canva
+
+- Required evidence:
+  - `title_for_thumb` + `ref_img_1/ref_img_2` 기반 thumbnail artifact 1개
+  - `THUMB.png` equivalent path
+  - thumb data split evidence (`line1`, `line2`)
+- Done when:
+  - `status=ok`
+  - thumbnail exists
+
+### Kenburn
+
+- Required evidence:
+  - `scene_bundle_map` 또는 equivalent multi-scene input evidence
+  - image + voice pair consumption evidence
+  - final mp4 output
+- Done when:
+  - bundle input is consumed
+  - final video artifact exists
+
+### RVC
+
+- Required evidence:
+  - `tts-source` mode evidence
+  - `gemi-video-source` mode evidence
+  - final converted audio artifact
+- Done when:
+  - at least one source mode is proven end-to-end
+  - preferred target is both modes covered
+
+## Execution Order
+
+### Batch A. Immediate post-GPT services
+
+1. `SeaArt`
+2. `Genspark`
+3. `TTS`
+
+Reason:
+- GPT handoff 직후 가장 먼저 실행 가능한 서비스들이고, 이후 단계의 upstream artifact를 만듭니다.
+
+### Batch B. Upstream-artifact dependent services
+
+4. `GeminiGen`
+5. `Canva`
+6. `Kenburn`
+7. `RVC`
+
+Reason:
+- 이미지/오디오/비디오 선행 산출물이 있어야 하므로 뒤에서 검증하는 것이 맞습니다.
+
+## Required Evidence Bundle Per Service
+
+각 서비스는 아래 4종을 기본 evidence bundle로 남깁니다.
+
+1. `input.json` or request artifact
+2. `stdout/stderr` or transcript
+3. `result.json`
+4. final artifact path or equivalent runtime proof
+
+## Failure Matrix Requirement
+
+각 서비스 검증 시 반드시 아래를 구분합니다.
+
+- input missing
+- adapter/browser/session failure
+- output not created
+- output reused
+- artifact path invalid
+- downstream handoff missing
+
+## Ready-to-Mark-Complete Rule
+
+- 서비스 하나라도 `Functionally-verified` evidence가 없으면 비-`GPT` 전체 완료로 올리지 않습니다.
+- 최소 상태 표기는 아래처럼 합니다.
+  - `SeaArt`: Contract-verified / Functionally-verified
+  - `Genspark`: ...
+  - `TTS`: ...
+  - `GeminiGen`: ...
+  - `Canva`: ...
+  - `Kenburn`: ...
+  - `RVC`: ...
+
+## Immediate Next Step
+
+- 바로 다음 실행은 `SeaArt`, `Genspark`, `TTS`의 functional evidence를 1개씩 확보하는 것입니다.
+- 그 뒤 `GeminiGen`, `Canva`, `Kenburn`, `RVC` 순으로 확장합니다.
