@@ -255,6 +255,12 @@ def load_runtime_readiness(
     latest_result_payload = _dict_from_object(latest_join.get("result"))
     latest_result_checked_at = _to_float(latest_result_payload.get("checked_at"))
     latest_result_is_fresh = True
+    canonical_handoff = _dict_from_object(
+        typed_result_metadata.get("canonical_handoff")
+    )
+    mismatch_warning = str(
+        canonical_handoff.get("warning_worker_error_code_mismatch", "")
+    ).strip()
     if latest_result_checked_at is not None:
         latest_result_is_fresh = now - latest_result_checked_at <= stale_sec
     if latest_result_is_fresh and latest_code in {
@@ -263,14 +269,15 @@ def load_runtime_readiness(
         "BROWSER_UNHEALTHY",
         "GPT_FLOOR_FAIL",
     }:
-        blockers.append(
-            {
-                "axis": "latest_result",
-                "code": latest_code,
-                "reason": "latest_result_blocker",
-                "trace_path": str(runtime_config.result_router_file),
-            }
-        )
+        blocker: dict[str, object] = {
+            "axis": "latest_result",
+            "code": latest_code,
+            "reason": "latest_result_blocker",
+            "trace_path": str(runtime_config.result_router_file),
+        }
+        if mismatch_warning:
+            blocker["details"] = {"warning_worker_error_code_mismatch": True}
+        blockers.append(blocker)
 
     primary_code = "OK" if not blockers else str(blockers[0].get("code", "CLI_USAGE"))
     return {
