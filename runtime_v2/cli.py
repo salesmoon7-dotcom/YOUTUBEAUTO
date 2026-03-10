@@ -962,9 +962,11 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         result=result,
         probe_debug_only=True,
         recovery_attempted=False,
-        placeholder_artifact=attach_ok,
+        placeholder_artifact=attach_ok and service != "geminigen",
     )
     if not attach_ok:
+        return exit_codes.BROWSER_UNHEALTHY
+    if service == "geminigen":
         return exit_codes.BROWSER_UNHEALTHY
     if service in {"seaart", "genspark", "canva"}:
         try:
@@ -1023,7 +1025,7 @@ def _run_qwen3_adapter_child(args: CliArgs) -> int:
     (workspace / "qwen3_stdout.log").write_text(completed.stdout, encoding="utf-8")
     (workspace / "qwen3_stderr.log").write_text(completed.stderr, encoding="utf-8")
     if completed.returncode != 0:
-        return 1
+        return exit_codes.ADAPTER_FAIL
     voice_dir = project_root / "voice"
     candidates = sorted(
         list(voice_dir.glob("#*.flac"))
@@ -1032,7 +1034,7 @@ def _run_qwen3_adapter_child(args: CliArgs) -> int:
     )
     candidates = [path for path in candidates if path.name != "#00.txt"]
     if not candidates:
-        return 1
+        return exit_codes.ADAPTER_FAIL
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_bytes(candidates[0].read_bytes())
     return exit_codes.SUCCESS
@@ -1042,6 +1044,7 @@ def _run_rvc_adapter_child(args: CliArgs) -> int:
     target_path = Path(args.service_artifact_path.strip())
     if not args.service_artifact_path.strip():
         return exit_codes.CLI_USAGE
+    target_path.parent.mkdir(parents=True, exist_ok=True)
     workspace = (
         target_path.parent.parent if len(target_path.parents) >= 2 else Path.cwd()
     )
@@ -1117,7 +1120,7 @@ def _run_rvc_adapter_child(args: CliArgs) -> int:
     (workspace / "rvc_stdout.log").write_text(completed.stdout, encoding="utf-8")
     (workspace / "rvc_stderr.log").write_text(completed.stderr, encoding="utf-8")
     if completed.returncode != 0 or not target_path.exists():
-        return 1
+        return exit_codes.ADAPTER_FAIL
     return exit_codes.SUCCESS
 
 

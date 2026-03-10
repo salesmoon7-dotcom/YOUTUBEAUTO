@@ -165,6 +165,37 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertEqual(exit_code, exit_codes.SUCCESS)
         evidence_mock.assert_called_once()
 
+    def test_stage2_adapter_child_fails_closed_for_geminigen_without_truthful_artifact(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "geminigen-scene-01.mp4"
+            args = CliArgs()
+            args.service = "geminigen"
+            args.port = 9555
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "geminigen.ai"
+            args.expected_title_substring = "Gemini"
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok"},
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+            evidence = json.loads(
+                (root / "attach_evidence.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(evidence["service"], "geminigen")
+            self.assertEqual(evidence["status"], "ok")
+            self.assertFalse(bool(evidence["placeholder_artifact"]))
+            self.assertFalse(output_path.exists())
+
     def test_stage2_row1_probe_records_all_browser_results(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -304,6 +335,33 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
 
         self.assertEqual(exit_code, exit_codes.CLI_USAGE)
 
+    def test_qwen3_adapter_child_returns_canonical_failure_code_on_subprocess_error(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "speech.wav"
+            args = CliArgs()
+            args.service_artifact_path = str(output_path)
+            workspace = output_path.parent.parent
+            prompt_path = workspace / "qwen_prompt.json"
+            prompt_path.parent.mkdir(parents=True, exist_ok=True)
+            prompt_path.write_text(
+                json.dumps(
+                    {"rows": [{"voice_texts": [{"text": "hello"}]}]}, ensure_ascii=True
+                ),
+                encoding="utf-8",
+            )
+            completed = cast(object, type("Completed", (), {})())
+            setattr(completed, "returncode", 1)
+            setattr(completed, "stdout", "")
+            setattr(completed, "stderr", "boom")
+
+            with patch("runtime_v2.cli.subprocess.run", return_value=completed):
+                exit_code = _run_qwen3_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.ADAPTER_FAIL)
+
     def test_rvc_adapter_child_runs_applio_infer_and_writes_output(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -373,6 +431,59 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             exit_code = _run_rvc_adapter_child(args)
 
         self.assertEqual(exit_code, exit_codes.CLI_USAGE)
+
+    def test_rvc_adapter_child_returns_canonical_failure_code_when_output_missing(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "converted.flac"
+            source_path = root / "source.flac"
+            _ = source_path.write_bytes(b"source")
+            args = CliArgs()
+            args.service_artifact_path = str(output_path)
+            workspace = output_path.parent.parent
+            request_path = workspace / "rvc_request.json"
+            request_path.parent.mkdir(parents=True, exist_ok=True)
+            request_path.write_text(
+                json.dumps(
+                    {"source_path": str(source_path.resolve())}, ensure_ascii=True
+                ),
+                encoding="utf-8",
+            )
+            config_payload = {
+                "applio_python": sys.executable,
+                "applio_core": "applio_core.py",
+                "applio_dir": str(root),
+                "active_model": "main",
+                "models": {"main": {"pth": "voice.pth", "index": "voice.index"}},
+                "inference": {},
+            }
+            completed = cast(object, type("Completed", (), {})())
+            setattr(completed, "returncode", 0)
+            setattr(completed, "stdout", "ok")
+            setattr(completed, "stderr", "")
+
+            def fake_read_text(path_obj: Path, *args: object, **kwargs: object) -> str:
+                _ = args
+                _ = kwargs
+                if path_obj == request_path:
+                    return json.dumps(
+                        {"source_path": str(source_path.resolve())}, ensure_ascii=True
+                    )
+                return json.dumps(config_payload, ensure_ascii=True)
+
+            with (
+                patch(
+                    "runtime_v2.cli.Path.read_text",
+                    autospec=True,
+                    side_effect=fake_read_text,
+                ),
+                patch("runtime_v2.cli.subprocess.run", return_value=completed),
+            ):
+                exit_code = _run_rvc_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.ADAPTER_FAIL)
 
 
 if __name__ == "__main__":
