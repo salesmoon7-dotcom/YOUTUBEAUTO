@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from typing import cast
+from unittest.mock import patch
 
 from runtime_v2.stage1.gpt_response_parser import parse_gpt_response_text
 
@@ -172,6 +173,30 @@ https://chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom/c/69aabf29-fa9c
         )
         self.assertEqual(typed["videos"], ["첫 번째 비디오 프롬프트"])
         self.assertEqual(typed["shorts_description"], "쇼츠 설명입니다.")
+
+    def test_parser_reports_structured_parse_failure_when_block_fallback_is_used(
+        self,
+    ) -> None:
+        topic_spec: dict[str, object] = {
+            "topic": "Money flow",
+            "row_ref": "Sheet1!row1",
+            "run_id": "run-1",
+        }
+        response_text = """
+Title: 머니 제목
+Voice: 1. 첫 장면 설명\n2. 두 번째 장면 설명
+#01: 첫 장면 설명
+#02: 두 번째 장면 설명
+"""
+
+        with patch(
+            "runtime_v2.stage1.gpt_response_parser.build_topic_spec_from_gpt_response",
+            side_effect=ValueError("structured_parse_failed"),
+        ):
+            parsed, errors = parse_gpt_response_text(topic_spec, response_text)
+
+        self.assertIsNotNone(parsed)
+        self.assertEqual(errors, ["structured_parse_failed"])
 
     def test_parser_accepts_hash_blocks_with_suffix_text(self) -> None:
         topic_spec: dict[str, object] = {

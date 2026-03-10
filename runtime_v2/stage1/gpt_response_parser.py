@@ -28,17 +28,22 @@ def parse_gpt_response_text(
     if not text:
         return None, ["empty_gpt_response_text"]
 
+    structured_errors: list[str] = []
     try:
         mapped = build_topic_spec_from_gpt_response(topic_spec, text)
         return _canonical_from_topic_spec(mapped), []
-    except ValueError:
-        pass
+    except ValueError as exc:
+        error_code = str(exc).strip() or "structured_parse_failed"
+        if error_code != "missing_json_object":
+            structured_errors.append(error_code)
 
     block_payload = _parse_block_response(topic_spec, text)
     errors = _validate_parsed_result(block_payload)
     if errors:
-        return None, errors
-    return block_payload, []
+        return None, structured_errors + errors
+    if structured_errors:
+        block_payload["parse_mode"] = "block_fallback"
+    return block_payload, structured_errors
 
 
 def _canonical_from_topic_spec(topic_spec: dict[str, object]) -> dict[str, object]:

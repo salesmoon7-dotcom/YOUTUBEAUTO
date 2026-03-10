@@ -51,6 +51,7 @@ class AgentBrowserCdpBackend:
         self._expected_title_substring = expected_title_substring
         self._runner = _default_runner if command_runner is None else command_runner
         self._max_retries = 2
+        self._fallback_events: list[str] = []
 
     def submit_prompt(self, prompt: str) -> dict[str, object]:
         payload = json.dumps(
@@ -74,10 +75,15 @@ class AgentBrowserCdpBackend:
                         raw_target["webSocketDebuggerUrl"], _submit_script(payload)
                     )
                 )
+                self._record_fallback("submit_raw_cdp_fallback")
                 if bool(parsed.get("ok", False)):
+                    parsed.setdefault(
+                        "backend_fallbacks", self._fallback_events_payload()
+                    )
                     return parsed
             raise RuntimeError(error)
         parsed.setdefault("selected_tab", self._current_selected_tab())
+        parsed.setdefault("backend_fallbacks", self._fallback_events_payload())
         return parsed
 
     def read_response_state(self) -> dict[str, object]:
@@ -95,6 +101,7 @@ class AgentBrowserCdpBackend:
             "assistant_text": str(parsed.get("assistant_text", "")),
             "assistant_block_count": parsed.get("assistant_block_count", 0),
             "selected_tab": self._current_selected_tab(),
+            "backend_fallbacks": self._fallback_events_payload(),
         }
 
     def _run_eval_with_retry(self, script: str) -> str:
@@ -121,10 +128,8 @@ class AgentBrowserCdpBackend:
                     break
                 time.sleep(1.0)
         raw_target = _select_page_target(self._port, self._expected_url_substring)
+        self._record_fallback("eval_raw_cdp_fallback")
         return _run_raw_cdp_eval(raw_target["webSocketDebuggerUrl"], script)
-        if last_error is not None:
-            raise last_error
-        raise RuntimeError("chatgpt_backend_failed")
 
     def _ensure_chatgpt_target_selected(self) -> None:
         self._ensure_custom_gpt_page()
@@ -147,7 +152,7 @@ class AgentBrowserCdpBackend:
             _select_page_target(self._port, self._expected_url_substring)
             return
         except RuntimeError:
-            pass
+            self._record_fallback("custom_page_select_fallback")
         generic = _select_generic_chatgpt_target(self._port)
         if generic is None:
             return
@@ -173,7 +178,7 @@ class AgentBrowserCdpBackend:
             if best is not None:
                 return best
         except RuntimeError:
-            pass
+            self._record_fallback("tab_list_http_fallback")
         return _chatgpt_tab_index_from_http(
             self._port,
             expected_url_substring=self._expected_url_substring,
@@ -184,8 +189,17 @@ class AgentBrowserCdpBackend:
         try:
             return _select_page_target(self._port, self._expected_url_substring)
         except RuntimeError:
+            self._record_fallback("current_tab_http_fallback")
             generic = _select_generic_chatgpt_target(self._port)
             return {} if generic is None else generic
+
+    def _record_fallback(self, event: str) -> None:
+        normalized = str(event).strip()
+        if normalized and normalized not in self._fallback_events:
+            self._fallback_events.append(normalized)
+
+    def _fallback_events_payload(self) -> list[str]:
+        return list(self._fallback_events)
 
 
 def _submit_script(payload: str) -> str:

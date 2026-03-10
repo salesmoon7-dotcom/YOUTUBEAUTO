@@ -154,6 +154,9 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertTrue(bool(result["ok"]))
         self.assertIn(["agent-browser", "--cdp", "9222", "tab", "list"], calls)
         self.assertIn(["agent-browser", "--cdp", "9222", "tab", "2"], calls)
+        self.assertIn(
+            "tab_list_http_fallback", cast(list[object], result["backend_fallbacks"])
+        )
 
     def test_default_runner_wraps_timeout_as_runtime_error(self) -> None:
         backend_module = __import__(
@@ -256,6 +259,9 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
         self.assertTrue(bool(result["ok"]))
         self.assertEqual(eval_calls, 3)
+        self.assertIn(
+            "eval_raw_cdp_fallback", cast(list[object], result["backend_fallbacks"])
+        )
 
     def test_raw_cdp_eval_suppresses_origin_header(self) -> None:
         sent_messages: list[str] = []

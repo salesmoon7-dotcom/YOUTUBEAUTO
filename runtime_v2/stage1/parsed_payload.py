@@ -54,8 +54,11 @@ def build_stage1_parsed_payload_from_topic_spec(
         parsed_result, errors = parse_gpt_response_text(topic_spec, response_text)
         if parsed_result is None:
             raise ValueError(errors[0] if errors else "invalid_gpt_response_text")
+        enriched_result = dict(parsed_result)
+        if errors:
+            enriched_result["parse_warnings"] = errors
         return _build_stage1_parsed_payload_from_parsed_result(
-            topic_spec, parsed_result
+            topic_spec, enriched_result
         )
     return _build_stage1_parsed_payload_from_enriched_topic_spec(topic_spec)
 
@@ -137,6 +140,13 @@ def _build_stage1_parsed_payload_from_parsed_result(
         "shorts_clip_mapping": str(
             parsed_result.get("shorts_clip_mapping", "")
         ).strip(),
+        "parse_mode": str(parsed_result.get("parse_mode", "canonical")).strip()
+        or "canonical",
+        "parse_warnings": [
+            str(item).strip()
+            for item in cast(list[object], parsed_result.get("parse_warnings", []))
+            if str(item).strip()
+        ],
         "reason_code": "ok",
         "excel_snapshot_hash": str(topic_spec.get("excel_snapshot_hash", "")),
     }

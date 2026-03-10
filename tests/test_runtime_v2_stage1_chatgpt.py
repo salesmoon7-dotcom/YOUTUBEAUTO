@@ -358,6 +358,34 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             ["십세부터 오십세까지 설명", "육십세부터 구십세까지 설명"],
         )
 
+    def test_stage1_runner_surfaces_parse_fallback_warnings_in_handoff(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            workspace = Path(tmp_dir)
+            topic_spec = _topic_spec(topic="Money flow")
+            topic_spec["gpt_response_text"] = _inline_gpt_response_text()
+
+            with patch(
+                "runtime_v2.stage1.gpt_response_parser.build_topic_spec_from_gpt_response",
+                side_effect=ValueError("structured_parse_failed"),
+            ):
+                result = run_stage1_chatgpt_job(
+                    topic_spec,
+                    workspace,
+                    debug_log="logs/stage1-inline-run.jsonl",
+                )
+
+            result_path = Path(cast(str, result["result_path"]))
+            result_payload = cast(
+                dict[str, object], json.loads(result_path.read_text(encoding="utf-8"))
+            )
+            details = cast(dict[str, object], result_payload["details"])
+            handoff = cast(dict[str, object], details["stage1_handoff"])
+            parsed_payload = cast(dict[str, object], handoff["contract"])
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(parsed_payload["parse_mode"], "block_fallback")
+        self.assertEqual(parsed_payload["parse_warnings"], ["structured_parse_failed"])
+
     def test_stage1_can_attach_gpt_response_text_from_browser_snapshot(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
