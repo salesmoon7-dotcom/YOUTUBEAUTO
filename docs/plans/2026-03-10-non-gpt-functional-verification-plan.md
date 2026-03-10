@@ -110,11 +110,15 @@
 - `system/runtime_v2_probe/qwen3-functional-01/episode/voice/#02.flac`
 - `system/runtime_v2_probe/qwen3-functional-01/episode/voice/#00.txt`
 - `system/runtime_v2_probe/qwen3-functional-01/result.json`
+- `system/runtime_v2_probe/downstream-real-qwen3-01/exports/speech.flac`
+- `system/runtime_v2_probe/downstream-real-qwen3-01/runtime_v2_result.json`
+- `system/runtime_v2_probe/downstream-real-qwen3-01/summary.json`
 
 #### Current status
 
 - `Functionally-verified`
 - canonical worker adoption: complete (`system/runtime_v2_probe/qwen3-canonical-03/`)
+- handoff-derived downstream real-run evidence: complete (`system/runtime_v2_probe/downstream-real-qwen3-01/`)
 - note: canonical worker functional evidence는 확보됐지만, full downstream orchestration closeout(실제 GPT handoff 연결, 관측, end-to-end gate)은 아직 active integration plan의 범위로 남아 있습니다.
 
 ### GeminiGen
@@ -132,7 +136,16 @@
 - direct helper inspection 기준 현재 페이지에서 식별되는 첫 번째 이미지가 실제 생성 산출물이 아니라 사이트 로고(`logo-with-text.png`)입니다.
 - 따라서 현재 helper만으로는 진실한 functional evidence를 만들 수 없습니다.
 - attach-only `agent-browser` child는 이제 placeholder success를 만들지 않고 fail-closed로 종료합니다.
-- 실제 생성 산출물 선택 규칙을 추가로 정의하기 전까지는 `Contract-verified` 상태를 유지합니다.
+
+#### Current evidence
+
+- `system/runtime_v2_probe/geminigen-functional-02/video/#01_GEMI.mp4`
+- `system/runtime_v2_probe/geminigen-functional-03/result.json`
+
+#### Current status
+
+- `Functionally-verified (exploratory evidence)`
+- canonical runtime_v2 helper adoption: not yet
 
 ### Canva
 

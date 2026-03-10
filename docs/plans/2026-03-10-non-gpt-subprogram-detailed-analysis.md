@@ -142,15 +142,17 @@
 
 ### Functional validation status
 
-- `Contract-verified`
-- 실제 row 기반 이미지->video end-to-end evidence는 아직 없음
+- `Functionally-verified (exploratory evidence)`
+- evidence:
+  - `system/runtime_v2_probe/geminigen-functional-02/video/#01_GEMI.mp4`
+  - `system/runtime_v2_probe/geminigen-functional-03/result.json`
 
 ### Current blocker note
 
 - direct helper inspection 기준 현재 페이지에서 첫 번째로 노출되는 이미지가 실제 생성 산출물이 아니라 사이트 로고(`logo-with-text.png`)입니다.
-- 따라서 current helper로는 truthful functional evidence를 만들 수 없습니다.
-- attach-only `agent-browser` child는 이제 placeholder artifact로 성공 처리하지 않고 fail-closed로 막습니다.
-- 실 생성 산출물 선택 규칙을 더 정의하기 전까지는 `Functionally-verified`로 올리지 않습니다.
+- 따라서 current helper 단독으로는 truthful functional evidence를 만들 수 없습니다.
+- exploratory evidence는 legacy batch 경로를 통해 확보했습니다.
+- 남은 일은 실제 생성 산출물 선택 규칙을 `runtime_v2` canonical helper에 흡수하는 것입니다.
 
 ### Remaining gaps
 

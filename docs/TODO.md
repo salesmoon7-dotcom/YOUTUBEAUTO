@@ -47,8 +47,10 @@
   - probe 출력은 `code=OK`와 별도로 `live_readiness`, `placeholder_services`, `live_ready_services`를 통해 해석해야 합니다.
   - 현재 남은 우선순위는 stage1 richer field의 추가 샘플 확장 판단이며, `control_plane` 2차 분해는 여전히 no-go입니다.
 - 새 active integration plan: `docs/plans/2026-03-10-runtime-v2-subprogram-integration-execution-plan.md`
+  - 이 배치는 완료되었습니다.
   - 레거시는 실패한 복잡계로 간주하고 구현체가 아니라 계약/파싱 참고 자료로만 사용합니다.
-- 다음 실제 구현 우선순위는 `ChatGPT interaction layer canonicalization`입니다.
+  - `first-test-real-live-success-01/`에서 GPT real-first gate를 닫았고, `downstream-real-qwen3-01/`에서 handoff-derived payload 기반 downstream 1개 real run evidence까지 확보했습니다.
+- 다음 실제 구현 우선순위는 active integration closeout이 아니라 후속 안정화/확장 판단입니다.
   - 1차 조치로 `CHATGPT_BACKEND_UNAVAILABLE` + `failure_stage=submit/read` canonical failure contract와 runner 재시도 연결은 반영되었습니다.
   - backend abstraction/fallback 최소 구현으로 raw CDP HTTP `session_probe`가 같은 failure contract의 `final_state`에 연결되었습니다.
   - submit/read 자체를 `ChatGPTBackend` interface로 분리하는 최소 구현도 반영되었습니다.
@@ -67,8 +69,7 @@
   - `Voice / Video1~50 / #01~#500`의 의미는 레거시 기준으로 각각 일본어 대사 / 영어 비디오 프롬프트 / scene-image prompt로 고정했습니다.
   - `seed_excel_row -> control_plane -> merge_stage1_result` main path hook도 연결되어, GPT 결과 Excel 반영이 정규 경로로 자동 수행됩니다.
   - `#167`, `#195`, `#210`도 각각 동일 번호의 Excel 헤더 열에 실제로 들어가는 것을 확인했습니다.
-  - 남은 핵심은 downstream 1개 서비스의 real run 성공입니다.
-  - `1차 테스트`는 그 계층이 닫힌 뒤 `mock -> smoke -> real` 순서로 다시 진행합니다.
+  - `1차 테스트` closeout evidence는 `system/runtime_v2_probe/downstream-real-qwen3-01/`까지 확보되었습니다.
 - 새 준비 보완 계획: `docs/plans/2026-03-10-runtime-v2-subprogram-gap-analysis-plan.md`
   - 테스트 전에 `field matrix`, `failure matrix`, `golden evidence`, `readiness checklist`를 완성해 디버깅 비용을 줄입니다.
   - 이 계획이 먼저 닫힌 뒤에야 실제 테스트를 반복 실행하는 것이 맞습니다.
@@ -80,7 +81,7 @@
     - `Genspark` -> `Functionally-verified`
     - `Canva` -> `Functionally-verified`
     - `TTS` -> `Functionally-verified (canonical worker evidence)`
-    - `GeminiGen` -> mostly `Contract-verified`
+    - `GeminiGen` -> `Functionally-verified (exploratory evidence)`
     - `Kenburn` -> `Functionally-verified`
     - `RVC` -> `Functionally-verified (canonical worker evidence)`
   - 따라서 비-GPT도 아직 전체 완료가 아니며, 서비스별 functional evidence를 더 확보해야 합니다.
