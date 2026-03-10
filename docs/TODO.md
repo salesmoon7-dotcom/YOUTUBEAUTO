@@ -64,6 +64,7 @@
   - 같은 결과를 `4 머니.xlsx` `Sheet1!row13`에 export하고 `excel_roundtrip.json`까지 검증했습니다.
   - 최종 Excel shape(`URL`, `Voice`, `Video1~50`, `#01~#500`, `Shorts*`)도 현재 브리지에 반영 완료되었습니다.
   - `Voice / Video1~50 / #01~#500`의 의미는 레거시 기준으로 각각 일본어 대사 / 영어 비디오 프롬프트 / scene-image prompt로 고정했습니다.
+  - `#167`, `#195`, `#210`도 각각 동일 번호의 Excel 헤더 열에 실제로 들어가는 것을 확인했습니다.
   - 남은 핵심은 downstream 1개 서비스의 real run 성공입니다.
   - `1차 테스트`는 그 계층이 닫힌 뒤 `mock -> smoke -> real` 순서로 다시 진행합니다.
 - 새 준비 보완 계획: `docs/plans/2026-03-10-runtime-v2-subprogram-gap-analysis-plan.md`

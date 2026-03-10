@@ -26,6 +26,7 @@ def normalize_stage1_handoff_contract(payload: dict[str, object]) -> dict[str, o
     normalized.setdefault("bgm", "")
     normalized.setdefault("keywords", [])
     normalized.setdefault("url", "")
+    normalized.setdefault("scene_map", {})
     normalized.setdefault("scene_prompts", [])
     normalized.setdefault("voice_groups", [])
     normalized.setdefault("voice_lines", [])
@@ -49,6 +50,8 @@ def validate_stage1_handoff_contract(payload: dict[str, object]) -> list[str]:
         return ["invalid_keywords"]
     if not isinstance(payload.get("videos"), list):
         return ["invalid_videos"]
+    if not isinstance(payload.get("scene_map"), dict):
+        return ["invalid_scene_map"]
     if not isinstance(payload.get("scene_prompts"), list) or not cast(
         list[object], payload.get("scene_prompts", [])
     ):

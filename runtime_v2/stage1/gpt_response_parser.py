@@ -89,7 +89,8 @@ def _parse_block_response(
             continue
         if current_label:
             labels.setdefault(current_label, []).append(line)
-    scene_prompts = _collect_scene_prompts(labels)
+    scene_map = _collect_scene_map(labels)
+    scene_prompts = [scene_map[index] for index in sorted(scene_map)]
     if not scene_prompts:
         scene_prompts = _collect_voice_numbered_lines(labels)
     voice_lines = _collect_voice_numbered_lines(labels)
@@ -111,6 +112,7 @@ def _parse_block_response(
         "bgm": _join_label(labels, "bgm"),
         "ref_img_1": _join_label(labels, "ref img 1"),
         "ref_img_2": _join_label(labels, "ref img 2"),
+        "scene_map": scene_map,
         "scene_prompts": scene_prompts or [f"{topic} opening", f"{topic} ending"],
         "voice_groups": voice_groups,
         "story_outline": scene_prompts or [f"{topic} opening", f"{topic} ending"],
@@ -122,7 +124,7 @@ def _parse_block_response(
     }
 
 
-def _collect_scene_prompts(labels: dict[str, list[str]]) -> list[str]:
+def _collect_scene_map(labels: dict[str, list[str]]) -> dict[int, str]:
     scene_entries: list[tuple[int, str]] = []
     for key, value in labels.items():
         normalized = key.lower()
@@ -135,7 +137,7 @@ def _collect_scene_prompts(labels: dict[str, list[str]]) -> list[str]:
         if index > 0 and joined:
             scene_entries.append((index, joined))
     scene_entries.sort(key=lambda item: item[0])
-    return [content for _, content in scene_entries]
+    return {index: content for index, content in scene_entries}
 
 
 def _collect_voice_numbered_lines(labels: dict[str, list[str]]) -> list[str]:

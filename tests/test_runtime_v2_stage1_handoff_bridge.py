@@ -115,6 +115,17 @@ class RuntimeV2Stage1HandoffBridgeTests(unittest.TestCase):
         exported = export_stage1_handoff_to_excel_row(payload)
         self.assertEqual(exported["Voice"], "n")
 
+    def test_export_clears_unused_scene_and_video_columns(self) -> None:
+        payload = _handoff()
+        exported = export_stage1_handoff_to_excel_row(payload)
+
+        self.assertEqual(exported["#01"], "scene one")
+        self.assertEqual(exported["#02"], "scene two")
+        self.assertEqual(exported["#03"], "")
+        self.assertEqual(exported["Video1"], "video prompt 1")
+        self.assertEqual(exported["Video2"], "video prompt 2")
+        self.assertEqual(exported["Video3"], "")
+
 
 if __name__ == "__main__":
     _ = unittest.main()

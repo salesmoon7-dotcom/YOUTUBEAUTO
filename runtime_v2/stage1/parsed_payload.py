@@ -81,6 +81,14 @@ def _build_stage1_parsed_payload_from_parsed_result(
         for item in cast(list[object], parsed_result.get("voice_lines", []))
         if str(item).strip()
     ]
+    scene_map_raw = parsed_result.get("scene_map", {})
+    scene_map: dict[str, str] = {}
+    if isinstance(scene_map_raw, dict):
+        for key, value in cast(dict[object, object], scene_map_raw).items():
+            index = str(key).strip()
+            content = str(value).strip()
+            if index and content:
+                scene_map[index] = content
     story_outline = [
         str(item).strip()
         for item in cast(
@@ -118,6 +126,7 @@ def _build_stage1_parsed_payload_from_parsed_result(
         "story_outline": story_outline,
         "ref_img_1": str(parsed_result.get("ref_img_1", "")).strip(),
         "ref_img_2": str(parsed_result.get("ref_img_2", "")).strip(),
+        "scene_map": scene_map,
         "videos": [
             str(item).strip()
             for item in cast(list[object], parsed_result.get("videos", []))

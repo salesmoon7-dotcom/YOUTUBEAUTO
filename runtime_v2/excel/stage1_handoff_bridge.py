@@ -17,6 +17,7 @@ def export_stage1_handoff_to_excel_row(payload: dict[str, object]) -> dict[str, 
     if errors:
         raise ValueError(errors[0])
     scene_prompts = cast(list[object], normalized.get("scene_prompts", []))
+    scene_map = cast(dict[object, object], normalized.get("scene_map", {}))
     voice_json = json.dumps(normalized.get("voice_groups", []), ensure_ascii=False)
     voice_lines = cast(list[object], normalized.get("voice_lines", []))
     videos = cast(list[object], normalized.get("videos", []))
@@ -49,8 +50,22 @@ def export_stage1_handoff_to_excel_row(payload: dict[str, object]) -> dict[str, 
         "Shorts Clip Mapping": str(normalized.get("shorts_clip_mapping", "")),
         "Shorts\nStatus": "n",
     }
-    for index, prompt in enumerate(scene_prompts, start=1):
-        row[f"#{index:02d}"] = str(prompt).strip()
+    for index in range(1, 501):
+        row[f"#{index:02d}"] = ""
+    if scene_map:
+        for raw_key, raw_value in scene_map.items():
+            key = str(raw_key).strip()
+            value = str(raw_value).strip()
+            if not key.isdigit() or not value:
+                continue
+            index = int(key)
+            if 1 <= index <= 500:
+                row[f"#{index:02d}"] = value
+    else:
+        for index, prompt in enumerate(scene_prompts[:500], start=1):
+            row[f"#{index:02d}"] = str(prompt).strip()
+    for index in range(1, 51):
+        row[f"Video{index}"] = ""
     for index, video in enumerate(videos[:50], start=1):
         row[f"Video{index}"] = str(video).strip()
     return row
@@ -81,7 +96,9 @@ def import_stage1_handoff_from_excel_row(
     payload["ref_img_2"] = str(
         row.get("Ref Img 2", payload.get("ref_img_2", ""))
     ).strip()
-    payload["scene_prompts"] = _scene_prompts_from_row(row)
+    scene_map = _scene_map_from_row(row)
+    payload["scene_map"] = scene_map
+    payload["scene_prompts"] = [scene_map[key] for key in sorted(scene_map)]
     payload["videos"] = _videos_from_row(row)
     raw_voice_texts = _cell_text(row.get("voice_texts.json", ""))
     if raw_voice_texts:
@@ -117,8 +134,8 @@ def import_stage1_handoff_from_excel_row(
     return payload
 
 
-def _scene_prompts_from_row(row: dict[str, object]) -> list[str]:
-    prompts: list[str] = []
+def _scene_map_from_row(row: dict[str, object]) -> dict[int, str]:
+    prompts: dict[int, str] = {}
     index = 1
     while True:
         key = f"#{index:02d}"
@@ -126,7 +143,7 @@ def _scene_prompts_from_row(row: dict[str, object]) -> list[str]:
             break
         value = _cell_text(row.get(key, ""))
         if value:
-            prompts.append(value)
+            prompts[index] = value
         index += 1
     return prompts
 
