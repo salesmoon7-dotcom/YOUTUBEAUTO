@@ -86,6 +86,8 @@ def run_rvc_job(
             "-m",
             "runtime_v2.cli",
             "--rvc-adapter-child",
+            "--workspace-root",
+            str(workspace.resolve()),
             "--service-artifact-path",
             str(job.payload.get("service_artifact_path", "")),
         ]

@@ -168,6 +168,12 @@ def build_stage2_jobs(
                 ref_img = _select_ref_img(timeline)
             if ref_img:
                 payload["ref_img"] = ref_img
+        if workload == "geminigen":
+            ref_img = _select_ref_img_from_stage1(stage1_contract)
+            if not ref_img:
+                ref_img = _select_ref_img(timeline)
+            if ref_img:
+                payload["first_frame_path"] = ref_img
         if workload in agent_browser_services:
             payload["use_agent_browser"] = True
         jobs.append(
