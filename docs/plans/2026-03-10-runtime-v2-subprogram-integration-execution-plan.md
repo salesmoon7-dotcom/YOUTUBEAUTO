@@ -88,11 +88,11 @@
 | ChatGPT | canonical producer of downstream fields (`Title`, `Thumb`, `Voice`, `Description`, `Keywords`, scene prompts) | `stage1.v1` handoff exists, parser exists, browser snapshot hookup exists | real prompt submission / send / response-complete wait is not canonicalized | No |
 | SeaArt | immediate post-GPT image generator | stage2 worker + agent-browser/live attach evidence complete | consumes minimal handoff, richer GPT field linkage still pending | Yes (after ChatGPT handoff) |
 | Genspark | immediate post-GPT image generator | stage2 worker + agent-browser/live attach evidence complete | same as above | Yes (after ChatGPT handoff) |
-| TTS | immediate post-GPT voice generator | feeder/workload/worker contracts exist | real upstream `voice_texts` handoff from ChatGPT still not canonicalized | Partial |
+| TTS | immediate post-GPT voice generator | feeder/workload/worker contracts exist and canonical worker evidence exists (`runtime_v2` worker/adapter path reproducible) | real upstream `voice_texts` handoff from ChatGPT still not canonicalized into a full downstream closeout (end-to-end gate/observability remains open) | Partial |
 | GeminiGen | image->video downstream | stage2 worker + live attach evidence complete | depends on upstream image artifact readiness | Partial |
 | Canva | title/thumb + ref image downstream | stage2 worker + live attach evidence complete | depends on upstream `title_for_thumb` + reference image parity | Partial |
 | Kenburn | image + voice -> video compositor | GPU worker/feeder exist | depends on image/voice bundle map parity | Partial |
-| RVC | TTS/video-derived voice conversion | GPU worker/feeder exist | depends on stable TTS/Gemini video upstream contracts | Partial |
+| RVC | TTS/video-derived voice conversion | GPU worker/feeder exist and canonical worker evidence exists (`runtime_v2` worker/adapter path reproducible) | depends on stable TTS/Gemini video upstream contracts and source-mode/orchestration closeout | Partial |
 
 ### Matrix interpretation
 

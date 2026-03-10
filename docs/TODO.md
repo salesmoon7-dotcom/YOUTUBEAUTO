@@ -79,19 +79,18 @@
     - `SeaArt` -> `Functionally-verified`
     - `Genspark` -> `Functionally-verified`
     - `Canva` -> `Functionally-verified`
-    - `TTS` -> `Functionally-verified (exploratory evidence)`
+    - `TTS` -> `Functionally-verified (canonical worker evidence)`
     - `GeminiGen` -> mostly `Contract-verified`
     - `Kenburn` -> `Functionally-verified`
-    - `RVC` -> `Functionally-verified (exploratory evidence)`
+    - `RVC` -> `Functionally-verified (canonical worker evidence)`
   - 따라서 비-GPT도 아직 전체 완료가 아니며, 서비스별 functional evidence를 더 확보해야 합니다.
-  - `TTS`, `RVC` canonical worker는 이제 자체 adapter child를 자동 생성할 수 있지만, 실제 기능 evidence는 아직 exploratory 수준입니다.
+  - `TTS`, `RVC`는 canonical worker functional evidence는 확보됐지만, full upstream/downstream orchestration closeout은 아직 남아 있습니다.
   - 공통 `adapter failure matrix` 1차는 반영되었습니다.
     - `ADAPTER_TIMEOUT`, `ADAPTER_NOT_FOUND`, `ADAPTER_NONZERO_EXIT`, `OUTPUT_PATH_INVALID`, `OUTPUT_OUTSIDE_ROOT`, `OUTPUT_NOT_CREATED`, `OUTPUT_UNCHANGED_REUSED`
 - 비-GPT functional verification 계획: `docs/plans/2026-03-10-non-gpt-functional-verification-plan.md`
   - 비-GPT 완료 판단은 서비스별 `Functionally-verified` evidence 확보 전까지 보류합니다.
   - 다음 실행 순서는 `SeaArt -> Genspark -> TTS -> GeminiGen -> Canva -> Kenburn -> RVC` 입니다.
-- 새 active remediation unit: `docs/plans/2026-03-10-runtime-v2-remediation-priority-plan.md`
-  - 현재 우선순위는 `GeminiGen truthful evidence` -> `silent fallback + child exit semantics` -> `latest-run single writer` -> `documentation status drift` 입니다.
-  - `GeminiGen` attach-only child는 이제 placeholder success를 만들지 않고 fail-closed로 막습니다.
-  - `TTS`, `RVC`는 canonical worker adoption은 완료됐지만 functional evidence는 여전히 exploratory 수준입니다.
-  - `24h soak verification gap`은 이번 구현 범위에서 제외하고 주말 운영 게이트로 미룹니다.
+- `docs/plans/2026-03-10-runtime-v2-remediation-priority-plan.md` 배치는 완료되었습니다.
+  - 이 completed 표기는 remediation 문서 정리 배치가 끝났다는 뜻이며, downstream integration 전체 완료를 뜻하지는 않습니다.
+  - `GeminiGen truthful evidence` fail-close, `silent fallback + child exit semantics`, `latest-run single writer`, `documentation status drift`는 모두 반영되었습니다.
+  - `24h soak verification gap`만 주말 운영 게이트로 별도 유지합니다.

@@ -100,7 +100,9 @@
 #### Exploratory note
 
 - `system/runtime_v2_probe/qwen3-functional-01/`에서 legacy folder mode를 이용한 exploratory evidence는 생성되었습니다.
-- 하지만 아직 `runtime_v2` canonical worker path로 정식 승격한 것은 아닙니다.
+- 이 exploratory lane은 legacy-style folder output을 확인한 참고 근거입니다.
+- 별도로 `runtime_v2` canonical worker path evidence는 `system/runtime_v2_probe/qwen3-canonical-03/`에 존재합니다.
+- 여기서 canonical worker evidence는 `runtime_v2` worker/adapter 경로로 재현 가능한 입력과 산출물(`voice/#NN.flac`)이 확인됐다는 뜻이며, full pipeline closeout을 뜻하지는 않습니다.
 
 #### Current evidence
 
@@ -113,6 +115,7 @@
 
 - `Functionally-verified`
 - canonical worker adoption: complete (`system/runtime_v2_probe/qwen3-canonical-03/`)
+- note: canonical worker functional evidence는 확보됐지만, full downstream orchestration closeout(실제 GPT handoff 연결, 관측, end-to-end gate)은 아직 active integration plan의 범위로 남아 있습니다.
 
 ### GeminiGen
 
@@ -184,7 +187,9 @@
 #### Exploratory note
 
 - `system/runtime_v2_probe/rvc-functional-01/`에서 Applio infer 기반 exploratory evidence는 생성되었습니다.
-- 하지만 아직 `runtime_v2` canonical worker path로 정식 승격한 것은 아닙니다.
+- 이 exploratory lane은 adapter/operator 중심 참고 근거입니다.
+- 별도로 `runtime_v2` canonical worker path evidence는 `system/runtime_v2_probe/rvc-canonical-04/`에 존재합니다.
+- 여기서 canonical worker evidence는 `runtime_v2` worker/adapter 경로로 재현 가능한 변환 산출물이 확인됐다는 뜻이며, source-mode/후처리 orchestration 완료를 뜻하지는 않습니다.
 
 #### Current evidence
 
@@ -196,6 +201,7 @@
 
 - `Functionally-verified`
 - canonical worker adoption: complete (`system/runtime_v2_probe/rvc-canonical-04/`)
+- note: canonical worker functional evidence는 확보됐지만, source-mode split과 후처리 orchestration closeout은 아직 남아 있습니다.
 
 ## Execution Order
 
