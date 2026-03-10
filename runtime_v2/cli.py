@@ -272,7 +272,10 @@ def main() -> int:
     if args.excel_once and args.row_index < 0:
         return exit_codes.CLI_USAGE
     config = _build_runtime_config(args)
-    _ = write_preflight_report(config)
+    try:
+        _ = write_preflight_report(config)
+    except Exception as exc:
+        print(f"warning: preflight report write failed: {exc}", file=sys.stderr)
     if args.open_browser_login.strip():
         payload = open_browser_for_login(args.open_browser_login.strip())
         print(json.dumps(payload, ensure_ascii=True))
