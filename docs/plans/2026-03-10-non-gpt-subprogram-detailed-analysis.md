@@ -47,13 +47,16 @@
 
 ### Functional validation status
 
-- `Contract-verified`
-- worker/adapter 계약과 live attach evidence는 있으나, 실제 row 기반 end-to-end image generation evidence는 아직 별도 필요
+- `Functionally-verified`
+- evidence:
+  - `system/runtime_v2_probe/seaart-functional-03/exports/seaart.png`
+  - `system/runtime_v2_probe/seaart-functional-03/functional_evidence/final_screen.png`
+  - `system/runtime_v2_probe/seaart-functional-03/functional_evidence/evidence.json`
 
 ### Remaining gaps
 
 - stage1 richer field가 실제 SeaArt 입력 prompt 품질까지 보장하는지 아직 미확인
-- 실패모드 분류가 `adapter_failed` 수준으로 넓고, 세션 제한/생성 오류/다운로드 실패를 더 세분화하지 않음
+- 실패모드 분류는 공통 adapter matrix 1차가 반영되었지만, SeaArt 고유 세션 제한/생성 오류/다운로드 실패의 추가 세분화는 남아 있음
 
 ### Hidden debugging risk
 

@@ -47,6 +47,7 @@ from runtime_v2.stage2.agent_browser_adapter import (
     stage2_attach_verify_succeeded,
     write_stage2_attach_evidence,
 )
+from runtime_v2.agent_browser.cdp_capture import write_functional_evidence_bundle
 from runtime_v2.stage2.genspark_worker import run_genspark_job
 from runtime_v2.stage2.json_builders import build_stage2_jobs
 from runtime_v2.stage2.seaart_worker import run_seaart_job
@@ -913,14 +914,18 @@ def _run_browser_recovery_probe(
 
 
 def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
-    workspace = Path.cwd()
-    artifact_root = workspace / "agent_browser_adapter_artifacts"
     service = args.service.strip()
     if not service:
         return exit_codes.CLI_USAGE
     service_artifact_path = args.service_artifact_path.strip()
     if not service_artifact_path:
         return exit_codes.CLI_USAGE
+    target_path = Path(service_artifact_path)
+    workspace = (
+        target_path.parent.parent if len(target_path.parents) >= 2 else Path.cwd()
+    )
+    workspace.mkdir(parents=True, exist_ok=True)
+    artifact_root = workspace / "agent_browser_adapter_artifacts"
     job = JobContract(
         job_id=f"agent-browser-stage2-{service}",
         workload="agent_browser_verify",
@@ -945,9 +950,20 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
     )
     if not attach_ok:
         return exit_codes.BROWSER_UNHEALTHY
-    target_path = Path(service_artifact_path)
-    target_path.parent.mkdir(parents=True, exist_ok=True)
-    _write_stage2_placeholder_artifact(target_path)
+    if service == "seaart":
+        try:
+            _ = write_functional_evidence_bundle(
+                workspace=workspace,
+                service=service,
+                port=args.port,
+                expected_url_substring=args.expected_url_substring.strip(),
+                service_artifact_path=target_path,
+            )
+        except Exception:
+            return exit_codes.BROWSER_UNHEALTHY
+    else:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_stage2_placeholder_artifact(target_path)
     return exit_codes.SUCCESS
 
 

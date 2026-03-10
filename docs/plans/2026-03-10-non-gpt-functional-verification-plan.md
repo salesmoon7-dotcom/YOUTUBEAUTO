@@ -55,6 +55,16 @@
   - output image exists
   - downstream handoff path preserved
 
+#### Current evidence
+
+- `system/runtime_v2_probe/seaart-functional-03/exports/seaart.png`
+- `system/runtime_v2_probe/seaart-functional-03/functional_evidence/final_screen.png`
+- `system/runtime_v2_probe/seaart-functional-03/functional_evidence/evidence.json`
+
+#### Current status
+
+- `Functionally-verified`
+
 ### Genspark
 
 - Required evidence:
