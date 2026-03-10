@@ -130,6 +130,60 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertTrue(routed_jobs)
         self.assertEqual(len(render_jobs), 1)
 
+    def test_control_plane_merges_chatgpt_video_plan_to_excel_main_path(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            topic_spec: dict[str, object] = {
+                "contract": "topic_spec",
+                "contract_version": "1.0",
+                "run_id": "chatgpt-run-excel-main",
+                "row_ref": "Sheet1!row1",
+                "topic": "Bridge topic",
+                "status_snapshot": "",
+                "excel_snapshot_hash": "hash-1",
+            }
+            seed_control_job(
+                JobContract(
+                    job_id="chatgpt-excel-main",
+                    workload="chatgpt",
+                    checkpoint_key="topic_spec:Sheet1!row1:hash-1",
+                    payload={
+                        "run_id": "chatgpt-run-excel-main",
+                        "row_ref": "Sheet1!row1",
+                        "excel_path": str((root / "topic.xlsx").resolve()),
+                        "sheet_name": "Sheet1",
+                        "row_index": 0,
+                        "topic_spec": topic_spec,
+                    },
+                ),
+                config=config,
+            )
+
+            with (
+                patch(
+                    "runtime_v2.control_plane.merge_stage1_result",
+                    return_value=True,
+                ) as merge_mock,
+                patch(
+                    "runtime_v2.control_plane.run_gated",
+                    side_effect=lambda **kwargs: {
+                        "status": "ok",
+                        "code": "OK",
+                        "worker_result": kwargs["execute"](),
+                    },
+                ),
+            ):
+                _ = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-chatgpt-excel",
+                )
+
+        merge_mock.assert_called_once()
+        self.assertEqual(merge_mock.call_args.kwargs["sheet_name"], "Sheet1")
+        self.assertEqual(merge_mock.call_args.kwargs["row_index"], 0)
+
     def test_control_plane_writes_asset_manifest_for_stage1_routed_jobs(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

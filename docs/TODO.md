@@ -65,6 +65,7 @@
   - row13 `Status`는 전체 완료(`Done`)가 아니라 GPT 단계 완료 의미의 `OK`가 맞습니다.
   - 최종 Excel shape(`URL`, `Voice`, `Video1~50`, `#01~#500`, `Shorts*`)도 현재 브리지에 반영 완료되었습니다.
   - `Voice / Video1~50 / #01~#500`의 의미는 레거시 기준으로 각각 일본어 대사 / 영어 비디오 프롬프트 / scene-image prompt로 고정했습니다.
+  - `seed_excel_row -> control_plane -> merge_stage1_result` main path hook도 연결되어, GPT 결과 Excel 반영이 정규 경로로 자동 수행됩니다.
   - `#167`, `#195`, `#210`도 각각 동일 번호의 Excel 헤더 열에 실제로 들어가는 것을 확인했습니다.
   - 남은 핵심은 downstream 1개 서비스의 real run 성공입니다.
   - `1차 테스트`는 그 계층이 닫힌 뒤 `mock -> smoke -> real` 순서로 다시 진행합니다.
@@ -76,8 +77,8 @@
   - `Functionally-verified` evidence가 없는 서비스는 완료로 올리지 않습니다.
   - 현재 판정:
     - `SeaArt` -> `Functionally-verified`
-    - `Genspark` -> `Functionally-verified (exploratory evidence)`
-    - `Canva` -> `Functionally-verified (exploratory evidence)`
+    - `Genspark` -> `Functionally-verified`
+    - `Canva` -> `Functionally-verified`
     - `TTS` -> `Functionally-verified (exploratory evidence)`
     - `GeminiGen` -> mostly `Contract-verified`
     - `Kenburn` -> `Functionally-verified`

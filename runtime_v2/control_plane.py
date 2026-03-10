@@ -21,6 +21,7 @@ from runtime_v2.latest_run import write_control_plane_runtime_snapshot
 from runtime_v2.agent_browser.evidence import build_agent_browser_evidence
 from runtime_v2.gpt_autospawn import apply_autospawn_decision
 from runtime_v2.gpt_pool_monitor import tick_gpt_status
+from runtime_v2.manager import merge_stage1_result
 from runtime_v2 import recovery_policy
 from runtime_v2.queue_store import QueueStore, QueueStoreError
 from runtime_v2.state_machine import (
@@ -331,6 +332,23 @@ def run_control_loop_once(
     seeded_downstream: list[JobContract] = []
     success = result.get("status") == "ok" and worker_ok
     if result.get("status") == "ok" and worker_ok:
+        if job.workload == "chatgpt":
+            details = _mapping_from_obj(worker_contract.get("details", {}))
+            video_plan = (
+                None
+                if details is None
+                else _mapping_from_obj(details.get("video_plan", {}))
+            )
+            excel_path = str(job.payload.get("excel_path", "")).strip()
+            sheet_name = str(job.payload.get("sheet_name", "")).strip()
+            row_index = _to_int(job.payload.get("row_index", -1))
+            if video_plan is not None and excel_path and sheet_name and row_index >= 0:
+                _ = merge_stage1_result(
+                    excel_path=excel_path,
+                    sheet_name=sheet_name,
+                    row_index=row_index,
+                    video_plan=video_plan,
+                )
         seeded_downstream = _seed_declared_next_jobs(
             queue_file,
             jobs,

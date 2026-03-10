@@ -64,7 +64,9 @@ class RuntimeV2ExcelBridgeTests(unittest.TestCase):
         self.assertEqual(str(topic_spec["topic"]), "Bridge topic")
         self.assertEqual(str(topic_spec["row_ref"]), "Sheet1!row1")
 
-    def test_subprograms_never_receive_excel_path_directly(self) -> None:
+    def test_topic_spec_remains_excel_agnostic_while_job_payload_keeps_excel_context(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             config = RuntimeConfig(
@@ -87,15 +89,19 @@ class RuntimeV2ExcelBridgeTests(unittest.TestCase):
             queued_jobs = seed_local_jobs(config)
             self.assertEqual(queued_jobs, [])
             self.assertFalse(config.queue_store_file.exists())
-            self.assertNotIn("excel_path", str(result.get("contract", {})))
+            contract_text = str(result.get("contract", {}))
+            self.assertIn("excel_path", contract_text)
+            self.assertIn("sheet_name", contract_text)
+            self.assertIn("row_index", contract_text)
             snapshot_hash = str(
                 cast(dict[str, object], payload).get("excel_snapshot_hash", "")
             )
             self.assertIn(
                 f"'checkpoint_key': 'topic_spec:Sheet1!row1:{snapshot_hash}'",
-                str(result.get("contract", {})),
+                contract_text,
             )
-            self.assertIn("'local_only': True", str(result.get("contract", {})))
+            self.assertIn("'local_only': True", contract_text)
+            self.assertNotIn("excel_path", str(payload))
 
     def test_excel_seed_uses_checkpoint_key_and_local_only_contract(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -121,7 +127,9 @@ class RuntimeV2ExcelBridgeTests(unittest.TestCase):
             contract_text = contract_files[0].read_text(encoding="utf-8")
             self.assertIn('"local_only": true', contract_text)
             self.assertIn('"checkpoint_key": "topic_spec:Sheet1!row1:', contract_text)
-            self.assertNotIn("excel_path", contract_text)
+            self.assertIn('"excel_path":', contract_text)
+            self.assertIn('"sheet_name": "Sheet1"', contract_text)
+            self.assertIn('"row_index": 0', contract_text)
 
     def test_excel_selector_accepts_case_insensitive_headers(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

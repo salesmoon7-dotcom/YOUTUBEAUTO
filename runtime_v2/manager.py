@@ -59,6 +59,9 @@ def seed_excel_row(
         payload={
             "run_id": run_id,
             "row_ref": row_ref,
+            "excel_path": str(Path(excel_path).resolve()),
+            "sheet_name": sheet_name,
+            "row_index": row_index,
             "topic_spec": topic_spec,
         },
     )
