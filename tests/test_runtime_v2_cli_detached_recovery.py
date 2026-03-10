@@ -70,6 +70,55 @@ class RuntimeV2CliDetachedRecoveryTests(unittest.TestCase):
         self.assertEqual(payload["restarted_services"], ["seaart", "geminigen"])
         self.assertEqual(payload["gpt_status"]["ok_count"], 2)
 
+    def test_run_browser_recovery_probe_surfaces_restart_exhausted_code(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig.from_root(root / "runtime")
+            probe_root = root / "probe"
+            supervisor_instance = MagicMock()
+            supervisor_instance.tick.return_value = {
+                "restarted_services": [],
+                "initial_summary": {"all_healthy": False, "healthy": 4},
+                "final_summary": {
+                    "all_healthy": False,
+                    "healthy": 4,
+                    "unhealthy": 1,
+                    "blocked_services": ["chatgpt"],
+                },
+                "sessions": [
+                    {
+                        "service": "chatgpt",
+                        "status": "restart_exhausted",
+                        "blocked_reason": "restart_budget_exhausted",
+                    }
+                ],
+            }
+
+            with (
+                patch("runtime_v2.cli.BrowserManager"),
+                patch(
+                    "runtime_v2.cli.BrowserSupervisor", return_value=supervisor_instance
+                ),
+                patch(
+                    "runtime_v2.cli.tick_gpt_status",
+                    return_value={"ok_count": 2, "floor_breached": False},
+                ),
+            ):
+                report = _run_browser_recovery_probe(
+                    config=config,
+                    probe_root=probe_root,
+                    run_id="browser-recover-run-2",
+                )
+
+            payload = json.loads(
+                (probe_root / "probe_result.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(report["code"], "BROWSER_RESTART_EXHAUSTED")
+        self.assertEqual(report["exit_code"], exit_codes.BROWSER_BLOCKED)
+        self.assertEqual(payload["code"], "BROWSER_RESTART_EXHAUSTED")
+        self.assertEqual(payload["run_id"], "browser-recover-run-2")
+
 
 if __name__ == "__main__":
     _ = unittest.main()

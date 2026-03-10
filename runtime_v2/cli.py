@@ -141,6 +141,7 @@ def exit_code_from_status(code: str) -> int:
         "GPU_LEASE_BUSY": exit_codes.LEASE_BUSY,
         "BROWSER_UNHEALTHY": exit_codes.BROWSER_UNHEALTHY,
         "BROWSER_BLOCKED": exit_codes.BROWSER_BLOCKED,
+        "BROWSER_RESTART_EXHAUSTED": exit_codes.BROWSER_BLOCKED,
         "GPT_FLOOR_FAIL": exit_codes.GPT_FLOOR_FAIL,
         "SELFTEST_FAIL": exit_codes.SELFTEST_FAIL,
         "CALLBACK_FAIL": exit_codes.CALLBACK_FAIL,
@@ -913,12 +914,35 @@ def _run_browser_recovery_probe(
         else {}
     )
     all_healthy = bool(final_summary.get("all_healthy", False))
+    distinct_code = "BROWSER_UNHEALTHY"
+    blocked_services_raw = final_summary.get("blocked_services", [])
+    blocked_services = (
+        cast(list[object], blocked_services_raw)
+        if isinstance(blocked_services_raw, list)
+        else []
+    )
+    if any(str(service) for service in blocked_services):
+        sessions_raw = browser_runtime.get("sessions", [])
+        sessions = (
+            cast(list[object], sessions_raw) if isinstance(sessions_raw, list) else []
+        )
+        for entry in sessions:
+            if not isinstance(entry, dict):
+                continue
+            status = str(entry.get("status", ""))
+            blocked_reason = str(entry.get("blocked_reason", ""))
+            if (
+                status == "restart_exhausted"
+                or blocked_reason == "restart_budget_exhausted"
+            ):
+                distinct_code = "BROWSER_RESTART_EXHAUSTED"
+                break
     report = {
         "run_id": run_id,
         "mode": "browser_recover",
         "status": "ok" if all_healthy else "blocked",
-        "code": "OK" if all_healthy else "BROWSER_UNHEALTHY",
-        "exit_code": 0 if all_healthy else exit_codes.BROWSER_UNHEALTHY,
+        "code": "OK" if all_healthy else distinct_code,
+        "exit_code": 0 if all_healthy else exit_code_from_status(distinct_code),
         "runtime_root": str(_runtime_root_for_config(config)),
         "restarted_services": browser_runtime.get("restarted_services", []),
         "initial_summary": browser_runtime.get("initial_summary", {}),
