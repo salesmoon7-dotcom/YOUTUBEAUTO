@@ -110,3 +110,9 @@
   3. 런타임 측 매핑/해석 로직
 - 문서는 최종 정리와 기록의 기준점이며, 1차 판단 근거로 쓰지 않습니다.
 - 커밋/푸시 전에는 동일 시나리오 재실행으로 mismatch가 사라졌는지, 또는 의도된 코드로 정렬됐는지를 Oracle 근거로 다시 확인합니다.
+
+### Documented Runtime_v2 Error Code IDs
+
+아래 ID는 문서와 코드가 같은 토큰으로 유지되어야 합니다.
+
+`OK`, `BROWSER_BLOCKED`, `BROWSER_RESTART_EXHAUSTED`, `BROWSER_UNHEALTHY`, `GPU_LEASE_BUSY`, `GPT_FLOOR_FAIL`, `QUEUE_STORE_INVALID`, `GPT_STATUS_MISSING`, `GPT_STATUS_INVALID`, `GPT_STATUS_STALE`, `BROWSER_HEALTH_MISSING`, `BROWSER_HEALTH_INVALID`, `BROWSER_REGISTRY_MISSING`, `BROWSER_REGISTRY_INVALID`, `BROWSER_REGISTRY_DRIFT`

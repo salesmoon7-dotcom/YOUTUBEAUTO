@@ -61,6 +61,12 @@ condition rather than a tie.
   conflicting raw values and is surfaced in latest-run metadata, manager GUI,
   and control-plane debug logs.
 
+## Documented Runtime_v2 Error Code IDs
+
+The following IDs are intentionally documented here using the exact code tokens:
+
+`OK`, `BROWSER_BLOCKED`, `BROWSER_RESTART_EXHAUSTED`, `BROWSER_UNHEALTHY`, `GPU_LEASE_BUSY`, `GPT_FLOOR_FAIL`, `QUEUE_STORE_INVALID`, `GPT_STATUS_MISSING`, `GPT_STATUS_INVALID`, `GPT_STATUS_STALE`, `BROWSER_HEALTH_MISSING`, `BROWSER_HEALTH_INVALID`, `BROWSER_REGISTRY_MISSING`, `BROWSER_REGISTRY_INVALID`, `BROWSER_REGISTRY_DRIFT`
+
 ## Examples
 
 ### Example A: Normal Match
