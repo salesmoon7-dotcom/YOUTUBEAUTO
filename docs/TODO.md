@@ -55,6 +55,9 @@
   - `stage1_handoff.contract`는 이제 항상 `stage1_handoff.v1.0` + `voice_texts/ref_img_1/ref_img_2`를 포함합니다.
   - live `browser_evidence(service=chatgpt, port)`는 `raw_output.json.gpt_capture`를 남기고, 실패 시 fail-close 됩니다.
   - `system/runtime_v2_probe/first-test-real-live-06/` 기준 실제 live 시도는 `CHATGPT_BACKEND_UNAVAILABLE`로 fail-close 되었고, evidence chain은 남았습니다.
+  - live ChatGPT 경로는 legacy-style longform production prompt를 canonical builder로 사용합니다.
+  - `AgentBrowserCdpBackend`는 `tab preselect + retry` 하드닝이 반영되었습니다.
+  - `system/runtime_v2_probe/first-test-real-live-08/` 기준으로는 queue가 `running`까지 진입했지만 성공 artifact는 아직 생성되지 않았습니다.
   - 남은 핵심은 real assistant artifact를 성공으로 다시 확보하는 것입니다.
   - `1차 테스트`는 그 계층이 닫힌 뒤 `mock -> smoke -> real` 순서로 다시 진행합니다.
 - 새 준비 보완 계획: `docs/plans/2026-03-10-runtime-v2-subprogram-gap-analysis-plan.md`

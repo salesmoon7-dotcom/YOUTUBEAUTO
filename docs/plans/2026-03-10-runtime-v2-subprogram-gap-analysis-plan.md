@@ -259,3 +259,5 @@ Focus:
 - `runtime_v2/stage1/handoff_schema.py`가 `version`을 항상 `stage1_handoff.v1.0`으로 정규화하도록 보강했습니다.
 - `run_stage1_chatgpt_job()` 결과의 `stage1_handoff.contract`는 이제 `voice_texts`, `ref_img_1`, `ref_img_2`를 항상 포함합니다.
 - 따라서 GPT Field Matrix의 “필수 필드 존재”는 현재 코드 산출물 기준으로 증명 가능합니다.
+- live ChatGPT prompt는 이제 legacy-style longform production template를 canonical builder로 사용합니다.
+- backend hardening(`tab preselect + retry`)까지 반영했지만, `real-first`는 아직 success가 아니라 running/hang 상태까지가 최신입니다.

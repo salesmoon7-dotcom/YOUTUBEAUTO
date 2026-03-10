@@ -155,6 +155,11 @@
     - verdict: `CHATGPT_BACKEND_UNAVAILABLE` fail-close
     - browser/gpt floor 자체는 healthy였지만, 실제 ChatGPT submit 경로에서 `os error 10060`이 재현되었습니다.
     - 따라서 real-first gate는 아직 `No`, but evidence chain is now preserved even on failure.
+  - prompt alignment applied: live ChatGPT 경로는 이제 legacy-style longform production prompt(`영상 제작 모드`, `가이드 최종 출력 포맷`, `[Voice]` 시작, `Research Locale: JP`, `Topic: ...`)를 canonical builder로 생성해 전송합니다.
+  - backend hardening applied: `AgentBrowserCdpBackend`는 `tab list -> best tab select -> tab <idx> -> eval` 흐름과 retryable `os error 10060/timeout` 재시도를 사용합니다.
+  - post-hardening execution attempted: `system/runtime_v2_probe/first-test-real-live-08/`
+    - queue는 `running`까지 진입해 이전보다 깊게 들어갔습니다.
+    - 하지만 성공 artifact는 아직 생성하지 못해, depth 증가와 잔여 blocker를 동시에 확인했습니다.
 
 ### Phase 4. Test order
 
