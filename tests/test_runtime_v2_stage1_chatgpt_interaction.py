@@ -173,6 +173,51 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertTrue(bool(submit_evidence["in_flight_observed"]))
         self.assertFalse(bool(submit_evidence["terminal_success_observed"]))
 
+    def test_no_send_but_stop_visible_is_treated_as_in_flight_submit(self) -> None:
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["button[data-testid='send-button']"],
+            stop_selectors=["button[data-testid='stop-button']"],
+            response_selectors=["[data-message-author-role='assistant']"],
+            command_runner=lambda command, timeout_sec: json.dumps(
+                {
+                    "ok": True,
+                    "inputSelector": "#prompt-textarea",
+                    "sendClicked": False,
+                    "submitEvidence": {
+                        "pre": {
+                            "send_found": False,
+                            "send_disabled": False,
+                            "in_flight_marker": True,
+                        },
+                        "post": {
+                            "send_found": False,
+                            "send_disabled": False,
+                            "in_flight_marker": True,
+                        },
+                        "in_flight_observed": True,
+                        "terminal_success_observed": False,
+                        "state_transition": True,
+                    },
+                }
+            )
+            if command[-2] == "eval"
+            else "ok",
+        )
+
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
+            return_value=[{"title": "ChatGPT", "url": "https://chatgpt.com/c/abc"}],
+        ):
+            result = backend.submit_prompt("hello")
+
+        self.assertTrue(bool(result["ok"]))
+        submit_evidence = cast(dict[str, object], result["submit_evidence"])
+        self.assertEqual(submit_evidence["classification"], "ambiguous")
+        self.assertTrue(bool(submit_evidence["in_flight_observed"]))
+        self.assertFalse(bool(submit_evidence["retry_safe_decision"]))
+
     def test_agent_browser_backend_falls_back_to_http_tab_index_when_tab_list_fails(
         self,
     ) -> None:
@@ -271,6 +316,36 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
         self.assertTrue(bool(result["ok"]))
         self.assertEqual(eval_calls, 2)
+
+    def test_raw_cdp_method_timeout_is_wrapped_as_runtime_error(self) -> None:
+        from runtime_v2.stage1 import chatgpt_backend as backend_module
+
+        class _FakeSocket:
+            def send(self, payload: str) -> None:
+                _ = payload
+
+            def recv(self) -> str:
+                raise subprocess.TimeoutExpired(cmd=["ws"], timeout=30)
+
+            def close(self) -> None:
+                return None
+
+        with (
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend.websocket.create_connection",
+                return_value=_FakeSocket(),
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend.websocket.WebSocketTimeoutException",
+                new=TimeoutError,
+            ),
+        ):
+            with self.assertRaises(RuntimeError):
+                backend_module._run_raw_cdp_method(
+                    "ws://127.0.0.1/devtools/page/test",
+                    "Page.navigate",
+                    {"url": "https://chatgpt.com"},
+                )
 
     def test_agent_browser_backend_falls_back_to_raw_cdp_eval_after_retry_failures(
         self,

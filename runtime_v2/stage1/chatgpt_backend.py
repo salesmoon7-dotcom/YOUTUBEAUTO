@@ -59,6 +59,7 @@ class AgentBrowserCdpBackend:
                 "prompt": prompt,
                 "inputSelectors": self._input_selectors,
                 "sendSelectors": self._send_selectors,
+                "stopSelectors": self._stop_selectors,
             },
             ensure_ascii=False,
         )
@@ -236,6 +237,7 @@ def _submit_script(payload: str) -> str:
         f"const config = {payload};"
         "const selectors = config.inputSelectors || [];"
         "const sendSelectors = config.sendSelectors || [];"
+        "const stopSelectors = config.stopSelectors || [];"
         "let input = null;"
         "for (const selector of selectors) { input = document.querySelector(selector); if (input) break; }"
         "if (!input) return JSON.stringify({ok:false,error:'NO_INPUT'});"
@@ -257,6 +259,7 @@ def _submit_script(payload: str) -> str:
         "  const inFlight = !!(candidate.querySelector && candidate.querySelector('[role=\"progressbar\"], .spinner, .loading')) || className.toLowerCase().includes('loading') || ariaBusy === 'true';"
         "  return {send_found:true, send_disabled:!!candidate.disabled, aria_disabled:ariaDisabled, aria_busy:ariaBusy, class_name:className, button_text:String(candidate.innerText || candidate.textContent || candidate.value || '').trim(), pointer_events:String((window.getComputedStyle && window.getComputedStyle(candidate).pointerEvents) || ''), visible:!!candidate.offsetParent, is_connected:!!candidate.isConnected, in_flight_marker:inFlight, state_transition:false, retry_safe:!candidate.disabled && !inFlight};"
         "};"
+        "const stopVisible = () => stopSelectors.some(selector => { const el = document.querySelector(selector); return !!(el && el.offsetParent !== null); });"
         "let send = null;"
         "for (const selector of sendSelectors) {"
         "  const candidate = document.querySelector(selector);"
@@ -265,8 +268,8 @@ def _submit_script(payload: str) -> str:
         "  send = candidate;"
         "  break;"
         "}"
-        "if (!send) return JSON.stringify({ok:false,error:'NO_SEND',noSendEvidence:snapshot(null)});"
-        "if (send.disabled) return JSON.stringify({ok:false,error:'SEND_DISABLED',noSendEvidence:snapshot(send)});"
+        "if (!send) { const evidence = snapshot(null); evidence.in_flight_marker = stopVisible(); evidence.state_transition = evidence.in_flight_marker; evidence.retry_safe = !evidence.in_flight_marker; if (evidence.in_flight_marker) return JSON.stringify({ok:true,inputSelector: selectors.find(s => document.querySelector(s)===input) || '', sendClicked:false, sendTestId:'', sendAriaLabel:'', submitEvidence:{pre:evidence, post:evidence, in_flight_observed:true, terminal_success_observed:false, state_transition:true}}); return JSON.stringify({ok:false,error:'NO_SEND',noSendEvidence:evidence}); }"
+        "if (send.disabled) { const evidence = snapshot(send); evidence.in_flight_marker = evidence.in_flight_marker || stopVisible(); evidence.state_transition = evidence.in_flight_marker; evidence.retry_safe = !evidence.in_flight_marker; if (evidence.in_flight_marker) return JSON.stringify({ok:true,inputSelector: selectors.find(s => document.querySelector(s)===input) || '', sendClicked:false, sendTestId: send.getAttribute ? (send.getAttribute('data-testid') || '') : '', sendAriaLabel: send.getAttribute ? (send.getAttribute('aria-label') || '') : '', submitEvidence:{pre:evidence, post:evidence, in_flight_observed:true, terminal_success_observed:false, state_transition:true}}); return JSON.stringify({ok:false,error:'SEND_DISABLED',noSendEvidence:evidence}); }"
         "['pointerdown','mousedown','pointerup','mouseup','click'].forEach(type => send.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,view:window})));"
         "if (typeof send.click === 'function') send.click();"
         "input.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,key:'Enter',code:'Enter'}));"
@@ -422,30 +425,35 @@ def _select_generic_chatgpt_target(port: int) -> dict[str, str] | None:
 def _run_raw_cdp_method(
     ws_url: str, method: str, params: dict[str, object]
 ) -> dict[str, object]:
-    ws = websocket.create_connection(ws_url, timeout=30, suppress_origin=True)
     try:
-        ws.send(
-            json.dumps(
-                {
-                    "id": 1,
-                    "method": method,
-                    "params": params,
-                },
-                ensure_ascii=True,
+        ws = websocket.create_connection(ws_url, timeout=30, suppress_origin=True)
+        try:
+            ws.send(
+                json.dumps(
+                    {
+                        "id": 1,
+                        "method": method,
+                        "params": params,
+                    },
+                    ensure_ascii=True,
+                )
             )
-        )
-        while True:
-            response = json.loads(ws.recv())
-            if response.get("id") != 1:
-                continue
-            if not isinstance(response, dict):
-                raise RuntimeError("CDP_METHOD_INVALID")
-            if response.get("error") is not None:
-                raise RuntimeError("CDP_METHOD_ERROR")
-            result = response.get("result", {})
-            return result if isinstance(result, dict) else {}
-    finally:
-        ws.close()
+            while True:
+                response = json.loads(ws.recv())
+                if response.get("id") != 1:
+                    continue
+                if not isinstance(response, dict):
+                    raise RuntimeError("CDP_METHOD_INVALID")
+                if response.get("error") is not None:
+                    raise RuntimeError("CDP_METHOD_ERROR")
+                result = response.get("result", {})
+                return result if isinstance(result, dict) else {}
+        finally:
+            ws.close()
+    except websocket.WebSocketTimeoutException as exc:
+        raise RuntimeError("CDP_METHOD_TIMEOUT") from exc
+    except OSError as exc:
+        raise RuntimeError(str(exc)) from exc
 
 
 def _run_raw_cdp_eval(ws_url: str, script: str) -> str:
