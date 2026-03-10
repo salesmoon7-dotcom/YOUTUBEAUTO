@@ -79,10 +79,10 @@
     - `SeaArt` -> `Functionally-verified`
     - `Genspark` -> `Functionally-verified`
     - `Canva` -> `Functionally-verified`
-    - `TTS` -> `Functionally-verified (exploratory evidence)`
+    - `TTS` -> `Functionally-verified`
     - `GeminiGen` -> mostly `Contract-verified`
     - `Kenburn` -> `Functionally-verified`
-    - `RVC` -> `Functionally-verified (exploratory evidence)`
+    - `RVC` -> `Functionally-verified`
   - 따라서 비-GPT도 아직 전체 완료가 아니며, 서비스별 functional evidence를 더 확보해야 합니다.
   - `TTS`, `RVC` canonical worker는 이제 자체 adapter child를 자동 생성할 수 있지만, 실제 기능 evidence는 아직 exploratory 수준입니다.
   - 공통 `adapter failure matrix` 1차는 반영되었습니다.

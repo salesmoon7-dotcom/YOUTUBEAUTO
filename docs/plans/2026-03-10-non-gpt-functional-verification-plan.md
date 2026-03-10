@@ -111,8 +111,8 @@
 
 #### Current status
 
-- `Functionally-verified (exploratory evidence)`
-- canonical worker adoption: complete (`runtime_v2` worker now auto-builds the CLI adapter-child path when `service_artifact_path` is present)
+- `Functionally-verified`
+- canonical worker adoption: complete (`system/runtime_v2_probe/qwen3-canonical-03/`)
 
 ### GeminiGen
 
@@ -193,8 +193,8 @@
 
 #### Current status
 
-- `Functionally-verified (exploratory evidence)`
-- canonical worker adoption: complete (`runtime_v2` worker now auto-builds the CLI adapter-child path when `service_artifact_path` is present)
+- `Functionally-verified`
+- canonical worker adoption: complete (`system/runtime_v2_probe/rvc-canonical-04/`)
 
 ## Execution Order
 
