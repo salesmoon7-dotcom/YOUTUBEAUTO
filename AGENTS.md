@@ -4,7 +4,7 @@ This file is a router, not a full manual.
 
 ## Core Rules
 - Read `CLAUDE.md` first. It contains universal safety and execution rules.
-- Keep instructions concise in top-level files; store details in `docs/`.
+- Keep top-level files short; use `docs/INDEX.md` as the main navigation map for deeper project context.
 - Prefer deterministic checks (lint/test/type/build) over prompt-only guidance.
 
 ## Canonical Docs (System of Record)
@@ -19,7 +19,7 @@ This file is a router, not a full manual.
 - `docs/sop/SOP_24h_runtime_stability_and_gpu_gates.md` - 24h 브라우저 상시가동, GPU 중복실행 금지, GPT floor 자동복구 기준
 
 ## Task Routing
-- For any prompt, load the skill routing defaults from `docs/sop/SOP_skill_auto_loading.md` first and auto-apply installed skills based on intent.
+- For any prompt, load the skill routing defaults from `docs/sop/SOP_skill_auto_loading.md` first and use `docs/INDEX.md` for deeper canonical links.
 - For closed-loop development automation, use `docs/sop/SOP_closed_loop_automation_skill_map.md` as the canonical skill bundle map.
 - For ANY Git work related to remote setup, status review, staging, commit, rebase, or push: read `docs/sop/SOP_git_online_commit_workflow.md` first.
 - For `runtime_v2` planning, implementation, and debugging: read `docs/sop/SOP_runtime_v2_development_guardrails.md` first, then the relevant `docs/plans/*.md` or `docs/sop/*.md`.
@@ -28,7 +28,6 @@ This file is a router, not a full manual.
 - For project policy updates: update docs first, keep `CLAUDE.md` minimal.
 
 ## Verification
-- Do not claim completion without command evidence.
 - After edits, run diagnostics + relevant tests + build/typecheck when applicable.
 - For `runtime_v2` work, run `verify-implementation` as the default session-end verification gate before claiming completion.
 - Search must converge: after confirming 2 relevant signatures/patterns, propose exactly 1 fix path and execute it immediately.
