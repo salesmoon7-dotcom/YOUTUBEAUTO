@@ -58,6 +58,23 @@ class RuntimeV2DebugLogTests(unittest.TestCase):
         self.assertEqual(summary["error_code"], "BROWSER_BLOCKED")
         self.assertEqual(summary["raw_error_code"], "BROWSER_BLOCKED")
 
+    def test_summarize_runtime_result_keeps_resolved_fallback_when_worker_result_missing(
+        self,
+    ) -> None:
+        summary = summarize_runtime_result(
+            {
+                "status": "failed",
+                "result": {
+                    "status": "failed",
+                    "stage": "browser_recover",
+                    "error_code": "BROWSER_RESTART_EXHAUSTED",
+                },
+            }
+        )
+
+        self.assertEqual(summary["error_code"], "BROWSER_RESTART_EXHAUSTED")
+        self.assertEqual(summary["raw_error_code"], "BROWSER_RESTART_EXHAUSTED")
+
 
 if __name__ == "__main__":
     _ = unittest.main()
