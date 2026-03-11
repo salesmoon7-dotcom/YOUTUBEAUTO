@@ -15,7 +15,7 @@ from runtime_v2 import exit_codes
 from runtime_v2.bootstrap import ensure_runtime_bootstrap
 from runtime_v2.browser.manager import BrowserManager, open_browser_for_login
 from runtime_v2.browser.supervisor import BrowserSupervisor
-from runtime_v2.config import RuntimeConfig, WorkloadName
+from runtime_v2.config import RuntimeConfig, WorkloadName, probe_runtime_root
 from runtime_v2.contracts.job_contract import JobContract, build_explicit_job_contract
 from runtime_v2.control_plane import run_control_loop_once
 from runtime_v2.contracts.json_contract import (
@@ -728,7 +728,7 @@ def _probe_root_path(raw_probe_root: str) -> Path:
     probe_root = raw_probe_root.strip()
     if probe_root:
         return Path(probe_root)
-    return Path("system/runtime_v2_probe") / str(uuid4())
+    return probe_runtime_root() / str(uuid4())
 
 
 def _runtime_root_path(raw_runtime_root: str) -> Path | None:

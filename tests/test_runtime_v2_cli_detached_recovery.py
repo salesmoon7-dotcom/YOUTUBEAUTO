@@ -7,11 +7,21 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from runtime_v2 import exit_codes
-from runtime_v2.cli import CliArgs, _run_browser_recovery_probe, _spawn_detached_probe
-from runtime_v2.config import RuntimeConfig
+from runtime_v2.cli import (
+    CliArgs,
+    _probe_root_path,
+    _run_browser_recovery_probe,
+    _spawn_detached_probe,
+)
+from runtime_v2.config import RuntimeConfig, probe_runtime_root
 
 
 class RuntimeV2CliDetachedRecoveryTests(unittest.TestCase):
+    def test_probe_root_path_uses_external_probe_root_by_default(self) -> None:
+        expected_parent = probe_runtime_root()
+        actual = _probe_root_path("")
+        self.assertEqual(actual.parent, expected_parent)
+
     def test_spawn_detached_probe_uses_browser_recovery_child_flag(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
