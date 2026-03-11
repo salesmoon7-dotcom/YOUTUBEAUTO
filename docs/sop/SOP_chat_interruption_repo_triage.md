@@ -33,3 +33,5 @@
 - probe/evidence 조사가 목적일 때만 generated tree를 명시적으로 다시 포함합니다.
 - 과거 probe evidence의 기본 legacy 위치는 `D:/YOUTUBEAUTO_RUNTIME/probe/legacy_runtime_v2_probe/`입니다.
 - `runtime_v2` 채팅 세션에서 long/file-level foreground pytest는 triage 완료 전 기본 금지입니다.
+- repo-root dependency triage는 최소 4개 표면을 구분해 봅니다: browser session root, runtime state files, worker artifact/output paths, test temp roots.
+- browser session root가 외부화되었다고 해서 runtime state/artifact 기본값까지 외부화되었다고 가정하지 않습니다.

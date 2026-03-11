@@ -68,6 +68,15 @@
 - 예외: evidence/probe 조사 자체가 목적일 때만 생성 트리까지 명시적으로 확장합니다.
 - lag/interruption 의심 시에는 source-only + interrupt-safe를 동시에 기본값으로 적용합니다.
 
+## Repo-Root Dependency Diagnosis Rule
+
+- repo-root 의존 평가는 한 덩어리로 말하지 않습니다. 최소 아래 4개 표면으로 나눠 판정합니다.
+  - browser session root
+  - runtime state/evidence files
+  - worker artifact/output defaults
+  - test temp roots
+- browser session 외부화가 완료되더라도 runtime state/evidence/artifact 기본값이 repo-root에 남아 있을 수 있습니다. 이 혼합 상태를 한 문장으로 과장하지 않습니다.
+
 
 ## Non-Negotiable Guardrails
 
