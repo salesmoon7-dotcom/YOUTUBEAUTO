@@ -63,8 +63,24 @@ class AgentBrowserCdpBackend:
             },
             ensure_ascii=False,
         )
-        result = self._run_eval_with_retry(_submit_script(payload))
-        parsed = _decode_backend_json(result)
+        parsed: dict[str, object] = {}
+        preflight_status: dict[str, object] = {}
+        for _attempt in range(10):
+            try:
+                preflight_status = self._wait_for_input_ready()
+            except RuntimeError:
+                pass
+            result = self._run_eval_with_retry(_submit_script(payload))
+            parsed = _decode_backend_json(result)
+            if str(parsed.get("error", "")) != "NO_INPUT":
+                break
+            if preflight_status:
+                parsed.setdefault("preflight_status", preflight_status)
+            try:
+                self._ensure_custom_gpt_page()
+            except RuntimeError:
+                pass
+            time.sleep(2.0)
         if not bool(parsed.get("ok", False)):
             error = str(parsed.get("error", "chatgpt_submit_failed"))
             no_send_evidence = _normalized_no_send_evidence(parsed)
@@ -73,6 +89,8 @@ class AgentBrowserCdpBackend:
                 parsed=parsed,
                 no_send_evidence=no_send_evidence,
             )
+            if preflight_status:
+                submit_evidence["preflight_status"] = preflight_status
             if error in {"NO_SEND", "SEND_DISABLED"} and bool(
                 no_send_evidence.get("retry_safe", False)
             ):
@@ -115,10 +133,22 @@ class AgentBrowserCdpBackend:
         )
         return parsed
 
+    def _wait_for_input_ready(self) -> dict[str, object]:
+        last_status: dict[str, object] = {}
+        for _attempt in range(10):
+            result = self._run_eval_with_retry(_input_ready_script())
+            parsed = _decode_backend_json(result)
+            last_status = parsed
+            if bool(parsed.get("ready", False)):
+                return parsed
+            time.sleep(1.0)
+        return last_status
+
     def read_response_state(self) -> dict[str, object]:
         payload = json.dumps(
             {
                 "stopSelectors": self._stop_selectors,
+                "sendSelectors": self._send_selectors,
                 "responseSelectors": self._response_selectors,
             },
             ensure_ascii=False,
@@ -127,8 +157,10 @@ class AgentBrowserCdpBackend:
         parsed = _decode_backend_json(result)
         return {
             "has_stop": bool(parsed.get("has_stop", False)),
+            "has_send_button": bool(parsed.get("has_send_button", False)),
             "assistant_text": str(parsed.get("assistant_text", "")),
             "assistant_block_count": parsed.get("assistant_block_count", 0),
+            "legacy_blocks": parsed.get("legacy_blocks", []),
             "selected_tab": self._current_selected_tab(),
             "backend_fallbacks": self._fallback_events_payload(),
         }
@@ -238,8 +270,13 @@ def _submit_script(payload: str) -> str:
         "const selectors = config.inputSelectors || [];"
         "const sendSelectors = config.sendSelectors || [];"
         "const stopSelectors = config.stopSelectors || [];"
+        "document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));"
+        "const closeSelectors=['button[aria-label=\"닫기\"]','button[aria-label=\"Close\"]','button[aria-label*=\"close\"]','button[aria-label*=\"dismiss\"]','.modal-close','[data-testid*=\"close\"]','[data-testid*=\"dismiss\"]'];"
+        "for (const selector of closeSelectors) { for (const btn of Array.from(document.querySelectorAll(selector))) { try { const visible = !!btn && !!btn.isConnected && (((btn.getClientRects && btn.getClientRects().length > 0)) || btn.offsetParent !== null); if (visible) btn.click(); } catch (_) {} } }"
         "let input = null;"
-        "for (const selector of selectors) { input = document.querySelector(selector); if (input) break; }"
+        "for (const selector of selectors) { const candidate = document.querySelector(selector); const visible = !!candidate && !!candidate.isConnected && (((candidate.getClientRects && candidate.getClientRects().length > 0)) || candidate.offsetParent !== null); if (visible) { input = candidate; break; } }"
+        "if (!input) { const chatInput = document.querySelector('[data-testid=\"chat-input\"]'); if (chatInput) { const editor = chatInput.querySelector('.ProseMirror, [contenteditable=\"true\"]'); const visible = !!editor && !!editor.isConnected && (((editor.getClientRects && editor.getClientRects().length > 0)) || editor.offsetParent !== null); if (visible) input = editor; } }"
+        "if (!input) { const editors = Array.from(document.querySelectorAll('[contenteditable=\"true\"]')).filter((el) => el && el.isConnected && (((el.getClientRects && el.getClientRects().length > 0)) || el.offsetParent !== null) && !el.closest('article') && !el.closest('[data-message-author-role=\"assistant\"]')); if (editors.length) input = editors[0]; }"
         "if (!input) return JSON.stringify({ok:false,error:'NO_INPUT'});"
         "input.focus();"
         "if (input.classList && input.classList.contains('ProseMirror')) {"
@@ -285,8 +322,12 @@ def _response_script(payload: str) -> str:
         "(() => {"
         f"const config = {payload};"
         "const stopSelectors = config.stopSelectors || [];"
+        "const sendSelectors = config.sendSelectors || [];"
         "const responseSelectors = config.responseSelectors || [];"
-        "const hasStop = stopSelectors.some(selector => { const el = document.querySelector(selector); return !!(el && el.offsetParent !== null); });"
+        "let hasStop = stopSelectors.some(selector => { const el = document.querySelector(selector); return !!(el && el.offsetParent !== null); });"
+        "let hasSendButton = sendSelectors.some(selector => { const el = document.querySelector(selector); return !!(el && el.offsetParent !== null && !el.disabled); });"
+        "const composerBtn = document.getElementById('composer-submit-button');"
+        "if (composerBtn) { const ariaLabel = (composerBtn.getAttribute('aria-label') || '').toLowerCase(); if (!hasStop && (ariaLabel.includes('중지') || ariaLabel.includes('stop'))) hasStop = true; if (!hasSendButton && (ariaLabel.includes('전송') || ariaLabel.includes('send'))) hasSendButton = true; }"
         "let blocks = [];"
         "for (const selector of responseSelectors) { blocks = Array.from(document.querySelectorAll(selector)); if (blocks.length) break; }"
         "const assistantBlocks = blocks.filter(el => !el.closest('form'));"
@@ -294,7 +335,21 @@ def _response_script(payload: str) -> str:
         "const text = last ? ((last.innerText || last.textContent || '').trim()) : '';"
         "const legacyLabels = ['[Voice]','[Title]','[Title for Thumb]','[Description]','[Keywords]','[BGM]','[URL]','[Ref Img 1]','[Ref Img 2]','[Shorts Description]','[Shorts Voice]','[Shorts Clip Mapping]'];"
         "const legacyBlocks = Array.from(document.querySelectorAll('p')).map((p)=>{ const label=(p.innerText||p.textContent||'').trim(); if(!(legacyLabels.includes(label) || /^\\[Video\\d+/.test(label) || /^\\[#\\d+/.test(label))) return null; let next=p.nextElementSibling; while(next && next.tagName!=='PRE') next=next.nextElementSibling; return {label, body: next ? ((next.innerText||next.textContent||'').trim()) : ''}; }).filter(Boolean);"
-        "return JSON.stringify({has_stop: hasStop, assistant_block_count: assistantBlocks.length, assistant_text: text, legacy_blocks: legacyBlocks});"
+        "return JSON.stringify({has_stop: hasStop, has_send_button: hasSendButton, assistant_block_count: assistantBlocks.length, assistant_text: text, legacy_blocks: legacyBlocks});"
+        "})()"
+    )
+
+
+def _input_ready_script() -> str:
+    return (
+        "(() => {"
+        "const interactive = document.querySelector('[data-testid=\"prompt-input-ssr-interactive\"]');"
+        "const ssr = document.querySelector('[data-testid=\"chat-input-ssr\"]');"
+        "const chatInput = document.querySelector('[data-testid=\"chat-input\"]');"
+        "const proseMirror = document.querySelector('.ProseMirror[contenteditable=\"true\"]');"
+        "const visible = (el) => !!el && !!el.isConnected && (((el.getClientRects && el.getClientRects().length > 0)) || el.offsetParent !== null);"
+        "const ready = visible(proseMirror) || visible(interactive) || (!!chatInput && !ssr);"
+        "return JSON.stringify({ready, hasInteractive: !!interactive, hasSsr: !!ssr, hasChatInput: !!chatInput, hasProseMirror: !!proseMirror});"
         "})()"
     )
 

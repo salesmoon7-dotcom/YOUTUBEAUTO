@@ -51,6 +51,8 @@ def generate_gpt_response_text(
     port: int = 9222,
     timeout_sec: int = 180,
     poll_interval_sec: float = 2.0,
+    completion_idle_sec: float = 10.0,
+    response_start_timeout_sec: float = 30.0,
     command_runner: Callable[[list[str], int], str] | None = None,
     session_probe: Callable[[int], dict[str, object]] | None = None,
     backend: ChatGPTBackend | None = None,
@@ -140,15 +142,33 @@ def generate_gpt_response_text(
         stable_count = 0
         saw_streaming = False
         last_state: dict[str, object] = {}
+        last_activity_ts = time.time()
+        consecutive_read_failures = 0
         while time.time() - started < timeout_sec:
             try:
                 state = interaction_backend.read_response_state()
+                consecutive_read_failures = 0
             except RuntimeError as exc:
+                backend_error = str(exc)
                 emit("read_failed", attempt=attempt, backend="chatgpt_backend")
+                if (
+                    "timeout" in backend_error.lower()
+                    and consecutive_read_failures < 3
+                    and time.time() - started < timeout_sec
+                ):
+                    consecutive_read_failures += 1
+                    emit(
+                        "read_retry",
+                        attempt=attempt,
+                        backend="chatgpt_backend",
+                        reason=backend_error,
+                    )
+                    time.sleep(poll_interval_sec)
+                    continue
                 failed = _interaction_failure(
                     failure_stage="read",
                     error_code="CHATGPT_BACKEND_UNAVAILABLE",
-                    backend_error=str(exc),
+                    backend_error=backend_error,
                     submit_info=submit_info,
                     final_state=probe(port),
                 )
@@ -171,7 +191,10 @@ def generate_gpt_response_text(
                     reason=fallback,
                 )
             text = str(state.get("assistant_text", "")).strip()
+            legacy_blocks = state.get("legacy_blocks", [])
+            response_text = _response_text_from_state(text, legacy_blocks)
             has_stop = bool(state.get("has_stop", False))
+            has_send_button = bool(state.get("has_send_button", False))
             if has_stop:
                 if not saw_streaming:
                     emit("streaming_seen", attempt=attempt, backend="chatgpt_backend")
@@ -182,14 +205,16 @@ def generate_gpt_response_text(
                         reason="streaming_active",
                     )
                 saw_streaming = True
-            if text and not has_stop and saw_streaming:
-                if text == last_text:
+                last_activity_ts = time.time()
+            if response_text and not has_stop and saw_streaming:
+                if response_text == last_text:
                     stable_count += 1
                 else:
                     stable_count = 0
-                last_text = text
-                if stable_count >= 1:
-                    legacy_blocks = state.get("legacy_blocks", [])
+                    last_activity_ts = time.time()
+                last_text = response_text
+                idle_elapsed = time.time() - last_activity_ts
+                if stable_count >= 1 and idle_elapsed >= completion_idle_sec:
                     emit(
                         "response_stable",
                         attempt=attempt,
@@ -198,7 +223,7 @@ def generate_gpt_response_text(
                     )
                     result: dict[str, object] = {
                         "status": "ok",
-                        "response_text": _response_text_from_state(text, legacy_blocks),
+                        "response_text": response_text,
                         "submit_info": submit_info,
                         "submit_evidence": submit_evidence,
                         "final_state": state,
@@ -211,6 +236,25 @@ def generate_gpt_response_text(
                     )
                     result["timeline"] = timeline
                     return result
+            if (
+                not saw_streaming
+                and not text
+                and time.time() - started >= response_start_timeout_sec
+            ):
+                emit(
+                    "response_not_started",
+                    attempt=attempt,
+                    backend="chatgpt_backend",
+                )
+                if attempt == 1 and relaunch_browser is not None:
+                    emit(
+                        "retry_decision",
+                        attempt=attempt,
+                        backend="chatgpt_backend",
+                        reason="response_not_started",
+                    )
+                    relaunch_browser()
+                    break
             time.sleep(poll_interval_sec)
         else:
             emit(

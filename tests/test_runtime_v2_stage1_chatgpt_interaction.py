@@ -634,6 +634,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             prompt="test prompt",
             port=9222,
             poll_interval_sec=0.01,
+            completion_idle_sec=0.01,
             backend=FakeBackend(),
         )
 
@@ -657,11 +658,13 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                 if self.read_calls <= 2:
                     return {
                         "has_stop": True,
+                        "has_send_button": False,
                         "assistant_block_count": 1,
                         "assistant_text": "draft",
                     }
                 return {
                     "has_stop": False,
+                    "has_send_button": True,
                     "assistant_block_count": 1,
                     "assistant_text": "final json",
                 }
@@ -670,6 +673,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             prompt="test prompt",
             port=9222,
             poll_interval_sec=0.01,
+            completion_idle_sec=0.01,
             backend=FakeBackend(),
         )
 
@@ -697,6 +701,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             def read_response_state(self) -> dict[str, object]:
                 return {
                     "has_stop": False,
+                    "has_send_button": False,
                     "assistant_block_count": 1,
                     "assistant_text": "final json",
                 }
@@ -706,6 +711,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             port=9222,
             timeout_sec=1,
             poll_interval_sec=0.01,
+            completion_idle_sec=0.01,
             backend=FakeBackend(),
         )
 
@@ -732,6 +738,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             prompt="test prompt",
             port=9222,
             poll_interval_sec=0.01,
+            completion_idle_sec=0.01,
             session_probe=fake_probe,
             backend=FakeBackend(),
         )
@@ -847,6 +854,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             prompt="test prompt",
             port=9222,
             poll_interval_sec=0.01,
+            completion_idle_sec=0.01,
             session_probe=fake_probe,
             backend=FakeBackend(),
             relaunch_browser=lambda: relaunch_calls.append("chatgpt"),
@@ -905,6 +913,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             prompt="test prompt",
             port=9222,
             poll_interval_sec=0.01,
+            completion_idle_sec=0.01,
             session_probe=fake_probe,
             backend=backend,
             relaunch_browser=lambda: relaunch_calls.append("chatgpt"),
@@ -959,6 +968,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             prompt="test prompt",
             port=9222,
             poll_interval_sec=0.01,
+            completion_idle_sec=0.01,
             session_probe=fake_probe,
             backend=backend,
             relaunch_browser=lambda: relaunch_calls.append("chatgpt"),
@@ -973,6 +983,91 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(relaunch_calls, [])
         self.assertNotIn("retry_decision", event_names)
         self.assertEqual(event_names[-1], "final_state")
+
+    def test_generate_gpt_response_text_retries_transient_read_timeout(self) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def __init__(self) -> None:
+                self.read_calls = 0
+
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                return {
+                    "ok": True,
+                    "inputSelector": "#prompt-textarea",
+                    "sendClicked": True,
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                self.read_calls += 1
+                if self.read_calls == 1:
+                    raise RuntimeError("CDP_METHOD_TIMEOUT")
+                if self.read_calls == 2:
+                    return {
+                        "has_stop": True,
+                        "has_send_button": False,
+                        "assistant_block_count": 1,
+                        "assistant_text": "draft",
+                    }
+                return {
+                    "has_stop": False,
+                    "has_send_button": True,
+                    "assistant_block_count": 1,
+                    "assistant_text": "final json",
+                }
+
+        result = generate_gpt_response_text(
+            prompt="test prompt",
+            port=9222,
+            poll_interval_sec=0.01,
+            completion_idle_sec=0.01,
+            backend=FakeBackend(),
+        )
+
+        self.assertEqual(result["status"], "ok")
+        timeline = cast(list[dict[str, object]], result["timeline"])
+        event_names = [str(item["event"]) for item in timeline]
+        self.assertIn("read_retry", event_names)
+
+    def test_generate_gpt_response_text_retries_when_response_never_starts(
+        self,
+    ) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def __init__(self) -> None:
+                self.submit_calls = 0
+
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                self.submit_calls += 1
+                return {
+                    "ok": True,
+                    "inputSelector": "#prompt-textarea",
+                    "sendClicked": True,
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                return {
+                    "has_stop": False,
+                    "has_send_button": False,
+                    "assistant_block_count": 0,
+                    "assistant_text": "",
+                }
+
+        relaunch_calls: list[str] = []
+        result = generate_gpt_response_text(
+            prompt="test prompt",
+            port=9222,
+            timeout_sec=1,
+            poll_interval_sec=0.01,
+            response_start_timeout_sec=0.03,
+            completion_idle_sec=0.01,
+            backend=FakeBackend(),
+            relaunch_browser=lambda: relaunch_calls.append("chatgpt"),
+        )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(relaunch_calls, ["chatgpt"])
+        timeline = cast(list[dict[str, object]], result["timeline"])
+        event_names = [str(item["event"]) for item in timeline]
+        self.assertIn("response_not_started", event_names)
+        self.assertIn("retry_decision", event_names)
 
 
 if __name__ == "__main__":
