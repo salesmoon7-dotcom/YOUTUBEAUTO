@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace as dataclass_replace
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -26,6 +27,8 @@ WorkloadName = Literal[
     "render",
 ]
 WorkloadKind = Literal["gpu", "browser", "local"]
+
+WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 
 
 WORKLOAD_KINDS: dict[WorkloadName, WorkloadKind] = {
@@ -83,6 +86,36 @@ def required_browser_services(workload: WorkloadName) -> tuple[str, ...]:
 
 def allowed_workloads() -> tuple[WorkloadName, ...]:
     return tuple(WORKLOAD_KINDS.keys())
+
+
+def external_runtime_root() -> Path:
+    override = os.environ.get("RUNTIME_V2_EXTERNAL_ROOT", "").strip()
+    if override:
+        return Path(override).resolve()
+    if WORKSPACE_ROOT.drive:
+        return Path(f"{WORKSPACE_ROOT.drive}\\YOUTUBEAUTO_RUNTIME").resolve()
+    return (WORKSPACE_ROOT.parent / "YOUTUBEAUTO_RUNTIME").resolve()
+
+
+def browser_session_root() -> Path:
+    override = os.environ.get("RUNTIME_V2_SESSION_ROOT", "").strip()
+    if override:
+        return Path(override).resolve()
+    return (external_runtime_root() / "sessions").resolve()
+
+
+def probe_runtime_root() -> Path:
+    override = os.environ.get("RUNTIME_V2_PROBE_ROOT", "").strip()
+    if override:
+        return Path(override).resolve()
+    return (external_runtime_root() / "probe").resolve()
+
+
+def runtime_scratch_root() -> Path:
+    override = os.environ.get("RUNTIME_V2_SCRATCH_ROOT", "").strip()
+    if override:
+        return Path(override).resolve()
+    return (external_runtime_root() / "scratch").resolve()
 
 
 @dataclass(slots=True)
