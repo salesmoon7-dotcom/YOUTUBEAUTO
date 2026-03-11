@@ -16,7 +16,7 @@ from runtime_v2.control_plane_feeder import (
     seed_local_jobs,
 )
 from runtime_v2.debug_log import append_debug_event, debug_log_path
-from runtime_v2.error_codes import normalize_error_code, select_worker_error_code
+from runtime_v2.error_codes import select_worker_error_code
 from runtime_v2.gui_adapter import build_gui_status_payload
 from runtime_v2.latest_run import (
     normalize_runtime_snapshot_metadata,
@@ -318,16 +318,21 @@ def run_control_loop_once(
             require_browser_healthy=True,
             allow_runtime_side_effects=allow_runtime_side_effects,
         )
+    browser_payload = _mapping_from_obj(result.get("browser", {}))
+    browser_events_obj: object = (
+        [] if browser_payload is None else browser_payload.get("events", [])
+    )
+    if isinstance(browser_events_obj, list):
+        browser_events = cast(list[object], browser_events_obj)
+        for raw_event in browser_events:
+            browser_event = _mapping_from_obj(raw_event)
+            if browser_event is None:
+                continue
+            browser_event["run_id"] = run_id
+            _ = _append_control_event(browser_event, events_file, run_id=run_id)
     worker_result = _worker_result_from_runtime(result)
     artifact_path: Path | None = None
     worker_contract = _worker_result_contract(worker_result)
-    runtime_error_code = normalize_error_code(str(result.get("code", "FAILED")).strip())
-    if runtime_error_code and runtime_error_code != "OK":
-        worker_contract = _normalize_runtime_failure_contract(
-            worker_contract,
-            runtime_error_code=runtime_error_code,
-            workload=job.workload,
-        )
     worker_artifacts = _worker_artifact_paths(worker_contract)
     worker_ok = _worker_succeeded(worker_contract)
     worker_manifest_path = str(
@@ -406,9 +411,26 @@ def run_control_loop_once(
                 events_file=events_file,
                 run_id=run_id,
             )
-    worker_retryable = bool(worker_contract.get("retryable", False))
+    agent_browser_terminal_block = bool(
+        job.workload == "agent_browser_verify" and result.get("status") == "blocked"
+    )
+    restart_exhausted_terminal_block = bool(
+        str(worker_contract.get("error_code", "")) == "BROWSER_RESTART_EXHAUSTED"
+        and result.get("status") == "blocked"
+    )
+    worker_retryable = (
+        False
+        if agent_browser_terminal_block or restart_exhausted_terminal_block
+        else bool(worker_contract.get("retryable", False))
+    )
     blocked_failure = bool(
-        not success and str(worker_contract.get("status", "")) == "blocked"
+        not success
+        and not agent_browser_terminal_block
+        and not restart_exhausted_terminal_block
+        and (
+            result.get("status") == "blocked"
+            or str(worker_contract.get("status", "")) == "blocked"
+        )
     )
     recovery = _evaluate_recovery(
         job,
@@ -1516,47 +1538,16 @@ def _worker_result_from_runtime(runtime_result: dict[str, object]) -> dict[str, 
     }
 
 
-def _runtime_preflight_contract(
-    runtime_code: str, *, workload: str = ""
-) -> tuple[str, bool, str]:
-    normalized_code = normalize_error_code(runtime_code)
-    if normalized_code == "BROWSER_RESTART_EXHAUSTED":
+def _runtime_preflight_contract(runtime_code: str) -> tuple[str, bool, str]:
+    if runtime_code == "BROWSER_RESTART_EXHAUSTED":
         return ("failed", False, "failed")
-    if workload == "agent_browser_verify" and normalized_code == "BROWSER_BLOCKED":
-        return ("failed", False, "failed")
-    if normalized_code in {
+    if runtime_code in {
         "BROWSER_BLOCKED",
         "GPU_LEASE_BUSY",
         "GPT_FLOOR_FAIL",
     }:
         return ("blocked", True, "blocked")
     return ("failed", True, "failed")
-
-
-def _normalize_runtime_failure_contract(
-    worker_result: dict[str, object], *, runtime_error_code: str, workload: str
-) -> dict[str, object]:
-    normalized_runtime_error_code = normalize_error_code(runtime_error_code)
-    canonical_error_code = select_worker_error_code(
-        {
-            "worker_error_code": worker_result.get("error_code", ""),
-            "error_code": normalized_runtime_error_code,
-        }
-    )
-    completion_state, retryable, worker_status = _runtime_preflight_contract(
-        canonical_error_code or normalized_runtime_error_code,
-        workload=workload,
-    )
-    normalized = dict(worker_result)
-    normalized["status"] = worker_status
-    normalized["error_code"] = canonical_error_code or normalized_runtime_error_code
-    normalized["retryable"] = retryable
-    normalized["next_jobs"] = []
-    completion = _mapping_from_obj(normalized.get("completion", {})) or {}
-    completion["state"] = completion_state
-    completion.setdefault("final_output", False)
-    normalized["completion"] = completion
-    return normalized
 
 
 def _normalized_completion_state(
