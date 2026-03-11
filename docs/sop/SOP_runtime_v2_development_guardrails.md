@@ -120,6 +120,19 @@
 - 문서는 최종 정리와 기록의 기준점이며, 1차 판단 근거로 쓰지 않습니다.
 - 커밋/푸시 전에는 동일 시나리오 재실행으로 mismatch가 사라졌는지, 또는 의도된 코드로 정렬됐는지를 Oracle 근거로 다시 확인합니다.
 
+## Browser Heuristic Tightening Rule
+
+- owner:
+  - browser/login/ready/DOM 휴리스틱의 raw 관측은 health plane(`runtime_v2/browser/*`)가 소유합니다.
+  - 최종 blocked/failed/OK 의미는 control plane이 계속 소유합니다.
+- failure mode:
+  - 로그인 페이지, ready marker, DOM 선택 불확실성을 임시 fallback으로 덮어 false `OK`를 만드는 drift를 막습니다.
+- removal:
+  - 서비스별 불안정 축이 stable signal 또는 더 넓은 canonical contract로 흡수되면, 이 규칙은 별도 휴리스틱 규칙이 아니라 기존 single failure contract에 흡수합니다.
+- rule:
+  - 휴리스틱이 흔들리면 fallback OK를 추가하지 말고 screenshot / transcript / raw capture 같은 evidence를 먼저 늘립니다.
+  - 불확실한 상태는 `OK`로 합성하지 않고 fail-closed 또는 blocked로 유지합니다.
+
 ### Documented Runtime_v2 Error Code IDs
 
 아래 ID는 문서와 코드가 같은 토큰으로 유지되어야 합니다.

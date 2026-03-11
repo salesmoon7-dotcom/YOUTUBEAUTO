@@ -105,6 +105,8 @@
 - 불안정성 문제를 해결할 때는 먼저 위 3축 중 어디에 속하는지 분류합니다.
 - 분류 전 휴리스틱을 추가하지 않습니다.
 - “임시 fallback으로 성공처럼 보이게 만들기”는 금지합니다.
+- ready/login/DOM 불확실성은 먼저 evidence 부족 문제로 취급하고, screenshot / transcript / raw capture를 늘린 뒤 owner 레이어에서 판단합니다.
+- health plane은 raw observation만 반환하고, 최종 `OK`/`blocked`/`failed` 의미는 control plane에서만 닫습니다.
 
 ## Immediate Use
 
