@@ -22,6 +22,14 @@
 - 그 다음 현재 canonical plan과 관련 SOP를 읽고, 이번 세션 범위를 그 안에서만 정합니다.
 - 이 문서와 plan/SOP가 충돌하면 새 원칙을 임의로 만들지 말고, canonical 문서를 먼저 갱신합니다.
 
+### Mandatory Chat-Session Default
+
+- `runtime_v2` 채팅 세션은 항상 `source-only + interrupt-safe`를 기본값으로 시작합니다.
+- 기본 검색은 코드/문서 경로에서만 시작하고 generated runtime tree는 broad search에서 제외합니다.
+- 채팅/UI interruption이 의심되거나 1회라도 재현되면 즉시 한 번에 도구 1개만 사용합니다.
+- 채팅 세션의 `pytest`는 `::test_name` 단위만 허용합니다.
+- 파일 단위/대묶음 foreground `pytest`와 실브라우저 relaunch/recovery는 채팅 세션에서 허용하지 않습니다. 이런 검증은 detached 로그 산출 경로 또는 수동 통제 셸로 보냅니다.
+
 ## Session-End Verification Gate
 
 - `runtime_v2` 작업 세션에서는 완료 주장 전에 `verify-implementation`을 기본 검증 관문으로 실행합니다.
@@ -40,11 +48,12 @@
   - `verify-implementation`
   - readiness regression
 - `24h`는 이 번들의 즉시 완료 기준이 아니라 later soak stage로 유지합니다.
-- 채팅/UI interruption이 반복되면 즉시 `interrupt-safe` 모드로 강등합니다.
+- 채팅/UI interruption이 반복되면 즉시 기본값인 `interrupt-safe` 규칙을 재적용합니다.
   - 병렬 도구 호출 중단
   - 한 번에 도구 1개만 사용
   - pytest는 테스트 케이스 단위로만 실행
   - 파일 단위/대묶음 검증은 채팅 세션 밖 또는 더 안정적인 실행 경로로 미룹니다
+  - 장시간 검증은 stdout/stderr/result를 남기는 detached log-producing execution으로 전환합니다
   - 실브라우저 relaunch/recovery 명령은 채팅 세션에서 직접 실행하지 않고 detached/수동 경로로 미룹니다
 
 ## Search Scope Default

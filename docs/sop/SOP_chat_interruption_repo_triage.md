@@ -24,9 +24,12 @@
    - 병렬 도구 호출 중단
    - 도구 1개씩 실행
    - pytest는 케이스 단위만 실행
+   - 파일 단위/대묶음 foreground pytest는 중단
+   - stdout/stderr/result 파일을 남기는 detached log-producing execution으로 전환
    - 실브라우저 relaunch/recovery는 detached 또는 수동 경로로만 수행
 
 ## Notes
 
 - probe/evidence 조사가 목적일 때만 generated tree를 명시적으로 다시 포함합니다.
 - 과거 probe evidence의 기본 legacy 위치는 `D:/YOUTUBEAUTO_RUNTIME/probe/legacy_runtime_v2_probe/`입니다.
+- `runtime_v2` 채팅 세션에서 long/file-level foreground pytest는 triage 완료 전 기본 금지입니다.
