@@ -118,6 +118,13 @@ Expected: PASS
 - Modify: `tests/test_runtime_v2_stage2_contracts.py`
 - Modify or Create: focused worker path tests
 
+**Task 3 guardrail**
+
+- Do not start Task 3 by deleting `REPO_ROOT` checks first.
+- First define one approved output root only.
+- Recommended approved root: `RuntimeConfig.artifact_root` established in Task 2.
+- If approved root is not explicit in function signatures and tests, Task 3 is not ready to implement.
+
 **Step 1: Narrow what must stay repo-local**
 
 Separate two concerns:
@@ -126,13 +133,25 @@ Separate two concerns:
 
 Do not keep repo-root artifact defaults just because local-input validation uses repo-root.
 
+Also decide this explicitly before coding:
+- `resolve_local_input()` remains an input-only boundary helper
+- output validation gets its own approved-root contract
+
 **Step 2: Move default artifact root off repo root**
 
 Replace repo-root artifact fallback with the canonical `RuntimeConfig` artifact root established in Task 2 (no new parallel root).
 
+Do not introduce a second canonical artifact root.
+
 **Step 3: Preserve fail-closed output validation**
 
 If output paths must stay inside an approved root, validate against the new canonical root instead of hardcoding repo root.
+
+This step must preserve all of the following:
+- outside-root output -> fail closed
+- reserved device/output name -> fail closed
+- missing output file -> fail closed
+- unchanged reused output -> explicit reused code path only
 
 **Step 4: Write failing tests first**
 
@@ -140,9 +159,31 @@ Add tests proving:
 - default worker workspace no longer lands under `D:\YOUTUBEAUTO\system\runtime_v2\artifacts`
 - output path verification still rejects disallowed/outside-root paths
 
+Required first test split:
+- `approved_root` 내부 output -> OK
+- `approved_root` 외부 output -> `OUTPUT_OUTSIDE_ROOT`
+- reserved output path -> `OUTPUT_PATH_INVALID`
+- output 미생성 -> `OUTPUT_NOT_CREATED`
+
 **Step 5: Verification**
 
 Run targeted worker path tests and compile checks.
+
+Minimum verification bundle:
+
+```bash
+python -m pytest tests/test_runtime_v2_stage2_contracts.py -q
+python -m pytest tests/test_runtime_v2_gpu_workers.py -q
+python -m py_compile runtime_v2/workers/job_runtime.py runtime_v2/workers/external_process.py
+```
+
+---
+
+## Task 3 Safety Note
+
+- Task 3 is intentionally split after Task 1+2 because it touches both workspace defaults and output security validation.
+- The implementation is ready only after approved-root semantics are explicit in tests and function signatures.
+- Until then, removing repo-root checks directly is forbidden because it risks fail-open behavior.
 
 ---
 
