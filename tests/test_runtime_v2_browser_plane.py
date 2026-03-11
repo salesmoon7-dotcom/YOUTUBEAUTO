@@ -791,12 +791,13 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                 json.dumps(lock_payload, ensure_ascii=True), encoding="utf-8"
             )
 
-            second = acquire_profile_lock(
-                str(profile_dir.resolve()),
-                service="chatgpt",
-                session_id="primary",
-                port=9222,
-            )
+            with patch("runtime_v2.browser.manager._pid_is_running", return_value=True):
+                second = acquire_profile_lock(
+                    str(profile_dir.resolve()),
+                    service="chatgpt",
+                    session_id="primary",
+                    port=9222,
+                )
 
         self.assertTrue(bool(first["locked"]))
         self.assertFalse(bool(second["locked"]))

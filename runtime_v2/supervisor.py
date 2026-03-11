@@ -246,7 +246,6 @@ def run_once(
         browser_runtime = tick_browser(
             registry_file=runtime_config.browser_registry_file,
             health_file=runtime_config.browser_health_file,
-            events_file=runtime_config.control_plane_events_file,
             run_id=run_id,
             force_unhealthy_service="chatgpt" if force_browser_fail else None,
             recover_unhealthy=not force_browser_fail,

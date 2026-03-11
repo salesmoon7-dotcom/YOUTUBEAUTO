@@ -247,9 +247,8 @@ class BrowserSupervisor:
         restart_window_sec: int = 300,
         now_fn: Callable[[], float] = time,
     ) -> dict[str, object]:
-        output_rows: list[dict[str, object]] | None = (
-            [] if events_file is not None else None
-        )
+        _ = events_file
+        output_rows: list[dict[str, object]] | None = []
         previous_ownership = inspect_browser_plane_owner()
         loaded_sessions = load_browser_registry(registry_file)
         if loaded_sessions:
@@ -438,6 +437,5 @@ class BrowserSupervisor:
                 "sessions": final_sessions,
             },
         )
-        if output_rows is not None:
-            result["events"] = output_rows
+        result["events"] = output_rows
         return result
