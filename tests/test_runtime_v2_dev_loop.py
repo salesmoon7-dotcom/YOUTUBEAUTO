@@ -4,10 +4,11 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from runtime_v2.config import RuntimeConfig, allowed_workloads
 from runtime_v2.contracts.job_contract import JobContract
-from runtime_v2.control_plane import run_control_loop_once, seed_control_job
+from runtime_v2.control_plane import run_control_loop_once, run_worker, seed_control_job
 from runtime_v2.dev_writer_lock import (
     acquire_repo_writer_lock,
     release_repo_writer_lock,
@@ -67,6 +68,35 @@ class RuntimeV2DevLoopTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "repo_writer_lock_busy")
+
+    def test_run_worker_uses_parent_root_config_for_dev_implement(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "runtime" / "artifacts"
+            registry_file = root / "health" / "worker_registry.json"
+            artifact_root.mkdir(parents=True, exist_ok=True)
+            job = JobContract(
+                job_id="dev-implement-dispatch-job",
+                workload="dev_implement",
+                checkpoint_key="seed:dev-implement-dispatch-job",
+                payload={"run_id": "dev-dispatch-run", "tasks": ["implement"]},
+            )
+
+            expected_config = RuntimeConfig.from_root(artifact_root.parent)
+            with patch(
+                "runtime_v2.control_plane.run_dev_implement_job",
+                return_value={"status": "ok", "stage": "dev_implement"},
+            ) as run_impl:
+                result = run_worker(
+                    job,
+                    artifact_root=artifact_root,
+                    registry_file=registry_file,
+                )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(run_impl.call_args.kwargs["artifact_root"], artifact_root)
+        passed_config = run_impl.call_args.kwargs["config"]
+        self.assertEqual(passed_config.artifact_root, expected_config.artifact_root)
 
     def test_dev_loop_failure_seeds_replan_job_with_same_run_id(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -200,7 +230,7 @@ class RuntimeV2DevLoopTests(unittest.TestCase):
             typed = metadata if isinstance(metadata, dict) else {}
 
         self.assertEqual(str(typed.get("worker_error_code", "")), "BROWSER_BLOCKED")
-        self.assertEqual(str(typed.get("completion_state", "")), "blocked")
+        self.assertEqual(str(typed.get("completion_state", "")), "failed")
         self.assertIn("browser_evidence", typed)
 
 

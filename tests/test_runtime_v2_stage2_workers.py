@@ -700,6 +700,36 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         registry_entry = cast(dict[object, object], registry_payload["genspark"])
         self.assertEqual(str(registry_entry["state"]), "idle")
 
+    def test_run_worker_returns_registry_to_idle_when_worker_raises(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            registry_file = root / "health" / "worker_registry.json"
+            artifact_root = root / "artifacts"
+            job = _stage2_job("genspark")
+
+            with patch(
+                "runtime_v2.control_plane.run_genspark_job",
+                side_effect=RuntimeError("dispatch exploded"),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "dispatch exploded"):
+                    _ = run_worker(
+                        job,
+                        artifact_root,
+                        registry_file=registry_file,
+                    )
+
+            registry_payload_raw = cast(
+                object,
+                json.loads(registry_file.read_text(encoding="utf-8")),
+            )
+            self.assertIsInstance(registry_payload_raw, dict)
+            if not isinstance(registry_payload_raw, dict):
+                self.fail("registry payload is not an object")
+            registry_payload = cast(dict[object, object], registry_payload_raw)
+
+        registry_entry = cast(dict[object, object], registry_payload["genspark"])
+        self.assertEqual(str(registry_entry["state"]), "idle")
+
     def test_resident_worker_progress_stall_is_reported_to_supervisor(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

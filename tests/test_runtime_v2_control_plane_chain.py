@@ -10,7 +10,7 @@ from unittest.mock import patch
 from runtime_v2 import circuit_breaker, recovery_policy, retry_budget
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.contracts.job_contract import JobContract, build_explicit_job_contract
-from runtime_v2.control_plane import run_control_loop_once, seed_control_job
+from runtime_v2.control_plane import run_control_loop_once, run_worker, seed_control_job
 from runtime_v2.latest_run import load_joined_latest_run
 from runtime_v2.queue_store import QueueStore, QueueStoreError
 
@@ -26,6 +26,48 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertIs(control_plane_module._load_jobs, QueueStore.load)
         self.assertIs(control_plane_module._save_jobs, QueueStore.save)
         self.assertIs(control_plane_module._upsert_job, QueueStore.upsert)
+
+    def test_run_worker_rejects_unsupported_workload_explicitly(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            job = JobContract(
+                job_id="unsupported-job",
+                workload="chatgpt",
+                checkpoint_key="seed:unsupported-job",
+                payload={"run_id": "unsupported-run"},
+            )
+            object.__setattr__(job, "workload", "unsupported_workload")
+
+            with self.assertRaisesRegex(ValueError, "unsupported_workload"):
+                _ = run_worker(job, Path(tmp_dir) / "artifacts")
+
+    def test_run_worker_mock_chain_bypasses_worker_registry_updates(self) -> None:
+        import runtime_v2.control_plane as control_plane_module
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            registry_file = root / "health" / "worker_registry.json"
+            job = JobContract(
+                job_id="mock-chain-job",
+                workload="qwen3_tts",
+                checkpoint_key="seed:mock-chain-job",
+                payload={"run_id": "mock-chain-run", "mock_chain": True},
+            )
+
+            with patch(
+                "runtime_v2.control_plane._run_mock_chain_worker",
+                return_value={"status": "ok", "stage": "mock_chain_qwen3_tts"},
+            ) as run_mock_worker:
+                result = control_plane_module._run_worker(
+                    job,
+                    artifact_root=artifact_root,
+                    registry_file=registry_file,
+                    allow_mock_chain=True,
+                )
+
+        self.assertEqual(result["status"], "ok")
+        run_mock_worker.assert_called_once()
+        self.assertFalse(registry_file.exists())
 
     def test_queue_store_load_fail_closes_on_corrupted_queue_file(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

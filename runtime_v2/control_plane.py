@@ -4,7 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 from time import time
-from typing import cast
+from typing import Callable, cast
 
 from runtime_v2.bootstrap import ensure_runtime_bootstrap
 from runtime_v2.config import GpuWorkload, RuntimeConfig
@@ -860,156 +860,29 @@ def _run_worker(
     resolved_registry_file = registry_file or Path(
         "system/runtime_v2/health/worker_registry.json"
     )
+    dispatch = _worker_dispatch_table(
+        artifact_root=artifact_root,
+        registry_file=resolved_registry_file,
+    )
+    handler = dispatch.get(job.workload)
+    if handler is None:
+        raise ValueError(f"unsupported_workload:{job.workload}")
+    run_id = str(job.payload.get("run_id", job.job_id))
     _ = update_worker_state(
         resolved_registry_file,
         workload=job.workload,
         state="busy",
-        run_id=str(job.payload.get("run_id", job.job_id)),
+        run_id=run_id,
     )
-    if job.workload == "chatgpt":
-        workspace = artifact_root / job.workload / job.job_id
-        workspace.mkdir(parents=True, exist_ok=True)
-        topic_spec = _mapping_from_obj(job.payload.get("topic_spec", {})) or {}
-        result = run_stage1_chatgpt_job(
-            topic_spec,
-            workspace,
-            debug_log=str(
-                debug_log_path(
-                    Path("system/runtime_v2/logs"),
-                    str(job.payload.get("run_id", job.job_id)),
-                )
-            ),
-        )
+    try:
+        return handler(job)
+    finally:
         _ = update_worker_state(
             resolved_registry_file,
             workload=job.workload,
             state="idle",
-            run_id=str(job.payload.get("run_id", job.job_id)),
+            run_id=run_id,
         )
-        return result
-    if job.workload == "genspark":
-        result = run_genspark_job(
-            job, artifact_root, registry_file=resolved_registry_file
-        )
-        _ = update_worker_state(
-            resolved_registry_file,
-            workload=job.workload,
-            state="idle",
-            run_id=str(job.payload.get("run_id", job.job_id)),
-        )
-        return result
-    if job.workload == "seaart":
-        result = run_seaart_job(
-            job, artifact_root, registry_file=resolved_registry_file
-        )
-        _ = update_worker_state(
-            resolved_registry_file,
-            workload=job.workload,
-            state="idle",
-            run_id=str(job.payload.get("run_id", job.job_id)),
-        )
-        return result
-    if job.workload == "geminigen":
-        result = run_geminigen_job(
-            job, artifact_root, registry_file=resolved_registry_file
-        )
-        _ = update_worker_state(
-            resolved_registry_file,
-            workload=job.workload,
-            state="idle",
-            run_id=str(job.payload.get("run_id", job.job_id)),
-        )
-        return result
-    if job.workload == "canva":
-        result = run_canva_job(job, artifact_root, registry_file=resolved_registry_file)
-        _ = update_worker_state(
-            resolved_registry_file,
-            workload=job.workload,
-            state="idle",
-            run_id=str(job.payload.get("run_id", job.job_id)),
-        )
-        return result
-    if job.workload == "agent_browser_verify":
-        result = run_agent_browser_verify_job(
-            job,
-            artifact_root,
-            registry_file=resolved_registry_file,
-        )
-        _ = update_worker_state(
-            resolved_registry_file,
-            workload=job.workload,
-            state="idle",
-            run_id=str(job.payload.get("run_id", job.job_id)),
-        )
-        return result
-    if job.workload == "render":
-        result = run_render_job(job, artifact_root)
-        _ = update_worker_state(
-            resolved_registry_file,
-            workload=job.workload,
-            state="idle",
-            run_id=str(job.payload.get("run_id", job.job_id)),
-        )
-        return result
-    if job.workload == "rvc":
-        result = run_rvc_job(job, artifact_root=artifact_root)
-        _ = update_worker_state(
-            resolved_registry_file,
-            workload=job.workload,
-            state="idle",
-            run_id=str(job.payload.get("run_id", job.job_id)),
-        )
-        return result
-    if job.workload == "kenburns":
-        result = run_kenburns_job(job, artifact_root=artifact_root)
-        _ = update_worker_state(
-            resolved_registry_file,
-            workload=job.workload,
-            state="idle",
-            run_id=str(job.payload.get("run_id", job.job_id)),
-        )
-        return result
-    if job.workload == "qwen3_tts":
-        result = run_qwen3_job(job, artifact_root=artifact_root)
-        _ = update_worker_state(
-            resolved_registry_file,
-            workload=job.workload,
-            state="idle",
-            run_id=str(job.payload.get("run_id", job.job_id)),
-        )
-        return result
-    if job.workload == "dev_plan":
-        result = run_dev_plan_job(job, artifact_root)
-        _ = update_worker_state(
-            resolved_registry_file,
-            workload=job.workload,
-            state="idle",
-            run_id=str(job.payload.get("run_id", job.job_id)),
-        )
-        return result
-    if job.workload == "dev_implement":
-        result = run_dev_implement_job(
-            job,
-            artifact_root=artifact_root,
-            config=RuntimeConfig.from_root(artifact_root.parent),
-        )
-        _ = update_worker_state(
-            resolved_registry_file,
-            workload=job.workload,
-            state="idle",
-            run_id=str(job.payload.get("run_id", job.job_id)),
-        )
-        return result
-    if job.workload == "dev_replan":
-        result = run_dev_replan_job(job, artifact_root)
-        _ = update_worker_state(
-            resolved_registry_file,
-            workload=job.workload,
-            state="idle",
-            run_id=str(job.payload.get("run_id", job.job_id)),
-        )
-        return result
-    raise ValueError(f"unsupported_workload:{job.workload}")
 
 
 def run_worker(
@@ -1019,6 +892,61 @@ def run_worker(
     registry_file: Path | None = None,
 ) -> dict[str, object]:
     return _run_worker(job, artifact_root, registry_file=registry_file)
+
+
+WorkerDispatchHandler = Callable[[JobContract], dict[str, object]]
+
+
+def _run_chatgpt_worker(job: JobContract, artifact_root: Path) -> dict[str, object]:
+    workspace = artifact_root / job.workload / job.job_id
+    workspace.mkdir(parents=True, exist_ok=True)
+    topic_spec = _mapping_from_obj(job.payload.get("topic_spec", {})) or {}
+    return run_stage1_chatgpt_job(
+        topic_spec,
+        workspace,
+        debug_log=str(
+            debug_log_path(
+                Path("system/runtime_v2/logs"),
+                str(job.payload.get("run_id", job.job_id)),
+            )
+        ),
+    )
+
+
+def _worker_dispatch_table(
+    *, artifact_root: Path, registry_file: Path
+) -> dict[str, WorkerDispatchHandler]:
+    return {
+        "chatgpt": lambda job: _run_chatgpt_worker(job, artifact_root),
+        "genspark": lambda job: run_genspark_job(
+            job, artifact_root, registry_file=registry_file
+        ),
+        "seaart": lambda job: run_seaart_job(
+            job, artifact_root, registry_file=registry_file
+        ),
+        "geminigen": lambda job: run_geminigen_job(
+            job, artifact_root, registry_file=registry_file
+        ),
+        "canva": lambda job: run_canva_job(
+            job, artifact_root, registry_file=registry_file
+        ),
+        "agent_browser_verify": lambda job: run_agent_browser_verify_job(
+            job,
+            artifact_root,
+            registry_file=registry_file,
+        ),
+        "render": lambda job: run_render_job(job, artifact_root),
+        "rvc": lambda job: run_rvc_job(job, artifact_root=artifact_root),
+        "kenburns": lambda job: run_kenburns_job(job, artifact_root=artifact_root),
+        "qwen3_tts": lambda job: run_qwen3_job(job, artifact_root=artifact_root),
+        "dev_plan": lambda job: run_dev_plan_job(job, artifact_root),
+        "dev_implement": lambda job: run_dev_implement_job(
+            job,
+            artifact_root=artifact_root,
+            config=RuntimeConfig.from_root(artifact_root.parent),
+        ),
+        "dev_replan": lambda job: run_dev_replan_job(job, artifact_root),
+    }
 
 
 def _run_mock_chain_worker(job: JobContract, artifact_root: Path) -> dict[str, object]:
@@ -1566,7 +1494,7 @@ def _normalize_runtime_failure_contract(
     normalized["next_jobs"] = []
     completion = _mapping_from_obj(normalized.get("completion", {})) or {}
     completion["state"] = completion_state
-    completion.setdefault("final_output", False)
+    _ = completion.setdefault("final_output", False)
     normalized["completion"] = completion
     return normalized
 
