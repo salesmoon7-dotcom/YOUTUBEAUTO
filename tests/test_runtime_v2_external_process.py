@@ -46,6 +46,7 @@ class RuntimeV2ExternalProcessTests(unittest.TestCase):
             workspace = Path(tmp_dir)
             result = run_verified_adapter_command(
                 workspace,
+                approved_root=workspace,
                 adapter_command=[sys.executable, "-c", "import time; time.sleep(1)"],
                 service_artifact_path=str(workspace / "out.txt"),
                 adapter_error_code="ignored_adapter_failed",
@@ -60,6 +61,7 @@ class RuntimeV2ExternalProcessTests(unittest.TestCase):
             workspace = Path(tmp_dir)
             result = run_verified_adapter_command(
                 workspace,
+                approved_root=workspace,
                 adapter_command=[sys.executable, "-c", "print('ok')"],
                 service_artifact_path="C:/Windows/out.txt",
                 adapter_error_code="ignored_adapter_failed",
@@ -75,6 +77,7 @@ class RuntimeV2ExternalProcessTests(unittest.TestCase):
             workspace = Path(tmp_dir)
             result = run_verified_adapter_command(
                 workspace,
+                approved_root=workspace,
                 adapter_command=[sys.executable, "-c", "print('ok')"],
                 service_artifact_path="NUL",
                 adapter_error_code="ignored_adapter_failed",
@@ -90,6 +93,7 @@ class RuntimeV2ExternalProcessTests(unittest.TestCase):
             _ = output_path.write_text("same", encoding="utf-8")
             result = run_verified_adapter_command(
                 workspace,
+                approved_root=workspace,
                 adapter_command=[sys.executable, "-c", "pass"],
                 service_artifact_path=str(output_path),
                 adapter_error_code="ignored_adapter_failed",
@@ -97,6 +101,47 @@ class RuntimeV2ExternalProcessTests(unittest.TestCase):
 
         self.assertTrue(bool(result["ok"]))
         self.assertEqual(result["error_code"], "OUTPUT_UNCHANGED_REUSED")
+
+    def test_verified_adapter_command_accepts_relative_output_inside_approved_root(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            workspace = Path(tmp_dir)
+            result = run_verified_adapter_command(
+                workspace,
+                approved_root=workspace,
+                adapter_command=[
+                    sys.executable,
+                    "-c",
+                    (
+                        "from pathlib import Path; "
+                        "p=Path(r'child/out.txt'); "
+                        "p.parent.mkdir(parents=True, exist_ok=True); "
+                        "p.write_text('ok', encoding='utf-8')"
+                    ),
+                ],
+                service_artifact_path="child/out.txt",
+                adapter_error_code="ignored_adapter_failed",
+            )
+
+        self.assertTrue(bool(result["ok"]))
+        self.assertTrue(str(result["output_path"]).endswith("child\\out.txt"))
+
+    def test_verified_adapter_command_reports_missing_output_when_not_created(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            workspace = Path(tmp_dir)
+            result = run_verified_adapter_command(
+                workspace,
+                approved_root=workspace,
+                adapter_command=[sys.executable, "-c", "print('ok')"],
+                service_artifact_path="missing/out.txt",
+                adapter_error_code="ignored_adapter_failed",
+            )
+
+        self.assertFalse(bool(result["ok"]))
+        self.assertEqual(result["error_code"], "OUTPUT_NOT_CREATED")
 
 
 if __name__ == "__main__":

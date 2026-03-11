@@ -16,9 +16,30 @@ from runtime_v2.cli import (
     CliArgs,
 )
 from runtime_v2.config import RuntimeConfig, runtime_state_root
+from runtime_v2.contracts.job_contract import JobContract
+from runtime_v2.workers.job_runtime import prepare_workspace
 
 
 class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
+    def test_prepare_workspace_defaults_to_runtime_config_artifact_root(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "external-artifacts"
+            job = JobContract(
+                job_id="chat-safe-workspace",
+                workload="qwen3_tts",
+                checkpoint_key="seed:chat-safe-workspace",
+                payload={},
+            )
+
+            with patch(
+                "runtime_v2.workers.job_runtime.RuntimeConfig"
+            ) as runtime_config:
+                runtime_config.return_value = RuntimeConfig(artifact_root=artifact_root)
+                workspace = prepare_workspace(job)
+
+        self.assertEqual(workspace, artifact_root / job.workload / job.job_id)
+        self.assertNotIn(r"D:\YOUTUBEAUTO\system\runtime_v2\artifacts", str(workspace))
+
     def test_default_runtime_config_uses_external_runtime_state_root(self) -> None:
         config = RuntimeConfig()
         state_root = runtime_state_root()

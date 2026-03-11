@@ -7,14 +7,14 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from runtime_v2.contracts.job_contract import JobContract
+from runtime_v2.config import RuntimeConfig
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-ARTIFACT_ROOT = REPO_ROOT / "system" / "runtime_v2" / "artifacts"
 
 
 def prepare_workspace(job: JobContract, artifact_root: Path | None = None) -> Path:
-    resolved_root = artifact_root or ARTIFACT_ROOT
+    resolved_root = artifact_root or RuntimeConfig().artifact_root
     workspace = resolved_root / job.workload / job.job_id
     workspace.mkdir(parents=True, exist_ok=True)
     _ = write_json_atomic(workspace / "job.json", job.to_dict())
@@ -50,7 +50,9 @@ def resolve_local_input(raw_path: str) -> Path | None:
     return candidate
 
 
-def stage_local_input(workspace: Path, source: Path, target_name: str | None = None) -> Path:
+def stage_local_input(
+    workspace: Path, source: Path, target_name: str | None = None
+) -> Path:
     name = target_name or source.name
     target = workspace / name
     _ = shutil.copy2(source, target)

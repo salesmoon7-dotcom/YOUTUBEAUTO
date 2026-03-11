@@ -164,6 +164,7 @@ def run_qwen3_job(
         adapter_command = [str(item) for item in adapter_command_items]
         adapter_result = run_verified_adapter_command(
             workspace,
+            approved_root=artifact_root or workspace.parent.parent,
             adapter_command=adapter_command,
             service_artifact_path=str(job.payload.get("service_artifact_path", "")),
             adapter_error_code="qwen3_tts_adapter_failed",

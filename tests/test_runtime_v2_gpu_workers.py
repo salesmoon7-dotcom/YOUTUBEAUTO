@@ -19,7 +19,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
             image_path = root / "image.png"
-            output_path = root / "speech.wav"
+            output_path = artifact_root / "speech.wav"
             _ = image_path.write_bytes(b"png")
             job = JobContract(
                 job_id="qwen-job-success",
@@ -47,7 +47,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
             self.assertEqual(result["status"], "ok")
             self.assertTrue(output_path.exists())
             completion = cast(dict[object, object], result["completion"])
-            self.assertEqual(completion["state"], "succeeded")
+            self.assertEqual(completion["state"], "routed")
             self.assertTrue(bool(completion["final_output"]))
 
     def test_qwen3_worker_can_consume_voice_texts_directly(self) -> None:
@@ -55,7 +55,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
             image_path = root / "image.png"
-            output_path = root / "speech.wav"
+            output_path = artifact_root / "speech.wav"
             _ = image_path.write_bytes(b"png")
             job = JobContract(
                 job_id="qwen-job-voice-texts",
@@ -94,7 +94,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
             image_path = root / "image.png"
-            output_path = root / "speech.wav"
+            output_path = artifact_root / "speech.wav"
             _ = image_path.write_bytes(b"png")
             job = JobContract(
                 job_id="qwen-job-auto-adapter",
@@ -143,7 +143,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
             image_path = root / "image.png"
-            output_path = root / "speech.wav"
+            output_path = artifact_root / "speech.wav"
             _ = image_path.write_bytes(b"png")
             explicit_command = [sys.executable, "-c", "print('explicit')"]
             job = JobContract(
@@ -188,7 +188,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
             image_path = root / "image.png"
-            output_path = root / "speech.wav"
+            output_path = artifact_root / "speech.wav"
             _ = image_path.write_bytes(b"png")
             output_path.parent.mkdir(parents=True, exist_ok=True)
             _ = output_path.write_bytes(b"stale")
@@ -253,7 +253,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
             image_path = root / "image.png"
-            output_path = root / "speech.wav"
+            output_path = artifact_root / "speech.wav"
             _ = image_path.write_bytes(b"png")
             output_path.parent.mkdir(parents=True, exist_ok=True)
             _ = output_path.write_bytes(b"stale")
@@ -286,7 +286,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
             image_path = root / "image.png"
-            output_path = root / "speech.wav"
+            output_path = artifact_root / "speech.wav"
             _ = image_path.write_bytes(b"png")
             job = JobContract(
                 job_id="qwen-job-missing-output",
@@ -313,7 +313,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
             artifact_root = root / "artifacts"
             source_path = root / "source.flac"
             image_path = root / "image.png"
-            output_path = root / "converted.wav"
+            output_path = artifact_root / "converted.wav"
             _ = source_path.write_bytes(b"flac")
             _ = image_path.write_bytes(b"png")
             job = JobContract(

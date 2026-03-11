@@ -6,9 +6,6 @@ from pathlib import Path
 from time import perf_counter
 from typing import cast
 
-from runtime_v2.workers.job_runtime import resolve_local_input
-
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WINDOWS_RESERVED_DEVICE_NAMES = {
     "CON",
@@ -101,34 +98,38 @@ def run_external_process(
         }
 
 
-def _resolve_output_target(raw_path: str) -> Path | None:
+def _resolve_output_target(raw_path: str, approved_root: Path) -> Path | None:
     text = raw_path.strip()
     if not text:
         return None
     candidate = Path(text).expanduser()
+    approved_root = approved_root.resolve()
     if not candidate.is_absolute():
-        candidate = (REPO_ROOT / candidate).resolve()
+        candidate = (approved_root / candidate).resolve()
     else:
         candidate = candidate.resolve()
     if _has_reserved_windows_name(candidate):
         return None
-    if REPO_ROOT not in candidate.parents and candidate != REPO_ROOT:
+    if approved_root not in candidate.parents and candidate != approved_root:
         return None
     return candidate
 
 
-def _resolve_output_target_info(raw_path: str) -> tuple[Path | None, str | None]:
+def _resolve_output_target_info(
+    raw_path: str, approved_root: Path
+) -> tuple[Path | None, str | None]:
     text = raw_path.strip()
     if not text:
         return None, "OUTPUT_PATH_INVALID"
     candidate = Path(text).expanduser()
+    approved_root = approved_root.resolve()
     if not candidate.is_absolute():
-        candidate = (REPO_ROOT / candidate).resolve()
+        candidate = (approved_root / candidate).resolve()
     else:
         candidate = candidate.resolve()
     if _has_reserved_windows_name(candidate):
         return None, "OUTPUT_PATH_INVALID"
-    if REPO_ROOT not in candidate.parents and candidate != REPO_ROOT:
+    if approved_root not in candidate.parents and candidate != approved_root:
         return None, "OUTPUT_OUTSIDE_ROOT"
     return candidate, None
 
@@ -143,13 +144,17 @@ def _file_signature(path: Path | None) -> tuple[int, int] | None:
 def run_verified_adapter_command(
     workspace: Path,
     *,
+    approved_root: Path,
     adapter_command: list[str],
     service_artifact_path: str,
     adapter_error_code: str,
     extra_env: dict[str, str] | None = None,
     timeout_sec: int = 3600,
 ) -> dict[str, object]:
-    target_path, target_error = _resolve_output_target_info(service_artifact_path)
+    approved_root = approved_root.resolve()
+    target_path, target_error = _resolve_output_target_info(
+        service_artifact_path, approved_root
+    )
     before_signature = _file_signature(target_path)
     process_result = run_external_process(
         adapter_command,
@@ -171,6 +176,7 @@ def run_verified_adapter_command(
             "timed_out": bool(process_result.get("timed_out", False)),
             "service_artifact_path": service_artifact_path,
             "resolved_output_path": "" if target_path is None else str(target_path),
+            "approved_root": str(approved_root),
             "stdout_path": str(stdout_path.resolve()),
             "stderr_path": str(stderr_path.resolve()),
             "before_signature": before_signature,
@@ -194,8 +200,14 @@ def run_verified_adapter_command(
             base_payload["error_code"] = "ADAPTER_NONZERO_EXIT"
         return base_payload
     verified_output = (
-        None if target_path is None else resolve_local_input(str(target_path))
+        None
+        if target_path is None
+        else _resolve_output_target(str(target_path), approved_root)
     )
+    if verified_output is not None and (
+        not verified_output.exists() or not verified_output.is_file()
+    ):
+        verified_output = None
     if verified_output is None:
         base_payload["ok"] = False
         base_payload["error_code"] = "OUTPUT_NOT_CREATED"
