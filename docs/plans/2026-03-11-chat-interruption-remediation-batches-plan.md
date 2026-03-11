@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python 3.13, `runtime_v2`, local filesystem on Windows, Markdown docs/SOP, `py_compile`, targeted verification
 
+**Status:** COMPLETE (2026-03-11). Batch 1 and Batch 2 were both executed, verified, Oracle-reviewed, committed, and pushed.
+
 ---
 
 ## Batch 1: 즉시 실행 배치
@@ -208,3 +210,9 @@ system/runtime_v2/logs/
 - Batch 1만 끝나도 채팅 끊김 체감은 크게 줄 가능성이 높습니다.
 - Batch 2는 재발 방지와 작업 규칙 고정이 목적입니다.
 - 즉시 체감 개선과 장기 운영 규칙을 분리하면, 중간 성과를 빠르게 확인할 수 있습니다.
+
+## Completion Note
+
+- Batch 1 완료: external runtime roots 도입, 세션/probe 실제 이동, root clutter cleanup.
+- Batch 2 완료: source-only 검색 기본값, lag triage SOP, active status doc slimming.
+- 후속 cleanup 완료: browser plane test stabilization, reserved output device fail-close, stray output ignore/cleanup.

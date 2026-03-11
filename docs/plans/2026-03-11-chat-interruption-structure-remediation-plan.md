@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python 3.13, `runtime_v2`, local filesystem on Windows, Tkinter GUI config, CLI runtime roots, Markdown plans/SOP, `py_compile`, targeted verification
 
+**Status:** COMPLETE (2026-03-11). Batch 1 code/path migration and Batch 2 source-only/triage documentation were implemented, verified, Oracle-reviewed, and pushed.
+
 ---
 
 ## Evidence Base
@@ -309,6 +311,13 @@ The remediation is complete only when:
 5. Task 5 - shrink active doc surface
 6. Task 6 - add lag triage SOP
 7. Task 7 - verify and re-measure
+
+## Completion Note
+
+- Browser session defaults now resolve to external runtime roots with legacy fallback.
+- Existing `runtime_v2/sessions/*` and `system/runtime_v2_probe/*` data were physically moved to `D:/YOUTUBEAUTO_RUNTIME/`.
+- Source-only search and lag triage are now canonical in `AGENTS.md`, `docs/INDEX.md`, and `docs/sop/*`.
+- Follow-up cleanup added reserved-device fail-close (`NUL`) and reduced always-read doc weight.
 
 ## Why this order
 

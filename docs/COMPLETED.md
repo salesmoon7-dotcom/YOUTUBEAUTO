@@ -4,6 +4,8 @@
 - 위 원칙은 점진적으로 적용합니다. 기존 긴 완료/evidence 기록은 후속 정리 배치에서 축소합니다.
 - interruption/search 규칙의 정본은 `docs/sop/SOP_runtime_v2_development_guardrails.md`와 `docs/sop/SOP_chat_interruption_repo_triage.md`입니다.
 
+- `docs/plans/2026-03-11-runtime-v2-chat-safe-execution-remediation-plan.md`, `docs/plans/2026-03-11-chat-interruption-structure-remediation-plan.md`, `docs/plans/2026-03-11-chat-interruption-remediation-batches-plan.md`, `AGENTS.md`, `docs/INDEX.md`, `docs/TODO.md`, `docs/COMPLETED.md`, `docs/sop/SOP_runtime_v2_development_guardrails.md`, `docs/sop/SOP_chat_interruption_repo_triage.md`, `runtime_v2/config.py`, `runtime_v2/browser/manager.py`, `runtime_v2/cli.py`, `runtime_v2/workers/external_process.py`, `tests/test_runtime_v2_browser_plane.py`, `tests/test_runtime_v2_cli_detached_recovery.py`, `tests/test_runtime_v2_external_process.py`, `.gitignore` - chat interruption remediation batch 완료; 외부 runtime/session/probe/scratch root 기본값과 legacy fallback을 반영하고, 실제 `runtime_v2/sessions/*` 및 `system/runtime_v2_probe/*`를 `D:/YOUTUBEAUTO_RUNTIME/`로 이동했으며, source-only 검색 기본값과 lag triage SOP를 canonical 문서로 승격했습니다. 후속 cleanup으로 `NUL`/stray root output fail-close, browser plane temp root 안정화, TODO/COMPLETED 최소 slim-down까지 반영했고 관련 compile, targeted unittest, diagnostics, Oracle review, git push를 모두 완료했습니다.
+
 - `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md` - Task 4(`Single Meaning Snapshot Review`) 완료. 세부 구현/검증 파일 목록은 plan과 관련 commit history를 기준으로 봅니다.
 
 - `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md` - Task 3(`Guardrail Accumulation Controls`) 완료 재판정 반영. 상세 근거는 plan과 Oracle review 기록을 따릅니다.
