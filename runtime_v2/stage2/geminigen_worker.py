@@ -96,6 +96,9 @@ def run_geminigen_job(
             details={
                 "provider": str(job.payload.get("provider", "google")),
                 "model": str(job.payload.get("model", "veo3")),
+                "first_frame_path": str(
+                    job.payload.get("first_frame_path", "")
+                ).strip(),
                 "service_artifact_path": str(verified_output.resolve()),
                 "reused": bool(adapter_result.get("reused", False)),
                 "adapter_mode": (
@@ -125,6 +128,7 @@ def run_geminigen_job(
         details={
             "provider": str(job.payload.get("provider", "google")),
             "model": str(job.payload.get("model", "veo3")),
+            "first_frame_path": str(job.payload.get("first_frame_path", "")).strip(),
             "service_artifact_path": str(job.payload.get("service_artifact_path", "")),
         },
     )

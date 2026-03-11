@@ -76,6 +76,7 @@ def build_geminigen_prompt_file(workspace: Path, payload: dict[str, object]) -> 
     channel = channel_from_payload(payload)
     row_index = row_index_from_payload(payload)
     scene_index = max(1, int_value(payload.get("scene_index", 1), 1))
+    first_frame_path = str(payload.get("first_frame_path", "")).strip()
     prompt_payload = {
         "channel": channel,
         "channel_name": str(payload.get("channel_name", f"channel-{channel}")),
@@ -89,6 +90,7 @@ def build_geminigen_prompt_file(workspace: Path, payload: dict[str, object]) -> 
                 "output_file": f"scene_{scene_index:02d}.mp4",
                 "provider": str(payload.get("provider", "google")),
                 "model": str(payload.get("model", "veo3")),
+                "first_frame_path": first_frame_path,
             }
         ],
     }

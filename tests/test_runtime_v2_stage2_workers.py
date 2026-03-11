@@ -90,8 +90,12 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
             output_path = root / "exports" / "geminigen-scene-01.mp4"
+            first_frame_path = root / "exports" / "first-frame-01.png"
+            _ = first_frame_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = first_frame_path.write_bytes(b"png")
             job = _stage2_job("geminigen")
             job.payload["service_artifact_path"] = str(output_path)
+            job.payload["first_frame_path"] = str(first_frame_path)
             job.payload["adapter_command"] = [
                 sys.executable,
                 "-c",
@@ -112,9 +116,15 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             self.assertTrue((workspace / "native_geminigen.json").exists())
             self.assertTrue((workspace / "adapter_stdout.log").exists())
             self.assertTrue((workspace / "adapter_stderr.log").exists())
+            native_payload = cast(
+                dict[str, object],
+                json.loads((workspace / "native_geminigen.json").read_text(encoding="utf-8")),
+            )
+            video_task = cast(dict[str, object], cast(list[object], native_payload["video_tasks"])[0])
             completion = cast(dict[str, object], result["completion"])
             self.assertEqual(completion["state"], "succeeded")
             self.assertTrue(bool(completion["final_output"]))
+            self.assertEqual(str(video_task["first_frame_path"]), str(first_frame_path.resolve()))
 
     def test_geminigen_row_processing_handles_all_items_for_one_row_via_adapter_command(
         self,
@@ -132,7 +142,11 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             for index, job_payload in enumerate(geminigen_jobs, start=1):
                 payload = cast(dict[str, object], job_payload["payload"])
                 output_path = root / "exports" / f"geminigen-row-{index:02d}.mp4"
+                first_frame_path = root / "exports" / f"first-frame-{index:02d}.png"
+                _ = first_frame_path.parent.mkdir(parents=True, exist_ok=True)
+                _ = first_frame_path.write_bytes(b"png")
                 payload["service_artifact_path"] = str(output_path)
+                payload["first_frame_path"] = str(first_frame_path)
                 payload["adapter_command"] = [
                     sys.executable,
                     "-c",

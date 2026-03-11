@@ -278,6 +278,33 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
         self.assertEqual(str(thumb_data["line1"]), "Thumb line 1")
         self.assertEqual(str(thumb_data["line2"]), "Thumb line 2")
 
+    def test_geminigen_stage2_payload_prefers_stage1_ref_image_when_present(
+        self,
+    ) -> None:
+        video_plan = _video_plan("D:/YOUTUBEAUTO")
+        video_plan["scene_plan"] = [
+            {"scene_index": 1, "prompt": "scene one"},
+            {"scene_index": 2, "prompt": "scene two"},
+            {"scene_index": 3, "prompt": "scene three"},
+        ]
+        video_plan["stage1_handoff"] = {
+            "contract": {
+                "version": "stage1_handoff.v1.0",
+                "title": "Money title",
+                "ref_img_1": "images/ref1.png",
+            }
+        }
+
+        jobs, _ = build_stage2_jobs(video_plan)
+        geminigen_job = next(
+            cast(dict[str, object], item["job"])
+            for item in jobs
+            if cast(dict[str, object], item["job"])["worker"] == "geminigen"
+        )
+        payload = cast(dict[str, object], geminigen_job["payload"])
+
+        self.assertEqual(str(payload["first_frame_path"]), "images/ref1.png")
+
     def test_canva_payload_includes_thumb_data_and_deterministic_ref_img(self) -> None:
         video_plan = _video_plan("D:/YOUTUBEAUTO")
         video_plan["scene_plan"] = [
