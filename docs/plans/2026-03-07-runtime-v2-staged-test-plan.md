@@ -17,6 +17,17 @@
 - 새로운 문제/게이트/중단 기준이 생기면 이 문서를 먼저 늘리지 않고, 먼저 canonical plan에 병합한 뒤 이 문서의 Stage gate에만 반영합니다.
 - 이 문서와 canonical plan이 충돌하면 canonical plan을 우선합니다.
 
+## Execution Target Map
+
+| 오늘 실행 대상 | canonical stage | tier | 현재 해석 |
+|---|---|---|---|
+| `e2e mock test` | Stage 4 | `isolated` | detached mock chain evidence 검증 |
+| `비GPT 프로그램 단건 연결 테스트` | Stage 4B | `manual` | mock 이후 비GPT 프로그램을 1개씩 붙여 기능/flow 연결만 검증 |
+| `e2e 1행 테스트` | Stage 5 | `manual` | 실서비스 단건 smoke (`1개 행 성공`) |
+| `e2e 5행 테스트` | Stage 5B | `manual` | Stage 5 통과 후 5개 준비 행 순차 반복 |
+
+- `e2e 1행 테스트`와 `e2e 5행 테스트`는 `docs/plans/2026-03-08-browser-session-stability-plan.md`의 `No-Go`가 해제되기 전에는 실행하지 않습니다.
+
 ## Pre-Stage Global Stop Conditions
 
 - 아래 중 하나라도 성립하면 Stage 진행 전에 중단합니다.
@@ -43,6 +54,14 @@
   - Supervisor는 health/gate/recovery만 담당
   - 브라우저 workload는 GPU lease를 잡지 않음
   - 모든 최신 증거는 canonical latest-run 경로에 남아야 함
+
+- 주의: 이 문서에서 `system/runtime_v2/*` 예시는 legacy/historical canonical 경로 표기일 수 있습니다. Task 2 이후 기본 runtime-state root는 `D:/YOUTUBEAUTO_RUNTIME/runtime_state/`이며, 명시적 `--runtime-root` 또는 `RuntimeConfig.from_root()`를 쓰는 경우에만 다른 루트를 사용합니다.
+
+## Test Temp-Root Interpretation Rule
+
+- 다수 테스트가 `TemporaryDirectory(dir="D:\\YOUTUBEAUTO")`를 사용하지만, 이는 기본적으로 test temp-parent convenience입니다.
+- 이 패턴만으로 실운영 runtime root가 repo root라고 결론내리지 않습니다.
+- 단, temp-root가 실제 latest evidence 해석, runtime root 판정, artifact/output root 검증을 오염시키는 경우에는 해당 테스트만 선택적으로 수정합니다.
 
 ## Stage 0: 순수 로컬 계약 게이트
 
@@ -252,6 +271,95 @@ python -m runtime_v2.cli --control-once
 - `result.json`과 `gui_status.json`의 latest-run 의미 불일치
 - `failure_summary.json`이 필요했는데 생성되지 않음
 
+## Stage 4B: 비GPT 프로그램 단건 기능/Flow 연결 테스트
+
+**목적:** `e2e mock test` 직후, GPT 의존 구간으로 넘어가기 전에 비GPT 프로그램들이 실제로 기능적으로 동작하고 control-plane flow에 정상 연결되는지 1개씩 검증합니다.
+
+**검증 범위:**
+- GPT floor 성공 여부를 요구하지 않는 비GPT 프로그램만 대상
+- 한 번에 하나의 프로그램만 추가
+- 목표는 `최종 산출물 완성`이 아니라 `기능 호출 성공 + flow 연결 증거 확보`
+
+**실행 순서:**
+1. Stage 4 mock chain evidence가 정상인지 먼저 확인합니다.
+2. 비GPT 프로그램 후보를 1개만 선택합니다.
+3. 해당 프로그램만 실제 실행 경로에 연결한 뒤 seed/control을 최소 횟수로 실행합니다.
+4. 프로그램 기능 호출 흔적과 control-plane 연결 흔적을 확인합니다.
+5. 성공하면 다음 비GPT 프로그램을 같은 방식으로 하나씩 추가합니다.
+
+**대상 예시:**
+- `rvc`
+- `kenburns`
+- `render`
+- 그 외 GPT floor를 직접 요구하지 않는 local/gpu workload
+
+**수집 증거:**
+- canonical runtime-state root의 `evidence/result.json`
+- canonical runtime-state root의 `health/gui_status.json`
+- canonical runtime-state root의 `evidence/control_plane_events.jsonl`
+- canonical runtime-state root의 `logs/<run_id>.jsonl`
+- 프로그램별 산출물/중간 산출물 경로
+
+**프로그램별 통과 기준:**
+- 선택한 비GPT 프로그램이 실제로 호출되었다는 증거가 남음
+- `run_id`가 seed -> worker dispatch -> result/gui/control-plane evidence에서 이어짐
+- 해당 프로그램이 expected stage로 진입하고, `job_summary` 또는 동등 종료 이벤트가 남음
+- flow가 다음 단계로 전달되거나, fail-closed 구조화 실패로 닫힘
+- GPT floor가 없어도 되는 프로그램인데 GPT 의존 때문에 막히지 않음
+
+**프로그램별 중단 조건:**
+- 프로그램 호출 증거가 전혀 없음
+- `run_id` 조인이 끊김
+- `result.json`, `gui_status.json`, `control_plane_events.jsonl`의 의미가 다름
+- worker stage는 바뀌었는데 프로그램 기능 결과물/중간 산출물이 전혀 없음
+- 구조화 실패가 필요한데 `failure_summary.json` 또는 동등 실패 흔적이 없음
+
+**Stage 4B 완료 기준:**
+- 비GPT 프로그램을 한 번에 하나씩 추가해도 기능 호출과 flow 연결이 해석 가능함
+- 각 프로그램별로 `연결됨/실패함`을 증거 기반으로 판정할 수 있음
+- 여기서 확인한 비GPT 프로그램 연결이 안정적일 때만 Stage 5 `e2e 1행 테스트`로 넘어감
+
+## Stage 5B: e2e 5-Row Batch Smoke
+
+**목적:** Stage 5 단건 성공 이후, 준비된 테스트 행 5개를 같은 계약으로 순차 검증합니다.
+
+**사전 조건:**
+- Stage 5 `1개 행 성공` evidence 확보
+- `docs/plans/2026-03-08-browser-session-stability-plan.md`의 `No-Go` 해제
+- `manual` tier 실행 경로 사용
+
+**실행 순서:**
+1. 준비된 테스트 행 5개를 순차로 선택합니다.
+2. 각 행마다 `--excel-once`로 seed합니다.
+3. 각 행마다 `--control-once`를 final output 또는 구조화 실패(`failure_summary.json`)까지 반복 실행합니다.
+4. 각 행마다 latest-run evidence와 per-run log를 묶어 기록합니다.
+
+**명령 예시:**
+```bash
+python -m runtime_v2.cli --excel-once --excel-path "D:\YOUTUBEAUTO\4 머니.xlsx" --sheet-name "Sheet1" --row-index <prepared-row>
+python -m runtime_v2.cli --control-once
+python -m runtime_v2.cli --control-once
+python -m runtime_v2.cli --control-once
+```
+
+**행별 통과 기준:**
+- 같은 행의 `run_id`가 seed -> stage1 -> stage2 -> final evidence까지 정렬됨
+- `error_code` 의미가 `result.json`, `gui_status.json`, `control_plane_events.jsonl`에서 일치함
+- blocked/retry/failure의 `attempt/backoff` 계약이 drift 없이 해석 가능함
+- final output 또는 구조화 실패(`failure_summary.json`) 중 하나로 한 번에 판정 가능함
+- browser workload는 GPU lease를 잡지 않음
+
+**행별 중단 조건:**
+- `gpt_status.json`에서 `OK < 1`
+- `gpu_scheduler_health.json`에서 duplicate run 정황 발생
+- `result.json`과 `gui_status.json`의 latest-run 의미 불일치
+- `failure_summary.json`이 필요했는데 생성되지 않음
+- `run_id` 정렬, `error_code` 의미, `attempt/backoff` 3축 중 하나라도 해석 불가
+
+**배치 통과 기준:**
+- 5개 행이 모두 위 행별 통과 기준을 만족함
+- 5개 행 모두 manager-only Excel 상태 갱신과 latest evidence 해석이 가능함
+
 ## Stage 6: 24h Soak 준비 검증
 
 **목적:** 장시간 soak를 돌릴 자격이 있는지, smoke 증거와 운영 게이트만으로 판정합니다.
@@ -363,18 +471,20 @@ python -m runtime_v2.cli --once
 2. Stage 1 실패 -> Stage 2 이상 금지
 3. Stage 2 실패 -> Stage 3 이상 금지
 4. Stage 3 실패 -> Stage 4 이상 금지
-5. Stage 4 `run_id` 조인 실패 -> Stage 5 이상 금지
-6. Stage 5 final evidence/failure summary 해석 실패 -> Stage 6 이상 금지
-7. Stage 6 gate 미충족 -> Stage 7 금지
+5. Stage 4 `run_id` 조인 실패 -> Stage 4B 이상 금지
+6. Stage 4B에서 비GPT 프로그램 기능/flow 연결 해석 실패 -> Stage 5 이상 금지
+7. Stage 5 final evidence/failure summary 해석 실패 -> Stage 6 이상 금지
+8. Stage 6 gate 미충족 -> Stage 7 금지
 
 ## 실행 우선순위
 
 1. 로컬 회귀 전체 재실행
 2. browser plane/GPU worker 자원 의존 테스트
 3. detached selftest/control-idle/mock-chain
-4. 실서비스 단건 smoke
-5. soak readiness 판정
-6. 24h soak
+4. 비GPT 프로그램 단건 기능/flow 연결 테스트
+5. 실서비스 단건 smoke
+6. soak readiness 판정
+7. 24h soak
 
 ## 실패 시 기록 템플릿
 

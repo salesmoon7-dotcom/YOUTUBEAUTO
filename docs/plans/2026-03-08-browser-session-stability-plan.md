@@ -36,6 +36,22 @@
   3. browser canonical profile ownership / recovery contract 고정
   4. blocked/backoff semantics 고정
 
+## Execution Targets (Today)
+
+- 이 섹션은 새 구조 작업을 여는 계획이 아니라, 이미 닫힌 구조/guardrail 위에서 오늘 실행할 운영 루틴 대상을 stage에 매핑하는 용도입니다.
+- `e2e mock test`
+  - canonical stage: `docs/plans/2026-03-07-runtime-v2-staged-test-plan.md`의 Stage 4 detached mock chain
+  - execution tier: `isolated`
+  - interpretation: 운영 성공 근거가 아니라 probe-root 기준 evidence contract 검증입니다.
+- `e2e 1행 테스트`
+  - canonical stage: `docs/plans/2026-03-07-runtime-v2-staged-test-plan.md`의 Stage 5 실서비스 수동 smoke
+  - execution tier: `manual`
+  - current gate: 이 문서의 `1-Row Smoke Go/No-Go Rule`이 닫히기 전에는 실행하지 않습니다.
+- `e2e 5행 테스트`
+  - canonical stage: `docs/plans/2026-03-07-runtime-v2-staged-test-plan.md`의 Stage 5B (`Stage 5` 통과 후 5개 행 수동 반복)
+  - execution tier: `manual`
+  - current gate: `e2e 1행 테스트` 1회 성공 전에는 시작하지 않습니다.
+
 ## Reference Carryover Decision Rule
 
 - 외부 참고 기능은 `이름만 대응`이면 이행으로 보지 않습니다.
@@ -81,8 +97,21 @@
   - 채팅 세션에서는 개별 테스트만 순차 실행합니다. 대묶음 실행은 금지합니다.
   - 단, 현재 wrapper 증거상 파일 단위 `python -m pytest tests/test_runtime_v2_browser_plane.py -q` 같은 단일 명령도 중단될 수 있으므로, 채팅에서는 파일 전체가 아니라 테스트 케이스 단위로 더 잘게 나눠 실행합니다.
 - `manual`
-  - 판정 조건: 기본 `system/runtime_v2/` 경로 사용, 실제 `ensure_runtime_bootstrap()`/`run_selftest()`/`run_control_loop_once()` 운영 경로 진입, real browser launch, detached child contract 자체, live Stage 5 evidence 의존
+  - 판정 조건: 현재 canonical runtime-state root(기본값: `D:/YOUTUBEAUTO_RUNTIME/runtime_state/`) 사용, 실제 `ensure_runtime_bootstrap()`/`run_selftest()`/`run_control_loop_once()` 운영 경로 진입, real browser launch, detached child contract 자체, live Stage 5 evidence 의존
   - 채팅 세션에서는 실행 금지입니다. 별도 통제 환경 또는 detached/probe root로만 다룹니다.
+  - `e2e 1행 테스트`와 `e2e 5행 테스트`는 기본적으로 이 tier에 속합니다.
+  - `No-Go`가 유지 중이거나 `unknown`/join mismatch가 남아 있으면 실행하지 않고 fail-closed로 중단합니다.
+
+## Test Temp-Root Interpretation Rule
+
+- `tests/` 안의 `TemporaryDirectory(dir="D:\\YOUTUBEAUTO")` 사용은 기본적으로 Windows temp-parent convenience로 해석합니다.
+- 이것만으로 live runtime state가 repo root에 의존한다고 판정하지 않습니다.
+- repo-root dependency 판정은 아래와 같이 분리해서 합니다.
+  - browser session root
+  - runtime state/evidence files
+  - worker artifact/output defaults
+  - test temp roots
+- temp-parent 사용이 실제 triage를 오염시키거나 canonical 경로 의미를 바꾸는 경우에만 테스트 수정 대상으로 승격합니다.
 
 ## Current Test Tier Map
 
@@ -198,6 +227,8 @@
   - soak 자동 실행기 자체 구현
 
 ## Current Evidence Snapshot
+
+- 이 섹션의 `system/runtime_v2/*` 경로는 과거/현재 운영 증거 스냅샷 예시입니다. Task 2 이후 기본 runtime-state root가 아니라 historical evidence 위치로 읽습니다.
 
 - 현재 `runtime_v2/browser/manager.py`는 browser start URL, runtime-owned port/profile alignment, external profile override, live tab 기반 `session_ready.json` 생성까지 반영되어 있습니다.
 - 최종 검증 run:
