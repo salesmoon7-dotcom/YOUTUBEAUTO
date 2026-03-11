@@ -68,6 +68,21 @@ class RuntimeV2ExternalProcessTests(unittest.TestCase):
         self.assertFalse(bool(result["ok"]))
         self.assertEqual(result["error_code"], "OUTPUT_OUTSIDE_ROOT")
 
+    def test_verified_adapter_command_rejects_windows_reserved_device_name(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace = Path(tmp_dir)
+            result = run_verified_adapter_command(
+                workspace,
+                adapter_command=[sys.executable, "-c", "print('ok')"],
+                service_artifact_path="NUL",
+                adapter_error_code="ignored_adapter_failed",
+            )
+
+        self.assertFalse(bool(result["ok"]))
+        self.assertEqual(result["error_code"], "OUTPUT_PATH_INVALID")
+
     def test_verified_adapter_command_marks_reused_output_with_code(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             workspace = Path(tmp_dir)

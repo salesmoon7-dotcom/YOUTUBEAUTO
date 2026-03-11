@@ -10,6 +10,38 @@ from runtime_v2.workers.job_runtime import resolve_local_input
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+WINDOWS_RESERVED_DEVICE_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    "COM1",
+    "COM2",
+    "COM3",
+    "COM4",
+    "COM5",
+    "COM6",
+    "COM7",
+    "COM8",
+    "COM9",
+    "LPT1",
+    "LPT2",
+    "LPT3",
+    "LPT4",
+    "LPT5",
+    "LPT6",
+    "LPT7",
+    "LPT8",
+    "LPT9",
+}
+
+
+def _has_reserved_windows_name(candidate: Path) -> bool:
+    for part in candidate.parts:
+        normalized = part.rstrip(" .:").upper()
+        if normalized in WINDOWS_RESERVED_DEVICE_NAMES:
+            return True
+    return False
 
 
 def run_external_process(
@@ -78,6 +110,8 @@ def _resolve_output_target(raw_path: str) -> Path | None:
         candidate = (REPO_ROOT / candidate).resolve()
     else:
         candidate = candidate.resolve()
+    if _has_reserved_windows_name(candidate):
+        return None
     if REPO_ROOT not in candidate.parents and candidate != REPO_ROOT:
         return None
     return candidate
@@ -92,6 +126,8 @@ def _resolve_output_target_info(raw_path: str) -> tuple[Path | None, str | None]
         candidate = (REPO_ROOT / candidate).resolve()
     else:
         candidate = candidate.resolve()
+    if _has_reserved_windows_name(candidate):
+        return None, "OUTPUT_PATH_INVALID"
     if REPO_ROOT not in candidate.parents and candidate != REPO_ROOT:
         return None, "OUTPUT_OUTSIDE_ROOT"
     return candidate, None
