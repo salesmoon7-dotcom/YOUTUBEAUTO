@@ -93,3 +93,6 @@ scripts/**/*.bak*
 # Temporary local folders
 tmp_*/
 tmp*/
+_tmp*.patch
+tmp_*.patch
+tmp_stage_*.py

@@ -8,8 +8,11 @@
   - `docs/plans/2026-03-11-control-plane-hotspot-review.md`에 `runtime_v2/control_plane.py` hotspot review를 기록했습니다.
   - 현재 결정은 `no new unit`입니다. 이 항목은 새 기능이 아니라 구조 분해 목적의 별도 architecture review unit으로만 다시 열 수 있습니다.
 - `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md`
-  - Task 4 `Single Meaning Snapshot Review` 1차는 진행 중입니다.
-  - readiness/review 응답은 이제 `snapshot_run_id`를 단일 값으로 정규화하는 방향으로 정리되고 있습니다.
+  - Task 4 `Single Meaning Snapshot Review`는 완료되었습니다.
+  - follow-up 범위는 완료 기록을 재오픈하는 것이 아니라, 이후 tightening plan에서 `snapshot_run_id`/latest-run 의미 drift가 다시 늘어나지 않도록 유지하는 데 한정합니다.
+- `docs/plans/2026-03-11-runtime-v2-conditional-tightening-plan.md`
+  - 현재 판정은 `조건부 수용`이며, follow-up 범위는 문서 상태 정렬, event 경계 tightening, 의미 drift 회귀 잠금으로 제한합니다.
+  - `control_plane`의 canonical owner 역할을 다시 쪼개는 배치가 아니라, 기존 single writer / single failure contract를 더 선명하게 잠그는 후속 정리 unit입니다.
 - 완료된 unit 기록: `docs/plans/2026-03-09-control-plane-feeder-decomposition-plan.md`
   - 1차 분해 범위는 feeder discovery / explicit contract parsing / feeder state I/O만입니다.
   - `run_control_loop_once()`, failure contract, recovery, downstream chaining, snapshot writer는 `control_plane.py`에 남깁니다.
@@ -18,6 +21,8 @@
 - `1행 smoke` readiness 재판정은 완료되었습니다.
   - detached browser recovery run `system/runtime_v2_probe/browser-recover-run-02/probe_result.json`이 `code=OK`로 종료됐습니다.
   - `python -m runtime_v2.cli --readiness-check` 기준 `ready=true`, `code=OK`를 확인했습니다.
+  - 단, 이 완료는 readiness-check 기준입니다. `docs/plans/2026-03-08-browser-session-stability-plan.md`의 Stage 5 `1개 행 성공`이 완료됐다는 뜻은 아닙니다.
+  - 오늘 실행 대상 매핑은 `docs/plans/2026-03-07-runtime-v2-staged-test-plan.md`를 기준으로 봅니다: `e2e mock test -> Stage 4`, `e2e 1행 테스트 -> Stage 5`, `e2e 5행 테스트 -> Stage 5B`.
 - agent-browser implementation unit은 완료되었습니다.
   - 최소 closed loop(`dev_plan -> dev_implement -> agent_browser_verify -> dev_replan`)와 safe-tier fail-closed, probe-root smoke는 구현됨
   - stage2 브라우저 워커는 `video_plan["use_agent_browser_services"]` opt-in으로 hidden CLI child 기반 `agent-browser` adapter 경로를 자동 생성할 수 있음
@@ -44,6 +49,8 @@
 - 채팅 interruption 대응 규칙 강화:
   - 채팅 세션에서는 실브라우저 relaunch/recovery를 실행하지 않습니다.
   - readiness blocker가 실브라우저 복구를 요구하면 detached 또는 수동 smoke 단계에서만 수행합니다.
+  - 대형 런타임 세션/probe/scratch 데이터는 repo root가 아니라 외부 runtime root(`YOUTUBEAUTO_RUNTIME`)를 기본값으로 사용합니다.
+  - root-level `tmp_*`/patch 산출물은 세션 종료 전에 제거하거나 외부 scratch root로 이동합니다.
 - 테스트 실행은 `docs/plans/2026-03-08-browser-session-stability-plan.md`의 `Test Tier Execution Contract`를 따릅니다. 채팅 세션 기본 검증은 `safe`만 허용하고, `isolated`는 개별 실행, `manual`은 채팅 세션 밖에서만 다룹니다.
 - 브라우저 불안정성 분석 기준: `docs/plans/2026-03-10-browser-instability-debug-cost-plan.md`
   - 디버깅 비용 증폭기는 `Profile/Lock Drift`, `Ready/Login Heuristics`, `DOM/Artifact Capture Heuristics` 3축으로 분류합니다.
