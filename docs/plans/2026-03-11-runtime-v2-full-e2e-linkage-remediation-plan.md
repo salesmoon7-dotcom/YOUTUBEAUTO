@@ -56,6 +56,12 @@
 3. **GeminiGen default browser-adapter policy**
    - structural handoff exists, but default agent-browser adapter path still fail-closes by current policy
 
+4. **fresh GPT/stage1 production capture path**
+   - the current queued `chatgpt` production path seeds only `topic_spec`
+   - `control_plane -> run_stage1_chatgpt_job()` does not create `browser_evidence` or `gpt_response_text` on its own
+   - therefore a queued `chatgpt` job can complete with `topic_spec_fallback` artifacts and still look superficially successful
+   - this means the current production path cannot yet prove a true fresh row-level GPT/stage1 capture by itself
+
 ### Key test evidence already available
 
 - `tests/test_runtime_v2_stage2_contracts.py`
@@ -71,6 +77,18 @@
 | `qwen3_tts` adapter success | `rvc` | `kenburns` |
 | `kenburns` resident path | inbox/discovery via `input_root/kenburns` | stage2/control-plane automatic chain |
 | `rvc` resident path | inbox/discovery via `input_root/rvc/source` + `input_root/rvc/audio` | stage1 direct auto-queue |
+
+### Validation precondition for row-level runtime checks
+
+- Row-level runtime verification must start from a **fresh GPT/stage1 run in the current session/runtime**, not from Excel-reconstructed handoff alone.
+- Reason: Excel replay can drift from the canonical stage1 contract (`scene_prompts` vs `voice_groups/voice_texts` cardinality), which can produce `artifact_invalid` before downstream validation even begins.
+- Existing historical `stage1_handoff.json` / `parsed_payload.json` may be used as reference/debug evidence, but they are not sufficient to claim current row success.
+- Current production `chatgpt` queueing is also insufficient by itself if it only produces `topic_spec_fallback` artifacts.
+- Therefore, the truthful verification order for a target row is:
+  1. recover readiness,
+  2. establish a real current-session GPT capture path for the current row,
+  3. use that newly generated `parsed_payload.json` / `stage1_handoff.json` / `video_plan.json` for downstream checks,
+  4. judge success only from current-session evidence.
 
 ## Conflict Check And Guiding Principles
 
@@ -292,6 +310,8 @@ python -m py_compile runtime_v2/cli.py runtime_v2/control_plane.py runtime_v2/st
 **Step 4: Success criteria**
 
 The remediation is complete only when:
+- row-level runtime verification uses fresh current-session stage1 evidence rather than Excel-only replay,
+- the production `chatgpt` path (or an explicitly documented canonical alternative) can generate fresh stage1 evidence without silent `topic_spec_fallback`,
 - `qwen3_tts -> rvc` is production-linked, not mock-only
 - `GeminiGen` consumes the intended first-frame/image handoff contract
 - `KenBurns` is explicitly frozen as resident/inbox-only within the default 24h GPU structure

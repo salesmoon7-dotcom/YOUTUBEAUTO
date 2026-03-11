@@ -6,6 +6,13 @@
 
 **Scope:** `stage1 -> stage2 auto-queue`, `qwen3_tts -> rvc`, `GeminiGen -> render`, `KenBurns resident/inbox`
 
+## 0. Entry Rule
+
+- Target-row verification starts from a **fresh GPT/stage1 run in the current runtime**.
+- Do not treat Excel-restored handoff alone as a valid start point for claiming row success.
+- Historical `stage1_handoff.json`, `parsed_payload.json`, and `video_plan.json` are reference/debug aids only unless they were produced in the current verification session.
+- A queued `chatgpt` job that only contains `topic_spec` is not enough if the resulting artifacts are just `topic_spec_fallback` outputs.
+
 ---
 
 ## 1. Run ID Rules
@@ -37,11 +44,19 @@
 ## 4. Chain A: stage1 -> stage2 auto-queue
 
 ### PASS evidence
+- current-session `stage1` artifacts exist for the target row:
+  - `raw_output.json`
+  - `parsed_payload.json`
+  - `stage1_handoff.json`
+  - `video_plan.json`
+- those artifacts must represent a real GPT capture path, not merely `topic_spec_fallback`
 - `job_queue.json`에서 stage1(chatgpt) 완료 후 `genspark`, `seaart`, `geminigen`, `canva`, `render` job이 생성됨
 - child jobs가 같은 `payload.run_id`, `payload.row_ref`를 공유함
 - `control_plane_events.jsonl`에서 child jobs가 `queued`로 기록됨
 
 ### FAIL signs
+- Excel replay로만 downstream을 만들다가 `artifact_invalid`가 발생함
+- current-session stage1 artifacts exist but still contain `topic_spec_fallback` instead of live GPT capture output
 - stage1 결과는 OK인데 child jobs가 하나도 없음
 - `run_id` / `row_ref`가 child jobs에서 끊김
 
