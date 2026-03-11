@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from threading import Lock
 from time import time
@@ -39,22 +38,19 @@ def _to_int(value: object, default: int = 0) -> int:
 
 
 def _append_browser_event(
-    record: dict[str, object], output_file: str | Path | None
+    record: dict[str, object], output_rows: list[dict[str, object]] | None
 ) -> None:
-    if output_file is None:
+    if output_rows is None:
         return
-    path = Path(output_file)
-    path.parent.mkdir(parents=True, exist_ok=True)
     payload = dict(record)
     _ = payload.setdefault("ts", round(time(), 3))
-    with path.open("a", encoding="utf-8") as handle:
-        _ = handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
+    output_rows.append(payload)
 
 
 def _emit_browser_session_events(
     sessions: list[dict[str, object]],
     *,
-    output_file: str | Path | None,
+    output_rows: list[dict[str, object]] | None,
     run_id: str,
     busy_lock_escalation_sec: float | None = None,
     emit_escalations: bool = True,
@@ -92,7 +88,7 @@ def _emit_browser_session_events(
                 "error": "",
                 "tick_id": run_id,
             },
-            output_file,
+            output_rows,
         )
         lock_age_sec = _to_float(session.get("lock_age_sec", 0.0), 0.0)
         if (
@@ -118,12 +114,15 @@ def _emit_browser_session_events(
                     "error": "",
                     "tick_id": run_id,
                 },
-                output_file,
+                output_rows,
             )
 
 
 def _emit_browser_plane_ownership_event(
-    ownership: dict[str, object], *, output_file: str | Path | None, run_id: str
+    ownership: dict[str, object],
+    *,
+    output_rows: list[dict[str, object]] | None,
+    run_id: str,
 ) -> None:
     action_result = str(ownership.get("action_result", ""))
     if not action_result or action_result == "ownership_heartbeat":
@@ -144,7 +143,7 @@ def _emit_browser_plane_ownership_event(
             "error": "",
             "tick_id": run_id,
         },
-        output_file,
+        output_rows,
     )
 
 
@@ -248,6 +247,9 @@ class BrowserSupervisor:
         restart_window_sec: int = 300,
         now_fn: Callable[[], float] = time,
     ) -> dict[str, object]:
+        output_rows: list[dict[str, object]] | None = (
+            [] if events_file is not None else None
+        )
         previous_ownership = inspect_browser_plane_owner()
         loaded_sessions = load_browser_registry(registry_file)
         if loaded_sessions:
@@ -273,7 +275,7 @@ class BrowserSupervisor:
                 ownership = {**ownership, "action_result": "ownership_acquired"}
         _emit_browser_plane_ownership_event(
             ownership,
-            output_file=events_file,
+            output_rows=output_rows,
             run_id=run_id,
         )
 
@@ -288,7 +290,7 @@ class BrowserSupervisor:
         )
         _emit_browser_session_events(
             initial_sessions,
-            output_file=events_file,
+            output_rows=output_rows,
             run_id=run_id,
             busy_lock_escalation_sec=float(max(cooldown_sec, 1)),
             emit_escalations=False,
@@ -348,7 +350,7 @@ class BrowserSupervisor:
                             "restart_budget": restart_budget,
                             "last_status": "unhealthy",
                         },
-                        events_file,
+                        output_rows,
                     )
                     continue
                 if should_restart:
@@ -373,7 +375,7 @@ class BrowserSupervisor:
                                 "error": "",
                                 "tick_id": run_id,
                             },
-                            events_file,
+                            output_rows,
                         )
                     _append_browser_event(
                         {
@@ -392,7 +394,7 @@ class BrowserSupervisor:
                             "error": "",
                             "tick_id": run_id,
                         },
-                        events_file,
+                        output_rows,
                     )
 
         final_sessions = self.manager.session_snapshots(
@@ -418,7 +420,7 @@ class BrowserSupervisor:
             )
         _emit_browser_session_events(
             final_sessions,
-            output_file=events_file,
+            output_rows=output_rows,
             run_id=run_id,
             busy_lock_escalation_sec=float(max(cooldown_sec, 1)),
         )
@@ -427,9 +429,15 @@ class BrowserSupervisor:
         health_payload = build_browser_health_payload(final_sessions, run_id=run_id)
         _ = write_browser_registry(registry_payload, registry_file)
         _ = write_browser_health(health_payload, health_file)
-        return {
-            "restarted_services": restarted_services,
-            "initial_summary": initial_summary,
-            "final_summary": final_summary,
-            "sessions": final_sessions,
-        }
+        result = cast(
+            dict[str, object],
+            {
+                "restarted_services": restarted_services,
+                "initial_summary": initial_summary,
+                "final_summary": final_summary,
+                "sessions": final_sessions,
+            },
+        )
+        if output_rows is not None:
+            result["events"] = output_rows
+        return result

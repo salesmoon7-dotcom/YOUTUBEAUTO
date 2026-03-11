@@ -656,6 +656,73 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         )
         self.assertEqual(str(latest_metadata["completion_state"]), "failed")
 
+    def test_control_plane_normalizes_raw_runtime_preflight_signal_to_canonical_failure_contract(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            seed_control_job(
+                JobContract(
+                    job_id="chatgpt-raw-preflight-restart-job",
+                    workload="chatgpt",
+                    checkpoint_key="seed:chatgpt-raw-preflight-restart-job",
+                    payload={
+                        "run_id": "chatgpt-run-raw-preflight-restart",
+                        "topic_spec": {"topic": "raw-preflight-restart"},
+                    },
+                ),
+                config=config,
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={
+                    "status": "blocked",
+                    "code": "BROWSER_RESTART_EXHAUSTED",
+                    "worker_result": {
+                        "stage": "runtime_preflight",
+                        "error_code": "restart_exhausted",
+                        "details": {"blocked_services": ["chatgpt"]},
+                    },
+                },
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-raw-preflight-restart",
+                )
+
+            latest_result = cast(
+                dict[str, object],
+                json.loads(config.result_router_file.read_text(encoding="utf-8")),
+            )
+            latest_metadata = cast(dict[str, object], latest_result["metadata"])
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            job_payload = next(
+                item
+                for item in queue_items
+                if str(item["job_id"]) == "chatgpt-raw-preflight-restart-job"
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "BROWSER_RESTART_EXHAUSTED")
+        self.assertEqual(str(job_payload["status"]), "failed")
+        self.assertEqual(int(cast(int, job_payload["attempts"])), 1)
+        self.assertEqual(float(cast(float, latest_metadata["backoff_sec"])), 0.0)
+        self.assertEqual(
+            str(latest_metadata["worker_error_code"]), "BROWSER_RESTART_EXHAUSTED"
+        )
+        self.assertEqual(str(latest_metadata["completion_state"]), "failed")
+
     def test_control_plane_writes_mismatch_warning_to_debug_log(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

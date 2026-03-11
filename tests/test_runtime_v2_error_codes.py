@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from runtime_v2.error_codes import select_worker_error_code
+from runtime_v2.error_codes import normalize_error_code, select_worker_error_code
 
 
 class RuntimeV2ErrorCodesTests(unittest.TestCase):
@@ -35,6 +35,29 @@ class RuntimeV2ErrorCodesTests(unittest.TestCase):
                 }
             ),
             "BROWSER_RESTART_EXHAUSTED",
+        )
+
+    def test_error_code_selection_normalizes_runtime_aliases(self) -> None:
+        self.assertEqual(
+            normalize_error_code("restart_exhausted"), "BROWSER_RESTART_EXHAUSTED"
+        )
+        self.assertEqual(
+            select_worker_error_code(
+                {
+                    "worker_error_code": "browser_side_effects_disabled",
+                    "error_code": "BROWSER_BLOCKED",
+                }
+            ),
+            "BROWSER_BLOCKED",
+        )
+        self.assertEqual(
+            select_worker_error_code(
+                {
+                    "worker_error_code": "gpu_lease_renew_failed",
+                    "error_code": "GPU_LEASE_RENEW_FAILED",
+                }
+            ),
+            "GPU_LEASE_RENEW_FAILED",
         )
         self.assertEqual(
             select_worker_error_code(

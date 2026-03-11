@@ -39,6 +39,22 @@ from runtime_v2.worker_registry import stalled_workloads
 WorkerRunner = Callable[[], dict[str, object]]
 
 
+def _runtime_signal_payload(
+    *,
+    stage: str,
+    error_code: str,
+    details: dict[str, object] | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "stage": stage,
+        "error_code": error_code,
+        "next_jobs": [],
+    }
+    if details:
+        payload["details"] = details
+    return payload
+
+
 def _runtime_gpt_endpoints(
     config: RuntimeConfig,
     *,
@@ -119,6 +135,22 @@ def _required_browser_summary(
     }
 
 
+def _browser_block_code(
+    browser_runtime: dict[str, object], required_services: tuple[str, ...]
+) -> str:
+    sessions = _as_browser_sessions(browser_runtime.get("sessions"))
+    for service in required_services:
+        matched = next(
+            (entry for entry in sessions if str(entry.get("service", "")) == service),
+            None,
+        )
+        if matched is None:
+            continue
+        if str(matched.get("status", "")).strip() == "restart_exhausted":
+            return "BROWSER_RESTART_EXHAUSTED"
+    return "BROWSER_BLOCKED"
+
+
 def _gpt_endpoints_from_browser_runtime(
     browser_runtime: dict[str, object], *, force_gpt_fail: bool
 ) -> list[GptEndpoint]:
@@ -192,15 +224,11 @@ def run_once(
             "status": "blocked",
             "code": "BROWSER_BLOCKED",
             "workload": workload,
-            "worker_result": {
-                "status": "failed",
-                "stage": "runtime_preflight",
-                "error_code": "BROWSER_BLOCKED",
-                "retryable": True,
-                "next_jobs": [],
-                "completion": {"state": "blocked", "final_output": False},
-                "details": {"reason": "browser_side_effects_disabled"},
-            },
+            "worker_result": _runtime_signal_payload(
+                stage="runtime_preflight",
+                error_code="browser_side_effects_disabled",
+                details={"reason": "browser_side_effects_disabled"},
+            ),
             "browser": {
                 "run_id": run_id,
                 "runtime": "runtime_v2",
@@ -271,14 +299,10 @@ def run_once(
                 "browser": browser_runtime,
                 "browser_sessions": browser_sessions,
                 "lease": snapshot.to_dict() if snapshot is not None else None,
-                "worker_result": {
-                    "status": "failed",
-                    "stage": "runtime_preflight",
-                    "error_code": "GPU_LEASE_BUSY",
-                    "retryable": True,
-                    "next_jobs": [],
-                    "completion": {"state": "blocked", "final_output": False},
-                },
+                "worker_result": _runtime_signal_payload(
+                    stage="runtime_preflight",
+                    error_code="GPU_LEASE_BUSY",
+                ),
             }
 
     try:
@@ -296,23 +320,24 @@ def run_once(
             )
             blocked = [str(service) for service in blocked_services]
             if blocked:
+                blocked_code = _browser_block_code(
+                    browser_runtime, required_browser_services(workload)
+                )
                 return {
                     "status": "blocked",
-                    "code": "BROWSER_BLOCKED",
+                    "code": blocked_code,
                     "gpt_ok_count": 0,
                     "workload": workload,
                     "lock_key": lease_key,
                     "browser": browser_runtime,
                     "browser_sessions": browser_sessions,
-                    "worker_result": {
-                        "status": "failed",
-                        "stage": "runtime_preflight",
-                        "error_code": "BROWSER_BLOCKED",
-                        "retryable": True,
-                        "next_jobs": [],
-                        "completion": {"state": "blocked", "final_output": False},
-                        "details": {"blocked_services": blocked},
-                    },
+                    "worker_result": _runtime_signal_payload(
+                        stage="runtime_preflight",
+                        error_code="restart_exhausted"
+                        if blocked_code == "BROWSER_RESTART_EXHAUSTED"
+                        else "BROWSER_BLOCKED",
+                        details={"blocked_services": blocked},
+                    ),
                 }
             return {
                 "status": "failed",
@@ -322,14 +347,10 @@ def run_once(
                 "lock_key": lease_key,
                 "browser": browser_runtime,
                 "browser_sessions": browser_sessions,
-                "worker_result": {
-                    "status": "failed",
-                    "stage": "runtime_preflight",
-                    "error_code": "BROWSER_UNHEALTHY",
-                    "retryable": True,
-                    "next_jobs": [],
-                    "completion": {"state": "failed", "final_output": False},
-                },
+                "worker_result": _runtime_signal_payload(
+                    stage="runtime_preflight",
+                    error_code="BROWSER_UNHEALTHY",
+                ),
             }
 
         endpoints = _gpt_endpoints_from_browser_runtime(
@@ -356,14 +377,10 @@ def run_once(
                 "browser": browser_runtime,
                 "browser_sessions": browser_sessions,
                 "lease": lease_payload,
-                "worker_result": {
-                    "status": "failed",
-                    "stage": "runtime_preflight",
-                    "error_code": "GPT_FLOOR_FAIL",
-                    "retryable": True,
-                    "next_jobs": [],
-                    "completion": {"state": "blocked", "final_output": False},
-                },
+                "worker_result": _runtime_signal_payload(
+                    stage="runtime_preflight",
+                    error_code="GPT_FLOOR_FAIL",
+                ),
             }
 
         runtime_result: dict[str, object] = {
@@ -467,31 +484,23 @@ def _run_worker_with_lease_heartbeat(
     if renew_failed:
         return {
             "status": "failed",
-            "stage": "lease_heartbeat",
-            "error_code": "gpu_lease_renew_failed",
-            "retryable": True,
-            "details": {
-                "workload": workload,
-                "lock_key": lease_key,
-            },
-            "next_jobs": [],
-            "completion": {
-                "state": "blocked",
-                "final_output": False,
-            },
+            **_runtime_signal_payload(
+                stage="lease_heartbeat",
+                error_code="gpu_lease_renew_failed",
+                details={
+                    "workload": workload,
+                    "lock_key": lease_key,
+                },
+            ),
         }, current_lease
     return result_box.get(
         "worker_result",
         {
             "status": "failed",
-            "stage": "worker_missing_result",
-            "error_code": "missing_worker_result",
-            "retryable": True,
-            "next_jobs": [],
-            "completion": {
-                "state": "blocked",
-                "final_output": False,
-            },
+            **_runtime_signal_payload(
+                stage="worker_missing_result",
+                error_code="missing_worker_result",
+            ),
         },
     ), current_lease
 

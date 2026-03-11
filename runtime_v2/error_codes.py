@@ -22,13 +22,28 @@ DOCUMENTED_ERROR_CODE_IDS: tuple[str, ...] = (
     "BROWSER_REGISTRY_DRIFT",
 )
 
+ERROR_CODE_ALIASES: dict[str, str] = {
+    "restart_exhausted": "BROWSER_RESTART_EXHAUSTED",
+    "browser_side_effects_disabled": "BROWSER_BLOCKED",
+    "gpu_lease_renew_failed": "GPU_LEASE_RENEW_FAILED",
+}
+
 
 def iter_documented_error_code_ids() -> tuple[str, ...]:
     return DOCUMENTED_ERROR_CODE_IDS
 
 
+def normalize_error_code(raw_code: object) -> str:
+    code = str(raw_code).strip()
+    if not code:
+        return ""
+    return ERROR_CODE_ALIASES.get(code.lower(), code)
+
+
 def select_worker_error_code(metadata: dict[str, object]) -> str:
-    explicit_worker_error_code = str(metadata.get("worker_error_code", "")).strip()
+    explicit_worker_error_code = normalize_error_code(
+        metadata.get("worker_error_code", "")
+    )
     normalized_worker_error_code = explicit_worker_error_code.lower()
     meaningless_worker_codes = {
         "-",
@@ -47,4 +62,4 @@ def select_worker_error_code(metadata: dict[str, object]) -> str:
         and normalized_worker_error_code not in meaningless_worker_codes
     ):
         return explicit_worker_error_code
-    return str(metadata.get("error_code", "")).strip()
+    return normalize_error_code(metadata.get("error_code", ""))
