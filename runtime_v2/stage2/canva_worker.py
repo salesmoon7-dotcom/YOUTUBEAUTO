@@ -7,6 +7,7 @@ from runtime_v2.contracts.job_contract import JobContract
 from runtime_v2.stage2.agent_browser_adapter import (
     attach_evidence_path,
     build_stage2_agent_browser_adapter_command,
+    canonical_stage2_adapter_env,
 )
 from runtime_v2.stage2.request_builders import (
     build_canva_thumb_file,
@@ -61,6 +62,7 @@ def run_canva_job(
             adapter_command=adapter_command,
             service_artifact_path=str(job.payload.get("service_artifact_path", "")),
             adapter_error_code="canva_adapter_failed",
+            extra_env=canonical_stage2_adapter_env(),
         )
         stdout_path = Path(str(adapter_result["stdout_path"]))
         stderr_path = Path(str(adapter_result["stderr_path"]))

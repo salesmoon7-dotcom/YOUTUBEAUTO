@@ -70,7 +70,36 @@ def _video_plan(asset_root: str) -> dict[str, object]:
     }
 
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
 class RuntimeV2Stage2WorkerTests(unittest.TestCase):
+    def test_genspark_worker_injects_pythonpath_for_agent_browser_child(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = root / "exports" / "scene-01.png"
+            job = _stage2_job("genspark")
+            job.payload["use_agent_browser"] = True
+            job.payload["service_artifact_path"] = str(output_path)
+
+            with patch(
+                "runtime_v2.stage2.genspark_worker.run_verified_adapter_command",
+                return_value={
+                    "ok": True,
+                    "output_path": output_path,
+                    "stdout_path": root / "stdout.log",
+                    "stderr_path": root / "stderr.log",
+                    "reused": False,
+                },
+            ) as adapter_mock:
+                _ = run_genspark_job(job, artifact_root)
+
+        kwargs = adapter_mock.call_args.kwargs
+        extra_env = cast(dict[str, str], kwargs["extra_env"])
+        self.assertIn("PYTHONPATH", extra_env)
+        self.assertTrue(extra_env["PYTHONPATH"].startswith(str(REPO_ROOT.resolve())))
+
     def test_agent_browser_stage2_adapter_command_uses_hidden_cli_child(self) -> None:
         command = build_stage2_agent_browser_adapter_command(
             service="genspark",
@@ -118,13 +147,19 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             self.assertTrue((workspace / "adapter_stderr.log").exists())
             native_payload = cast(
                 dict[str, object],
-                json.loads((workspace / "native_geminigen.json").read_text(encoding="utf-8")),
+                json.loads(
+                    (workspace / "native_geminigen.json").read_text(encoding="utf-8")
+                ),
             )
-            video_task = cast(dict[str, object], cast(list[object], native_payload["video_tasks"])[0])
+            video_task = cast(
+                dict[str, object], cast(list[object], native_payload["video_tasks"])[0]
+            )
             completion = cast(dict[str, object], result["completion"])
             self.assertEqual(completion["state"], "succeeded")
             self.assertTrue(bool(completion["final_output"]))
-            self.assertEqual(str(video_task["first_frame_path"]), str(first_frame_path.resolve()))
+            self.assertEqual(
+                str(video_task["first_frame_path"]), str(first_frame_path.resolve())
+            )
 
     def test_geminigen_row_processing_handles_all_items_for_one_row_via_adapter_command(
         self,

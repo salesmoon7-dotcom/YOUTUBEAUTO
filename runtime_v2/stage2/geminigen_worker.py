@@ -7,6 +7,7 @@ from runtime_v2.contracts.job_contract import JobContract
 from runtime_v2.stage2.agent_browser_adapter import (
     attach_evidence_path,
     build_stage2_agent_browser_adapter_command,
+    canonical_stage2_adapter_env,
 )
 from runtime_v2.stage2.request_builders import build_geminigen_prompt_file
 from runtime_v2.workers.external_process import run_verified_adapter_command
@@ -52,9 +53,11 @@ def run_geminigen_job(
         adapter_command = [str(item) for item in adapter_command_items]
         adapter_result = run_verified_adapter_command(
             workspace,
+            approved_root=artifact_root,
             adapter_command=adapter_command,
             service_artifact_path=str(job.payload.get("service_artifact_path", "")),
             adapter_error_code="geminigen_adapter_failed",
+            extra_env=canonical_stage2_adapter_env(),
         )
         stdout_path = Path(str(adapter_result["stdout_path"]))
         stderr_path = Path(str(adapter_result["stderr_path"]))

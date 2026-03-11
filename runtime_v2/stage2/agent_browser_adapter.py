@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Mapping
@@ -27,6 +28,7 @@ _DEFAULT_TARGETS: dict[str, dict[str, str]] = {
         "expected_title_substring": "Canva",
     },
 }
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def build_stage2_agent_browser_adapter_command(
@@ -64,6 +66,13 @@ def build_stage2_agent_browser_adapter_command(
     if resolved_title:
         command.extend(["--expected-title-substring", resolved_title])
     return command
+
+
+def canonical_stage2_adapter_env() -> dict[str, str]:
+    repo_root = str(REPO_ROOT.resolve())
+    current = os.environ.get("PYTHONPATH", "").strip()
+    pythonpath = repo_root if not current else f"{repo_root}{os.pathsep}{current}"
+    return {"PYTHONPATH": pythonpath}
 
 
 def _default_port_for_service(service: str) -> int:
