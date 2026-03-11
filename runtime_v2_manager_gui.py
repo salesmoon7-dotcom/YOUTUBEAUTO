@@ -178,6 +178,38 @@ def _display_worker_error_code(code: str) -> str:
     return normalized
 
 
+def _truncate_ui_text(text: str, limit: int = 64) -> str:
+    normalized = " ".join(str(text).split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: limit - 3].rstrip() + "..."
+
+
+def _friendly_ready_text(readiness: dict[str, object], blockers: list[str]) -> str:
+    if bool(readiness.get("ready", False)) and not blockers:
+        return "준비되었습니다"
+    joined = " ".join(blockers)
+    if "GPT_FLOOR" in joined:
+        return "GPT 준비 확인이 필요합니다"
+    if "login_required" in joined:
+        return "브라우저 로그인이 필요합니다"
+    if "busy_lock" in joined:
+        return "브라우저 작업이 끝날 때까지 기다려주세요"
+    if "unknown_lock" in joined:
+        return "브라우저 상태 확인이 필요합니다"
+    return "실행 전 준비 상태를 확인해주세요"
+
+
+def _friendly_evidence_text(evidence_summary: str) -> str:
+    if "final_output=true" in evidence_summary:
+        return "결과 파일이 준비되었습니다"
+    if "failure_summary=" in evidence_summary:
+        return "실패 요약이 기록되었습니다"
+    if "pending terminal evidence" in evidence_summary:
+        return "실행 결과를 기다리는 중입니다"
+    return "아직 실행 기록이 없습니다"
+
+
 def _runtime_config_from_text(runtime_root: str) -> RuntimeConfig:
     normalized = runtime_root.strip()
     if not normalized:
@@ -298,7 +330,7 @@ class RuntimeV2ManagerGUI:
 
     def __init__(self) -> None:
         self.root: tk.Tk = tk.Tk()
-        self.root.title("Master Manager - runtime_v2 Operator Console")
+        self.root.title("runtime_v2 매니저")
         self.root.geometry("1260x900")
         _ = self.root.configure(bg="#f4f4f4")
         _ = self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -312,11 +344,56 @@ class RuntimeV2ManagerGUI:
         self.style.configure(
             "ManagerHeader.TLabel", background="#203040", foreground="#f4f7fb"
         )
+        self.style.configure("AppBody.TFrame", background="#eef2f7")
+        self.style.configure(
+            "HeroCard.TFrame",
+            background="#ffffff",
+            relief=tk.GROOVE,
+            borderwidth=1,
+        )
+        self.style.configure(
+            "HeroTitle.TLabel",
+            background="#ffffff",
+            foreground="#1d2a3a",
+            font=("Malgun Gothic", 16, "bold"),
+        )
+        self.style.configure(
+            "HeroBody.TLabel",
+            background="#ffffff",
+            foreground="#52606d",
+            font=("Malgun Gothic", 10),
+        )
+        self.style.configure(
+            "Card.TFrame", background="#ffffff", relief=tk.GROOVE, borderwidth=1
+        )
+        self.style.configure(
+            "CardTitle.TLabel",
+            background="#ffffff",
+            foreground="#223142",
+            font=("Malgun Gothic", 10, "bold"),
+        )
+        self.style.configure(
+            "CardBody.TLabel",
+            background="#ffffff",
+            foreground="#415161",
+            font=("Malgun Gothic", 10),
+        )
         self.style.configure(
             "ManagerSection.TLabelframe", borderwidth=2, relief=tk.GROOVE
         )
         self.style.configure(
             "ManagerSection.TLabelframe.Label",
+            font=("Malgun Gothic", 10, "bold"),
+        )
+        self.style.configure(
+            "Simple.TNotebook",
+            background="#eef2f7",
+            borderwidth=0,
+            tabmargins=[0, 0, 0, 0],
+        )
+        self.style.configure(
+            "Simple.TNotebook.Tab",
+            padding=(18, 10),
             font=("Malgun Gothic", 10, "bold"),
         )
 
@@ -354,6 +431,10 @@ class RuntimeV2ManagerGUI:
         self.status_text: tk.StringVar = tk.StringVar(value="대기")
         self.warning_text: tk.StringVar = tk.StringVar(value="경고 없음")
         self.last_result_text: tk.StringVar = tk.StringVar(value="최근 실행 없음")
+        self.home_warning_text: tk.StringVar = tk.StringVar(value="문제가 없습니다")
+        self.home_result_text: tk.StringVar = tk.StringVar(
+            value="아직 실행하지 않았습니다"
+        )
         self.queue_text: tk.StringVar = tk.StringVar(value="queue: 0")
         self.gpt_text: tk.StringVar = tk.StringVar(value="gpt: unknown")
         self.gpu_text: tk.StringVar = tk.StringVar(value="gpu: unknown")
@@ -370,6 +451,15 @@ class RuntimeV2ManagerGUI:
         self.evidence_summary_text: tk.StringVar = tk.StringVar(
             value="evidence: latest result unavailable"
         )
+        self.home_ready_text: tk.StringVar = tk.StringVar(
+            value="준비 상태를 확인하는 중입니다"
+        )
+        self.home_recent_text: tk.StringVar = tk.StringVar(
+            value="최근 실행 정보가 없습니다"
+        )
+        self.home_browser_text: tk.StringVar = tk.StringVar(
+            value="브라우저 상태를 확인하는 중입니다"
+        )
         self.log_buffer: list[str] = []
         self.last_event_ts: float = 0.0
         self.ui_queue: queue.SimpleQueue[tuple[str, str]] = queue.SimpleQueue()
@@ -385,25 +475,178 @@ class RuntimeV2ManagerGUI:
         self.refresh_after_id = self.root.after(200, self.refresh_dashboard)
 
     def _build_ui(self) -> None:
-        main = ttk.Frame(self.root, padding=8)
+        main = ttk.Frame(self.root, padding=10, style="AppBody.TFrame")
         main.pack(fill=tk.BOTH, expand=True)
 
         self._build_header_frame(main)
 
-        body: ttk.Panedwindow = ttk.Panedwindow(main, orient=tk.HORIZONTAL)
-        body.pack(fill=tk.BOTH, expand=True, pady=(8, 8))
+        notebook = ttk.Notebook(main, style="Simple.TNotebook")
+        notebook.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
 
-        left = ttk.Frame(body, padding=(0, 0, 6, 0))
-        right = ttk.Frame(body, padding=(6, 0, 0, 0))
-        body.add(left, weight=4)
-        body.add(right, weight=5)
+        home = ttk.Frame(notebook, padding=14, style="AppBody.TFrame")
+        details = ttk.Frame(notebook, padding=14, style="AppBody.TFrame")
+        notebook.add(home, text="홈")
+        notebook.add(details, text="상세 상태")
 
-        self._build_control_frame(left)
+        self._build_home_tab(home)
+        self._build_details_tab(details)
 
+    def _build_home_tab(self, parent: ttk.Frame) -> None:
+        hero = ttk.Frame(parent, padding=18, style="HeroCard.TFrame")
+        hero.pack(fill=tk.X, pady=(0, 12))
+        ttk.Label(hero, text="간편 실행", style="HeroTitle.TLabel").pack(anchor="w")
+        ttk.Label(
+            hero,
+            text="필요한 값만 입력하고 아래 큰 버튼 순서대로 실행하세요.",
+            style="HeroBody.TLabel",
+        ).pack(anchor="w", pady=(6, 0))
+
+        card_row = ttk.Frame(parent, style="AppBody.TFrame")
+        card_row.pack(fill=tk.X, pady=(0, 12))
+        for column in range(3):
+            _ = card_row.grid_columnconfigure(column, weight=1)
+        self._build_status_card(card_row, 0, "현재 상태", self.status_text)
+        self._build_status_card(card_row, 1, "주의/안내", self.home_warning_text)
+        self._build_status_card(card_row, 2, "최근 결과", self.home_result_text)
+
+        body = ttk.Frame(parent, style="AppBody.TFrame")
+        body.pack(fill=tk.BOTH, expand=True)
+        for column in range(2):
+            _ = body.grid_columnconfigure(column, weight=1)
+
+        quick = ttk.LabelFrame(
+            body, text="빠른 시작", padding=14, style="ManagerSection.TLabelframe"
+        )
+        _ = quick.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        self._build_quick_start_frame(quick)
+
+        summary = ttk.LabelFrame(
+            body, text="현재 진행 상황", padding=14, style="ManagerSection.TLabelframe"
+        )
+        _ = summary.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+        self._build_home_summary_frame(summary)
+
+    def _build_details_tab(self, parent: ttk.Frame) -> None:
+        top = ttk.Frame(parent, style="AppBody.TFrame")
+        top.pack(fill=tk.BOTH, expand=True)
+
+        top_body: ttk.Panedwindow = ttk.Panedwindow(top, orient=tk.HORIZONTAL)
+        top_body.pack(fill=tk.BOTH, expand=True)
+        left = ttk.Frame(top_body, padding=(0, 0, 8, 0), style="AppBody.TFrame")
+        right = ttk.Frame(top_body, padding=(8, 0, 0, 0), style="AppBody.TFrame")
+        top_body.add(left, weight=3)
+        top_body.add(right, weight=4)
+
+        self._build_overview_frame(left)
+        self._build_programs_frame(left)
+        self._build_control_frame(right)
         self._build_queue_frame(right)
         self._build_logs_frame(right)
 
-        self._build_programs_frame(main)
+    def _build_status_card(
+        self, parent: ttk.Frame, column: int, title: str, text_var: tk.StringVar
+    ) -> None:
+        card = ttk.Frame(parent, padding=14, style="Card.TFrame")
+        _ = card.grid(row=0, column=column, sticky="nsew", padx=6)
+        ttk.Label(card, text=title, style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(
+            card,
+            textvariable=text_var,
+            style="CardBody.TLabel",
+            wraplength=300,
+            justify=tk.LEFT,
+        ).pack(anchor="w", pady=(8, 0))
+
+    def _build_quick_start_frame(self, parent: ttk.LabelFrame) -> None:
+        ttk.Label(parent, text="Excel 파일", style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Entry(parent, textvariable=self.excel_path_text).pack(
+            fill=tk.X, pady=(6, 12)
+        )
+
+        row = ttk.Frame(parent)
+        row.pack(fill=tk.X, pady=(0, 12))
+        ttk.Label(row, text="시트", style="CardTitle.TLabel").pack(side=tk.LEFT)
+        ttk.Entry(row, textvariable=self.sheet_name_text, width=12).pack(
+            side=tk.LEFT, padx=(8, 16)
+        )
+        ttk.Label(row, text="행", style="CardTitle.TLabel").pack(side=tk.LEFT)
+        ttk.Entry(row, textvariable=self.row_index_text, width=8).pack(
+            side=tk.LEFT, padx=(8, 0)
+        )
+
+        browser = ttk.Frame(parent)
+        browser.pack(fill=tk.X, pady=(0, 16))
+        ttk.Label(browser, text="로그인 브라우저", style="CardTitle.TLabel").pack(
+            side=tk.LEFT
+        )
+        combo = ttk.Combobox(
+            browser,
+            textvariable=self.login_service_text,
+            state="readonly",
+            width=14,
+        )
+        combo["values"] = ("chatgpt", "genspark", "seaart", "geminigen", "canva")
+        combo.pack(side=tk.LEFT, padx=(8, 0))
+
+        action_col = ttk.Frame(parent)
+        action_col.pack(fill=tk.X)
+        tk.Button(
+            action_col,
+            text="1. 로그인 브라우저 열기",
+            command=self.trigger_open_login_browser,
+            bg="#ffffff",
+            fg="#203040",
+            relief=tk.GROOVE,
+            font=("Malgun Gothic", 11, "bold"),
+            padx=14,
+            pady=12,
+        ).pack(fill=tk.X, pady=(0, 10))
+        tk.Button(
+            action_col,
+            text="2. 입력한 행 불러오기",
+            command=self.trigger_excel_seed,
+            bg="#1e88e5",
+            fg="#ffffff",
+            relief=tk.FLAT,
+            font=("Malgun Gothic", 11, "bold"),
+            padx=14,
+            pady=12,
+        ).pack(fill=tk.X, pady=(0, 10))
+        tk.Button(
+            action_col,
+            text="3. 한 단계 실행",
+            command=self.trigger_control_once,
+            bg="#00a86b",
+            fg="#ffffff",
+            relief=tk.FLAT,
+            font=("Malgun Gothic", 12, "bold"),
+            padx=14,
+            pady=14,
+        ).pack(fill=tk.X)
+
+        helper = ttk.Frame(parent)
+        helper.pack(fill=tk.X, pady=(16, 0))
+        tk.Button(
+            helper, text="새로고침", width=10, command=self.refresh_dashboard_now
+        ).pack(side=tk.LEFT)
+
+    def _build_home_summary_frame(self, parent: ttk.LabelFrame) -> None:
+        items = (
+            ("준비 상태", self.home_ready_text),
+            ("최근 실행", self.home_recent_text),
+            ("브라우저 상태", self.home_browser_text),
+        )
+        for title, var in items:
+            card = ttk.Frame(parent, padding=10, style="Card.TFrame")
+            card.pack(fill=tk.X, pady=(0, 10))
+            ttk.Label(card, text=title, style="CardTitle.TLabel").pack(anchor="w")
+            ttk.Label(
+                card,
+                textvariable=var,
+                style="CardBody.TLabel",
+                wraplength=420,
+                justify=tk.LEFT,
+            ).pack(anchor="w", pady=(6, 0))
 
     def _build_header_frame(self, parent: ttk.Frame) -> None:
         frame = ttk.Frame(parent, style="ManagerHeader.TFrame", padding=12)
@@ -413,119 +656,56 @@ class RuntimeV2ManagerGUI:
         title_row.pack(fill=tk.X)
         ttk.Label(
             title_row,
-            text="Master Manager - Stage 5 Operator Console",
+            text="runtime_v2 매니저",
             style="ManagerHeader.TLabel",
-            font=("Consolas", 16, "bold"),
-        ).pack(anchor="w")
+            font=("Malgun Gothic", 16, "bold"),
+        ).pack(side=tk.LEFT, anchor="w")
         ttk.Label(
             title_row,
-            textvariable=self.status_text,
+            text="간단하게 실행하고, 필요할 때만 상세 상태를 확인하세요.",
             style="ManagerHeader.TLabel",
-            font=("Consolas", 11, "bold"),
-        ).pack(anchor="e")
-
-        ttk.Label(
-            frame,
-            text="Status flow: Health -> Seed 1 Row -> Control Once -> Evidence Check -> Final Output / Failure Summary",
-            style="ManagerHeader.TLabel",
-            font=("Consolas", 10),
-        ).pack(anchor="w", pady=(8, 0))
-        ttk.Label(
-            frame,
-            text="Mode groups: Health / Seed / Control / Login Browser / Queue / Logs",
-            style="ManagerHeader.TLabel",
-            font=("Consolas", 10),
-        ).pack(anchor="w", pady=(2, 0))
-        ttk.Label(
-            frame,
-            text="주의: 작업 중 Excel은 읽기 전용으로 확인하고, 1행 테스트는 준비된 테스트 행 1개를 의미합니다.",
-            style="ManagerHeader.TLabel",
-            font=("Malgun Gothic", 9, "bold"),
-        ).pack(anchor="w", pady=(8, 0))
-
-        strip = ttk.Frame(frame, style="ManagerHeader.TFrame")
-        strip.pack(fill=tk.X, pady=(10, 0))
-        for column in range(5):
-            _ = strip.grid_columnconfigure(column, weight=1)
-
-        strip_vars = (
-            self.warning_text,
-            self.readiness_text,
-            self.latest_run_text,
-            self.evidence_summary_text,
-            self.last_result_text,
-        )
-        for index, var in enumerate(strip_vars):
-            label = ttk.Label(
-                strip,
-                textvariable=var,
-                style="ManagerHeader.TLabel",
-                font=("Consolas", 9, "bold" if index == 0 else "normal"),
-                anchor="w",
-                relief=tk.GROOVE,
-                padding=6,
-            )
-            _ = label.grid(row=0, column=index, sticky="ew", padx=2, pady=2)
-
-        metrics = ttk.Frame(frame, style="ManagerHeader.TFrame")
-        metrics.pack(fill=tk.X, pady=(6, 0))
-        for column in range(5):
-            _ = metrics.grid_columnconfigure(column, weight=1)
-        metric_vars = (
-            self.browser_text,
-            self.gpu_text,
-            self.gpt_text,
-            self.queue_text,
-            self.artifact_text,
-        )
-        for index, var in enumerate(metric_vars):
-            label = ttk.Label(
-                metrics,
-                textvariable=var,
-                style="ManagerHeader.TLabel",
-                font=("Consolas", 9),
-                anchor="w",
-                relief=tk.GROOVE,
-                padding=6,
-            )
-            _ = label.grid(row=0, column=index, sticky="ew", padx=2, pady=2)
+            font=("Malgun Gothic", 10),
+        ).pack(side=tk.RIGHT, anchor="e")
 
     def _build_control_frame(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(
-            parent, text="Mode / Actions", padding=8, style="ManagerSection.TLabelframe"
+            parent,
+            text="운영자용 고급 설정",
+            padding=8,
+            style="ManagerSection.TLabelframe",
         )
         frame.pack(fill=tk.X, pady=(0, 8))
         runtime_row = ttk.Frame(frame)
         runtime_row.pack(fill=tk.X, pady=(0, 6))
-        ttk.Label(runtime_row, text="Runtime root:").pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Label(runtime_row, text="런타임 루트:").pack(side=tk.LEFT, padx=(0, 4))
         ttk.Entry(runtime_row, textvariable=self.runtime_root_text).pack(
             side=tk.LEFT, fill=tk.X, expand=True
         )
         tk.Button(
             runtime_row,
-            text="Health Refresh",
+            text="상태 새로고침",
             width=14,
             command=self.refresh_dashboard_now,
         ).pack(side=tk.LEFT, padx=(8, 0))
 
         excel_row = ttk.Frame(frame)
         excel_row.pack(fill=tk.X, pady=(0, 6))
-        ttk.Label(excel_row, text="Excel:").pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Label(excel_row, text="엑셀 파일:").pack(side=tk.LEFT, padx=(0, 4))
         ttk.Entry(excel_row, textvariable=self.excel_path_text).pack(
             side=tk.LEFT, fill=tk.X, expand=True
         )
 
         row_select = ttk.Frame(frame)
         row_select.pack(fill=tk.X, pady=(0, 6))
-        ttk.Label(row_select, text="Sheet:").pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Label(row_select, text="시트:").pack(side=tk.LEFT, padx=(0, 4))
         ttk.Entry(row_select, textvariable=self.sheet_name_text, width=16).pack(
             side=tk.LEFT
         )
-        ttk.Label(row_select, text="Row index:").pack(side=tk.LEFT, padx=(8, 4))
+        ttk.Label(row_select, text="행 번호(0부터):").pack(side=tk.LEFT, padx=(8, 4))
         ttk.Entry(row_select, textvariable=self.row_index_text, width=8).pack(
             side=tk.LEFT
         )
-        ttk.Label(row_select, text="Login browser:").pack(side=tk.LEFT, padx=(8, 4))
+        ttk.Label(row_select, text="로그인 브라우저:").pack(side=tk.LEFT, padx=(8, 4))
         browser_combo = ttk.Combobox(
             row_select, textvariable=self.login_service_text, state="readonly", width=12
         )
@@ -538,41 +718,51 @@ class RuntimeV2ManagerGUI:
         )
         browser_combo.pack(side=tk.LEFT)
 
-        note_row = ttk.Frame(frame)
-        note_row.pack(fill=tk.X, pady=(0, 6))
-        ttk.Label(
-            note_row,
-            text="주의: 1행 테스트는 row index 1이 아니라 준비된 테스트 행 1개를 의미합니다.",
-            foreground="#6b4f00",
-        ).pack(anchor="w")
-
         action_row = ttk.Frame(frame)
         action_row.pack(fill=tk.X)
         tk.Button(
             action_row,
-            text="Excel Seed 1-Row",
+            text="새로고침",
+            width=10,
+            command=self.refresh_dashboard_now,
+        ).pack(side=tk.LEFT)
+        tk.Button(
+            action_row,
+            text="받은 작업 확인",
+            width=12,
+            command=self.trigger_scan_inbox,
+        ).pack(side=tk.LEFT, padx=4)
+        tk.Button(
+            action_row,
+            text="GPT 준비 실행",
+            width=12,
+            command=self.trigger_gpt_spawn,
+        ).pack(side=tk.LEFT, padx=4)
+
+        action_row2 = ttk.Frame(frame)
+        action_row2.pack(fill=tk.X, pady=(6, 0))
+        tk.Button(
+            action_row2,
+            text="행 불러오기(단축)",
             width=16,
             command=self.trigger_excel_seed,
         ).pack(side=tk.LEFT)
         tk.Button(
-            action_row, text="Control Once", width=12, command=self.trigger_control_once
+            action_row2,
+            text="한 단계 실행(단축)",
+            width=12,
+            command=self.trigger_control_once,
         ).pack(side=tk.LEFT, padx=4)
         tk.Button(
-            action_row,
-            text="Open Login Browser",
+            action_row2,
+            text="로그인 브라우저 열기(단축)",
             width=16,
             command=self.trigger_open_login_browser,
         ).pack(side=tk.LEFT, padx=4)
-        tk.Button(
-            action_row, text="Scan Inbox", width=12, command=self.trigger_scan_inbox
-        ).pack(side=tk.LEFT, padx=(12, 4))
-        tk.Button(
-            action_row, text="GPT Spawn", width=12, command=self.trigger_gpt_spawn
-        ).pack(side=tk.LEFT)
 
         advanced = ttk.LabelFrame(
             frame,
-            text="Legacy Manual Controls",
+            text="레거시 수동 제어",
             padding=6,
             style="ManagerSection.TLabelframe",
         )
@@ -1218,12 +1408,14 @@ class RuntimeV2ManagerGUI:
         readiness = load_runtime_readiness(self.config, completed=True)
         blocker_messages = _readiness_blocker_messages(readiness)
         if bool(readiness.get("ready", False)) and not blocker_messages:
-            self.readiness_text.set("readiness: ready")
+            self.readiness_text.set("ready")
         elif blocker_messages:
-            self.readiness_text.set(f"readiness: {' | '.join(blocker_messages[:3])}")
+            self.readiness_text.set(
+                _truncate_ui_text(" | ".join(blocker_messages[:2]), 60)
+            )
         else:
             self.readiness_text.set(
-                f"readiness: code={str(readiness.get('code', 'UNKNOWN')).strip() or 'UNKNOWN'}"
+                str(readiness.get("code", "UNKNOWN")).strip() or "UNKNOWN"
             )
 
         result_payload = _read_json(self.config.result_router_file)
@@ -1245,6 +1437,17 @@ class RuntimeV2ManagerGUI:
         if not latest_run_id:
             latest_run_id = str(readiness.get("snapshot_run_id", "")).strip()
         self.latest_run_text.set(f"run_id: {latest_run_id or '-'}")
+        self.home_ready_text.set(_friendly_ready_text(readiness, blocker_messages))
+        self.home_recent_text.set(
+            "최근 실행이 없습니다"
+            if not latest_run_id
+            else _truncate_ui_text(f"최근 실행 ID {latest_run_id}", 40)
+        )
+        self.home_result_text.set(
+            _truncate_ui_text(
+                _friendly_evidence_text(self.evidence_summary_text.get()), 40
+            )
+        )
 
     def _normalize_gpu_health_snapshot(self) -> None:
         payload = _read_json(self.config.lease_file)
@@ -1311,12 +1514,13 @@ class RuntimeV2ManagerGUI:
         payload = _read_json(self.config.browser_health_file)
         registry = _read_json(self.config.browser_registry_file)
         if payload is None:
-            self.browser_text.set("browser: missing")
-            self.browser_services_text.set("services: browser registry missing")
+            self.browser_text.set("browser missing")
+            self.browser_services_text.set("브라우저 상태 정보를 찾을 수 없습니다")
+            self.home_browser_text.set("브라우저 상태 정보를 찾을 수 없습니다")
             return
         healthy = _to_int(payload.get("healthy_count", 0))
         total = _to_int(payload.get("session_count", 0))
-        self.browser_text.set(f"browser: {healthy}/{total} healthy")
+        self.browser_text.set(f"browser {healthy}/{total} healthy")
         service_summaries: list[str] = []
         if registry is not None:
             sessions = registry.get("sessions", [])
@@ -1347,14 +1551,18 @@ class RuntimeV2ManagerGUI:
                         detail=f"port={port} fail={failures}",
                     )
                     service_summaries.append(f"{row_name}={row_status}")
-        self.browser_services_text.set(
-            "services: "
-            + (
-                ", ".join(service_summaries)
-                if service_summaries
-                else "no live sessions"
-            )
+        browser_summary = (
+            ", ".join(service_summaries)
+            if service_summaries
+            else "실행 중인 브라우저가 없습니다"
         )
+        self.browser_services_text.set(browser_summary)
+        if healthy == total and total > 0:
+            self.home_browser_text.set("브라우저가 모두 준비되었습니다")
+        elif healthy == 0:
+            self.home_browser_text.set("로그인 또는 브라우저 준비가 필요합니다")
+        else:
+            self.home_browser_text.set(_truncate_ui_text(browser_summary, 40))
 
     def _update_gpu_panel(self) -> None:
         payload = _read_json(self.config.lease_file)
@@ -1633,7 +1841,16 @@ class RuntimeV2ManagerGUI:
                 warnings.append(
                     f"job failure: stage={worker_stage or '-'} error={worker_error_display or '-'} path={result_path or '-'}"
                 )
-        self.warning_text.set(" | ".join(warnings) if warnings else "경고 없음")
+        warning_text = " | ".join(warnings) if warnings else "경고 없음"
+        self.warning_text.set(warning_text)
+        if not warnings:
+            self.home_warning_text.set("문제가 없습니다")
+        elif any("login" in warning.lower() for warning in warnings):
+            self.home_warning_text.set("로그인 확인이 필요합니다")
+        elif any("gpt" in warning.lower() for warning in warnings):
+            self.home_warning_text.set("GPT 준비 상태를 확인해주세요")
+        else:
+            self.home_warning_text.set(_truncate_ui_text(warning_text, 40))
 
     def on_close(self) -> None:
         self.stop_loop()
