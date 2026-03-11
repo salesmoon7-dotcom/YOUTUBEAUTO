@@ -1,0 +1,118 @@
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+from runtime_v2 import exit_codes
+from runtime_v2.browser import manager as browser_manager
+from runtime_v2.cli import (
+    _copy_legacy_sessions,
+    _spawn_detached_probe,
+    _write_detached_summary,
+    CliArgs,
+)
+
+
+class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
+    def test_copy_legacy_sessions_copies_missing_directories(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            legacy_root = root / "legacy"
+            external_root = root / "external"
+            (legacy_root / "chatgpt-primary").mkdir(parents=True)
+            (legacy_root / "chatgpt-primary" / "marker.txt").write_text(
+                "ok", encoding="utf-8"
+            )
+            (external_root / "seaart-primary").mkdir(parents=True)
+
+            report = _copy_legacy_sessions(legacy_root, external_root)
+
+        self.assertTrue(bool(report["ok"]))
+        self.assertEqual(report["migrated"], ["chatgpt-primary"])
+        self.assertEqual(report["skipped_existing"], [])
+
+    def test_write_detached_summary_writes_contract_fields(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            out_root = Path(tmp_dir) / "probe"
+            summary_file = _write_detached_summary(
+                out_root=out_root,
+                kind="pytest",
+                target="tests/test_runtime_v2_browser_plane.py",
+                exit_code=0,
+                payload={"status": "ok"},
+            )
+            payload = json.loads(summary_file.read_text(encoding="utf-8"))
+
+        self.assertEqual(payload["kind"], "pytest")
+        self.assertEqual(payload["target"], "tests/test_runtime_v2_browser_plane.py")
+        self.assertEqual(payload["exit_code"], 0)
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["out_root"], str(out_root))
+
+    def test_spawn_detached_probe_writes_spawn_summary(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            args = CliArgs()
+            args.probe_root = str(root / "probe")
+            popen_result = MagicMock()
+            popen_result.pid = 24680
+
+            with patch("runtime_v2.cli.subprocess.Popen", return_value=popen_result):
+                exit_code = _spawn_detached_probe(args, mode="selftest")
+
+            payload = json.loads(
+                (root / "probe" / "summary.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        self.assertEqual(payload["status"], "spawned")
+        self.assertEqual(payload["kind"], "selftest")
+        self.assertEqual(payload["exit_code"], exit_codes.SUCCESS)
+
+    def test_default_session_profile_dir_uses_legacy_only_when_explicitly_allowed(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            legacy_root = root / "legacy"
+            external_root = root / "external"
+            (legacy_root / "chatgpt-primary").mkdir(parents=True)
+
+            with (
+                patch.object(browser_manager, "LEGACY_SESSION_ROOT", legacy_root),
+                patch(
+                    "runtime_v2.browser.manager.browser_session_root",
+                    return_value=external_root,
+                ),
+                patch.dict(os.environ, {}, clear=False),
+            ):
+                blocked = browser_manager._default_session_profile_dir(
+                    "chatgpt-primary"
+                )
+
+            with (
+                patch.object(browser_manager, "LEGACY_SESSION_ROOT", legacy_root),
+                patch(
+                    "runtime_v2.browser.manager.browser_session_root",
+                    return_value=external_root,
+                ),
+                patch.dict(
+                    os.environ,
+                    {"RUNTIME_V2_ALLOW_LEGACY_SESSION_ROOT": "1"},
+                    clear=False,
+                ),
+            ):
+                allowed = browser_manager._default_session_profile_dir(
+                    "chatgpt-primary"
+                )
+
+        self.assertEqual(blocked, str((external_root / "chatgpt-primary").resolve()))
+        self.assertEqual(allowed, str((legacy_root / "chatgpt-primary").resolve()))
+
+
+if __name__ == "__main__":
+    _ = unittest.main()
