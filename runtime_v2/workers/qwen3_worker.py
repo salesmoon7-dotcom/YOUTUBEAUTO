@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
+from runtime_v2.contracts.job_contract import build_explicit_job_contract
 from runtime_v2.contracts.job_contract import JobContract
 from runtime_v2.workers.external_process import run_verified_adapter_command
 from runtime_v2.workers.job_runtime import (
@@ -70,6 +71,41 @@ def _canonical_adapter_env() -> dict[str, str]:
     current = os.environ.get("PYTHONPATH", "").strip()
     pythonpath = repo_root if not current else f"{repo_root}{os.pathsep}{current}"
     return {"PYTHONPATH": pythonpath}
+
+
+def _build_rvc_next_job(
+    job: JobContract, verified_output: Path
+) -> dict[str, object] | None:
+    model_name = str(job.payload.get("model_name", "")).strip()
+    if not model_name:
+        return None
+    rvc_output_path = verified_output.with_name(f"{verified_output.stem}_rvc.wav")
+    payload: dict[str, object] = {
+        "source_path": str(verified_output.resolve()),
+        "model_name": model_name,
+        "service_artifact_path": str(rvc_output_path.resolve()),
+        "chain_depth": _int_value(job.payload.get("chain_depth", 0), 0) + 1,
+    }
+    image_path = str(job.payload.get("image_path", "")).strip()
+    if image_path:
+        payload["image_path"] = image_path
+    duration_sec = job.payload.get("duration_sec")
+    if isinstance(duration_sec, (int, float, str)) and str(duration_sec).strip():
+        payload["duration_sec"] = duration_sec
+    for key in ("run_id", "row_ref", "topic", "episode_no", "channel"):
+        value = job.payload.get(key)
+        if isinstance(value, str) and value.strip():
+            payload[key] = value.strip()
+        elif isinstance(value, (int, float)):
+            payload[key] = value
+    return build_explicit_job_contract(
+        job_id=f"rvc-{job.job_id}",
+        workload="rvc",
+        checkpoint_key=f"derived:rvc:{job.job_id}",
+        payload=payload,
+        chain_step=_int_value(job.payload.get("chain_depth", 0), 0) + 1,
+        parent_job_id=job.job_id,
+    )
 
 
 def run_qwen3_job(
@@ -149,6 +185,10 @@ def run_qwen3_job(
                 completion={"state": "failed", "final_output": False},
             )
         verified_output = Path(str(adapter_result["output_path"]))
+        next_jobs: list[dict[str, object]] = []
+        rvc_next_job = _build_rvc_next_job(job, verified_output)
+        if rvc_next_job is not None:
+            next_jobs.append(rvc_next_job)
 
         return finalize_worker_result(
             workspace,
@@ -171,8 +211,9 @@ def run_qwen3_job(
                 "reused": bool(adapter_result.get("reused", False)),
                 "adapter_mode": "command",
             },
+            next_jobs=next_jobs,
             completion={
-                "state": "succeeded",
+                "state": "routed" if next_jobs else "succeeded",
                 "final_output": True,
                 "final_artifact": verified_output.name,
                 "final_artifact_path": str(verified_output.resolve()),

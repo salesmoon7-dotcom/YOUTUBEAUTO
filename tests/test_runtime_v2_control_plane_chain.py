@@ -417,6 +417,8 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                             checkpoint_key="derived:rvc:qwen-job",
                             payload={
                                 "source_path": "system/runtime_v2/artifacts/qwen3_tts/qwen-job/speech.wav",
+                                "model_name": "voice-model-a",
+                                "service_artifact_path": "system/runtime_v2/artifacts/rvc/qwen-job/speech_rvc.wav",
                                 "chain_depth": 1,
                             },
                             chain_step=1,
