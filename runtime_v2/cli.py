@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -15,7 +16,12 @@ from runtime_v2 import exit_codes
 from runtime_v2.bootstrap import ensure_runtime_bootstrap
 from runtime_v2.browser.manager import BrowserManager, open_browser_for_login
 from runtime_v2.browser.supervisor import BrowserSupervisor
-from runtime_v2.config import RuntimeConfig, WorkloadName, probe_runtime_root
+from runtime_v2.config import (
+    RuntimeConfig,
+    WorkloadName,
+    browser_session_root,
+    probe_runtime_root,
+)
 from runtime_v2.contracts.job_contract import JobContract, build_explicit_job_contract
 from runtime_v2.control_plane import run_control_loop_once
 from runtime_v2.contracts.json_contract import (
@@ -92,6 +98,8 @@ class CliArgs(argparse.Namespace):
     expected_url_substring: str
     expected_title_substring: str
     stage2_agent_browser_services: str
+    migrate_sessions: bool
+    allow_legacy_session_root: bool
 
     def __init__(self) -> None:
         super().__init__()
@@ -130,6 +138,8 @@ class CliArgs(argparse.Namespace):
         self.expected_url_substring = ""
         self.expected_title_substring = ""
         self.stage2_agent_browser_services = "genspark"
+        self.migrate_sessions = False
+        self.allow_legacy_session_root = False
 
 
 def exit_code_from_status(code: str) -> int:
@@ -232,7 +242,11 @@ def main() -> int:
         "--stage2-agent-browser-services",
         default="genspark",
     )
+    _ = parser.add_argument("--migrate-sessions", action="store_true")
+    _ = parser.add_argument("--allow-legacy-session-root", action="store_true")
     args = parser.parse_args(namespace=CliArgs())
+    if args.allow_legacy_session_root:
+        os.environ["RUNTIME_V2_ALLOW_LEGACY_SESSION_ROOT"] = "1"
 
     selected_modes = [
         flag
@@ -254,6 +268,7 @@ def main() -> int:
             args.stage2_row1_probe_child,
             bool(args.open_browser_login.strip()),
             args.readiness_check,
+            args.migrate_sessions,
         )
         if flag
     ]
@@ -284,6 +299,14 @@ def main() -> int:
         readiness = load_runtime_readiness(config, completed=True)
         print(json.dumps(readiness, ensure_ascii=True))
         return exit_code_from_readiness(readiness)
+    if args.migrate_sessions:
+        report = _migrate_legacy_sessions()
+        print(json.dumps(report, ensure_ascii=True))
+        return (
+            exit_codes.SUCCESS
+            if bool(report.get("ok", False))
+            else exit_codes.CLI_USAGE
+        )
 
     if args.browser_recover_detached:
         return _spawn_detached_probe(args, mode="browser_recover")
@@ -319,6 +342,13 @@ def main() -> int:
             probe_root=_probe_root_path(args.probe_root),
             run_id=run_id,
         )
+        _ = _write_detached_summary(
+            out_root=_probe_root_path(args.probe_root),
+            kind="browser_recover",
+            target="runtime_v2.cli --browser-recover-probe-child",
+            exit_code=exit_code_from_status(str(report.get("code", "CLI_USAGE"))),
+            payload=report,
+        )
         print(final_report(report))
         return exit_code_from_status(str(report.get("code", "CLI_USAGE")))
     if args.stage2_row1_probe_child:
@@ -329,6 +359,13 @@ def main() -> int:
             agent_browser_services=_parse_stage2_agent_browser_services(
                 args.stage2_agent_browser_services
             ),
+        )
+        _ = _write_detached_summary(
+            out_root=_probe_root_path(args.probe_root),
+            kind="stage2_row1",
+            target="runtime_v2.cli --stage2-row1-probe-child",
+            exit_code=exit_code_from_status(str(report.get("code", "CLI_USAGE"))),
+            payload=report,
         )
         print(final_report(report))
         return exit_code_from_status(str(report.get("code", "CLI_USAGE")))
@@ -565,6 +602,25 @@ def main() -> int:
                 "summary": summary,
             },
         )
+        _ = _write_detached_summary(
+            out_root=_probe_root_path(args.probe_root),
+            kind="selftest" if args.selftest_probe_child else "control_once",
+            target=(
+                "runtime_v2.cli --selftest-probe-child"
+                if args.selftest_probe_child
+                else "runtime_v2.cli --control-once-probe-child"
+            ),
+            exit_code=exit_code,
+            payload={
+                "run_id": run_id,
+                "status": str(report.get("status", "unknown")),
+                "code": code,
+                "probe_result": str(
+                    _probe_root_path(args.probe_root) / "probe_result.json"
+                ),
+                "debug_log": str(debug_log),
+            },
+        )
     print(final_report(summarize_cli_report(report, debug_log)))
     return exit_code
 
@@ -720,6 +776,20 @@ def _spawn_detached_probe(args: CliArgs, *, mode: str) -> int:
     }
     if seeded_contract is not None:
         report["seeded_contract"] = str(seeded_contract)
+    _ = _write_detached_summary(
+        out_root=probe_root,
+        kind=mode,
+        target=child_flag,
+        exit_code=exit_codes.SUCCESS,
+        payload={
+            "status": "spawned",
+            "code": "PROBE_RUNNING",
+            "pid": child.pid,
+            "stdout_log": str(stdout_path),
+            "stderr_log": str(stderr_path),
+            "probe_result": str(probe_root / "probe_result.json"),
+        },
+    )
     print(final_report(report))
     return exit_codes.SUCCESS
 
@@ -729,6 +799,81 @@ def _probe_root_path(raw_probe_root: str) -> Path:
     if probe_root:
         return Path(probe_root)
     return probe_runtime_root() / str(uuid4())
+
+
+def _legacy_session_root() -> Path:
+    return (Path(__file__).resolve().parent / "sessions").resolve()
+
+
+def _copy_legacy_sessions(legacy_root: Path, external_root: Path) -> dict[str, object]:
+    external_root.mkdir(parents=True, exist_ok=True)
+    migrated: list[str] = []
+    skipped_existing: list[str] = []
+    if not legacy_root.exists():
+        return {
+            "ok": True,
+            "legacy_root": str(legacy_root),
+            "external_root": str(external_root),
+            "migrated": migrated,
+            "skipped_existing": skipped_existing,
+            "missing": ["legacy_root_missing"],
+        }
+    for child in sorted(legacy_root.iterdir()):
+        if not child.is_dir():
+            continue
+        target = external_root / child.name
+        if target.exists():
+            skipped_existing.append(child.name)
+            continue
+        shutil.copytree(child, target)
+        migrated.append(child.name)
+    return {
+        "ok": True,
+        "legacy_root": str(legacy_root),
+        "external_root": str(external_root),
+        "migrated": migrated,
+        "skipped_existing": skipped_existing,
+    }
+
+
+def _migrate_legacy_sessions() -> dict[str, object]:
+    return _copy_legacy_sessions(_legacy_session_root(), browser_session_root())
+
+
+def _write_detached_summary(
+    *,
+    out_root: Path,
+    kind: str,
+    target: str,
+    exit_code: int,
+    payload: dict[str, object],
+) -> Path:
+    out_root.mkdir(parents=True, exist_ok=True)
+    summary_file = out_root / "summary.json"
+    summary_payload = {
+        "started_at": round(time(), 3),
+        "finished_at": round(time(), 3),
+        "command": list(sys.argv),
+        "exit_code": exit_code,
+        "kind": kind,
+        "target": target,
+        "out_root": str(out_root),
+        **payload,
+    }
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=out_root,
+        prefix="summary.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        _ = handle.write(
+            json.dumps(_json_safe_mapping(summary_payload), ensure_ascii=True)
+        )
+        temp_path = Path(handle.name)
+    _ = temp_path.replace(summary_file)
+    return summary_file
 
 
 def _runtime_root_path(raw_runtime_root: str) -> Path | None:

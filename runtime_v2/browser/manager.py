@@ -338,12 +338,22 @@ def _load_runtime_app_config() -> dict[str, object]:
     return {str(key): typed_payload[key] for key in typed_payload}
 
 
+def _allow_legacy_session_root() -> bool:
+    override = (
+        os.environ.get("RUNTIME_V2_ALLOW_LEGACY_SESSION_ROOT", "").strip().lower()
+    )
+    if override in {"1", "true", "yes", "on"}:
+        return True
+    runtime_config = _load_runtime_app_config()
+    return bool(runtime_config.get("allow_legacy_session_root", False))
+
+
 def _default_session_profile_dir(session_name: str) -> str:
     external_profile_dir = (browser_session_root() / session_name).resolve()
     legacy_profile_dir = (LEGACY_SESSION_ROOT / session_name).resolve()
     if external_profile_dir.exists():
         return str(external_profile_dir)
-    if legacy_profile_dir.exists():
+    if _allow_legacy_session_root() and legacy_profile_dir.exists():
         return str(legacy_profile_dir)
     return str(external_profile_dir)
 
