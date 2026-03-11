@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from runtime_v2.contracts.job_contract import JobContract
-from runtime_v2.config import RuntimeConfig
+from runtime_v2.config import RuntimeConfig, external_runtime_root
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -43,7 +43,10 @@ def resolve_local_input(raw_path: str) -> Path | None:
         candidate = (REPO_ROOT / candidate).resolve()
     else:
         candidate = candidate.resolve()
-    if REPO_ROOT not in candidate.parents and candidate != REPO_ROOT:
+    allowed_roots = {REPO_ROOT.resolve(), external_runtime_root().resolve()}
+    if not any(
+        candidate == root or root in candidate.parents for root in allowed_roots
+    ):
         return None
     if not candidate.exists() or not candidate.is_file():
         return None
