@@ -4,6 +4,7 @@
 - 위 원칙은 점진적으로 적용합니다. 기존 긴 evidence/history 블록은 후속 정리 배치에서 축소합니다.
 - interruption/search 규칙의 정본은 `docs/sop/SOP_runtime_v2_development_guardrails.md`와 `docs/sop/SOP_chat_interruption_repo_triage.md`입니다.
 - `docs/plans/2026-03-11-runtime-v2-chat-safe-execution-remediation-plan.md` - 완료됨. 상세 실행/정리 결과는 해당 plan, `docs/plans/2026-03-11-chat-interruption-structure-remediation-plan.md`, `docs/plans/2026-03-11-chat-interruption-remediation-batches-plan.md`, `docs/COMPLETED.md`를 기준으로 봅니다.
+- `docs/plans/2026-03-11-runtime-v2-repo-root-dependency-remediation-plan.md` - 진행 예정. 정밀 재판정 기준으로 `브라우저 세션 외부화는 상당 부분 완료`, `런타임 상태/아티팩트 repo-root 기본값은 잔존`으로 분리해 후속 정리를 진행합니다.
 
 - `docs/plans/2026-03-09-runtime-v2-guardrail-drift-remediation-plan.md` - 완료됨. 상세 구현/검증은 plan 및 `docs/COMPLETED.md`를 기준으로 봅니다.
 - 구조 review 기록: `docs/plans/2026-03-11-control-plane-hotspot-review.md` - 현재 결정은 `no new unit`이며, 재오픈은 별도 architecture review unit으로만 허용합니다.
