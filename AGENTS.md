@@ -23,6 +23,7 @@ This file is a router, not a full manual.
 - For closed-loop development automation, use `docs/sop/SOP_closed_loop_automation_skill_map.md` as the canonical skill bundle map.
 - For ANY Git work related to remote setup, status review, staging, commit, rebase, or push: read `docs/sop/SOP_git_online_commit_workflow.md` first.
 - For `runtime_v2` planning, implementation, and debugging: read `docs/sop/SOP_runtime_v2_development_guardrails.md` first, then the relevant `docs/plans/*.md` or `docs/sop/*.md`.
+- For `runtime_v2` chat-session interruption, search scope, or validation execution decisions: read `docs/sop/SOP_chat_interruption_repo_triage.md` together with `docs/sop/SOP_runtime_v2_development_guardrails.md` before acting.
 - For implementation tasks: read relevant `docs/plans/*.md` first.
 - For operations/incidents: read relevant `docs/sop/*.md` first.
 - For project policy updates: update docs first, keep `CLAUDE.md` minimal.
@@ -32,6 +33,7 @@ This file is a router, not a full manual.
 - Default exclude set: `runtime_v2/sessions/`, `system/runtime_v2_probe/`, `system/runtime_v2/logs/`, `tmp_*/`.
 - `system/runtime_v2/` is not part of broad search by default; treat it as an operational snapshot surface and read specific files there only when needed.
 - For `runtime_v2`, treat `docs/sop/SOP_runtime_v2_development_guardrails.md` and `docs/sop/SOP_chat_interruption_repo_triage.md` as the canonical search-scope rules.
+- For `runtime_v2`, long/file-level foreground pytest and real-browser relaunch/recovery are not default chat-session actions; use case-level pytest only, and escalate longer validation to detached or manual execution.
 
 ## Verification
 - After edits, run diagnostics + relevant tests + build/typecheck when applicable.

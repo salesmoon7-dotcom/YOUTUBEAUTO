@@ -37,6 +37,11 @@
 ## Search Default
 - 채팅 세션 기본 검색은 source-only입니다. 자세한 제외 경로와 lag triage 절차는 `sop/SOP_runtime_v2_development_guardrails.md`와 `sop/SOP_chat_interruption_repo_triage.md`를 기준으로 봅니다.
 
+## Runtime_v2 Chat-Session Entry Rule
+- `runtime_v2` 관련 채팅 작업은 항상 먼저 `sop/SOP_runtime_v2_development_guardrails.md`와 `sop/SOP_chat_interruption_repo_triage.md`를 함께 읽고 시작합니다.
+- 기본값은 `interrupt-safe + source-only`입니다.
+- long/file-level foreground pytest와 실브라우저 relaunch/recovery는 채팅 세션 기본 경로가 아닙니다. detached 또는 수동 경로로 돌립니다.
+
 ## Current Runtime_v2 Canonical References
 - `sop/SOP_runtime_v2_development_guardrails.md`
 - `reference/error-code-semantics.md`
@@ -53,6 +58,7 @@
 
 ## Session-Start Rule
 - `runtime_v2` 관련 작업은 사용자 재지시가 없어도 먼저 `sop/SOP_runtime_v2_development_guardrails.md`를 기준으로 읽고 진행합니다.
+- interruption/search 판단이 함께 필요한 경우 `sop/SOP_chat_interruption_repo_triage.md`를 같은 우선순위로 읽습니다.
 - 이 문서는 라우팅과 canonical 링크만 유지합니다. 세부 절차는 각 `sop/`와 `plans/` 문서에서 관리합니다.
 
 위 디렉터리는 저장 위치일 뿐이며, 상태 분류 기준은 `TODO.md` / `COMPLETED.md`의 링크 상태를 따릅니다.
