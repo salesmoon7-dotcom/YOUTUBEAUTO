@@ -11,6 +11,7 @@ from runtime_v2.stage1.chatgpt_backend import (
     ChatGPTBackend,
     CHATGPT_LONGFORM_TITLE_SUBSTRING,
     CHATGPT_LONGFORM_URL_SUBSTRING,
+    _select_page_target,
 )
 from runtime_v2.stage1.chatgpt_interaction import (
     _response_text_from_state,
@@ -19,6 +20,30 @@ from runtime_v2.stage1.chatgpt_interaction import (
 
 
 class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
+    def test_select_page_target_accepts_longform_conversation_url_by_title(
+        self,
+    ) -> None:
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_backend.urllib.request.urlopen"
+        ) as urlopen:
+            payload = [
+                {
+                    "type": "page",
+                    "title": CHATGPT_LONGFORM_TITLE_SUBSTRING,
+                    "url": "https://chatgpt.com/c/69b1bbcd-52fc-83a4-9cc4-ced9b739cc7f",
+                    "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/test",
+                }
+            ]
+            response = mock.MagicMock()
+            response.read.return_value = json.dumps(payload).encode("utf-8")
+            urlopen.return_value.__enter__.return_value = response
+
+            target = _select_page_target(9222, CHATGPT_LONGFORM_URL_SUBSTRING)
+
+        self.assertEqual(
+            target["url"], "https://chatgpt.com/c/69b1bbcd-52fc-83a4-9cc4-ced9b739cc7f"
+        )
+
     def test_response_text_from_state_prefers_legacy_blocks(self) -> None:
         response = _response_text_from_state(
             "plain text",

@@ -424,7 +424,11 @@ def _http_cdp_tab_list(port: int) -> list[dict[str, object]]:
     return tabs
 
 
-def _select_page_target(port: int, expected_url_substring: str) -> dict[str, str]:
+def _select_page_target(
+    port: int,
+    expected_url_substring: str,
+    expected_title_substring: str = CHATGPT_LONGFORM_TITLE_SUBSTRING,
+) -> dict[str, str]:
     try:
         with urllib.request.urlopen(
             f"http://127.0.0.1:{port}/json/list", timeout=10
@@ -440,14 +444,20 @@ def _select_page_target(port: int, expected_url_substring: str) -> dict[str, str
         item = raw_item
         if str(item.get("type", "")) != "page":
             continue
-        if expected_url_substring not in str(item.get("url", "")):
+        url = str(item.get("url", ""))
+        title = str(item.get("title", ""))
+        if expected_url_substring not in url and not (
+            url.startswith("https://chatgpt.com/c/")
+            and expected_title_substring.lower() in title.lower()
+        ):
             continue
         ws_url = str(item.get("webSocketDebuggerUrl", "")).strip()
         if not ws_url:
             continue
         return {
             "webSocketDebuggerUrl": ws_url,
-            "url": str(item.get("url", "")),
+            "url": url,
+            "title": title,
         }
     raise RuntimeError("CDP_TARGET_NOT_FOUND")
 
