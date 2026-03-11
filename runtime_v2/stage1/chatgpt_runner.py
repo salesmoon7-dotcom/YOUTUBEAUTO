@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 from datetime import datetime, timezone
@@ -197,6 +198,11 @@ def _should_retry_chatgpt_interaction(result: dict[str, object]) -> bool:
 
 
 def _relaunch_chatgpt_browser() -> None:
+    parity_attach_only = (
+        os.environ.get("RUNTIME_V2_CHATGPT_ATTACH_ONLY", "").strip().lower()
+    )
+    if parity_attach_only in {"1", "true", "yes", "on"}:
+        return
     _ = open_browser_for_login("chatgpt")
     sleep(8)
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,7 @@ from typing import cast
 from unittest.mock import patch
 
 from runtime_v2.stage1.chatgpt_runner import (
+    _relaunch_chatgpt_browser,
     attach_gpt_response_text_from_browser_evidence,
     build_live_chatgpt_prompt,
     build_video_plan_from_topic_spec,
@@ -59,6 +61,19 @@ BGM: serious piano
 
 
 class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
+    def test_relaunch_chatgpt_browser_is_noop_in_attach_only_mode(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"RUNTIME_V2_CHATGPT_ATTACH_ONLY": "1"},
+            clear=False,
+        ):
+            with patch(
+                "runtime_v2.stage1.chatgpt_runner.open_browser_for_login"
+            ) as open_browser:
+                _relaunch_chatgpt_browser()
+
+        open_browser.assert_not_called()
+
     def test_build_live_chatgpt_prompt_uses_longform_instruction_template(self) -> None:
         prompt = build_live_chatgpt_prompt(
             {

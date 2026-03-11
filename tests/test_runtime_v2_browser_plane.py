@@ -15,6 +15,7 @@ from runtime_v2.browser.manager import (
     BrowserSession,
     CHATGPT_PARITY_EXTRA_FLAGS,
     _launch_debug_browser,
+    ensure_browser_plane_ownership,
     _manager_owns_browser,
     _refresh_session_ready_marker,
     _start_url_for_service,
@@ -139,6 +140,27 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             self.assertIn(flag, command)
         for stale in stale_files:
             self.assertFalse(stale.exists())
+
+    def test_chatgpt_attach_only_mode_skips_browser_plane_ownership(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"RUNTIME_V2_CHATGPT_ATTACH_ONLY": "1"},
+            clear=False,
+        ):
+            snapshot = ensure_browser_plane_ownership("attach-only-run")
+
+        self.assertFalse(bool(snapshot.get("owned", False)))
+        self.assertEqual(str(snapshot.get("action_result", "")), "attach_only")
+
+    def test_chatgpt_attach_only_mode_never_claims_manager_ownership(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"RUNTIME_V2_CHATGPT_ATTACH_ONLY": "1"},
+            clear=False,
+        ):
+            owned = _manager_owns_browser("chatgpt")
+
+        self.assertFalse(owned)
 
     def test_launch_debug_browser_keeps_profile_lock_with_browser_pid(self) -> None:
         with self._temp_dir() as tmp_dir:

@@ -142,6 +142,13 @@ def inspect_browser_plane_owner() -> dict[str, object]:
 
 
 def ensure_browser_plane_ownership(run_id: str = "") -> dict[str, object]:
+    if _chatgpt_attach_only_enabled():
+        snapshot = inspect_browser_plane_owner()
+        return {
+            **snapshot,
+            "owned": False,
+            "action_result": "attach_only",
+        }
     lock_file = _browser_plane_lock_file()
     payload = _browser_plane_payload(run_id)
     snapshot = inspect_browser_plane_owner()
@@ -352,6 +359,14 @@ def _chatgpt_legacy_parity_enabled() -> bool:
         return True
     runtime_config = _load_runtime_app_config()
     return bool(runtime_config.get("chatgpt_legacy_parity", False))
+
+
+def _chatgpt_attach_only_enabled() -> bool:
+    override = os.environ.get("RUNTIME_V2_CHATGPT_ATTACH_ONLY", "").strip().lower()
+    if override in {"1", "true", "yes", "on"}:
+        return True
+    runtime_config = _load_runtime_app_config()
+    return bool(runtime_config.get("chatgpt_attach_only", False))
 
 
 def _cleanup_chatgpt_parity_profile(profile_dir: Path) -> None:
@@ -1187,6 +1202,7 @@ def _resolve_browser_executable(service: str) -> Path | None:
 
 
 def _manager_owns_browser(service: str) -> bool:
-    _ = service
+    if service == "chatgpt" and _chatgpt_attach_only_enabled():
+        return False
     ownership = inspect_browser_plane_owner()
     return bool(ownership.get("owned", False))
