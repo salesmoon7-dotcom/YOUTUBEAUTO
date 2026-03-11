@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.13, `runtime_v2`, control plane queue/next_jobs, stage1 handoff JSON, stage2 job builders, GPU/browser workers, `unittest`, `py_compile`
 
-**Status:** TODO
+**Status:** COMPLETE (2026-03-11)
 
 ---
 
@@ -222,7 +222,16 @@ Choose one:
 - keep fail-close and document that GeminiGen requires explicit adapter command/manual path
 - or relax fail-close once truthful artifact verification is available
 
+**Decision locked:**
+- keep fail-close by default.
+- current proof: `runtime_v2/cli.py` keeps the default agent-browser adapter child path fail-closed for `geminigen`, and `tests/test_runtime_v2_cli_agent_browser_stage2_adapter.py::test_stage2_adapter_child_fails_closed_for_geminigen_without_truthful_artifact` locks that behavior.
+
+**Task 4 completion note:**
+- default adapter policy is now treated as intentionally fail-closed unless an explicit truthful-artifact path is provided.
+
 **Step 2: Add/update tests to match the chosen policy**
+
+Completed with the existing CLI regression test above; no extra code change was required in this batch.
 
 ---
 
@@ -240,11 +249,14 @@ Choose one:
 
 | Path | Current target proof |
 |---|---|
-| GPT -> stage1_handoff -> stage2 image jobs | PASS |
-| stage2 image -> GeminiGen request consumption | PASS |
-| qwen3_tts -> rvc next-job emission | PASS |
-| image/audio -> kenburns next-job emission | NOT APPLICABLE (resident/inbox path) |
-| routed assets -> render manifest | PASS |
+| GPT -> stage1_handoff -> stage2 image jobs | PASS - `tests/test_runtime_v2_stage2_contracts.py`, `tests/test_runtime_v2_excel_topic_end_to_end.py::test_excel_row1_topic_can_seed_stage1_and_finish_final_video_contracts` |
+| stage2 image -> GeminiGen request consumption | PASS - `tests/test_runtime_v2_stage2_contracts.py::test_geminigen_stage2_payload_prefers_stage1_ref_image_when_present`, `tests/test_runtime_v2_stage2_workers.py::test_geminigen_worker_processes_one_item_via_explicit_adapter_command` |
+| qwen3_tts -> rvc next-job emission | PASS - `tests/test_runtime_v2_gpu_workers.py::test_qwen3_worker_emits_rvc_next_job_contract`, `tests/test_runtime_v2_control_plane_chain.py::test_control_plane_routes_declared_next_jobs_from_worker_result` |
+| image/audio -> kenburns next-job emission | NOT APPLICABLE - resident/inbox path, locked by `tests/test_runtime_v2_control_plane_chain.py::test_stage1_video_plan_routing_does_not_emit_kenburns_jobs` and `tests/test_runtime_v2_excel_bridge.py::test_seed_local_jobs_discovers_kenburns_inbox_as_resident_gpu_workload` |
+| routed assets -> render manifest | PASS - `tests/test_runtime_v2_control_plane_chain.py::test_control_plane_writes_asset_manifest_for_stage1_routed_jobs`, `tests/test_runtime_v2_final_video_flow.py::test_render_worker_blocks_without_native_render_implementation` |
+
+**Task 5 completion note:**
+- the proof matrix is now aligned to current production queueing rather than the older rollout order.
 
 ---
 
@@ -268,12 +280,13 @@ python -m unittest tests.test_runtime_v2_stage2_contracts -v
 python -m unittest tests.test_runtime_v2_control_plane_chain -v
 python -m unittest tests.test_runtime_v2_stage2_workers -v
 python -m unittest tests.test_runtime_v2_gpu_workers -v
+python -m unittest tests.test_runtime_v2_cli_agent_browser_stage2_adapter -v
 ```
 
 **Step 3: Run compile verification**
 
 ```bash
-python -m py_compile runtime_v2/stage2/json_builders.py runtime_v2/stage2/request_builders.py runtime_v2/workers/qwen3_worker.py runtime_v2/workers/rvc_worker.py runtime_v2/workers/kenburns_worker.py runtime_v2/control_plane.py
+python -m py_compile runtime_v2/cli.py runtime_v2/control_plane.py runtime_v2/stage2/json_builders.py runtime_v2/stage2/request_builders.py runtime_v2/stage2/geminigen_worker.py runtime_v2/workers/qwen3_worker.py runtime_v2/workers/rvc_worker.py runtime_v2/workers/kenburns_worker.py runtime_v2/stage3/render_worker.py
 ```
 
 **Step 4: Success criteria**
@@ -283,6 +296,9 @@ The remediation is complete only when:
 - `GeminiGen` consumes the intended first-frame/image handoff contract
 - `KenBurns` is explicitly frozen as resident/inbox-only within the default 24h GPU structure
 - control-plane evidence and asset manifest reflect the new downstream links without run/row drift
+
+**Task 6 completion note:**
+- targeted unittest, compile checks, diagnostics, and Oracle reviews were used to prove the above state on 2026-03-11.
 
 ---
 
