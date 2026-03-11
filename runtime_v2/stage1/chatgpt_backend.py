@@ -70,7 +70,7 @@ class AgentBrowserCdpBackend:
                 preflight_status = self._wait_for_input_ready()
             except RuntimeError:
                 pass
-            result = self._run_eval_with_retry(_submit_script(payload))
+            result = self._run_eval_with_retry(_prepare_input_script(payload))
             parsed = _decode_backend_json(result)
             if str(parsed.get("error", "")) != "NO_INPUT":
                 break
@@ -99,7 +99,8 @@ class AgentBrowserCdpBackend:
                 )
                 parsed = _decode_backend_json(
                     _run_raw_cdp_eval(
-                        raw_target["webSocketDebuggerUrl"], _submit_script(payload)
+                        raw_target["webSocketDebuggerUrl"],
+                        _prepare_input_script(payload),
                     )
                 )
                 self._record_fallback("submit_raw_cdp_fallback")
@@ -121,17 +122,111 @@ class AgentBrowserCdpBackend:
                     ensure_ascii=True,
                 )
             )
-        parsed.setdefault("selected_tab", self._current_selected_tab())
-        parsed.setdefault("backend_fallbacks", self._fallback_events_payload())
-        parsed.setdefault(
-            "submit_evidence",
-            _submit_evidence_record(
-                error="",
-                parsed=parsed,
-                no_send_evidence=_normalized_no_send_evidence({}),
-            ),
+        raw_submit_evidence = parsed.get("submitEvidence", {})
+        if isinstance(raw_submit_evidence, dict):
+            in_flight_observed = bool(
+                raw_submit_evidence.get("in_flight_observed", False)
+            )
+            terminal_success_observed = bool(
+                raw_submit_evidence.get("terminal_success_observed", False)
+            )
+            if in_flight_observed or terminal_success_observed:
+                parsed.setdefault("selected_tab", self._current_selected_tab())
+                parsed.setdefault("backend_fallbacks", self._fallback_events_payload())
+                parsed.setdefault(
+                    "submit_evidence",
+                    _submit_evidence_record(
+                        error="",
+                        parsed=parsed,
+                        no_send_evidence=_normalized_no_send_evidence({}),
+                    ),
+                )
+                return parsed
+        submit_state = self._wait_for_send_state(payload)
+        submit_state.setdefault("selected_tab", self._current_selected_tab())
+        submit_state.setdefault("backend_fallbacks", self._fallback_events_payload())
+        submit_state.setdefault("inputSelector", str(parsed.get("inputSelector", "")))
+        return submit_state
+
+    def _wait_for_send_state(self, payload: str) -> dict[str, object]:
+        last_state: dict[str, object] = {}
+        for _attempt in range(20):
+            state = _decode_backend_json(
+                self._run_eval_with_retry(_send_control_state_script(payload))
+            )
+            last_state = state
+            if bool(state.get("in_flight_marker", False)):
+                submit_evidence = {
+                    "attempt_key": "attempt-1",
+                    "classification": "sent",
+                    "classification_reason": "streaming_or_stop_visible",
+                    "retry_safe_decision": False,
+                    "pre": state,
+                    "post": state,
+                    "in_flight_observed": True,
+                    "terminal_success_observed": False,
+                    "state_transition": True,
+                }
+                return {
+                    "ok": True,
+                    "sendClicked": False,
+                    "sendTestId": str(state.get("send_test_id", "")),
+                    "sendAriaLabel": str(state.get("send_aria_label", "")),
+                    "no_send_evidence": state,
+                    "submit_evidence": submit_evidence,
+                }
+            if bool(state.get("send_found", False)) and bool(
+                state.get("send_enabled", False)
+            ):
+                click_result = _decode_backend_json(
+                    self._run_eval_with_retry(_click_send_script(payload))
+                )
+                post_state = _decode_backend_json(
+                    self._run_eval_with_retry(_send_control_state_script(payload))
+                )
+                submit_evidence = {
+                    "attempt_key": "attempt-1",
+                    "classification": "sent",
+                    "classification_reason": "send_button_clicked",
+                    "retry_safe_decision": False,
+                    "pre": state,
+                    "post": post_state,
+                    "in_flight_observed": bool(
+                        post_state.get("in_flight_marker", False)
+                    ),
+                    "terminal_success_observed": bool(
+                        post_state.get("in_flight_marker", False)
+                    ),
+                    "state_transition": bool(post_state.get("in_flight_marker", False)),
+                }
+                return {
+                    "ok": True,
+                    "sendClicked": bool(click_result.get("sendClicked", False)),
+                    "sendTestId": str(click_result.get("sendTestId", "")),
+                    "sendAriaLabel": str(click_result.get("sendAriaLabel", "")),
+                    "submit_evidence": submit_evidence,
+                }
+            time.sleep(0.5)
+        error = (
+            "SEND_DISABLED" if bool(last_state.get("send_found", False)) else "NO_SEND"
         )
-        return parsed
+        no_send_evidence = _normalized_no_send_evidence(last_state)
+        submit_evidence = _submit_evidence_record(
+            error=error,
+            parsed=last_state,
+            no_send_evidence=no_send_evidence,
+        )
+        raise RuntimeError(
+            json.dumps(
+                {
+                    "error": error,
+                    "retry_safe": bool(no_send_evidence.get("retry_safe", False)),
+                    "no_send_evidence": no_send_evidence,
+                    "submit_evidence": submit_evidence,
+                },
+                ensure_ascii=True,
+            )
+        )
 
     def _wait_for_input_ready(self) -> dict[str, object]:
         last_status: dict[str, object] = {}
@@ -263,13 +358,11 @@ class AgentBrowserCdpBackend:
         return list(self._fallback_events)
 
 
-def _submit_script(payload: str) -> str:
+def _prepare_input_script(payload: str) -> str:
     return (
         "(() => {"
         f"const config = {payload};"
         "const selectors = config.inputSelectors || [];"
-        "const sendSelectors = config.sendSelectors || [];"
-        "const stopSelectors = config.stopSelectors || [];"
         "document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));"
         "const closeSelectors=['button[aria-label=\"닫기\"]','button[aria-label=\"Close\"]','button[aria-label*=\"close\"]','button[aria-label*=\"dismiss\"]','.modal-close','[data-testid*=\"close\"]','[data-testid*=\"dismiss\"]'];"
         "for (const selector of closeSelectors) { for (const btn of Array.from(document.querySelectorAll(selector))) { try { const visible = !!btn && !!btn.isConnected && (((btn.getClientRects && btn.getClientRects().length > 0)) || btn.offsetParent !== null); if (visible) btn.click(); } catch (_) {} } }"
@@ -278,41 +371,73 @@ def _submit_script(payload: str) -> str:
         "if (!input) { const chatInput = document.querySelector('[data-testid=\"chat-input\"]'); if (chatInput) { const editor = chatInput.querySelector('.ProseMirror, [contenteditable=\"true\"]'); const visible = !!editor && !!editor.isConnected && (((editor.getClientRects && editor.getClientRects().length > 0)) || editor.offsetParent !== null); if (visible) input = editor; } }"
         "if (!input) { const editors = Array.from(document.querySelectorAll('[contenteditable=\"true\"]')).filter((el) => el && el.isConnected && (((el.getClientRects && el.getClientRects().length > 0)) || el.offsetParent !== null) && !el.closest('article') && !el.closest('[data-message-author-role=\"assistant\"]')); if (editors.length) input = editors[0]; }"
         "if (!input) return JSON.stringify({ok:false,error:'NO_INPUT'});"
+        "if (typeof input.click === 'function') input.click();"
         "input.focus();"
-        "if (input.classList && input.classList.contains('ProseMirror')) {"
-        "  const sel = window.getSelection(); const range = document.createRange(); range.selectNodeContents(input); sel.removeAllRanges(); sel.addRange(range); document.execCommand('delete'); document.execCommand('insertText', false, config.prompt);"
-        "  input.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,cancelable:true,data:config.prompt,inputType:'insertText'}));"
-        "  input.textContent = config.prompt;"
-        "} else if (input.tagName === 'TEXTAREA') { input.value = config.prompt; } else { input.textContent = config.prompt; }"
-        "input.dispatchEvent(new InputEvent('input',{bubbles:true,data:config.prompt,inputType:'insertText'}));"
-        "input.dispatchEvent(new Event('change',{bubbles:true}));"
-        "input.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,key:'Enter',code:'Enter'}));"
-        "input.dispatchEvent(new KeyboardEvent('keyup',{bubbles:true,key:'a'}));"
+        "let inputSuccess = false;"
+        "const isProseMirror = !!(input.classList && (input.classList.contains('ProseMirror') || input.classList.contains('tiptap')));"
+        "if (isProseMirror) {"
+        "  const sel = window.getSelection(); const range = document.createRange(); range.selectNodeContents(input); sel.removeAllRanges(); sel.addRange(range);"
+        "  document.execCommand('delete', false, null);"
+        "  const inserted = document.execCommand('insertText', false, config.prompt);"
+        "  if (!inserted) { input.innerHTML = ''; const p = document.createElement('p'); p.textContent = config.prompt; input.appendChild(p); }"
+        "  input.dispatchEvent(new InputEvent('input',{bubbles:true,cancelable:true,data:config.prompt,inputType:'insertText'}));"
+        "  input.dispatchEvent(new Event('change',{bubbles:true}));"
+        "  input.dispatchEvent(new KeyboardEvent('keyup',{bubbles:true,key:'a'}));"
+        "  const finalText = (input.innerText || input.textContent || '').trim();"
+        "  inputSuccess = finalText.length > 0;"
+        "} else if (input.tagName === 'TEXTAREA') {"
+        "  input.value = config.prompt;"
+        "  input.dispatchEvent(new InputEvent('input',{bubbles:true,cancelable:true,data:config.prompt,inputType:'insertText'}));"
+        "  input.dispatchEvent(new Event('change',{bubbles:true}));"
+        "  inputSuccess = String(input.value || '').trim().length > 0;"
+        "} else {"
+        "  input.innerText = config.prompt;"
+        "  input.dispatchEvent(new InputEvent('input',{bubbles:true,cancelable:true,data:config.prompt,inputType:'insertText'}));"
+        "  input.dispatchEvent(new Event('change',{bubbles:true}));"
+        "  inputSuccess = String(input.innerText || input.textContent || '').trim().length > 0;"
+        "}"
+        "return JSON.stringify({ok:true,inputSelector: selectors.find(s => document.querySelector(s)===input) || '', inputSuccess: inputSuccess});"
+        "})()"
+    )
+
+
+def _send_control_state_script(payload: str) -> str:
+    return (
+        "(() => {"
+        f"const config = {payload};"
+        "const sendSelectors = config.sendSelectors || [];"
+        "const stopSelectors = config.stopSelectors || [];"
         "const snapshot = (candidate) => {"
-        "  if (!candidate) return {send_found:false, send_disabled:false, aria_disabled:'', aria_busy:'', class_name:'', button_text:'', pointer_events:'', visible:false, is_connected:false, in_flight_marker:false, state_transition:false, retry_safe:true};"
+        "  if (!candidate) return {send_found:false, send_enabled:false, send_disabled:false, send_test_id:'', send_aria_label:'', aria_disabled:'', aria_busy:'', class_name:'', button_text:'', pointer_events:'', visible:false, is_connected:false, in_flight_marker:false, state_transition:false, retry_safe:true};"
         "  const className = String(candidate.className || '');"
         "  const ariaDisabled = candidate.getAttribute ? (candidate.getAttribute('aria-disabled') || '') : '';"
         "  const ariaBusy = candidate.getAttribute ? (candidate.getAttribute('aria-busy') || '') : '';"
         "  const inFlight = !!(candidate.querySelector && candidate.querySelector('[role=\"progressbar\"], .spinner, .loading')) || className.toLowerCase().includes('loading') || ariaBusy === 'true';"
-        "  return {send_found:true, send_disabled:!!candidate.disabled, aria_disabled:ariaDisabled, aria_busy:ariaBusy, class_name:className, button_text:String(candidate.innerText || candidate.textContent || candidate.value || '').trim(), pointer_events:String((window.getComputedStyle && window.getComputedStyle(candidate).pointerEvents) || ''), visible:!!candidate.offsetParent, is_connected:!!candidate.isConnected, in_flight_marker:inFlight, state_transition:false, retry_safe:!candidate.disabled && !inFlight};"
+        "  return {send_found:true, send_enabled:!candidate.disabled, send_disabled:!!candidate.disabled, send_test_id: candidate.getAttribute ? (candidate.getAttribute('data-testid') || '') : '', send_aria_label: candidate.getAttribute ? (candidate.getAttribute('aria-label') || '') : '', aria_disabled:ariaDisabled, aria_busy:ariaBusy, class_name:className, button_text:String(candidate.innerText || candidate.textContent || candidate.value || '').trim(), pointer_events:String((window.getComputedStyle && window.getComputedStyle(candidate).pointerEvents) || ''), visible:!!candidate.offsetParent, is_connected:!!candidate.isConnected, in_flight_marker:inFlight, state_transition:false, retry_safe:!candidate.disabled && !inFlight};"
         "};"
-        "const stopVisible = () => stopSelectors.some(selector => { const el = document.querySelector(selector); return !!(el && el.offsetParent !== null); });"
+        "let hasStop = stopSelectors.some(selector => { const el = document.querySelector(selector); return !!(el && el.offsetParent !== null); });"
         "let send = null;"
-        "for (const selector of sendSelectors) {"
-        "  const candidate = document.querySelector(selector);"
-        "  if (!candidate) continue;"
-        "  if (candidate.getAttribute && candidate.getAttribute('data-testid') === 'stop-button') continue;"
-        "  send = candidate;"
-        "  break;"
-        "}"
-        "if (!send) { const evidence = snapshot(null); evidence.in_flight_marker = stopVisible(); evidence.state_transition = evidence.in_flight_marker; evidence.retry_safe = !evidence.in_flight_marker; if (evidence.in_flight_marker) return JSON.stringify({ok:true,inputSelector: selectors.find(s => document.querySelector(s)===input) || '', sendClicked:false, sendTestId:'', sendAriaLabel:'', submitEvidence:{pre:evidence, post:evidence, in_flight_observed:true, terminal_success_observed:false, state_transition:true}}); return JSON.stringify({ok:false,error:'NO_SEND',noSendEvidence:evidence}); }"
-        "if (send.disabled) { const evidence = snapshot(send); evidence.in_flight_marker = evidence.in_flight_marker || stopVisible(); evidence.state_transition = evidence.in_flight_marker; evidence.retry_safe = !evidence.in_flight_marker; if (evidence.in_flight_marker) return JSON.stringify({ok:true,inputSelector: selectors.find(s => document.querySelector(s)===input) || '', sendClicked:false, sendTestId: send.getAttribute ? (send.getAttribute('data-testid') || '') : '', sendAriaLabel: send.getAttribute ? (send.getAttribute('aria-label') || '') : '', submitEvidence:{pre:evidence, post:evidence, in_flight_observed:true, terminal_success_observed:false, state_transition:true}}); return JSON.stringify({ok:false,error:'SEND_DISABLED',noSendEvidence:evidence}); }"
+        "for (const selector of sendSelectors) { const candidate = document.querySelector(selector); if (!candidate) continue; if (candidate.getAttribute && candidate.getAttribute('data-testid') === 'stop-button') continue; send = candidate; break; }"
+        "const evidence = snapshot(send);"
+        "evidence.in_flight_marker = evidence.in_flight_marker || hasStop;"
+        "evidence.state_transition = evidence.in_flight_marker;"
+        "evidence.retry_safe = !evidence.in_flight_marker;"
+        "return JSON.stringify(evidence);"
+        "})()"
+    )
+
+
+def _click_send_script(payload: str) -> str:
+    return (
+        "(() => {"
+        f"const config = {payload};"
+        "const sendSelectors = config.sendSelectors || [];"
+        "let send = null;"
+        "for (const selector of sendSelectors) { const candidate = document.querySelector(selector); if (!candidate) continue; if (candidate.getAttribute && candidate.getAttribute('data-testid') === 'stop-button') continue; send = candidate; break; }"
+        "if (!send) return JSON.stringify({ok:false,error:'NO_SEND'});"
         "['pointerdown','mousedown','pointerup','mouseup','click'].forEach(type => send.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,view:window})));"
         "if (typeof send.click === 'function') send.click();"
-        "input.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,key:'Enter',code:'Enter'}));"
-        "input.dispatchEvent(new KeyboardEvent('keypress',{bubbles:true,key:'Enter',code:'Enter'}));"
-        "input.dispatchEvent(new KeyboardEvent('keyup',{bubbles:true,key:'Enter',code:'Enter'}));"
-        "return JSON.stringify({ok:true,inputSelector: selectors.find(s => document.querySelector(s)===input) || '', sendClicked:true, sendTestId: send.getAttribute ? (send.getAttribute('data-testid') || '') : '', sendAriaLabel: send.getAttribute ? (send.getAttribute('aria-label') || '') : ''});"
+        "return JSON.stringify({ok:true,sendClicked:true,sendTestId: send.getAttribute ? (send.getAttribute('data-testid') || '') : '', sendAriaLabel: send.getAttribute ? (send.getAttribute('aria-label') || '') : ''});"
         "})()"
     )
 
@@ -328,9 +453,8 @@ def _response_script(payload: str) -> str:
         "let hasSendButton = sendSelectors.some(selector => { const el = document.querySelector(selector); return !!(el && el.offsetParent !== null && !el.disabled); });"
         "const composerBtn = document.getElementById('composer-submit-button');"
         "if (composerBtn) { const ariaLabel = (composerBtn.getAttribute('aria-label') || '').toLowerCase(); if (!hasStop && (ariaLabel.includes('중지') || ariaLabel.includes('stop'))) hasStop = true; if (!hasSendButton && (ariaLabel.includes('전송') || ariaLabel.includes('send'))) hasSendButton = true; }"
-        "let blocks = [];"
-        "for (const selector of responseSelectors) { blocks = Array.from(document.querySelectorAll(selector)); if (blocks.length) break; }"
-        "const assistantBlocks = blocks.filter(el => !el.closest('form'));"
+        "let assistantBlocks = [];"
+        "for (const selector of responseSelectors) { const found = Array.from(document.querySelectorAll(selector)).filter(el => !el.closest('form')); if (found.length) { assistantBlocks = found; break; } }"
         "const last = assistantBlocks.length ? assistantBlocks[assistantBlocks.length - 1] : null;"
         "const text = last ? ((last.innerText || last.textContent || '').trim()) : '';"
         "const legacyLabels = ['[Voice]','[Title]','[Title for Thumb]','[Description]','[Keywords]','[BGM]','[URL]','[Ref Img 1]','[Ref Img 2]','[Shorts Description]','[Shorts Voice]','[Shorts Clip Mapping]'];"
@@ -553,20 +677,40 @@ def _decode_backend_json(result: str) -> dict[str, object]:
 def _normalized_no_send_evidence(parsed: dict[str, object]) -> dict[str, object]:
     raw = parsed.get("noSendEvidence", {})
     if not isinstance(raw, dict):
-        return {
-            "send_found": False,
-            "send_disabled": False,
-            "aria_disabled": "",
-            "aria_busy": "",
-            "class_name": "",
-            "button_text": "",
-            "pointer_events": "",
-            "visible": False,
-            "is_connected": False,
-            "in_flight_marker": False,
-            "state_transition": False,
-            "retry_safe": False,
+        evidence_keys = {
+            "send_found",
+            "send_enabled",
+            "send_disabled",
+            "send_test_id",
+            "send_aria_label",
+            "aria_disabled",
+            "aria_busy",
+            "class_name",
+            "button_text",
+            "pointer_events",
+            "visible",
+            "is_connected",
+            "in_flight_marker",
+            "state_transition",
+            "retry_safe",
         }
+        if any(key in parsed for key in evidence_keys):
+            raw = parsed
+        else:
+            return {
+                "send_found": False,
+                "send_disabled": False,
+                "aria_disabled": "",
+                "aria_busy": "",
+                "class_name": "",
+                "button_text": "",
+                "pointer_events": "",
+                "visible": False,
+                "is_connected": False,
+                "in_flight_marker": False,
+                "state_transition": False,
+                "retry_safe": False,
+            }
     return {
         "send_found": bool(raw.get("send_found", False)),
         "send_disabled": bool(raw.get("send_disabled", False)),

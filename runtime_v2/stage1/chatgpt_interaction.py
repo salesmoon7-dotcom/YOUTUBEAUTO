@@ -38,10 +38,8 @@ CHATGPT_STOP_SELECTORS = [
 ]
 
 CHATGPT_RESPONSE_SELECTORS = [
-    "[data-testid*='conversation-turn']",
     "div[data-message-author-role='assistant']",
-    "[class*='markdown']",
-    "article",
+    "[data-testid*='conversation-turn'] div[data-message-author-role='assistant']",
 ]
 
 
@@ -49,7 +47,7 @@ def generate_gpt_response_text(
     *,
     prompt: str,
     port: int = 9222,
-    timeout_sec: int = 180,
+    timeout_sec: int = 1200,
     poll_interval_sec: float = 2.0,
     completion_idle_sec: float = 10.0,
     response_start_timeout_sec: float = 30.0,
@@ -198,6 +196,9 @@ def generate_gpt_response_text(
             if has_stop:
                 if not saw_streaming:
                     emit("streaming_seen", attempt=attempt, backend="chatgpt_backend")
+                    if isinstance(submit_evidence, dict):
+                        submit_evidence["classification"] = "sent"
+                        submit_evidence["classification_reason"] = "streaming_observed"
                     emit(
                         "stop_gate",
                         attempt=attempt,
