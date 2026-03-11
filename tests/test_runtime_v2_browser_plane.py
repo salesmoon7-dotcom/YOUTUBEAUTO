@@ -23,7 +23,7 @@ from runtime_v2.browser.manager import (
     default_browser_sessions_by_service,
     open_browser_for_login,
 )
-from runtime_v2.config import RuntimeConfig, browser_session_root
+from runtime_v2.config import RuntimeConfig, browser_session_root, runtime_scratch_root
 from runtime_v2.browser.registry import load_browser_registry
 from runtime_v2.browser.supervisor import BrowserSupervisor, _prune_restart_history
 from runtime_v2.evidence import load_latest_result_metadata
@@ -31,6 +31,11 @@ from runtime_v2.supervisor import run_once
 
 
 class RuntimeV2BrowserPlaneTests(unittest.TestCase):
+    def _temp_dir(self) -> tempfile.TemporaryDirectory[str]:
+        scratch_root = runtime_scratch_root()
+        scratch_root.mkdir(parents=True, exist_ok=True)
+        return tempfile.TemporaryDirectory(dir=str(scratch_root))
+
     def test_browser_inventory_matches_runtime_browser_contracts(self) -> None:
         inventory = build_browser_inventory()
         self.assertIn("geminigen", inventory)
@@ -53,7 +58,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         )
 
     def test_launch_debug_browser_uses_service_start_url(self) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             session = BrowserSession(
                 service="chatgpt",
                 group="llm",
@@ -68,6 +73,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                     "runtime_v2.browser.manager._probe_local_port",
                     side_effect=[False, True],
                 ),
+                patch("runtime_v2.browser.manager.sleep", return_value=None),
                 patch(
                     "runtime_v2.browser.manager._resolve_browser_executable",
                     return_value=Path(r"C:\\Chrome\\chrome.exe"),
@@ -81,7 +87,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertEqual(command[-1], "https://chatgpt.com/")
 
     def test_launch_debug_browser_keeps_profile_lock_with_browser_pid(self) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             profile_dir = Path(tmp_dir) / "chatgpt-primary"
             session = BrowserSession(
                 service="chatgpt",
@@ -97,6 +103,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                     "runtime_v2.browser.manager._probe_local_port",
                     side_effect=[False, True],
                 ),
+                patch("runtime_v2.browser.manager.sleep", return_value=None),
                 patch(
                     "runtime_v2.browser.manager._resolve_browser_executable",
                     return_value=Path(r"C:\\Chrome\\chrome.exe"),
@@ -117,7 +124,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             self.assertEqual(int(cast(int, lock_payload["browser_pid"])), 54321)
 
     def test_second_acquire_sees_busy_lock_after_successful_launch(self) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             profile_dir = Path(tmp_dir) / "chatgpt-primary"
             session = BrowserSession(
                 service="chatgpt",
@@ -133,6 +140,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                     "runtime_v2.browser.manager._probe_local_port",
                     side_effect=[False, True, True],
                 ),
+                patch("runtime_v2.browser.manager.sleep", return_value=None),
                 patch(
                     "runtime_v2.browser.manager._resolve_browser_executable",
                     return_value=Path(r"C:\\Chrome\\chrome.exe"),
@@ -156,7 +164,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
     def test_default_browser_sessions_uses_runtime_port_and_profile_overrides(
         self,
     ) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             config_path = Path(tmp_dir) / "app_config.json"
             config_path.write_text(
                 json.dumps(
@@ -210,7 +218,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertEqual(session.browser_family, "uc")
 
     def test_manager_owns_geminigen_browser_session(self) -> None:
-        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             lock_file = Path(tmp_dir) / "browser_plane.lock"
             now = round(time(), 3)
             _ = lock_file.write_text(
@@ -234,7 +242,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                 self.assertTrue(_manager_owns_browser("geminigen"))
 
     def test_refresh_session_ready_marker_creates_marker_for_ready_tab(self) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             profile_dir = Path(tmp_dir) / "seaart-primary"
             profile_dir.mkdir(parents=True, exist_ok=True)
             session = BrowserSession(
@@ -262,7 +270,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
     def test_manual_login_open_marks_session_ready_after_expected_tab_detected(
         self,
     ) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             session = BrowserSession(
                 service="seaart",
                 group="image",
@@ -283,7 +291,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertEqual(result["start_url"], _start_url_for_service("seaart"))
 
     def test_refresh_session_ready_marker_removes_marker_for_login_page(self) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             profile_dir = Path(tmp_dir) / "canva-primary"
             profile_dir.mkdir(parents=True, exist_ok=True)
             ready_file = profile_dir / "session_ready.json"
@@ -311,7 +319,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             self.assertFalse(ready_file.exists())
 
     def test_chatgpt_login_page_removes_ready_marker(self) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             profile_dir = Path(tmp_dir) / "chatgpt-primary"
             profile_dir.mkdir(parents=True, exist_ok=True)
             ready_file = profile_dir / "session_ready.json"
@@ -339,7 +347,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
     def test_browser_health_marks_login_page_as_login_required_without_restart(
         self,
     ) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             profile_dir = Path(tmp_dir) / "genspark-primary"
             profile_dir.mkdir(parents=True, exist_ok=True)
             session = BrowserSession(
@@ -382,7 +390,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         launch_browser.assert_not_called()
 
     def test_supervisor_writes_blocked_browser_event_for_login_required(self) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             profile_dir = Path(tmp_dir) / "genspark-primary"
             profile_dir.mkdir(parents=True, exist_ok=True)
             session = BrowserSession(
@@ -426,7 +434,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertEqual(str(latest["error"]), "")
 
     def test_supervisor_writes_recovery_event_for_stale_lock_recovery(self) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             profile_dir = Path(tmp_dir) / "chatgpt-primary"
             profile_dir.mkdir(parents=True, exist_ok=True)
             session = BrowserSession(
@@ -474,7 +482,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertEqual(str(recovery_events[0]["action_result"]), "ok")
 
     def test_manager_skips_launch_when_fresh_foreign_browser_owner_exists(self) -> None:
-        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             lock_file = Path(tmp_dir) / "browser_plane.lock"
             _ = lock_file.write_text(
                 json.dumps(
@@ -511,7 +519,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
     def test_manager_takes_over_dead_browser_owner_without_waiting_for_lock_age(
         self,
     ) -> None:
-        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             lock_file = Path(tmp_dir) / "browser_plane.lock"
             _ = lock_file.write_text(
                 json.dumps(
@@ -556,7 +564,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertEqual(manager.sessions[0].status, "running")
 
     def test_supervisor_takes_over_stale_browser_owner_and_emits_event(self) -> None:
-        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             lock_file = Path(tmp_dir) / "browser_plane.lock"
             _ = lock_file.write_text(
                 json.dumps(
@@ -606,7 +614,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         )
 
     def test_supervisor_escalates_long_lived_busy_lock(self) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             profile_dir = Path(tmp_dir) / "chatgpt-primary"
             profile_dir.mkdir(parents=True, exist_ok=True)
             session = BrowserSession(
@@ -651,7 +659,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertEqual(str(escalation_events[0]["action_result"]), "blocked")
 
     def test_supervisor_blocks_restart_when_budget_is_exhausted(self) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             profile_dir = Path(tmp_dir) / "chatgpt-primary"
             profile_dir.mkdir(parents=True, exist_ok=True)
             session = BrowserSession(
@@ -763,20 +771,23 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertFalse(second_result)
 
     def test_same_profile_is_not_opened_by_two_browser_processes(self) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             profile_dir = str((Path(tmp_dir) / "chrome_seaart").resolve())
             first = acquire_profile_lock(
                 profile_dir, service="seaart", session_id="primary", port=9225
             )
-            second = acquire_profile_lock(
-                profile_dir, service="canva", session_id="primary", port=9227
-            )
+            with patch("runtime_v2.browser.manager._pid_is_running", return_value=True):
+                second = acquire_profile_lock(
+                    profile_dir, service="canva", session_id="primary", port=9227
+                )
 
         self.assertTrue(bool(first["locked"]))
         self.assertFalse(bool(second["locked"]))
+        self.assertFalse(bool(second["reused"]))
+        self.assertEqual(str(second["lock_state"]), "busy")
 
     def test_same_service_lock_is_not_reused_by_different_process(self) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             profile_dir = Path(tmp_dir) / "chatgpt-primary"
             first = acquire_profile_lock(
                 str(profile_dir.resolve()),
@@ -805,7 +816,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
     def test_stale_profile_lock_is_recovered_when_owner_dead_and_port_closed(
         self,
     ) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             profile_dir = Path(tmp_dir) / "chatgpt-primary"
             first = acquire_profile_lock(
                 str(profile_dir.resolve()),
@@ -839,7 +850,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertTrue(bool(second["recovered"]))
 
     def test_busy_profile_lock_is_not_recovered_when_owner_still_alive(self) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             profile_dir = Path(tmp_dir) / "chatgpt-primary"
             first = acquire_profile_lock(
                 str(profile_dir.resolve()),
@@ -868,7 +879,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertFalse(bool(second.get("recovered", False)))
 
     def test_unknown_profile_lock_metadata_fail_closes(self) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             profile_dir = Path(tmp_dir) / "chatgpt-primary"
             profile_dir.mkdir(parents=True, exist_ok=True)
             lock_file = profile_dir / ".runtime_v2.profile.lock"
@@ -886,7 +897,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertFalse(bool(second.get("metadata_valid", True)))
 
     def test_browser_health_requires_ready_marker_not_just_open_port(self) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             profile_dir = Path(tmp_dir) / "chatgpt-primary"
             profile_dir.mkdir(parents=True, exist_ok=True)
             manager = BrowserManager(
@@ -1008,13 +1019,13 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
 
     def test_profile_storage_policy_reports_in_project_vs_external_paths(self) -> None:
         policy = build_profile_storage_report()
-        self.assertEqual(policy["chatgpt"]["location_type"], "project_subfolder")
+        self.assertEqual(policy["chatgpt"]["location_type"], "external")
         self.assertEqual(policy["seaart"]["location_type"], "external")
 
     def test_default_browser_sessions_prefers_external_root_when_present(self) -> None:
         external_chatgpt = browser_session_root() / "chatgpt-primary"
         legacy_chatgpt = (Path("runtime_v2") / "sessions" / "chatgpt-primary").resolve()
-        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             temp_root = Path(tmp_dir)
             external_dir = temp_root / "external-sessions"
             legacy_dir = temp_root / "legacy-sessions"
@@ -1038,7 +1049,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
     def test_default_browser_sessions_falls_back_to_legacy_root_when_external_missing(
         self,
     ) -> None:
-        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             temp_root = Path(tmp_dir)
             external_dir = temp_root / "external-sessions"
             legacy_dir = temp_root / "legacy-sessions"
@@ -1074,7 +1085,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             "session_count": 1,
             "sessions": [registry_session.to_dict(healthy=True)],
         }
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with self._temp_dir() as tmp_dir:
             registry_path = Path(tmp_dir) / "browser_session_registry.json"
             health_path = Path(tmp_dir) / "browser_health.json"
             _ = registry_path.write_text(
@@ -1269,6 +1280,9 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertEqual(len(loaded), 1)
         self.assertTrue(Path(loaded[0].profile_dir).is_absolute())
 
+    @unittest.skip(
+        "manual/operational smoke: reads current latest-run evidence from workspace"
+    )
     def test_stage5_latest_run_has_interpretable_failure_or_success_evidence(
         self,
     ) -> None:
