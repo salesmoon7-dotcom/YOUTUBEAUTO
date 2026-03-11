@@ -298,10 +298,27 @@ class RuntimeV2ManagerGUI:
 
     def __init__(self) -> None:
         self.root: tk.Tk = tk.Tk()
-        self.root.title("runtime_v2 Manager")
-        self.root.geometry("720x980")
+        self.root.title("Master Manager - runtime_v2 Operator Console")
+        self.root.geometry("1260x900")
         _ = self.root.configure(bg="#f4f4f4")
         _ = self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+        self.style: ttk.Style = ttk.Style()
+        try:
+            self.style.theme_use("clam")
+        except tk.TclError:
+            pass
+        self.style.configure("ManagerHeader.TFrame", background="#203040")
+        self.style.configure(
+            "ManagerHeader.TLabel", background="#203040", foreground="#f4f7fb"
+        )
+        self.style.configure(
+            "ManagerSection.TLabelframe", borderwidth=2, relief=tk.GROOVE
+        )
+        self.style.configure(
+            "ManagerSection.TLabelframe.Label",
+            font=("Malgun Gothic", 10, "bold"),
+        )
 
         self.config: RuntimeConfig = RuntimeConfig()
         self.owner: str = "runtime_v2_gui"
@@ -371,14 +388,112 @@ class RuntimeV2ManagerGUI:
         main = ttk.Frame(self.root, padding=8)
         main.pack(fill=tk.BOTH, expand=True)
 
-        self._build_control_frame(main)
-        self._build_overview_frame(main)
+        self._build_header_frame(main)
+
+        body: ttk.Panedwindow = ttk.Panedwindow(main, orient=tk.HORIZONTAL)
+        body.pack(fill=tk.BOTH, expand=True, pady=(8, 8))
+
+        left = ttk.Frame(body, padding=(0, 0, 6, 0))
+        right = ttk.Frame(body, padding=(6, 0, 0, 0))
+        body.add(left, weight=4)
+        body.add(right, weight=5)
+
+        self._build_control_frame(left)
+
+        self._build_queue_frame(right)
+        self._build_logs_frame(right)
+
         self._build_programs_frame(main)
-        self._build_queue_frame(main)
-        self._build_logs_frame(main)
+
+    def _build_header_frame(self, parent: ttk.Frame) -> None:
+        frame = ttk.Frame(parent, style="ManagerHeader.TFrame", padding=12)
+        frame.pack(fill=tk.X)
+
+        title_row = ttk.Frame(frame, style="ManagerHeader.TFrame")
+        title_row.pack(fill=tk.X)
+        ttk.Label(
+            title_row,
+            text="Master Manager - Stage 5 Operator Console",
+            style="ManagerHeader.TLabel",
+            font=("Consolas", 16, "bold"),
+        ).pack(anchor="w")
+        ttk.Label(
+            title_row,
+            textvariable=self.status_text,
+            style="ManagerHeader.TLabel",
+            font=("Consolas", 11, "bold"),
+        ).pack(anchor="e")
+
+        ttk.Label(
+            frame,
+            text="Status flow: Health -> Seed 1 Row -> Control Once -> Evidence Check -> Final Output / Failure Summary",
+            style="ManagerHeader.TLabel",
+            font=("Consolas", 10),
+        ).pack(anchor="w", pady=(8, 0))
+        ttk.Label(
+            frame,
+            text="Mode groups: Health / Seed / Control / Login Browser / Queue / Logs",
+            style="ManagerHeader.TLabel",
+            font=("Consolas", 10),
+        ).pack(anchor="w", pady=(2, 0))
+        ttk.Label(
+            frame,
+            text="주의: 작업 중 Excel은 읽기 전용으로 확인하고, 1행 테스트는 준비된 테스트 행 1개를 의미합니다.",
+            style="ManagerHeader.TLabel",
+            font=("Malgun Gothic", 9, "bold"),
+        ).pack(anchor="w", pady=(8, 0))
+
+        strip = ttk.Frame(frame, style="ManagerHeader.TFrame")
+        strip.pack(fill=tk.X, pady=(10, 0))
+        for column in range(5):
+            _ = strip.grid_columnconfigure(column, weight=1)
+
+        strip_vars = (
+            self.warning_text,
+            self.readiness_text,
+            self.latest_run_text,
+            self.evidence_summary_text,
+            self.last_result_text,
+        )
+        for index, var in enumerate(strip_vars):
+            label = ttk.Label(
+                strip,
+                textvariable=var,
+                style="ManagerHeader.TLabel",
+                font=("Consolas", 9, "bold" if index == 0 else "normal"),
+                anchor="w",
+                relief=tk.GROOVE,
+                padding=6,
+            )
+            _ = label.grid(row=0, column=index, sticky="ew", padx=2, pady=2)
+
+        metrics = ttk.Frame(frame, style="ManagerHeader.TFrame")
+        metrics.pack(fill=tk.X, pady=(6, 0))
+        for column in range(5):
+            _ = metrics.grid_columnconfigure(column, weight=1)
+        metric_vars = (
+            self.browser_text,
+            self.gpu_text,
+            self.gpt_text,
+            self.queue_text,
+            self.artifact_text,
+        )
+        for index, var in enumerate(metric_vars):
+            label = ttk.Label(
+                metrics,
+                textvariable=var,
+                style="ManagerHeader.TLabel",
+                font=("Consolas", 9),
+                anchor="w",
+                relief=tk.GROOVE,
+                padding=6,
+            )
+            _ = label.grid(row=0, column=index, sticky="ew", padx=2, pady=2)
 
     def _build_control_frame(self, parent: ttk.Frame) -> None:
-        frame = ttk.LabelFrame(parent, text="Stage 5 Console", padding=8)
+        frame = ttk.LabelFrame(
+            parent, text="Mode / Actions", padding=8, style="ManagerSection.TLabelframe"
+        )
         frame.pack(fill=tk.X, pady=(0, 8))
         runtime_row = ttk.Frame(frame)
         runtime_row.pack(fill=tk.X, pady=(0, 6))
@@ -455,7 +570,12 @@ class RuntimeV2ManagerGUI:
             action_row, text="GPT Spawn", width=12, command=self.trigger_gpt_spawn
         ).pack(side=tk.LEFT)
 
-        advanced = ttk.LabelFrame(frame, text="Advanced", padding=6)
+        advanced = ttk.LabelFrame(
+            frame,
+            text="Legacy Manual Controls",
+            padding=6,
+            style="ManagerSection.TLabelframe",
+        )
         advanced.pack(fill=tk.X, pady=(8, 0))
 
         top = ttk.Frame(advanced)
@@ -523,7 +643,9 @@ class RuntimeV2ManagerGUI:
         ).pack(side=tk.LEFT, padx=4)
 
     def _build_overview_frame(self, parent: ttk.Frame) -> None:
-        frame = ttk.LabelFrame(parent, text="Overview", padding=8)
+        frame = ttk.LabelFrame(
+            parent, text="Master Status", padding=8, style="ManagerSection.TLabelframe"
+        )
         frame.pack(fill=tk.X, pady=(0, 8))
         ttk.Label(
             frame, textvariable=self.status_text, font=("Malgun Gothic", 10, "bold")
@@ -570,8 +692,13 @@ class RuntimeV2ManagerGUI:
         _ = grid.grid_columnconfigure(1, weight=1)
 
     def _build_programs_frame(self, parent: ttk.Frame) -> None:
-        frame = ttk.LabelFrame(parent, text="Programs", padding=8)
-        frame.pack(fill=tk.X, pady=(0, 8))
+        frame = ttk.LabelFrame(
+            parent,
+            text="Subsystems",
+            padding=8,
+            style="ManagerSection.TLabelframe",
+        )
+        frame.pack(fill=tk.BOTH, expand=False, pady=(0, 8))
         for program in (
             "GPT",
             "Genspark",
@@ -594,16 +721,23 @@ class RuntimeV2ManagerGUI:
             self.program_rows[program] = {"status": status, "detail": detail}
 
     def _build_queue_frame(self, parent: ttk.Frame) -> None:
-        frame = ttk.LabelFrame(parent, text="Queue / Recovery", padding=8)
-        frame.pack(fill=tk.BOTH, expand=False, pady=(0, 8))
-        self.queue_list = tk.Listbox(frame, height=10, font=("Consolas", 9))
+        frame = ttk.LabelFrame(
+            parent,
+            text="Queue / Live Operations",
+            padding=8,
+            style="ManagerSection.TLabelframe",
+        )
+        frame.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+        self.queue_list = tk.Listbox(frame, height=18, font=("Consolas", 9))
         self.queue_list.pack(fill=tk.BOTH, expand=True)
 
     def _build_logs_frame(self, parent: ttk.Frame) -> None:
-        frame = ttk.LabelFrame(parent, text="Logs", padding=8)
+        frame = ttk.LabelFrame(
+            parent, text="Event Console", padding=8, style="ManagerSection.TLabelframe"
+        )
         frame.pack(fill=tk.BOTH, expand=True)
         self.log_text = tk.Text(
-            frame, height=18, font=("Consolas", 9), bg="#263238", fg="#eceff1"
+            frame, height=14, font=("Consolas", 9), bg="#1f252b", fg="#eceff1"
         )
         self.log_text.pack(fill=tk.BOTH, expand=True)
 
