@@ -13,6 +13,7 @@ from unittest.mock import patch
 from runtime_v2.browser.manager import (
     BrowserManager,
     BrowserSession,
+    CHATGPT_PARITY_EXTRA_FLAGS,
     _launch_debug_browser,
     _manager_owns_browser,
     _refresh_session_ready_marker,
@@ -43,7 +44,10 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertEqual(inventory["genspark"]["browser"], "edge")
 
     def test_service_start_urls_follow_runtime_defaults(self) -> None:
-        self.assertEqual(_start_url_for_service("chatgpt"), "https://chatgpt.com/")
+        self.assertEqual(
+            _start_url_for_service("chatgpt"),
+            "https://chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom",
+        )
         self.assertEqual(_start_url_for_service("genspark"), "https://www.genspark.ai/")
         self.assertEqual(
             _start_url_for_service("seaart"),
@@ -84,7 +88,57 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
 
         self.assertTrue(launched)
         command = popen.call_args.args[0]
-        self.assertEqual(command[-1], "https://chatgpt.com/")
+        self.assertEqual(
+            command[-1],
+            "https://chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom",
+        )
+
+    def test_chatgpt_legacy_parity_mode_adds_flags_and_cleans_profile(self) -> None:
+        with self._temp_dir() as tmp_dir:
+            profile_dir = Path(tmp_dir) / "chatgpt-primary"
+            profile_dir.mkdir(parents=True, exist_ok=True)
+            stale_files = [
+                profile_dir / "SingletonLock",
+                profile_dir / "DevToolsActivePort",
+                profile_dir / "Current Session",
+            ]
+            for stale in stale_files:
+                stale.parent.mkdir(parents=True, exist_ok=True)
+                _ = stale.write_text("stale", encoding="utf-8")
+            session = BrowserSession(
+                service="chatgpt",
+                group="llm",
+                session_id="primary",
+                port=9222,
+                profile_dir=str(profile_dir.resolve()),
+                status="stopped",
+            )
+
+            with (
+                patch.dict(
+                    os.environ,
+                    {"RUNTIME_V2_CHATGPT_LEGACY_PARITY": "1"},
+                    clear=False,
+                ),
+                patch(
+                    "runtime_v2.browser.manager._probe_local_port",
+                    side_effect=[False, True],
+                ),
+                patch("runtime_v2.browser.manager.sleep", return_value=None),
+                patch(
+                    "runtime_v2.browser.manager._resolve_browser_executable",
+                    return_value=Path(r"C:\Chrome\chrome.exe"),
+                ),
+                patch("runtime_v2.browser.manager.subprocess.Popen") as popen,
+            ):
+                launched = _launch_debug_browser(session)
+
+        self.assertTrue(launched)
+        command = popen.call_args.args[0]
+        for flag in CHATGPT_PARITY_EXTRA_FLAGS:
+            self.assertIn(flag, command)
+        for stale in stale_files:
+            self.assertFalse(stale.exists())
 
     def test_launch_debug_browser_keeps_profile_lock_with_browser_pid(self) -> None:
         with self._temp_dir() as tmp_dir:
@@ -343,6 +397,53 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
 
         self.assertFalse(ready)
         self.assertFalse(ready_file.exists())
+
+    def test_chatgpt_home_tab_is_not_treated_as_ready_marker(self) -> None:
+        with self._temp_dir() as tmp_dir:
+            profile_dir = Path(tmp_dir) / "chatgpt-primary"
+            profile_dir.mkdir(parents=True, exist_ok=True)
+            session = BrowserSession(
+                service="chatgpt",
+                group="llm",
+                session_id="primary",
+                port=9222,
+                profile_dir=str(profile_dir.resolve()),
+                status="running",
+            )
+
+            with patch(
+                "runtime_v2.browser.manager._list_debug_tabs",
+                return_value=[{"url": "https://chatgpt.com/", "title": "ChatGPT"}],
+            ):
+                ready = _refresh_session_ready_marker(session)
+
+        self.assertFalse(ready)
+
+    def test_chatgpt_longform_tab_is_treated_as_ready_marker(self) -> None:
+        with self._temp_dir() as tmp_dir:
+            profile_dir = Path(tmp_dir) / "chatgpt-primary"
+            profile_dir.mkdir(parents=True, exist_ok=True)
+            session = BrowserSession(
+                service="chatgpt",
+                group="llm",
+                session_id="primary",
+                port=9222,
+                profile_dir=str(profile_dir.resolve()),
+                status="running",
+            )
+
+            with patch(
+                "runtime_v2.browser.manager._list_debug_tabs",
+                return_value=[
+                    {
+                        "url": "https://chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom/c/abc",
+                        "title": "ChatGPT",
+                    }
+                ],
+            ):
+                ready = _refresh_session_ready_marker(session)
+
+        self.assertTrue(ready)
 
     def test_browser_health_marks_login_page_as_login_required_without_restart(
         self,

@@ -14,7 +14,7 @@ from runtime_v2.config import RuntimeConfig, browser_session_root
 
 
 START_URLS: dict[str, str] = {
-    "chatgpt": "https://chatgpt.com/",
+    "chatgpt": "https://chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom",
     "genspark": "https://www.genspark.ai/",
     "seaart": "https://www.seaart.ai/ko/create/image?id=d4kssode878c7387fae0&model_ver_no=ef24b47a8d618127c9342fd0635aedb9",
     "geminigen": "https://geminigen.ai/app/video-gen",
@@ -22,7 +22,7 @@ START_URLS: dict[str, str] = {
 }
 
 READY_URL_RULES: dict[str, tuple[str, ...]] = {
-    "chatgpt": ("https://chatgpt.com/",),
+    "chatgpt": ("https://chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom",),
     "seaart": ("https://www.seaart.ai/ko/create/image",),
     "canva": ("/design/", "/edit"),
 }
@@ -34,6 +34,14 @@ LOGIN_URL_PATTERNS: dict[str, tuple[str, ...]] = {
     "geminigen": ("auth/login", "login", "signin", "sign-in", "accounts.google.com"),
     "canva": ("/login", "loginredirect", "accounts.google.com"),
 }
+
+CHATGPT_PARITY_EXTRA_FLAGS: tuple[str, ...] = (
+    "--disable-background-networking",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+    "--disable-dev-shm-usage",
+)
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 RUNTIME_APP_CONFIG = (
@@ -336,6 +344,43 @@ def _load_runtime_app_config() -> dict[str, object]:
         return {}
     typed_payload = raw_payload
     return {str(key): typed_payload[key] for key in typed_payload}
+
+
+def _chatgpt_legacy_parity_enabled() -> bool:
+    override = os.environ.get("RUNTIME_V2_CHATGPT_LEGACY_PARITY", "").strip().lower()
+    if override in {"1", "true", "yes", "on"}:
+        return True
+    runtime_config = _load_runtime_app_config()
+    return bool(runtime_config.get("chatgpt_legacy_parity", False))
+
+
+def _cleanup_chatgpt_parity_profile(profile_dir: Path) -> None:
+    targets = [
+        profile_dir / "SingletonLock",
+        profile_dir / "SingletonCookie",
+        profile_dir / "SingletonSocket",
+        profile_dir / "DevToolsActivePort",
+        profile_dir / "Current Session",
+        profile_dir / "Current Tabs",
+        profile_dir / "Last Session",
+        profile_dir / "Last Tabs",
+        profile_dir / "Default" / "Current Session",
+        profile_dir / "Default" / "Current Tabs",
+        profile_dir / "Default" / "Last Session",
+        profile_dir / "Default" / "Last Tabs",
+        profile_dir / "Default" / "DevToolsActivePort",
+    ]
+    sessions_dir = profile_dir / "Default" / "Sessions"
+    if sessions_dir.exists():
+        targets.extend(sorted(sessions_dir.glob("Session_*")))
+        targets.extend(sorted(sessions_dir.glob("Tabs_*")))
+    for target in targets:
+        if not target.exists():
+            continue
+        try:
+            target.unlink()
+        except OSError:
+            continue
 
 
 def _allow_legacy_session_root() -> bool:
@@ -1029,6 +1074,8 @@ def _launch_debug_browser(session: BrowserSession) -> bool:
     profile_dir = Path(session.profile_dir).resolve()
     session.profile_dir = str(profile_dir)
     profile_dir.mkdir(parents=True, exist_ok=True)
+    if session.service == "chatgpt" and _chatgpt_legacy_parity_enabled():
+        _cleanup_chatgpt_parity_profile(profile_dir)
     lock_result = acquire_profile_lock(
         session.profile_dir,
         service=session.service,
@@ -1050,8 +1097,10 @@ def _launch_debug_browser(session: BrowserSession) -> bool:
         f"--user-data-dir={profile_dir}",
         "--no-first-run",
         "--no-default-browser-check",
-        _start_url_for_service(session.service),
     ]
+    if session.service == "chatgpt" and _chatgpt_legacy_parity_enabled():
+        command.extend(CHATGPT_PARITY_EXTRA_FLAGS)
+    command.append(_start_url_for_service(session.service))
     creationflags = int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)) | int(
         getattr(subprocess, "DETACHED_PROCESS", 0)
     )
