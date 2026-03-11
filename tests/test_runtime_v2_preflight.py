@@ -6,12 +6,14 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 from unittest.mock import patch
 
 from runtime_v2 import exit_codes
 from runtime_v2.cli import main
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.preflight import build_preflight_report, write_preflight_report
+from runtime_v2.browser.manager import RUNTIME_APP_CONFIG
 
 
 class RuntimeV2PreflightTests(unittest.TestCase):
@@ -38,6 +40,18 @@ class RuntimeV2PreflightTests(unittest.TestCase):
 
         self.assertTrue(output.name.endswith("preflight_report.json"))
         self.assertEqual(payload["schema_version"], "1.0")
+
+    def test_build_preflight_report_uses_canonical_runtime_app_config_path(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            config = RuntimeConfig.from_root(Path(tmp_dir))
+            report = build_preflight_report(config)
+            sources = cast(dict[str, object], report["sources"])
+
+        self.assertEqual(
+            sources["runtime_app_config"], str(RUNTIME_APP_CONFIG.resolve())
+        )
 
     def test_main_keeps_running_when_preflight_report_write_fails(self) -> None:
         stderr = io.StringIO()

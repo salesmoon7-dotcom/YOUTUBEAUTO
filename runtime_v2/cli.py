@@ -21,6 +21,7 @@ from runtime_v2.config import (
     WorkloadName,
     browser_session_root,
     probe_runtime_root,
+    runtime_state_root,
 )
 from runtime_v2.contracts.job_contract import JobContract, build_explicit_job_contract
 from runtime_v2.control_plane import run_control_loop_once
@@ -223,9 +224,7 @@ def main() -> int:
     )
     _ = parser.add_argument("--callback-url", default="")
     _ = parser.add_argument("--callback-mock-out", default="")
-    _ = parser.add_argument(
-        "--gui-status-out", default="system/runtime_v2/health/gui_status.json"
-    )
+    _ = parser.add_argument("--gui-status-out", default="")
     _ = parser.add_argument("--probe-root", default="")
     _ = parser.add_argument("--seed-mock-chain", action="store_true")
     _ = parser.add_argument("--selftest-force-browser-fail", action="store_true")
@@ -683,10 +682,10 @@ def _build_runtime_config(args: CliArgs) -> RuntimeConfig:
                 args.seed_mock_chain and args.control_once_probe_child
             )
         )
-    return RuntimeConfig(
-        lease_file=Path("system/runtime_v2/health/gpu_scheduler_health.json"),
-        gui_status_file=Path(args.gui_status_out),
-    )
+    config = RuntimeConfig()
+    if args.gui_status_out.strip():
+        return config.replace(gui_status_file=Path(args.gui_status_out))
+    return config
 
 
 def _spawn_detached_probe(args: CliArgs, *, mode: str) -> int:
@@ -970,9 +969,7 @@ def _run_stage2_row1_probe(
         job_payload = cast(dict[str, object], typed["job"])
         service = str(job_payload["worker"])
         payload = cast(dict[str, object], job_payload["payload"])
-        payload["runtime_root"] = str(
-            RuntimeConfig().result_router_file.parent.parent.resolve()
-        )
+        payload["runtime_root"] = str(config.result_router_file.parent.parent.resolve())
         if service not in agent_browser_services:
             payload["adapter_command"] = _build_stage2_placeholder_adapter_command(
                 Path(str(payload.get("service_artifact_path", "")))

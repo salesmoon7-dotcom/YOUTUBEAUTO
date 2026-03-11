@@ -15,9 +15,37 @@ from runtime_v2.cli import (
     _write_detached_summary,
     CliArgs,
 )
+from runtime_v2.config import RuntimeConfig, runtime_state_root
 
 
 class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
+    def test_default_runtime_config_uses_external_runtime_state_root(self) -> None:
+        config = RuntimeConfig()
+        state_root = runtime_state_root()
+
+        self.assertEqual(
+            config.queue_store_file, state_root / "state" / "job_queue.json"
+        )
+        self.assertEqual(
+            config.gui_status_file, state_root / "health" / "gui_status.json"
+        )
+        self.assertEqual(config.artifact_root, state_root / "artifacts")
+        self.assertEqual(config.debug_log_root, state_root / "logs")
+        self.assertNotIn(
+            r"D:\YOUTUBEAUTO\system\runtime_v2", str(config.queue_store_file)
+        )
+
+    def test_runtime_config_from_root_preserves_explicit_root_layout(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir) / "runtime"
+            config = RuntimeConfig.from_root(root)
+
+        self.assertEqual(
+            config.queue_store_file, root.resolve() / "state" / "job_queue.json"
+        )
+        self.assertEqual(config.artifact_root, root.resolve() / "artifacts")
+        self.assertEqual(config.debug_log_root, root.resolve() / "logs")
+
     def test_copy_legacy_sessions_copies_missing_directories(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

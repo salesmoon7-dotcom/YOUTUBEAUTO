@@ -9,13 +9,14 @@ from time import time
 
 from runtime_v2.browser.manager import (
     BrowserSession,
+    RUNTIME_APP_CONFIG,
     default_browser_sessions_by_service,
 )
 from runtime_v2.config import RuntimeConfig
 
 
 def build_preflight_report(config: RuntimeConfig) -> dict[str, object]:
-    app_config_path = Path("system/runtime_v2/config/app_config.json")
+    app_config_path = RUNTIME_APP_CONFIG
     qwen_config_path = Path(r"D:/YOUTUBE_AUTO/system/config/qwen3_tts_config.json")
     rvc_config_path = Path(r"D:/YOUTUBE_AUTO/system/config/rvc_config.json")
     sessions = default_browser_sessions_by_service()

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace as dataclass_replace
+from dataclasses import dataclass, field, replace as dataclass_replace
 import os
 from pathlib import Path
 from typing import Literal
@@ -118,6 +118,13 @@ def runtime_scratch_root() -> Path:
     return (external_runtime_root() / "scratch").resolve()
 
 
+def runtime_state_root() -> Path:
+    override = os.environ.get("RUNTIME_V2_STATE_ROOT", "").strip()
+    if override:
+        return Path(override).resolve()
+    return (external_runtime_root() / "runtime_state").resolve()
+
+
 @dataclass(slots=True)
 class RuntimeConfig:
     lease_ttl_sec: int = 180
@@ -130,29 +137,59 @@ class RuntimeConfig:
     max_retry_attempts: int = 3
     circuit_breaker_threshold: int = 5
     running_stale_sec: int = 300
-    lease_file: Path = Path("system/runtime_v2/health/gpu_scheduler_health.json")
-    lock_root: Path = Path("system/runtime_v2/locks")
-    gui_status_file: Path = Path("system/runtime_v2/health/gui_status.json")
-    browser_health_file: Path = Path("system/runtime_v2/health/browser_health.json")
-    browser_registry_file: Path = Path(
-        "system/runtime_v2/health/browser_session_registry.json"
+    lease_file: Path = field(
+        default_factory=lambda: runtime_state_root()
+        / "health"
+        / "gpu_scheduler_health.json"
     )
-    gpt_status_file: Path = Path("system/runtime_v2/health/gpt_status.json")
-    control_plane_events_file: Path = Path(
-        "system/runtime_v2/evidence/control_plane_events.jsonl"
+    lock_root: Path = field(default_factory=lambda: runtime_state_root() / "locks")
+    gui_status_file: Path = field(
+        default_factory=lambda: runtime_state_root() / "health" / "gui_status.json"
     )
-    queue_store_file: Path = Path("system/runtime_v2/state/job_queue.json")
-    feeder_state_file: Path = Path("system/runtime_v2/state/feeder_state.json")
-    artifact_root: Path = Path("system/runtime_v2/artifacts")
-    input_root: Path = Path("system/runtime_v2/inbox")
-    result_router_file: Path = Path("system/runtime_v2/evidence/result.json")
-    latest_active_run_file: Path = Path("system/runtime_v2/latest_active_run.json")
-    latest_completed_run_file: Path = Path(
-        "system/runtime_v2/latest_completed_run.json"
+    browser_health_file: Path = field(
+        default_factory=lambda: runtime_state_root() / "health" / "browser_health.json"
     )
-    failure_summary_file: Path = Path("system/runtime_v2/evidence/failure_summary.json")
-    debug_log_root: Path = Path("system/runtime_v2/logs")
-    worker_registry_file: Path = Path("system/runtime_v2/health/worker_registry.json")
+    browser_registry_file: Path = field(
+        default_factory=lambda: runtime_state_root()
+        / "health"
+        / "browser_session_registry.json"
+    )
+    gpt_status_file: Path = field(
+        default_factory=lambda: runtime_state_root() / "health" / "gpt_status.json"
+    )
+    control_plane_events_file: Path = field(
+        default_factory=lambda: runtime_state_root()
+        / "evidence"
+        / "control_plane_events.jsonl"
+    )
+    queue_store_file: Path = field(
+        default_factory=lambda: runtime_state_root() / "state" / "job_queue.json"
+    )
+    feeder_state_file: Path = field(
+        default_factory=lambda: runtime_state_root() / "state" / "feeder_state.json"
+    )
+    artifact_root: Path = field(
+        default_factory=lambda: runtime_state_root() / "artifacts"
+    )
+    input_root: Path = field(default_factory=lambda: runtime_state_root() / "inbox")
+    result_router_file: Path = field(
+        default_factory=lambda: runtime_state_root() / "evidence" / "result.json"
+    )
+    latest_active_run_file: Path = field(
+        default_factory=lambda: runtime_state_root() / "latest_active_run.json"
+    )
+    latest_completed_run_file: Path = field(
+        default_factory=lambda: runtime_state_root() / "latest_completed_run.json"
+    )
+    failure_summary_file: Path = field(
+        default_factory=lambda: runtime_state_root()
+        / "evidence"
+        / "failure_summary.json"
+    )
+    debug_log_root: Path = field(default_factory=lambda: runtime_state_root() / "logs")
+    worker_registry_file: Path = field(
+        default_factory=lambda: runtime_state_root() / "health" / "worker_registry.json"
+    )
     stable_file_age_sec: int = 3
     progress_stall_timeout_sec: int = 120
     callback_timeout_sec: float = 5.0

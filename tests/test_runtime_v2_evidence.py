@@ -6,9 +6,14 @@ import unittest
 from pathlib import Path
 from time import time
 from typing import cast
+from unittest.mock import patch
 
 from runtime_v2.config import RuntimeConfig
-from runtime_v2.evidence import load_runtime_readiness, resolve_snapshot_run_id
+from runtime_v2.evidence import (
+    load_latest_result_metadata,
+    load_runtime_readiness,
+    resolve_snapshot_run_id,
+)
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
 
 
@@ -26,6 +31,27 @@ def _evidence_config(root: Path) -> RuntimeConfig:
 
 
 class RuntimeV2EvidenceTests(unittest.TestCase):
+    def test_load_latest_result_metadata_uses_runtime_config_default_when_unspecified(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _evidence_config(root)
+            config.result_router_file.parent.mkdir(parents=True, exist_ok=True)
+            _ = config.result_router_file.write_text(
+                json.dumps(
+                    {"code": "OK", "metadata": {"run_id": "runtime-run-1"}},
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("runtime_v2.evidence.RuntimeConfig", return_value=config):
+                metadata = load_latest_result_metadata()
+
+        self.assertEqual(metadata["run_id"], "runtime-run-1")
+        self.assertEqual(metadata["code"], "OK")
+
     def test_resolve_snapshot_run_id_prefers_result_metadata_over_pointer(self) -> None:
         latest_join = cast(
             dict[str, object],

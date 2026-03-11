@@ -18,6 +18,7 @@ from runtime_v2.cli import (
     main,
 )
 from runtime_v2.config import RuntimeConfig
+from runtime_v2.contracts.job_contract import JobContract
 
 
 class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
@@ -230,6 +231,42 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             ["genspark", "seaart", "geminigen", "canva"],
         )
         self.assertTrue(bool(report["probe_success"]))
+
+    def test_stage2_row1_probe_writes_runtime_root_from_passed_config(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig.from_root(root / "runtime")
+            seen_runtime_roots: list[str] = []
+
+            def _capture(
+                job: JobContract, artifact_root: Path, registry_file: Path | None = None
+            ) -> dict[str, object]:
+                _ = artifact_root
+                _ = registry_file
+                seen_runtime_roots.append(str(job.payload.get("runtime_root", "")))
+                return {
+                    "status": "ok",
+                    "details": {},
+                    "completion": {"state": "succeeded"},
+                }
+
+            with (
+                patch("runtime_v2.cli.run_genspark_job", side_effect=_capture),
+                patch("runtime_v2.cli.run_seaart_job", side_effect=_capture),
+                patch("runtime_v2.cli.run_geminigen_job", side_effect=_capture),
+                patch("runtime_v2.cli.run_canva_job", side_effect=_capture),
+            ):
+                _ = _run_stage2_row1_probe(
+                    config=config,
+                    probe_root=root / "probe",
+                    run_id="stage2-row1-run-runtime-root",
+                    agent_browser_services=["genspark", "seaart", "geminigen", "canva"],
+                )
+
+        self.assertEqual(
+            seen_runtime_roots,
+            [str((root / "runtime").resolve())] * 4,
+        )
 
     def test_stage2_row1_probe_falls_back_after_attach_failure(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

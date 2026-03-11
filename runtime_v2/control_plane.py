@@ -69,6 +69,7 @@ def run_control_loop_once(
     allow_runtime_side_effects: bool = True,
 ) -> dict[str, object]:
     runtime_config = config or RuntimeConfig()
+    default_config = RuntimeConfig()
     if allow_runtime_side_effects:
         ensure_runtime_bootstrap(
             runtime_config,
@@ -82,15 +83,15 @@ def run_control_loop_once(
     queue_file = getattr(
         runtime_config,
         "queue_store_file",
-        Path("system/runtime_v2/state/job_queue.json"),
+        default_config.queue_store_file,
     )
     events_file = getattr(
         runtime_config,
         "control_plane_events_file",
-        Path("system/runtime_v2/evidence/control_plane_events.jsonl"),
+        default_config.control_plane_events_file,
     )
     artifact_root = getattr(
-        runtime_config, "artifact_root", Path("system/runtime_v2/artifacts")
+        runtime_config, "artifact_root", default_config.artifact_root
     )
     queue_store = QueueStore(queue_file)
     try:
@@ -666,10 +667,11 @@ def run_control_loop_once(
 
 def seed_control_job(job: JobContract, config: RuntimeConfig | None = None) -> None:
     runtime_config = config or RuntimeConfig()
+    default_config = RuntimeConfig()
     queue_file = getattr(
         runtime_config,
         "queue_store_file",
-        Path("system/runtime_v2/state/job_queue.json"),
+        default_config.queue_store_file,
     )
     queue_store = QueueStore(queue_file)
     _ = _upsert_job(queue_store, job)
@@ -851,18 +853,18 @@ def _run_worker(
     registry_file: Path | None = None,
     allow_mock_chain: bool = False,
 ) -> dict[str, object]:
+    default_config = RuntimeConfig()
     if _mock_chain_enabled(job, allow_mock_chain=allow_mock_chain):
         if artifact_root is None:
-            artifact_root = Path("system/runtime_v2/artifacts")
+            artifact_root = default_config.artifact_root
         return _run_mock_chain_worker(job, artifact_root)
     if artifact_root is None:
-        artifact_root = Path("system/runtime_v2/artifacts")
-    resolved_registry_file = registry_file or Path(
-        "system/runtime_v2/health/worker_registry.json"
-    )
+        artifact_root = default_config.artifact_root
+    resolved_registry_file = registry_file or default_config.worker_registry_file
     dispatch = _worker_dispatch_table(
         artifact_root=artifact_root,
         registry_file=resolved_registry_file,
+        debug_log_root=default_config.debug_log_root,
     )
     handler = dispatch.get(job.workload)
     if handler is None:
@@ -897,7 +899,9 @@ def run_worker(
 WorkerDispatchHandler = Callable[[JobContract], dict[str, object]]
 
 
-def _run_chatgpt_worker(job: JobContract, artifact_root: Path) -> dict[str, object]:
+def _run_chatgpt_worker(
+    job: JobContract, artifact_root: Path, debug_log_root: Path
+) -> dict[str, object]:
     workspace = artifact_root / job.workload / job.job_id
     workspace.mkdir(parents=True, exist_ok=True)
     topic_spec = _mapping_from_obj(job.payload.get("topic_spec", {})) or {}
@@ -906,7 +910,7 @@ def _run_chatgpt_worker(job: JobContract, artifact_root: Path) -> dict[str, obje
         workspace,
         debug_log=str(
             debug_log_path(
-                Path("system/runtime_v2/logs"),
+                debug_log_root,
                 str(job.payload.get("run_id", job.job_id)),
             )
         ),
@@ -914,10 +918,10 @@ def _run_chatgpt_worker(job: JobContract, artifact_root: Path) -> dict[str, obje
 
 
 def _worker_dispatch_table(
-    *, artifact_root: Path, registry_file: Path
+    *, artifact_root: Path, registry_file: Path, debug_log_root: Path
 ) -> dict[str, WorkerDispatchHandler]:
     return {
-        "chatgpt": lambda job: _run_chatgpt_worker(job, artifact_root),
+        "chatgpt": lambda job: _run_chatgpt_worker(job, artifact_root, debug_log_root),
         "genspark": lambda job: run_genspark_job(
             job, artifact_root, registry_file=registry_file
         ),

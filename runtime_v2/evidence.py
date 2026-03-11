@@ -14,9 +14,11 @@ JsonState = Literal["ok", "missing", "invalid"]
 
 
 def load_latest_result_metadata(
-    result_file: str | Path = "system/runtime_v2/evidence/result.json",
+    result_file: str | Path | None = None,
 ) -> dict[str, object]:
-    path = Path(result_file)
+    path = (
+        RuntimeConfig().result_router_file if result_file is None else Path(result_file)
+    )
     raw_payload = cast(object, json.loads(path.read_text(encoding="utf-8")))
     if not isinstance(raw_payload, dict):
         return {"code": "UNKNOWN"}
