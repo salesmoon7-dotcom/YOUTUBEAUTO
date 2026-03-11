@@ -1,12 +1,40 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import cast
 
 from runtime_v2.config import WorkloadName
 from runtime_v2.contracts.job_contract import build_explicit_job_contract
 from runtime_v2.contracts.render_spec import build_render_spec
 from runtime_v2.contracts.stage2_contracts import build_stage2_payload
+
+LEGACY_IMAGE_CATEGORY_WORKLOADS: dict[str, WorkloadName] = {
+    "인물": "genspark",
+    "식품": "genspark",
+    "글자": "genspark",
+    "도표": "genspark",
+    "도표-슬라이드": "genspark",
+    "person": "genspark",
+    "food": "genspark",
+    "text": "genspark",
+    "chart": "genspark",
+    "chart-slide": "genspark",
+    "chart slide": "genspark",
+    "concept": "seaart",
+    "place": "seaart",
+    "object": "seaart",
+    "hand": "seaart",
+    "life": "seaart",
+    "landscape": "seaart",
+    "개념": "seaart",
+    "장소": "seaart",
+    "사물": "seaart",
+    "손": "seaart",
+    "생활": "seaart",
+    "풍경": "seaart",
+}
+LEGACY_CATEGORY_PREFIX = re.compile(r"^\[(?P<label>[^\]]+)\]\s*(?P<body>.*)$")
 
 
 def ensure_common_asset_root(asset_root: str | Path) -> Path:
@@ -32,6 +60,22 @@ def _service_output_name(workload: WorkloadName, run_id: str, scene_index: int) 
     if workload == "canva":
         return f"thumbs/canva-{run_id}-{scene_index}.png"
     return f"images/{workload}-{run_id}-{scene_index}.png"
+
+
+def _legacy_scene_workload(prompt: str) -> tuple[WorkloadName | None, str, str]:
+    normalized_prompt = str(prompt).strip()
+    if not normalized_prompt:
+        return None, "", ""
+    matched = LEGACY_CATEGORY_PREFIX.match(normalized_prompt)
+    if not matched:
+        return None, "", normalized_prompt
+    label_raw = str(matched.group("label") or "").strip()
+    label = label_raw.lower()
+    cleaned_prompt = str(matched.group("body") or "").strip()
+    workload = LEGACY_IMAGE_CATEGORY_WORKLOADS.get(label)
+    if workload is None:
+        return None, "", normalized_prompt
+    return workload, label_raw, cleaned_prompt or normalized_prompt
 
 
 def _build_voice_json(scene_plan: list[object]) -> dict[str, object]:
@@ -142,9 +186,12 @@ def build_stage2_jobs(
         if not isinstance(raw_scene, dict):
             continue
         scene = cast(dict[str, object], raw_scene)
-        workload = workloads[scene_offset % len(workloads)]
         scene_index = _scene_index_from_value(scene.get("scene_index", 0))
         prompt = str(scene.get("prompt", "")).strip()
+        legacy_workload, legacy_category, cleaned_prompt = _legacy_scene_workload(
+            prompt
+        )
+        workload = legacy_workload or workloads[scene_offset % len(workloads)]
         service_artifact_path = (
             asset_root / _service_output_name(workload, run_id, scene_index)
         ).resolve()
@@ -152,10 +199,12 @@ def build_stage2_jobs(
             run_id=run_id,
             row_ref=row_ref,
             scene_index=scene_index,
-            prompt=prompt,
+            prompt=cleaned_prompt,
             asset_root=str(asset_root.resolve()),
             reason_code=str(video_plan.get("reason_code", "ok")),
         )
+        if legacy_category:
+            payload["legacy_category"] = legacy_category
         payload["service_artifact_path"] = str(service_artifact_path)
         if isinstance(stage1_handoff, dict):
             payload["stage1_handoff"] = stage1_handoff

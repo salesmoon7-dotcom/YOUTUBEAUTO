@@ -178,6 +178,76 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
         self.assertIn("stage1_handoff", first_payload)
         self.assertIn("stage1_handoff", render_payload)
 
+    def test_stage2_jobs_override_image_workers_from_korean_legacy_prefixes(
+        self,
+    ) -> None:
+        video_plan = _video_plan("D:/YOUTUBEAUTO")
+        video_plan["scene_plan"] = [
+            {"scene_index": 1, "prompt": "[인물] portrait prompt"},
+            {"scene_index": 2, "prompt": "[사물] object prompt"},
+            {"scene_index": 3, "prompt": "scene three"},
+            {"scene_index": 4, "prompt": "scene four"},
+        ]
+        video_plan["stage1_handoff"] = {
+            "contract": {"version": "stage1_handoff.v1.0", "title": "Money title"}
+        }
+
+        jobs, _ = build_stage2_jobs(video_plan)
+        typed_jobs = [cast(dict[str, object], item["job"]) for item in jobs[:-1]]
+
+        self.assertEqual(str(typed_jobs[0]["worker"]), "genspark")
+        self.assertEqual(str(typed_jobs[1]["worker"]), "seaart")
+        first_payload = cast(dict[str, object], typed_jobs[0]["payload"])
+        second_payload = cast(dict[str, object], typed_jobs[1]["payload"])
+        self.assertEqual(str(first_payload["prompt"]), "portrait prompt")
+        self.assertEqual(str(second_payload["prompt"]), "object prompt")
+        self.assertEqual(str(first_payload["legacy_category"]), "인물")
+        self.assertEqual(str(second_payload["legacy_category"]), "사물")
+
+    def test_stage2_jobs_override_image_workers_from_english_legacy_prefixes(
+        self,
+    ) -> None:
+        video_plan = _video_plan("D:/YOUTUBEAUTO")
+        video_plan["scene_plan"] = [
+            {"scene_index": 1, "prompt": "[person] portrait prompt"},
+            {"scene_index": 2, "prompt": "[object] object prompt"},
+            {"scene_index": 3, "prompt": "scene three"},
+            {"scene_index": 4, "prompt": "scene four"},
+        ]
+        video_plan["stage1_handoff"] = {
+            "contract": {"version": "stage1_handoff.v1.0", "title": "Money title"}
+        }
+
+        jobs, _ = build_stage2_jobs(video_plan)
+        typed_jobs = [cast(dict[str, object], item["job"]) for item in jobs[:-1]]
+
+        self.assertEqual(str(typed_jobs[0]["worker"]), "genspark")
+        self.assertEqual(str(typed_jobs[1]["worker"]), "seaart")
+        first_payload = cast(dict[str, object], typed_jobs[0]["payload"])
+        second_payload = cast(dict[str, object], typed_jobs[1]["payload"])
+        self.assertEqual(str(first_payload["prompt"]), "portrait prompt")
+        self.assertEqual(str(second_payload["prompt"]), "object prompt")
+        self.assertEqual(str(first_payload["legacy_category"]), "person")
+        self.assertEqual(str(second_payload["legacy_category"]), "object")
+
+    def test_stage2_jobs_ignore_unknown_bracket_labels(self) -> None:
+        video_plan = _video_plan("D:/YOUTUBEAUTO")
+        video_plan["scene_plan"] = [
+            {"scene_index": 1, "prompt": "[foo] scene one"},
+            {"scene_index": 2, "prompt": "scene two"},
+        ]
+        video_plan["stage1_handoff"] = {
+            "contract": {"version": "stage1_handoff.v1.0", "title": "Money title"}
+        }
+
+        jobs, _ = build_stage2_jobs(video_plan)
+        typed_jobs = [cast(dict[str, object], item["job"]) for item in jobs[:-1]]
+        first_payload = cast(dict[str, object], typed_jobs[0]["payload"])
+
+        self.assertEqual(str(typed_jobs[0]["worker"]), "genspark")
+        self.assertEqual(str(first_payload["prompt"]), "[foo] scene one")
+        self.assertNotIn("legacy_category", first_payload)
+
     def test_canva_stage2_payload_prefers_stage1_ref_image_when_present(self) -> None:
         video_plan = _video_plan("D:/YOUTUBEAUTO")
         video_plan["scene_plan"] = [
