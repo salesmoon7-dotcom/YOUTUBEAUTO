@@ -202,6 +202,15 @@ def _relaunch_chatgpt_browser() -> None:
         os.environ.get("RUNTIME_V2_CHATGPT_ATTACH_ONLY", "").strip().lower()
     )
     if parity_attach_only in {"1", "true", "yes", "on"}:
+        launch_cmd = os.environ.get("RUNTIME_V2_CHATGPT_LEGACY_LAUNCH_CMD", "").strip()
+        if launch_cmd:
+            subprocess.Popen(
+                launch_cmd,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+                | subprocess.DETACHED_PROCESS,
+                shell=True,
+            )
+            sleep(8)
         return
     _ = open_browser_for_login("chatgpt")
     sleep(8)

@@ -74,6 +74,29 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
 
         open_browser.assert_not_called()
 
+    def test_relaunch_chatgpt_browser_uses_legacy_launch_cmd_in_attach_only_mode(
+        self,
+    ) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "RUNTIME_V2_CHATGPT_ATTACH_ONLY": "1",
+                "RUNTIME_V2_CHATGPT_LEGACY_LAUNCH_CMD": "python scripts/chatgpt_launcher_canary.py",
+            },
+            clear=False,
+        ):
+            with (
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.open_browser_for_login"
+                ) as open_browser,
+                patch("runtime_v2.stage1.chatgpt_runner.subprocess.Popen") as popen,
+                patch("runtime_v2.stage1.chatgpt_runner.sleep", return_value=None),
+            ):
+                _relaunch_chatgpt_browser()
+
+        open_browser.assert_not_called()
+        popen.assert_called_once()
+
     def test_build_live_chatgpt_prompt_uses_longform_instruction_template(self) -> None:
         prompt = build_live_chatgpt_prompt(
             {
