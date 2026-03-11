@@ -37,6 +37,11 @@
 ## Search Default
 - 채팅 세션 기본 검색은 source-only입니다. 자세한 제외 경로와 lag triage 절차는 `sop/SOP_runtime_v2_development_guardrails.md`와 `sop/SOP_chat_interruption_repo_triage.md`를 기준으로 봅니다.
 
+## KenBurns Usage
+- `kenburns`는 기본 24h resident 구조 안의 inbox/discovery GPU workload입니다.
+- 기본 사용법은 `input_root/kenburns`에 이미지를 넣는 것이며, 오디오 mux가 필요하면 explicit `.job.json` 또는 동등한 local-only contract로 `audio_path`를 함께 줍니다.
+- 현재 stage2 자동 downstream chain에는 포함되지 않습니다.
+
 ## Runtime_v2 Chat-Session Entry Rule
 - `runtime_v2` 관련 채팅 작업은 항상 먼저 `sop/SOP_runtime_v2_development_guardrails.md`와 `sop/SOP_chat_interruption_repo_triage.md`를 함께 읽고 시작합니다.
 - 기본값은 `interrupt-safe + source-only`입니다.

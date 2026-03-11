@@ -13,6 +13,7 @@ from runtime_v2.contracts.job_contract import JobContract, build_explicit_job_co
 from runtime_v2.control_plane import run_control_loop_once, run_worker, seed_control_job
 from runtime_v2.latest_run import load_joined_latest_run
 from runtime_v2.queue_store import QueueStore, QueueStoreError
+from runtime_v2.stage2.router import route_video_plan
 
 
 def _runtime_config(root: Path) -> RuntimeConfig:
@@ -451,6 +452,48 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
 
         self.assertEqual(str(by_job_id["qwen-job"]["status"]), "completed")
         self.assertEqual(str(by_job_id["rvc-qwen-job"]["status"]), "queued")
+
+    def test_stage1_video_plan_routing_does_not_emit_kenburns_jobs(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            asset_root = root / "assets"
+            asset_root.mkdir(parents=True, exist_ok=True)
+            video_plan = {
+                "contract": "video_plan",
+                "contract_version": "1.0",
+                "run_id": "stage1-run-1",
+                "row_ref": "Sheet1!row1",
+                "topic": "Bridge topic",
+                "scene_plan": [
+                    {"scene_index": 1, "prompt": "scene one"},
+                    {"scene_index": 2, "prompt": "scene two"},
+                    {"scene_index": 3, "prompt": "scene three"},
+                    {"scene_index": 4, "prompt": "scene four"},
+                ],
+                "asset_plan": {
+                    "asset_root": str(asset_root.resolve()),
+                    "common_asset_folder": str(asset_root.resolve()),
+                },
+                "voice_plan": {
+                    "mapping_source": "excel_scene",
+                    "scene_count": 4,
+                    "groups": [],
+                },
+                "reason_code": "ok",
+                "evidence": {"source": "test"},
+            }
+            next_jobs, _ = route_video_plan(cast(dict[str, object], video_plan))
+            workers = {
+                str(
+                    cast(dict[str, object], cast(dict[str, object], entry)["job"])[
+                        "worker"
+                    ]
+                )
+                for entry in next_jobs
+                if isinstance(entry, dict)
+            }
+
+        self.assertNotIn("kenburns", workers)
 
     def test_control_plane_escalates_invalid_worker_result_json_and_skips_downstream_queue(
         self,

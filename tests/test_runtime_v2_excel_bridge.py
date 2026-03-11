@@ -11,7 +11,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from runtime_v2.cli import main
 from runtime_v2.config import RuntimeConfig
-from runtime_v2.control_plane import seed_local_jobs
+from runtime_v2.control_plane_feeder import seed_local_jobs
 from runtime_v2.manager import seed_excel_row
 from runtime_v2.supervisor import run_once
 
@@ -41,6 +41,32 @@ def _write_excel_headers_fixture(
 
 
 class RuntimeV2ExcelBridgeTests(unittest.TestCase):
+    def test_seed_local_jobs_discovers_kenburns_inbox_as_resident_gpu_workload(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig(
+                input_root=root / "inbox",
+                queue_store_file=root / "state" / "job_queue.json",
+                feeder_state_file=root / "state" / "feeder_state.json",
+                stable_file_age_sec=0,
+            )
+            kenburns_inbox = config.input_root / "kenburns"
+            kenburns_inbox.mkdir(parents=True, exist_ok=True)
+            image_path = kenburns_inbox / "scene01.png"
+            _ = image_path.write_bytes(b"png")
+
+            queued_jobs = seed_local_jobs(config)
+
+        self.assertEqual(len(queued_jobs), 1)
+        queued_job = queued_jobs[0]
+        self.assertEqual(queued_job.workload, "kenburns")
+        self.assertEqual(
+            str(queued_job.payload["source_path"]), str(image_path.resolve())
+        )
+        self.assertEqual(int(cast(int, queued_job.payload["duration_sec"])), 8)
+
     def test_excel_topic_row_seeds_topic_spec_before_stage1_runner(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
