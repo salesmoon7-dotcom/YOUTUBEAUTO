@@ -965,8 +965,9 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         worker_result = cast(dict[object, object], result["worker_result"])
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["code"], "BROWSER_UNHEALTHY")
-        completion = cast(dict[object, object], worker_result["completion"])
-        self.assertEqual(str(completion["state"]), "failed")
+        self.assertEqual(str(worker_result["stage"]), "runtime_preflight")
+        self.assertEqual(str(worker_result["error_code"]), "BROWSER_UNHEALTHY")
+        self.assertNotIn("completion", worker_result)
 
     def test_run_once_blocks_browser_workload_when_restart_budget_is_exhausted(
         self,
@@ -996,10 +997,11 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                 )
 
         self.assertEqual(result["status"], "blocked")
-        self.assertEqual(result["code"], "BROWSER_BLOCKED")
+        self.assertEqual(result["code"], "BROWSER_RESTART_EXHAUSTED")
         worker_result = cast(dict[object, object], result["worker_result"])
         details = cast(dict[object, object], worker_result["details"])
         self.assertEqual(details["blocked_services"], ["chatgpt"])
+        self.assertEqual(str(worker_result["error_code"]), "restart_exhausted")
 
     def test_profile_storage_policy_reports_in_project_vs_external_paths(self) -> None:
         policy = build_profile_storage_report()
