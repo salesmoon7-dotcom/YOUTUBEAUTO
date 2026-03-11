@@ -4,13 +4,13 @@
 - 위 원칙은 점진적으로 적용합니다. 기존 긴 완료/evidence 기록은 후속 정리 배치에서 축소합니다.
 - interruption/search 규칙의 정본은 `docs/sop/SOP_runtime_v2_development_guardrails.md`와 `docs/sop/SOP_chat_interruption_repo_triage.md`입니다.
 
-- `runtime_v2/latest_run.py`, `runtime_v2/evidence.py`, `runtime_v2/debug_log.py`, `tests/test_runtime_v2_latest_run.py`, `tests/test_runtime_v2_evidence.py`, `tests/test_runtime_v2_debug_log.py`, `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md`, `docs/COMPLETED.md` - Task 4(`Single Meaning Snapshot Review`) 완료; `snapshot_run_id`를 단일 resolver로 정규화했고, `debug_log`에 `error_code_source`를 추가해 raw/canonical 의미 경계를 분명히 했습니다. 계획 문서에 적힌 targeted verification bundle(`latest_run`, `evidence`, `debug_log`, `py_compile`)도 모두 통과했습니다.
+- `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md` - Task 4(`Single Meaning Snapshot Review`) 완료. 세부 구현/검증 파일 목록은 plan과 관련 commit history를 기준으로 봅니다.
 
-- `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md`, `docs/COMPLETED.md` - Task 3(`Guardrail Accumulation Controls`) 완료 재판정 반영; Oracle 최종 판정 기준으로 canonical 문서의 `owner / failure mode / removal` 계약과 전용 테스트 `tests/test_runtime_v2_guardrail_contract.py` 존재가 모두 충족되어 더 이상 `NOT YET`로 둘 이유가 없음을 기록했습니다.
+- `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md` - Task 3(`Guardrail Accumulation Controls`) 완료 재판정 반영. 상세 근거는 plan과 Oracle review 기록을 따릅니다.
 
-- `docs/plans/2026-03-11-control-plane-hotspot-review.md`, `docs/TODO.md`, `docs/COMPLETED.md` - Task 5 control-plane hotspot review 완료; `runtime_v2/control_plane.py`를 코드 수정 없이 review artifact로 정리했고, 현재 파일에 남겨야 할 canonical 책임을 `final meaning owner`, `recovery/backoff owner`, `latest snapshot/event single writer`로 고정했습니다. 또한 향후 분해 후보는 `_run_worker()` dispatch 표면과 next-job/asset-manifest 보조 경로로 한정했고, 재오픈 조건도 기존 TODO 결정과 동일하게 `_run_worker()` 반복 디버깅, workload 3개 이상 추가에 따른 dispatch 충돌, worker 선택 정책 교체 필요 3가지로만 유지했습니다.
+- `docs/plans/2026-03-11-control-plane-hotspot-review.md` - Task 5 control-plane hotspot review 완료. canonical 책임과 재오픈 조건은 review 문서를 기준으로 유지합니다.
 
-- `runtime_v2/control_plane.py`, `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md`, `docs/COMPLETED.md` - Task 6(`Final Verification Gate`) 완료; `worker_result.status=failed`인데 상위 `runtime_result.code=OK`가 남는 경우 control plane이 의미 있는 worker error code를 최종 실패 코드로 승격하도록 바로잡아 `tests/test_runtime_v2_control_plane_chain.py` 회귀를 닫았습니다. 이어서 Task 6 정본 번들(`tests/test_runtime_v2_error_code_docs_drift.py`, `tests/test_runtime_v2_latest_run.py`, `tests/test_runtime_v2_evidence.py`, `tests/test_runtime_v2_debug_log.py`, `tests/test_runtime_v2_control_plane_chain.py`, `py_compile`)을 fresh evidence로 모두 통과했고, guardrails의 `single writer`, `single failure contract`, `worker policy-free`, `single reference adapter` 재확인까지 반영해 plan 상태를 `COMPLETE`로 올렸습니다.
+- `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md` - Task 6(`Final Verification Gate`) 완료. 세부 회귀와 verification bundle은 plan 및 테스트 이력 기준으로 관리합니다.
 
 - `docs/sop/SOP_runtime_v2_development_guardrails.md`, `docs/COMPLETED.md` - `warning_worker_error_code_mismatch` 운영 triage 정책 정리 완료; mismatch는 기본 non-blocking 경고로 두되, 반복 발생 또는 재시도 폭증/작업 중단과 동반될 때만 blocking으로 승격한다는 기준과 Oracle/실행 증거/워커 코드 정의/런타임 매핑 순의 신뢰 우선순위를 guardrails 문서에 고정했습니다.
 

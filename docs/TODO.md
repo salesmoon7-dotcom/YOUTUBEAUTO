@@ -3,25 +3,15 @@
 - 이 문서는 active index입니다. 긴 다중 파일 설명/세부 절차는 plan/SOP에 두고, 여기에는 1줄 상태와 canonical 링크를 우선 남깁니다.
 - 위 원칙은 점진적으로 적용합니다. 기존 긴 evidence/history 블록은 후속 정리 배치에서 축소합니다.
 - interruption/search 규칙의 정본은 `docs/sop/SOP_runtime_v2_development_guardrails.md`와 `docs/sop/SOP_chat_interruption_repo_triage.md`입니다.
+- `docs/plans/2026-03-11-runtime-v2-chat-safe-execution-remediation-plan.md`
+  - foreground chat pytest interruption을 줄이기 위해 `interrupt-safe + source-only` 상시 고정, detached 검증 표준화, session/probe/tmp 외부 루트 분리를 함께 추진합니다.
+  - 오라클 재검토 결론은 운영 규칙 강화는 즉시 필수이고, 근원 완화 구조 변경은 강하게 권장되지만 browser health/polling 로직 대수술은 1차 처방이 아니라는 것입니다.
 
-- `docs/plans/2026-03-09-runtime-v2-guardrail-drift-remediation-plan.md`는 완료되었습니다.
-  - Task 1~6을 통해 single writer, failure contract freeze, worker policy leakage, adapter boundary, retry/backoff/circuit canonical source를 정리했습니다.
-  - 추가 follow-up으로 `stage1` worker의 downstream `next_jobs` 생성 제거, CLI latest pointer ownership 제거, stage2 adapter child 내부 recovery 제거, control-plane queue ownership의 `QueueStore` canonicalization, excel sync latest pointer 제거, corrupted queue의 `QUEUE_STORE_INVALID` fail-close surface까지 반영했습니다.
-  - 검증은 채팅 interruption guardrail에 따라 interrupt-safe 케이스 단위 pytest와 파일 단위 `py_compile`, LSP diagnostics로 수행했습니다.
-- 구조 review 기록:
-  - `docs/plans/2026-03-11-control-plane-hotspot-review.md`에 `runtime_v2/control_plane.py` hotspot review를 기록했습니다.
-  - 현재 결정은 `no new unit`입니다. 이 항목은 새 기능이 아니라 구조 분해 목적의 별도 architecture review unit으로만 다시 열 수 있습니다.
-- `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md`
-  - Task 4 `Single Meaning Snapshot Review`는 완료되었습니다.
-  - follow-up 범위는 완료 기록을 재오픈하는 것이 아니라, 이후 tightening plan에서 `snapshot_run_id`/latest-run 의미 drift가 다시 늘어나지 않도록 유지하는 데 한정합니다.
-- `docs/plans/2026-03-11-runtime-v2-conditional-tightening-plan.md`
-  - 현재 판정은 `조건부 수용`이며, follow-up 범위는 문서 상태 정렬, event 경계 tightening, 의미 drift 회귀 잠금으로 제한합니다.
-  - `control_plane`의 canonical owner 역할을 다시 쪼개는 배치가 아니라, 기존 single writer / single failure contract를 더 선명하게 잠그는 후속 정리 unit입니다.
-- 완료된 unit 기록: `docs/plans/2026-03-09-control-plane-feeder-decomposition-plan.md`
-  - 1차 분해 범위는 feeder discovery / explicit contract parsing / feeder state I/O만입니다.
-  - `run_control_loop_once()`, failure contract, recovery, downstream chaining, snapshot writer는 `control_plane.py`에 남깁니다.
-  - 1차 배치는 완료되었습니다. 현재 결정은 `2차 분해 no-go`이며, 이 문구는 영구 금지가 아니라 현 시점의 결정 기록입니다.
-  - 재검토 조건: `_run_worker()` 왕복 디버깅이 반복되거나, workload 3개 이상 추가로 dispatch 충돌이 실제 발생하거나, worker 선택 정책 자체를 교체해야 할 때만 다시 엽니다.
+- `docs/plans/2026-03-09-runtime-v2-guardrail-drift-remediation-plan.md` - 완료됨. 상세 구현/검증은 plan 및 `docs/COMPLETED.md`를 기준으로 봅니다.
+- 구조 review 기록: `docs/plans/2026-03-11-control-plane-hotspot-review.md` - 현재 결정은 `no new unit`이며, 재오픈은 별도 architecture review unit으로만 허용합니다.
+- `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md` - Task 4 완료. follow-up은 `snapshot_run_id`/latest-run drift 재증가 방지에 한정됩니다.
+- `docs/plans/2026-03-11-runtime-v2-conditional-tightening-plan.md` - 현재 판정은 `조건부 수용`이며, 후속은 문서 상태 정렬·event 경계 tightening·의미 drift 회귀 잠금만 다룹니다.
+- 완료된 unit 기록: `docs/plans/2026-03-09-control-plane-feeder-decomposition-plan.md` - 1차 배치는 완료, 현재 결정은 `2차 분해 no-go`이며 재검토 조건은 plan 본문 기준으로 유지합니다.
 - `1행 smoke` readiness 재판정은 완료되었습니다.
   - detached browser recovery run `system/runtime_v2_probe/browser-recover-run-02/probe_result.json`이 `code=OK`로 종료됐습니다.
   - `python -m runtime_v2.cli --readiness-check` 기준 `ready=true`, `code=OK`를 확인했습니다.
