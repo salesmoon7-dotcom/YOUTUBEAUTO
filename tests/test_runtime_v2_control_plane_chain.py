@@ -659,7 +659,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
     def test_control_plane_normalizes_raw_runtime_preflight_signal_to_canonical_failure_contract(
         self,
     ) -> None:
-        with tempfile.TemporaryDirectory(dir=r"D:\\YOUTUBEAUTO") as tmp_dir:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             config = _runtime_config(root)
             seed_control_job(
@@ -1186,6 +1186,77 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 for entry in job_entries
             )
         )
+
+    def test_control_plane_appends_browser_events_from_runtime_result(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            seed_control_job(
+                JobContract(
+                    job_id="qwen-browser-event-job",
+                    workload="qwen3_tts",
+                    checkpoint_key="seed:qwen-browser-event-job",
+                    payload={"script_text": "hello", "chain_depth": 0},
+                ),
+                config=config,
+            )
+
+            runtime_result: dict[str, object] = {
+                "status": "ok",
+                "code": "OK",
+                "browser": {
+                    "events": [
+                        {
+                            "event": "browser_supervisor_status",
+                            "run_id": "browser-plane-run-id",
+                            "status": "login_required",
+                            "action_result": "blocked",
+                            "tick_id": "runtime-browser-event",
+                        }
+                    ]
+                },
+                "worker_result": {
+                    "status": "ok",
+                    "stage": "synthesize_audio",
+                    "error_code": "",
+                    "retryable": False,
+                    "next_jobs": [],
+                    "completion": {"state": "succeeded", "final_output": True},
+                },
+            }
+
+            with patch(
+                "runtime_v2.control_plane.run_gated", return_value=runtime_result
+            ):
+                _ = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-browser-events",
+                )
+
+            raw_entries = [
+                json.loads(line)
+                for line in config.control_plane_events_file.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+                if line.strip()
+            ]
+            entries = [
+                cast(dict[object, object], entry)
+                for entry in raw_entries
+                if isinstance(entry, dict)
+            ]
+            browser_entries = [
+                entry
+                for entry in entries
+                if str(entry.get("event", "")) == "browser_supervisor_status"
+            ]
+
+        self.assertEqual(len(browser_entries), 1)
+        self.assertEqual(
+            str(browser_entries[0].get("run_id", "")), "control-run-browser-events"
+        )
+        self.assertEqual(str(browser_entries[0].get("status", "")), "login_required")
 
     def test_runtime_control_path_rejects_mock_chain_without_explicit_probe_or_debug_mode(
         self,
