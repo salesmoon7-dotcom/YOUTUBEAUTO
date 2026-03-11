@@ -47,6 +47,19 @@
   - 파일 단위/대묶음 검증은 채팅 세션 밖 또는 더 안정적인 실행 경로로 미룹니다
   - 실브라우저 relaunch/recovery 명령은 채팅 세션에서 직접 실행하지 않고 detached/수동 경로로 미룹니다
 
+## Search Scope Default
+
+- `runtime_v2` 채팅 세션의 기본 검색은 source-only로 시작합니다.
+- 기본 제외 경로:
+  - `runtime_v2/sessions/`
+  - `system/runtime_v2_probe/`
+  - `system/runtime_v2/logs/`
+  - `tmp_*/`
+- `system/runtime_v2/`는 broad search 대상이 아니라 운영 스냅샷 표면으로 취급하고, 필요할 때만 파일 단위 read로 확인합니다.
+- 예외: evidence/probe 조사 자체가 목적일 때만 생성 트리까지 명시적으로 확장합니다.
+- lag/interruption 의심 시에는 source-only + interrupt-safe를 동시에 기본값으로 적용합니다.
+
+
 ## Non-Negotiable Guardrails
 
 - 관측되지 않은 정상은 정상으로 취급하지 않습니다. `unknown`, 빈 상태, 누락 상태를 `OK`로 합성하지 않습니다.

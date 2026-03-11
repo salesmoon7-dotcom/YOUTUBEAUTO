@@ -27,6 +27,12 @@ This file is a router, not a full manual.
 - For operations/incidents: read relevant `docs/sop/*.md` first.
 - For project policy updates: update docs first, keep `CLAUDE.md` minimal.
 
+## Search Scope Default
+- In chat sessions, default search scope is source-only: start with code/docs paths and exclude generated runtime trees unless the task is explicitly an evidence/probe investigation.
+- Default exclude set: `runtime_v2/sessions/`, `system/runtime_v2_probe/`, `system/runtime_v2/logs/`, `tmp_*/`.
+- `system/runtime_v2/` is not part of broad search by default; treat it as an operational snapshot surface and read specific files there only when needed.
+- For `runtime_v2`, treat `docs/sop/SOP_runtime_v2_development_guardrails.md` and `docs/sop/SOP_chat_interruption_repo_triage.md` as the canonical search-scope rules.
+
 ## Verification
 - After edits, run diagnostics + relevant tests + build/typecheck when applicable.
 - For `runtime_v2` work, run `verify-implementation` as the default session-end verification gate before claiming completion.

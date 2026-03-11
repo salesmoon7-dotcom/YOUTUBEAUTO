@@ -6,7 +6,7 @@
 - This file is the canonical docs navigation entrypoint.
 
 ## Single Classification Rule
-- 문서 상태 분류는 `TODO` 또는 `COMPLETE` 두 가지로만 관리합니다.
+- 문서 상태 분류는 `TODO` 또는 `COMPLETED` 두 가지로만 관리합니다.
 - 분류 진입점은 아래 두 문서만 사용합니다.
   - `TODO.md`
   - `COMPLETED.md`
@@ -29,9 +29,13 @@
 - `sop/SOP_git_online_commit_workflow.md`
 - `sop/SOP_closed_loop_automation_skill_map.md`
 - `sop/SOP_runtime_v2_development_guardrails.md`
+- `sop/SOP_chat_interruption_repo_triage.md`
 - `sop/SOP_24h_runtime_stability_and_gpu_gates.md`
 - `sop/SOP_runtime_v2_inbox_contract.md`
 - `sop/SOP_runtime_v2_detached_soak_readiness.md`
+
+## Search Default
+- 채팅 세션 기본 검색은 source-only입니다. 자세한 제외 경로와 lag triage 절차는 `sop/SOP_runtime_v2_development_guardrails.md`와 `sop/SOP_chat_interruption_repo_triage.md`를 기준으로 봅니다.
 
 ## Current Runtime_v2 Canonical References
 - `sop/SOP_runtime_v2_development_guardrails.md`
@@ -43,9 +47,9 @@
 - `sop/SOP_24h_runtime_stability_and_gpu_gates.md`
 - `sop/SOP_runtime_v2_inbox_contract.md`
 - `sop/SOP_runtime_v2_detached_soak_readiness.md`
-- `system/runtime_v2/health/gui_status.json` - control-loop latest-run GUI snapshot
-- `system/runtime_v2/evidence/result.json` - latest-run result snapshot
-- `system/runtime_v2/evidence/control_plane_events.jsonl` - control-plane transition evidence
+- `system/runtime_v2/health/gui_status.json` - control-loop latest-run GUI snapshot (운영 스냅샷 확인용, broad search 기본 범위 아님)
+- `system/runtime_v2/evidence/result.json` - latest-run result snapshot (운영 스냅샷 확인용, broad search 기본 범위 아님)
+- `system/runtime_v2/evidence/control_plane_events.jsonl` - control-plane transition evidence (운영 스냅샷 확인용, broad search 기본 범위 아님)
 
 ## Session-Start Rule
 - `runtime_v2` 관련 작업은 사용자 재지시가 없어도 먼저 `sop/SOP_runtime_v2_development_guardrails.md`를 기준으로 읽고 진행합니다.

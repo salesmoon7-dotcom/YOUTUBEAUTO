@@ -1,5 +1,9 @@
 # TODO
 
+- 이 문서는 active index입니다. 긴 다중 파일 설명/세부 절차는 plan/SOP에 두고, 여기에는 1줄 상태와 canonical 링크를 우선 남깁니다.
+- 위 원칙은 점진적으로 적용합니다. 기존 긴 evidence/history 블록은 후속 정리 배치에서 축소합니다.
+- interruption/search 규칙의 정본은 `docs/sop/SOP_runtime_v2_development_guardrails.md`와 `docs/sop/SOP_chat_interruption_repo_triage.md`입니다.
+
 - `docs/plans/2026-03-09-runtime-v2-guardrail-drift-remediation-plan.md`는 완료되었습니다.
   - Task 1~6을 통해 single writer, failure contract freeze, worker policy leakage, adapter boundary, retry/backoff/circuit canonical source를 정리했습니다.
   - 추가 follow-up으로 `stage1` worker의 downstream `next_jobs` 생성 제거, CLI latest pointer ownership 제거, stage2 adapter child 내부 recovery 제거, control-plane queue ownership의 `QueueStore` canonicalization, excel sync latest pointer 제거, corrupted queue의 `QUEUE_STORE_INVALID` fail-close surface까지 반영했습니다.
@@ -46,12 +50,7 @@
   - 다음 legacy carryover 적용 계획은 `docs/plans/2026-03-09-runtime-v2-legacy-carryover-top3-plan.md`를 기준으로 관리합니다.
   - legacy carryover top3 safe batch는 완료되었습니다.
   - skill bundle 기준은 `docs/sop/SOP_closed_loop_automation_skill_map.md`를 canonical map으로 사용합니다.
-- 채팅 interruption 대응 규칙 강화:
-  - 채팅 세션에서는 실브라우저 relaunch/recovery를 실행하지 않습니다.
-  - readiness blocker가 실브라우저 복구를 요구하면 detached 또는 수동 smoke 단계에서만 수행합니다.
-  - 대형 런타임 세션/probe/scratch 데이터는 repo root가 아니라 외부 runtime root(`YOUTUBEAUTO_RUNTIME`)를 기본값으로 사용합니다.
-  - 과거 probe evidence는 `D:/YOUTUBEAUTO_RUNTIME/probe/legacy_runtime_v2_probe/` 아래로 이동되었으며, `system/runtime_v2_probe/`는 더 이상 기본 현재 경로가 아닙니다.
-  - root-level `tmp_*`/patch 산출물은 세션 종료 전에 제거하거나 외부 scratch root로 이동합니다.
+- 채팅 interruption 대응 정본: `docs/sop/SOP_runtime_v2_development_guardrails.md`, `docs/sop/SOP_chat_interruption_repo_triage.md`
 - 테스트 실행은 `docs/plans/2026-03-08-browser-session-stability-plan.md`의 `Test Tier Execution Contract`를 따릅니다. 채팅 세션 기본 검증은 `safe`만 허용하고, `isolated`는 개별 실행, `manual`은 채팅 세션 밖에서만 다룹니다.
 - 브라우저 불안정성 분석 기준: `docs/plans/2026-03-10-browser-instability-debug-cost-plan.md`
   - 디버깅 비용 증폭기는 `Profile/Lock Drift`, `Ready/Login Heuristics`, `DOM/Artifact Capture Heuristics` 3축으로 분류합니다.

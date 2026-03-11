@@ -1,5 +1,9 @@
 # COMPLETED
 
+- 이 문서는 completed index입니다. 긴 구현 서술과 probe path detail은 plan/SOP를 canonical source로 두고, 여기에는 1줄 완료 기록과 대표 링크만 유지합니다.
+- 위 원칙은 점진적으로 적용합니다. 기존 긴 완료/evidence 기록은 후속 정리 배치에서 축소합니다.
+- interruption/search 규칙의 정본은 `docs/sop/SOP_runtime_v2_development_guardrails.md`와 `docs/sop/SOP_chat_interruption_repo_triage.md`입니다.
+
 - `runtime_v2/latest_run.py`, `runtime_v2/evidence.py`, `runtime_v2/debug_log.py`, `tests/test_runtime_v2_latest_run.py`, `tests/test_runtime_v2_evidence.py`, `tests/test_runtime_v2_debug_log.py`, `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md`, `docs/COMPLETED.md` - Task 4(`Single Meaning Snapshot Review`) 완료; `snapshot_run_id`를 단일 resolver로 정규화했고, `debug_log`에 `error_code_source`를 추가해 raw/canonical 의미 경계를 분명히 했습니다. 계획 문서에 적힌 targeted verification bundle(`latest_run`, `evidence`, `debug_log`, `py_compile`)도 모두 통과했습니다.
 
 - `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md`, `docs/COMPLETED.md` - Task 3(`Guardrail Accumulation Controls`) 완료 재판정 반영; Oracle 최종 판정 기준으로 canonical 문서의 `owner / failure mode / removal` 계약과 전용 테스트 `tests/test_runtime_v2_guardrail_contract.py` 존재가 모두 충족되어 더 이상 `NOT YET`로 둘 이유가 없음을 기록했습니다.
