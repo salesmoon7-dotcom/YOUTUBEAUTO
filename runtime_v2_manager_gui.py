@@ -10,6 +10,8 @@ from tkinter import messagebox, ttk
 from typing import Callable, cast
 from uuid import uuid4
 
+from openpyxl import load_workbook
+
 from runtime_v2.browser.manager import open_browser_for_login
 from runtime_v2.bootstrap import ensure_runtime_bootstrap
 from runtime_v2.config import GpuWorkload, RuntimeConfig
@@ -331,7 +333,7 @@ class RuntimeV2ManagerGUI:
     def __init__(self) -> None:
         self.root: tk.Tk = tk.Tk()
         self.root.title("runtime_v2 매니저")
-        self.root.geometry("1260x900")
+        self.root.geometry("640x900")
         _ = self.root.configure(bg="#f4f4f4")
         _ = self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -466,11 +468,13 @@ class RuntimeV2ManagerGUI:
 
         self.program_rows: dict[str, dict[str, ttk.Label]] = {}
         self.queue_list: tk.Listbox = tk.Listbox(self.root)
+        self.sheet_listbox: tk.Listbox = tk.Listbox(self.root)
         self.log_text: tk.Text = tk.Text(self.root)
 
         self._load_settings()
         self._refresh_runtime_config()
         self._build_ui()
+        self._refresh_sheet_list()
         self._ensure_snapshot_contracts()
         self.refresh_after_id = self.root.after(200, self.refresh_dashboard)
 
@@ -534,8 +538,8 @@ class RuntimeV2ManagerGUI:
         top_body.pack(fill=tk.BOTH, expand=True)
         left = ttk.Frame(top_body, padding=(0, 0, 8, 0), style="AppBody.TFrame")
         right = ttk.Frame(top_body, padding=(8, 0, 0, 0), style="AppBody.TFrame")
-        top_body.add(left, weight=3)
-        top_body.add(right, weight=4)
+        _ = top_body.add(left, weight=3)
+        _ = top_body.add(right, weight=4)
 
         self._build_overview_frame(left)
         self._build_programs_frame(left)
@@ -553,7 +557,7 @@ class RuntimeV2ManagerGUI:
             card,
             textvariable=text_var,
             style="CardBody.TLabel",
-            wraplength=300,
+            wraplength=180,
             justify=tk.LEFT,
         ).pack(anchor="w", pady=(8, 0))
 
@@ -565,12 +569,26 @@ class RuntimeV2ManagerGUI:
 
         row = ttk.Frame(parent)
         row.pack(fill=tk.X, pady=(0, 12))
-        ttk.Label(row, text="시트", style="CardTitle.TLabel").pack(side=tk.LEFT)
-        ttk.Entry(row, textvariable=self.sheet_name_text, width=12).pack(
-            side=tk.LEFT, padx=(8, 16)
+        ttk.Label(row, text="시트", style="CardTitle.TLabel").pack(anchor="w")
+        sheet_box = ttk.Frame(parent)
+        sheet_box.pack(fill=tk.X, pady=(6, 12))
+        self.sheet_listbox = tk.Listbox(sheet_box, height=4, exportselection=False)
+        self.sheet_listbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        _ = self.sheet_listbox.bind("<<ListboxSelect>>", self._on_sheet_select)
+        sheet_scroll = ttk.Scrollbar(
+            sheet_box,
+            orient=tk.VERTICAL,
+            command=self._sheet_listbox_yview,
         )
-        ttk.Label(row, text="행", style="CardTitle.TLabel").pack(side=tk.LEFT)
-        ttk.Entry(row, textvariable=self.row_index_text, width=8).pack(
+        sheet_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        _ = self.sheet_listbox.configure(
+            yscrollcommand=cast(Callable[..., object], sheet_scroll.set)
+        )
+
+        row2 = ttk.Frame(parent)
+        row2.pack(fill=tk.X, pady=(0, 12))
+        ttk.Label(row2, text="행", style="CardTitle.TLabel").pack(side=tk.LEFT)
+        ttk.Entry(row2, textvariable=self.row_index_text, width=8).pack(
             side=tk.LEFT, padx=(8, 0)
         )
 
@@ -644,9 +662,49 @@ class RuntimeV2ManagerGUI:
                 card,
                 textvariable=var,
                 style="CardBody.TLabel",
-                wraplength=420,
+                wraplength=260,
                 justify=tk.LEFT,
             ).pack(anchor="w", pady=(6, 0))
+
+    def _sheet_names_for_excel(self) -> list[str]:
+        excel_path = self.excel_path_text.get().strip()
+        if not excel_path:
+            return []
+        path = Path(excel_path)
+        if not path.exists():
+            return []
+        workbook = load_workbook(path, read_only=True, data_only=True)
+        try:
+            return [str(name) for name in workbook.sheetnames]
+        finally:
+            workbook.close()
+
+    def _refresh_sheet_list(self) -> None:
+        current = self.sheet_name_text.get().strip()
+        self.sheet_listbox.delete(0, tk.END)
+        names = self._sheet_names_for_excel()
+        if not names:
+            self.sheet_listbox.insert(tk.END, "시트를 찾을 수 없습니다")
+            return
+        selected_index = 0
+        for index, name in enumerate(names):
+            self.sheet_listbox.insert(tk.END, name)
+            if name == current:
+                selected_index = index
+        self.sheet_listbox.selection_set(selected_index)
+        self.sheet_listbox.activate(selected_index)
+        self.sheet_name_text.set(names[selected_index])
+
+    def _on_sheet_select(self, _event: tk.Event[tk.Listbox]) -> None:
+        selected = cast(tuple[int, ...], self.sheet_listbox.curselection())
+        if not selected:
+            return
+        value = cast(str, self.sheet_listbox.get(selected[0]))
+        if value != "시트를 찾을 수 없습니다":
+            self.sheet_name_text.set(value)
+
+    def _sheet_listbox_yview(self, *args: str) -> tuple[float, float] | None:
+        return cast(tuple[float, float] | None, self.sheet_listbox.yview(*args))
 
     def _build_header_frame(self, parent: ttk.Frame) -> None:
         frame = ttk.Frame(parent, style="ManagerHeader.TFrame", padding=12)
@@ -1102,6 +1160,7 @@ class RuntimeV2ManagerGUI:
     def refresh_dashboard_now(self) -> None:
         self._refresh_runtime_config(force=True)
         self._save_settings()
+        self._refresh_sheet_list()
         self._refresh_dashboard_once()
         self._append_log("manual health refresh")
 
@@ -1113,6 +1172,7 @@ class RuntimeV2ManagerGUI:
             )
             return
         self._refresh_runtime_config(force=True)
+        self._refresh_sheet_list()
         row_index = self._parsed_row_index()
         if row_index is None:
             return
