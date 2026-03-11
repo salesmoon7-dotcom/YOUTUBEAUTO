@@ -50,6 +50,7 @@
   - 채팅 세션에서는 실브라우저 relaunch/recovery를 실행하지 않습니다.
   - readiness blocker가 실브라우저 복구를 요구하면 detached 또는 수동 smoke 단계에서만 수행합니다.
   - 대형 런타임 세션/probe/scratch 데이터는 repo root가 아니라 외부 runtime root(`YOUTUBEAUTO_RUNTIME`)를 기본값으로 사용합니다.
+  - 과거 probe evidence는 `D:/YOUTUBEAUTO_RUNTIME/probe/legacy_runtime_v2_probe/` 아래로 이동되었으며, `system/runtime_v2_probe/`는 더 이상 기본 현재 경로가 아닙니다.
   - root-level `tmp_*`/patch 산출물은 세션 종료 전에 제거하거나 외부 scratch root로 이동합니다.
 - 테스트 실행은 `docs/plans/2026-03-08-browser-session-stability-plan.md`의 `Test Tier Execution Contract`를 따릅니다. 채팅 세션 기본 검증은 `safe`만 허용하고, `isolated`는 개별 실행, `manual`은 채팅 세션 밖에서만 다룹니다.
 - 브라우저 불안정성 분석 기준: `docs/plans/2026-03-10-browser-instability-debug-cost-plan.md`

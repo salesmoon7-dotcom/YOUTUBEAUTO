@@ -15,7 +15,8 @@
 - For current `runtime_v2` execution evidence, prefer:
   - `system/runtime_v2/health/*.json`
   - `system/runtime_v2/evidence/*.json*`
-  - `system/runtime_v2_probe/**`
+  - external probe roots under `D:/YOUTUBEAUTO_RUNTIME/probe/**`
+  - legacy migrated probe evidence under `D:/YOUTUBEAUTO_RUNTIME/probe/legacy_runtime_v2_probe/**`
   - `docs/TODO.md`
   - `docs/COMPLETED.md`
 
@@ -28,7 +29,7 @@
   - AGENTS.md as map/table-of-contents, docs as system of record, mechanical enforcement + recurring garbage collection.
 
 ## Target-State Evidence Files
-- [@status: current-checkout] `system/reports/*`: in this checkout, these report paths are unverified, and current `runtime_v2` evidence may instead be recorded under `system/runtime_v2/*` and `system/runtime_v2_probe/*` (additional confirmation may be needed).
+- [@status: current-checkout] `system/reports/*`: in this checkout, these report paths are unverified, and current `runtime_v2` evidence may instead be recorded under `system/runtime_v2/*` and external probe roots such as `D:/YOUTUBEAUTO_RUNTIME/probe/*` (additional confirmation may be needed).
 - `system/reports/harness_gc_report.json`
 - `system/reports/harness_gc_report.md`
 - `system/reports/harness_evidence_snapshot.json`
