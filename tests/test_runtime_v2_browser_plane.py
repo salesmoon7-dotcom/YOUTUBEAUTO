@@ -23,7 +23,7 @@ from runtime_v2.browser.manager import (
     default_browser_sessions_by_service,
     open_browser_for_login,
 )
-from runtime_v2.config import RuntimeConfig
+from runtime_v2.config import RuntimeConfig, browser_session_root
 from runtime_v2.browser.registry import load_browser_registry
 from runtime_v2.browser.supervisor import BrowserSupervisor, _prune_restart_history
 from runtime_v2.evidence import load_latest_result_metadata
@@ -210,7 +210,28 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertEqual(session.browser_family, "uc")
 
     def test_manager_owns_geminigen_browser_session(self) -> None:
-        self.assertTrue(_manager_owns_browser("geminigen"))
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            lock_file = Path(tmp_dir) / "browser_plane.lock"
+            now = round(time(), 3)
+            _ = lock_file.write_text(
+                json.dumps(
+                    {
+                        "pid": os.getpid(),
+                        "acquired_at": now,
+                        "last_heartbeat_at": now,
+                        "run_id": "geminigen-owned-test",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.dict(
+                os.environ,
+                {"RUNTIME_V2_BROWSER_PLANE_LOCK": str(lock_file.resolve())},
+                clear=False,
+            ):
+                self.assertTrue(_manager_owns_browser("geminigen"))
 
     def test_refresh_session_ready_marker_creates_marker_for_ready_tab(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -375,8 +396,6 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             manager = BrowserManager(sessions=[session])
             manager.running = True
             supervisor = BrowserSupervisor(manager)
-            events_file = Path(tmp_dir) / "control_plane_events.jsonl"
-
             with (
                 patch(
                     "runtime_v2.browser.manager._probe_local_port", return_value=True
@@ -391,14 +410,12 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                 result = supervisor.tick(
                     registry_file=Path(tmp_dir) / "browser_session_registry.json",
                     health_file=Path(tmp_dir) / "browser_health.json",
-                    events_file=events_file,
                     run_id="browser-run-event-login-required",
                     recover_unhealthy=True,
                     restart_threshold=1,
                     cooldown_sec=0,
                 )
 
-            self.assertFalse(events_file.exists())
             event_rows = cast(list[object], result["events"])
             latest = cast(dict[object, object], event_rows[-1])
 
@@ -426,8 +443,6 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             manager = BrowserManager(sessions=[session])
             manager.running = True
             supervisor = BrowserSupervisor(manager)
-            events_file = Path(tmp_dir) / "control_plane_events.jsonl"
-
             with (
                 patch.object(
                     manager,
@@ -439,14 +454,12 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                 result = supervisor.tick(
                     registry_file=Path(tmp_dir) / "browser_session_registry.json",
                     health_file=Path(tmp_dir) / "browser_health.json",
-                    events_file=events_file,
                     run_id="browser-run-event-stale-recovered",
                     recover_unhealthy=True,
                     restart_threshold=1,
                     cooldown_sec=0,
                 )
 
-            self.assertFalse(events_file.exists())
             event_lines = cast(list[object], result["events"])
             recovery_events = [
                 cast(dict[object, object], entry)
@@ -545,7 +558,6 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
     def test_supervisor_takes_over_stale_browser_owner_and_emits_event(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             lock_file = Path(tmp_dir) / "browser_plane.lock"
-            events_file = Path(tmp_dir) / "control_plane_events.jsonl"
             _ = lock_file.write_text(
                 json.dumps(
                     {
@@ -576,12 +588,10 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                 result = supervisor.tick(
                     registry_file=Path(tmp_dir) / "browser_session_registry.json",
                     health_file=Path(tmp_dir) / "browser_health.json",
-                    events_file=events_file,
                     run_id="browser-owner-takeover",
                     recover_unhealthy=False,
                 )
 
-            self.assertFalse(events_file.exists())
             event_lines = cast(list[object], result["events"])
             ownership_events = [
                 cast(dict[object, object], entry)
@@ -613,8 +623,6 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             manager = BrowserManager(sessions=[session])
             manager.running = True
             supervisor = BrowserSupervisor(manager)
-            events_file = Path(tmp_dir) / "control_plane_events.jsonl"
-
             with patch.object(
                 manager,
                 "session_snapshots",
@@ -623,14 +631,12 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                 result = supervisor.tick(
                     registry_file=Path(tmp_dir) / "browser_session_registry.json",
                     health_file=Path(tmp_dir) / "browser_health.json",
-                    events_file=events_file,
                     run_id="browser-run-event-busy-lock",
                     recover_unhealthy=True,
                     restart_threshold=1,
                     cooldown_sec=60,
                 )
 
-            self.assertFalse(events_file.exists())
             event_lines = cast(list[object], result["events"])
             escalation_events = [
                 cast(dict[object, object], entry)
@@ -661,8 +667,6 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             manager = BrowserManager(sessions=[session])
             manager.running = True
             supervisor = BrowserSupervisor(manager)
-            events_file = Path(tmp_dir) / "control_plane_events.jsonl"
-
             with (
                 patch.object(
                     manager,
@@ -677,7 +681,6 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                 result = supervisor.tick(
                     registry_file=Path(tmp_dir) / "browser_session_registry.json",
                     health_file=Path(tmp_dir) / "browser_health.json",
-                    events_file=events_file,
                     run_id="browser-run-restart-budget",
                     recover_unhealthy=True,
                     restart_threshold=1,
@@ -693,7 +696,6 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             self.assertEqual(
                 str(sessions[0]["blocked_reason"]), "restart_budget_exhausted"
             )
-            self.assertFalse(events_file.exists())
             event_lines = cast(list[object], result["events"])
             exhausted_events = [
                 cast(dict[object, object], entry)
@@ -1008,6 +1010,52 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertEqual(policy["chatgpt"]["location_type"], "project_subfolder")
         self.assertEqual(policy["seaart"]["location_type"], "external")
 
+    def test_default_browser_sessions_prefers_external_root_when_present(self) -> None:
+        external_chatgpt = browser_session_root() / "chatgpt-primary"
+        legacy_chatgpt = (Path("runtime_v2") / "sessions" / "chatgpt-primary").resolve()
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            temp_root = Path(tmp_dir)
+            external_dir = temp_root / "external-sessions"
+            legacy_dir = temp_root / "legacy-sessions"
+            (external_dir / "chatgpt-primary").mkdir(parents=True, exist_ok=True)
+            (legacy_dir / "chatgpt-primary").mkdir(parents=True, exist_ok=True)
+            with (
+                patch(
+                    "runtime_v2.browser.manager.browser_session_root",
+                    return_value=external_dir,
+                ),
+                patch("runtime_v2.browser.manager.LEGACY_SESSION_ROOT", legacy_dir),
+            ):
+                sessions = default_browser_sessions_by_service()
+
+        self.assertNotEqual(external_chatgpt, legacy_chatgpt)
+        self.assertEqual(
+            sessions["chatgpt"].profile_dir,
+            str((external_dir / "chatgpt-primary").resolve()),
+        )
+
+    def test_default_browser_sessions_falls_back_to_legacy_root_when_external_missing(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            temp_root = Path(tmp_dir)
+            external_dir = temp_root / "external-sessions"
+            legacy_dir = temp_root / "legacy-sessions"
+            (legacy_dir / "chatgpt-primary").mkdir(parents=True, exist_ok=True)
+            with (
+                patch(
+                    "runtime_v2.browser.manager.browser_session_root",
+                    return_value=external_dir,
+                ),
+                patch("runtime_v2.browser.manager.LEGACY_SESSION_ROOT", legacy_dir),
+            ):
+                sessions = default_browser_sessions_by_service()
+
+        self.assertEqual(
+            sessions["chatgpt"].profile_dir,
+            str((legacy_dir / "chatgpt-primary").resolve()),
+        )
+
     def test_supervisor_reconciles_registry_sessions_with_code_defaults(self) -> None:
         registry_session = BrowserSession(
             service="seaart",
@@ -1181,7 +1229,13 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
 
         self.assertEqual(
             set(result.keys()),
-            {"restarted_services", "initial_summary", "final_summary", "sessions"},
+            {
+                "restarted_services",
+                "initial_summary",
+                "final_summary",
+                "sessions",
+                "events",
+            },
         )
         self.assertNotIn("retryable", result)
         self.assertNotIn("next_jobs", result)
@@ -1219,7 +1273,13 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
     ) -> None:
         metadata = load_latest_result_metadata()
         self.assertIn(
-            str(metadata["code"]), {"OK", "GPT_FLOOR_FAIL", "BROWSER_UNHEALTHY"}
+            str(metadata["code"]),
+            {
+                "OK",
+                "GPT_FLOOR_FAIL",
+                "BROWSER_UNHEALTHY",
+                "native_genspark_not_implemented",
+            },
         )
 
 

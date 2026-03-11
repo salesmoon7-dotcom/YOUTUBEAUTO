@@ -10,7 +10,7 @@ from time import sleep, time
 from typing import Mapping
 import urllib.request
 
-from runtime_v2.config import RuntimeConfig
+from runtime_v2.config import RuntimeConfig, browser_session_root
 
 
 START_URLS: dict[str, str] = {
@@ -39,6 +39,7 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 RUNTIME_APP_CONFIG = (
     WORKSPACE_ROOT / "system" / "runtime_v2" / "config" / "app_config.json"
 )
+LEGACY_SESSION_ROOT = (WORKSPACE_ROOT / "runtime_v2" / "sessions").resolve()
 
 
 def _browser_plane_lock_file() -> Path:
@@ -337,32 +338,42 @@ def _load_runtime_app_config() -> dict[str, object]:
     return {str(key): typed_payload[key] for key in typed_payload}
 
 
+def _default_session_profile_dir(session_name: str) -> str:
+    external_profile_dir = (browser_session_root() / session_name).resolve()
+    legacy_profile_dir = (LEGACY_SESSION_ROOT / session_name).resolve()
+    if external_profile_dir.exists():
+        return str(external_profile_dir)
+    if legacy_profile_dir.exists():
+        return str(legacy_profile_dir)
+    return str(external_profile_dir)
+
+
 def _browser_session_defaults() -> list[tuple[str, str, int, str]]:
     defaults = {
         "chatgpt": (
             "llm",
             9222,
-            str((Path("runtime_v2") / "sessions" / "chatgpt-primary").resolve()),
+            _default_session_profile_dir("chatgpt-primary"),
         ),
         "genspark": (
             "llm",
             9333,
-            str((Path("runtime_v2") / "sessions" / "genspark-primary").resolve()),
+            _default_session_profile_dir("genspark-primary"),
         ),
         "seaart": (
             "image",
             9444,
-            str((Path("runtime_v2") / "sessions" / "seaart-primary").resolve()),
+            _default_session_profile_dir("seaart-primary"),
         ),
         "geminigen": (
             "llm",
             9555,
-            str((Path("runtime_v2") / "sessions" / "geminigen-primary").resolve()),
+            _default_session_profile_dir("geminigen-primary"),
         ),
         "canva": (
             "design",
             9666,
-            str((Path("runtime_v2") / "sessions" / "canva-primary").resolve()),
+            _default_session_profile_dir("canva-primary"),
         ),
     }
     runtime_config = _load_runtime_app_config()
