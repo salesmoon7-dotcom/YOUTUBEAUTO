@@ -270,9 +270,15 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                     ) as evidence_mock,
                 ):
                     exit_code = _run_agent_browser_stage2_adapter_child(args)
+                    evidence = json.loads(
+                        (root / "attach_evidence.json").read_text(encoding="utf-8")
+                    )
 
         self.assertEqual(exit_code, exit_codes.SUCCESS)
         evidence_mock.assert_called_once()
+        self.assertEqual(evidence["service"], "canva")
+        self.assertEqual(evidence["status"], "ok")
+        self.assertFalse(bool(evidence["placeholder_artifact"]))
 
     def test_stage2_adapter_child_fails_closed_for_geminigen_without_truthful_artifact(
         self,

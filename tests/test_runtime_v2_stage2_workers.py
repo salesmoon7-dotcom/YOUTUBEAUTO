@@ -223,6 +223,23 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                     "p.write_bytes(b'png')"
                 ),
             ]
+            attach_evidence = (
+                artifact_root / "canva" / job.job_id / "attach_evidence.json"
+            )
+            attach_evidence.parent.mkdir(parents=True, exist_ok=True)
+            _ = attach_evidence.write_text(
+                json.dumps(
+                    {
+                        "status": "ok",
+                        "error_code": "",
+                        "placeholder_artifact": False,
+                        "current_url": "https://www.canva.com/design/foo/edit",
+                        "current_title": "Canva design",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
 
             result = run_canva_job(job, artifact_root)
 
@@ -234,8 +251,12 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             self.assertTrue((workspace / "adapter_stdout.log").exists())
             self.assertTrue((workspace / "adapter_stderr.log").exists())
             completion = cast(dict[str, object], result["completion"])
+            details = cast(dict[str, object], result["details"])
             self.assertEqual(completion["state"], "succeeded")
             self.assertTrue(bool(completion["final_output"]))
+            self.assertEqual(str(details["attach_status"]), "ok")
+            self.assertFalse(bool(details["placeholder_artifact"]))
+            self.assertEqual(str(details["current_title"]), "Canva design")
 
     def test_canva_row_processing_handles_all_items_for_one_row_via_adapter_command(
         self,

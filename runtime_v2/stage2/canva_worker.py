@@ -8,6 +8,7 @@ from runtime_v2.stage2.agent_browser_adapter import (
     attach_evidence_path,
     build_stage2_agent_browser_adapter_command,
     canonical_stage2_adapter_env,
+    load_stage2_attach_evidence,
 )
 from runtime_v2.stage2.request_builders import (
     build_canva_thumb_file,
@@ -67,6 +68,7 @@ def run_canva_job(
         stdout_path = Path(str(adapter_result["stdout_path"]))
         stderr_path = Path(str(adapter_result["stderr_path"]))
         attach_evidence = attach_evidence_path(workspace)
+        attach_evidence_payload = load_stage2_attach_evidence(workspace)
         if not bool(adapter_result.get("ok", False)):
             return finalize_worker_result(
                 workspace,
@@ -117,6 +119,13 @@ def run_canva_job(
                 "attach_evidence_path": (
                     str(attach_evidence.resolve()) if attach_evidence.exists() else ""
                 ),
+                "attach_status": str(attach_evidence_payload.get("status", "")),
+                "attach_error_code": str(attach_evidence_payload.get("error_code", "")),
+                "placeholder_artifact": bool(
+                    attach_evidence_payload.get("placeholder_artifact", False)
+                ),
+                "current_url": str(attach_evidence_payload.get("current_url", "")),
+                "current_title": str(attach_evidence_payload.get("current_title", "")),
             },
             completion={
                 "state": "succeeded",
