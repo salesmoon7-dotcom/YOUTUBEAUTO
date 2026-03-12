@@ -362,6 +362,38 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
             .endswith("images/ref-2-stage2-run-1.png")
         )
 
+    def test_stage2_jobs_create_geminigen_tasks_from_stage1_videos(self) -> None:
+        video_plan = _video_plan("D:/YOUTUBEAUTO")
+        video_plan["videos"] = ["video prompt 1", "video prompt 2"]
+        video_plan["stage1_handoff"] = {
+            "contract": {
+                "version": "stage1_handoff.v1.0",
+                "ref_img_1": "images/ref1.png",
+                "videos": ["video prompt 1", "video prompt 2"],
+            }
+        }
+
+        jobs, render_spec = build_stage2_jobs(video_plan)
+        typed_jobs = [cast(dict[str, object], item["job"]) for item in jobs[:-1]]
+        geminigen_jobs = [
+            job for job in typed_jobs if str(job["worker"]) == "geminigen"
+        ]
+
+        self.assertEqual(len(geminigen_jobs), 2)
+        first_payload = cast(dict[str, object], geminigen_jobs[0]["payload"])
+        second_payload = cast(dict[str, object], geminigen_jobs[1]["payload"])
+        self.assertEqual(str(first_payload["prompt"]), "video prompt 1")
+        self.assertEqual(str(second_payload["prompt"]), "video prompt 2")
+        self.assertEqual(str(first_payload["first_frame_path"]), "images/ref1.png")
+        render_timeline = cast(list[object], render_spec["timeline"])
+        gemi_timeline = [
+            cast(dict[str, object], item)
+            for item in render_timeline
+            if isinstance(item, dict)
+            and str(cast(dict[str, object], item).get("workload", "")) == "geminigen"
+        ]
+        self.assertEqual(len(gemi_timeline), 2)
+
     def test_canva_payload_includes_thumb_data_and_deterministic_ref_img(self) -> None:
         video_plan = _video_plan("D:/YOUTUBEAUTO")
         video_plan["scene_plan"] = [

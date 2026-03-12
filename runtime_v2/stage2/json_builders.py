@@ -46,12 +46,16 @@ def ensure_common_asset_root(asset_root: str | Path) -> Path:
 
 def _scene_index_from_value(value: object) -> int:
     if isinstance(value, int):
-        return value
+        return int(str(value))
     if isinstance(value, float):
-        return int(value)
+        return int(str(value))
     if isinstance(value, str):
-        return int(value)
+        return int(value.strip())
     return 0
+
+
+def _timeline_scene_indices(timeline: list[dict[str, object]]) -> list[int]:
+    return [_scene_index_from_value(entry.get("scene_index", 0)) for entry in timeline]
 
 
 def _service_output_name(workload: WorkloadName, run_id: str, scene_index: int) -> str:
@@ -106,6 +110,25 @@ def _stage1_contract(video_plan: dict[str, object]) -> dict[str, object] | None:
     if not isinstance(contract, dict):
         return None
     return cast(dict[str, object], contract)
+
+
+def _stage1_videos(
+    video_plan: dict[str, object], stage1_contract: dict[str, object] | None
+) -> list[str]:
+    for source in (
+        video_plan.get("videos", []),
+        [] if stage1_contract is None else stage1_contract.get("videos", []),
+    ):
+        if not isinstance(source, list):
+            continue
+        videos = [
+            str(item).strip()
+            for item in cast(list[object], source)
+            if str(item).strip()
+        ]
+        if videos:
+            return videos
+    return []
 
 
 def _build_thumb_data(
@@ -209,6 +232,62 @@ def _build_ref_jobs(
     return ref_jobs, ref_img_1_path, ref_img_2_path
 
 
+def _build_geminigen_jobs(
+    *,
+    run_id: str,
+    row_ref: str,
+    asset_root: Path,
+    stage1_handoff: dict[str, object] | None,
+    stage1_contract: dict[str, object] | None,
+    reason_code: str,
+    videos: list[str],
+    scene_index_start: int,
+) -> tuple[list[dict[str, object]], list[str], list[dict[str, object]]]:
+    if not videos:
+        return [], [], []
+    geminigen_jobs: list[dict[str, object]] = []
+    asset_refs: list[str] = []
+    timeline: list[dict[str, object]] = []
+    ref_img = _select_ref_img_from_stage1(stage1_contract)
+    for offset, video_prompt in enumerate(videos, start=1):
+        scene_index = scene_index_start + offset
+        service_artifact_path = (
+            asset_root / _service_output_name("geminigen", run_id, scene_index)
+        ).resolve()
+        payload = build_stage2_payload(
+            run_id=run_id,
+            row_ref=row_ref,
+            scene_index=scene_index,
+            prompt=video_prompt,
+            asset_root=str(asset_root.resolve()),
+            reason_code=reason_code,
+        )
+        payload["service_artifact_path"] = str(service_artifact_path)
+        if ref_img:
+            payload["first_frame_path"] = ref_img
+        if isinstance(stage1_handoff, dict):
+            payload["stage1_handoff"] = stage1_handoff
+        geminigen_jobs.append(
+            build_explicit_job_contract(
+                job_id=f"geminigen-{run_id}-{scene_index}",
+                workload="geminigen",
+                checkpoint_key=f"stage2:geminigen:{row_ref}:{scene_index}",
+                payload=payload,
+            )
+        )
+        asset_refs.append(str(service_artifact_path))
+        timeline.append(
+            {
+                "scene_index": scene_index,
+                "asset_path": str(service_artifact_path),
+                "workload": "geminigen",
+                "asset_kind": "video",
+                "duration_sec": 8,
+            }
+        )
+    return geminigen_jobs, asset_refs, timeline
+
+
 def build_stage2_jobs(
     video_plan: dict[str, object],
 ) -> tuple[list[dict[str, object]], dict[str, object]]:
@@ -242,6 +321,7 @@ def build_stage2_jobs(
     )
     stage1_handoff = video_plan.get("stage1_handoff")
     stage1_contract = _stage1_contract(video_plan)
+    stage1_videos = _stage1_videos(video_plan, stage1_contract)
     ref_jobs, ref_img_1_path, ref_img_2_path = _build_ref_jobs(
         run_id=run_id,
         row_ref=row_ref,
@@ -254,6 +334,11 @@ def build_stage2_jobs(
         agent_browser_services=agent_browser_services,
     )
     jobs.extend(ref_jobs)
+    scene_workloads: list[WorkloadName]
+    if stage1_videos:
+        scene_workloads = ["genspark", "seaart", "canva"]
+    else:
+        scene_workloads = workloads
     for scene_offset, raw_scene in enumerate(typed_scene_plan):
         if not isinstance(raw_scene, dict):
             continue
@@ -263,7 +348,9 @@ def build_stage2_jobs(
         legacy_workload, legacy_category, cleaned_prompt = _legacy_scene_workload(
             prompt
         )
-        workload = legacy_workload or workloads[scene_offset % len(workloads)]
+        workload = (
+            legacy_workload or scene_workloads[scene_offset % len(scene_workloads)]
+        )
         service_artifact_path = (
             asset_root / _service_output_name(workload, run_id, scene_index)
         ).resolve()
@@ -291,12 +378,6 @@ def build_stage2_jobs(
                 ref_img = _select_ref_img(timeline)
             if ref_img:
                 payload["ref_img"] = ref_img
-        if workload == "geminigen":
-            ref_img = _select_ref_img_from_stage1(stage1_contract)
-            if not ref_img:
-                ref_img = _select_ref_img(timeline)
-            if ref_img:
-                payload["first_frame_path"] = ref_img
         if workload in agent_browser_services:
             payload["use_agent_browser"] = True
         jobs.append(
@@ -320,6 +401,22 @@ def build_stage2_jobs(
                 "duration_sec": 8,
             }
         )
+
+    geminigen_jobs, geminigen_asset_refs, geminigen_timeline = _build_geminigen_jobs(
+        run_id=run_id,
+        row_ref=row_ref,
+        asset_root=asset_root,
+        stage1_handoff=cast(dict[str, object], stage1_handoff)
+        if isinstance(stage1_handoff, dict)
+        else None,
+        stage1_contract=stage1_contract,
+        reason_code=str(video_plan.get("reason_code", "ok")),
+        videos=stage1_videos,
+        scene_index_start=max([0, *_timeline_scene_indices(timeline)]),
+    )
+    jobs.extend(geminigen_jobs)
+    asset_refs.extend(geminigen_asset_refs)
+    timeline.extend(geminigen_timeline)
 
     voice_json_path = (asset_root / "voice.json").resolve()
     render_spec = build_render_spec(
