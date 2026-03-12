@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import cast
+from unittest.mock import patch
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
@@ -115,9 +116,16 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
             )
             result = run_render_job(job, artifact_root)
 
-        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["status"], "ok")
         self.assertEqual(result["stage"], "render")
-        self.assertEqual(result["error_code"], "native_render_not_implemented")
+        completion = cast(dict[object, object], result["completion"])
+        details = cast(dict[object, object], result["details"])
+        self.assertTrue(bool(completion["final_output"]))
+        self.assertEqual(completion["reused"], True)
+        self.assertEqual(str(details["render_mode"]), "reused")
+        self.assertTrue(
+            str(completion["final_artifact_path"]).endswith("render_final.mp4")
+        )
 
     def test_render_worker_reports_native_only_boundary(
         self,
@@ -135,10 +143,161 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
                     "render_spec_path": str(render_spec.resolve()),
                 },
             )
+            final_output = render_folder / "output" / "render_final.mp4"
+            final_output.unlink()
+            result = run_render_job(job, artifact_root)
+            self.assertTrue(final_output.exists())
+
+        self.assertEqual(result["status"], "ok")
+        completion = cast(dict[object, object], result["completion"])
+        details = cast(dict[object, object], result["details"])
+        self.assertTrue(bool(completion["final_output"]))
+        self.assertEqual(completion["reused"], False)
+        self.assertEqual(str(details["render_mode"]), "video_copy")
+        self.assertTrue(str(details["source_asset_path"]).endswith("#01_RVC.mp4"))
+        self.assertTrue(
+            str(completion["final_artifact_path"]).endswith("render_final.mp4")
+        )
+
+    def test_render_worker_fails_closed_on_invalid_render_spec_json(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            render_folder, voice_json, render_spec = _write_render_fixture(root)
+            render_spec.write_text("{not-json", encoding="utf-8")
+            job = JobContract(
+                job_id="render-job-bad-spec",
+                workload="render",
+                payload={
+                    "render_folder_path": str(render_folder.resolve()),
+                    "voice_json_path": str(voice_json.resolve()),
+                    "render_spec_path": str(render_spec.resolve()),
+                },
+            )
+
             result = run_render_job(job, artifact_root)
 
         self.assertEqual(result["status"], "failed")
-        self.assertEqual(result["error_code"], "native_render_not_implemented")
+        self.assertEqual(result["error_code"], "invalid_render_spec")
+        completion = cast(dict[object, object], result["completion"])
+        self.assertEqual(str(completion["state"]), "failed")
+
+    def test_render_worker_fails_closed_when_render_spec_staging_raises_oserror(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            render_folder, voice_json, render_spec = _write_render_fixture(root)
+            job = JobContract(
+                job_id="render-job-stage-io-fail",
+                workload="render",
+                payload={
+                    "render_folder_path": str(render_folder.resolve()),
+                    "voice_json_path": str(voice_json.resolve()),
+                    "render_spec_path": str(render_spec.resolve()),
+                },
+            )
+
+            with patch(
+                "runtime_v2.stage3.render_worker.stage_local_input",
+                side_effect=OSError("staging failed"),
+            ):
+                result = run_render_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "render_io_failed")
+        completion = cast(dict[object, object], result["completion"])
+        self.assertEqual(str(completion["state"]), "failed")
+
+    def test_render_worker_builds_video_from_image_asset_when_no_video_exists(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            render_folder = root / "render_workspace"
+            image_dir = render_folder / "images"
+            output_dir = render_folder / "output"
+            image_dir.mkdir(parents=True, exist_ok=True)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            image_path = image_dir / "#01_GENS.png"
+            image_path.write_bytes(b"png")
+            voice_json = root / "voice.json"
+            voice_json.write_text(
+                json.dumps(
+                    {"voice_texts": [{"col": "#01", "text": "bridge"}]},
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            render_spec = root / "render_spec.json"
+            render_spec.write_text(
+                json.dumps(
+                    {
+                        "contract": "render_spec",
+                        "locked": True,
+                        "asset_refs": [str(image_path.resolve())],
+                        "timeline": [
+                            {"scene_index": 1, "asset_path": str(image_path.resolve())}
+                        ],
+                        "audio_refs": [str(voice_json.resolve())],
+                        "thumbnail_refs": [],
+                        "reason_code": "ok",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            job = JobContract(
+                job_id="render-job-image",
+                workload="render",
+                payload={
+                    "render_folder_path": str(render_folder.resolve()),
+                    "voice_json_path": str(voice_json.resolve()),
+                    "render_spec_path": str(render_spec.resolve()),
+                },
+            )
+
+            def fake_process(
+                command: list[str],
+                *,
+                cwd: Path,
+                extra_env: dict[str, str] | None = None,
+                timeout_sec: int = 3600,
+            ) -> dict[str, object]:
+                _ = command
+                _ = extra_env
+                _ = timeout_sec
+                final_output = cwd / "render_final.mp4"
+                final_output.write_bytes(b"mp4")
+                return {
+                    "command": command,
+                    "cwd": str(cwd),
+                    "exit_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "timed_out": False,
+                    "timeout_sec": 3600,
+                    "duration_sec": 0.01,
+                }
+
+            with patch(
+                "runtime_v2.stage3.render_worker.run_external_process",
+                side_effect=fake_process,
+            ):
+                result = run_render_job(job, artifact_root)
+                final_output = render_folder / "output" / "render_final.mp4"
+                self.assertTrue(final_output.exists())
+
+        self.assertEqual(result["status"], "ok")
+        completion = cast(dict[object, object], result["completion"])
+        details = cast(dict[object, object], result["details"])
+        self.assertTrue(bool(completion["final_output"]))
+        self.assertEqual(str(details["render_mode"]), "image_ffmpeg")
+        self.assertTrue(
+            str(completion["final_artifact_path"]).endswith("render_final.mp4")
+        )
 
     def test_render_worker_blocks_retry_when_render_assets_are_not_ready(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -318,7 +477,7 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
             canonical_payload = canonical_render_spec.read_text(encoding="utf-8")
             workspace_spec_exists = workspace_spec.exists()
 
-        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["status"], "ok")
         self.assertIn('"locked": true', canonical_payload)
         self.assertTrue(workspace_spec_exists)
 
@@ -356,8 +515,8 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
                 config.worker_registry_file.read_text(encoding="utf-8")
             )
 
-        self.assertEqual(result_1["status"], "failed")
-        self.assertEqual(result_2["status"], "failed")
+        self.assertEqual(result_1["status"], "ok")
+        self.assertEqual(result_2["status"], "ok")
         self.assertEqual(registry_payload["render"]["state"], "idle")
 
 
