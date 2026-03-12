@@ -14,6 +14,61 @@ from runtime_v2.worker_registry import stalled_workloads
 JsonState = Literal["ok", "missing", "invalid"]
 
 
+def evaluate_promotion_gates(
+    latest_join: dict[str, object],
+) -> dict[str, object]:
+    result_metadata = _dict_from_object(latest_join.get("result_metadata"))
+    asset_manifest_path = _resolve_asset_manifest_path(result_metadata)
+    asset_manifest = _read_json_file(asset_manifest_path)
+    roles = (
+        _dict_from_object(asset_manifest.get("roles", {}))
+        if asset_manifest is not None
+        else {}
+    )
+    final_output = bool(result_metadata.get("final_output", False))
+    final_artifact_path = str(result_metadata.get("final_artifact_path", "")).strip()
+    stage2_image_present = any(
+        key.startswith("stage2.scene_") and str(value).strip()
+        for key, value in roles.items()
+        if ".genspark" in key or ".seaart" in key
+    )
+    stage2_video_present = any(
+        key.startswith("stage2.scene_") and str(value).strip()
+        for key, value in roles.items()
+        if ".geminigen" in key
+    )
+    kenburns_present = any(
+        ".kenburns" in key and str(value).strip() for key, value in roles.items()
+    )
+    gates = {
+        "A": {
+            "passed": bool(str(roles.get("image_primary", "")).strip())
+            and stage2_image_present,
+            "reason": "missing_image_primary_or_stage2_images",
+        },
+        "B": {
+            "passed": bool(str(roles.get("thumb_primary", "")).strip())
+            and stage2_video_present,
+            "reason": "missing_thumb_or_stage2_video",
+        },
+        "C": {
+            "passed": bool(str(roles.get("voice_json", "")).strip())
+            and kenburns_present,
+            "reason": "missing_voice_json_or_kenburns_role",
+        },
+        "D": {
+            "passed": final_output and bool(final_artifact_path),
+            "reason": "missing_final_output_or_artifact_path",
+        },
+    }
+    return {
+        "asset_manifest_path": ""
+        if asset_manifest_path is None
+        else str(asset_manifest_path),
+        "gates": gates,
+    }
+
+
 def load_latest_result_metadata(
     result_file: str | Path | None = None,
 ) -> dict[str, object]:
@@ -364,6 +419,9 @@ def load_runtime_readiness(
 
     latest_code = str(typed_result_metadata.get("code", "UNKNOWN"))
     latest_result_payload = _dict_from_object(latest_join.get("result"))
+    promotion_gates = evaluate_promotion_gates(latest_join)
+    gate_entries = _dict_from_object(promotion_gates.get("gates", {}))
+    asset_manifest_path = str(promotion_gates.get("asset_manifest_path", "")).strip()
     latest_result_checked_at = _to_float(latest_result_payload.get("checked_at"))
     latest_result_is_fresh = True
     canonical_handoff = _dict_from_object(
@@ -390,6 +448,21 @@ def load_runtime_readiness(
             blocker["details"] = {"warning_worker_error_code_mismatch": True}
         blockers.append(blocker)
 
+    for gate_name, gate_value in gate_entries.items():
+        gate_payload = _dict_from_object(gate_value)
+        if not gate_payload:
+            continue
+        if bool(gate_payload.get("passed", False)):
+            continue
+        blockers.append(
+            {
+                "axis": "promotion_gate",
+                "code": f"PROMOTION_GATE_{gate_name}_FAIL",
+                "reason": str(gate_payload.get("reason", "promotion_gate_failed")),
+                "trace_path": asset_manifest_path,
+            }
+        )
+
     primary_code = "OK" if not blockers else str(blockers[0].get("code", "CLI_USAGE"))
     return {
         "ready": len(blockers) == 0,
@@ -404,12 +477,14 @@ def load_runtime_readiness(
         "browser_registry": browser_registry,
         "gpu_health": gpu_health,
         "worker_registry": worker_registry,
+        "promotion_gates": promotion_gates,
         "trace_paths": {
             "gpt_status": str(runtime_config.gpt_status_file),
             "browser_health": str(runtime_config.browser_health_file),
             "browser_registry": str(runtime_config.browser_registry_file),
             "gpu_health": str(runtime_config.lease_file),
             "worker_registry": str(runtime_config.worker_registry_file),
+            "asset_manifest": asset_manifest_path,
             "result": str(runtime_config.result_router_file),
             "gui_status": str(runtime_config.gui_status_file),
             "control_plane_events": str(runtime_config.control_plane_events_file),
@@ -464,6 +539,30 @@ def _read_json_dict_with_state(
         },
         "ok",
     )
+
+
+def _read_json_file(path: Path | None) -> dict[str, object] | None:
+    if path is None or not path.exists():
+        return None
+    try:
+        raw_payload = cast(object, json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw_payload, dict):
+        return None
+    typed_payload = cast(dict[object, object], raw_payload)
+    return {str(raw_key): raw_value for raw_key, raw_value in typed_payload.items()}
+
+
+def _resolve_asset_manifest_path(result_metadata: dict[str, object]) -> Path | None:
+    explicit = str(result_metadata.get("asset_manifest_path", "")).strip()
+    if explicit:
+        return Path(explicit)
+    final_artifact_path = str(result_metadata.get("final_artifact_path", "")).strip()
+    if not final_artifact_path:
+        return None
+    final_path = Path(final_artifact_path)
+    return final_path.parent.parent / "asset_manifest.json"
 
 
 def _dict_from_object(
