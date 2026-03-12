@@ -394,6 +394,27 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
         ]
         self.assertEqual(len(gemi_timeline), 2)
 
+    def test_stage2_jobs_create_kenburns_bundle_contract_for_image_scenes(self) -> None:
+        video_plan = _video_plan("D:/YOUTUBEAUTO")
+
+        jobs, render_spec = build_stage2_jobs(video_plan)
+        typed_jobs = [cast(dict[str, object], item["job"]) for item in jobs[:-1]]
+        kenburns_job = next(
+            job for job in typed_jobs if str(job["worker"]) == "kenburns"
+        )
+        kenburns_payload = cast(dict[str, object], kenburns_job["payload"])
+        scene_bundle_map = cast(dict[str, object], kenburns_payload["scene_bundle_map"])
+        scenes = cast(list[object], scene_bundle_map["scenes"])
+        render_timeline = cast(list[object], render_spec["timeline"])
+
+        self.assertTrue(scenes)
+        first_scene = cast(dict[str, object], scenes[0])
+        self.assertTrue(
+            str(first_scene["output_path"]).replace("\\", "/").endswith("#01_KEN.mp4")
+        )
+        first_render_entry = cast(dict[str, object], render_timeline[0])
+        self.assertEqual(str(first_render_entry["workload"]), "kenburns")
+
     def test_canva_payload_includes_thumb_data_and_deterministic_ref_img(self) -> None:
         video_plan = _video_plan("D:/YOUTUBEAUTO")
         video_plan["scene_plan"] = [

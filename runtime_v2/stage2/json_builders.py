@@ -58,6 +58,64 @@ def _timeline_scene_indices(timeline: list[dict[str, object]]) -> list[int]:
     return [_scene_index_from_value(entry.get("scene_index", 0)) for entry in timeline]
 
 
+def _build_kenburns_bundle_contract(
+    *,
+    run_id: str,
+    row_ref: str,
+    asset_root: Path,
+    timeline: list[dict[str, object]],
+    reason_code: str,
+) -> tuple[dict[str, object] | None, list[dict[str, object]]]:
+    bundle_entries: list[dict[str, object]] = []
+    kenburns_timeline: list[dict[str, object]] = []
+    for entry in timeline:
+        workload = str(entry.get("workload", "")).strip()
+        if workload != "genspark" and workload != "seaart":
+            if workload == "geminigen":
+                kenburns_timeline.append(dict(entry))
+            continue
+        scene_index = _scene_index_from_value(entry.get("scene_index", 0))
+        bundle_output_path = (
+            asset_root / f"video/#{scene_index:02d}_KEN.mp4"
+        ).resolve()
+        bundle_entries.append(
+            {
+                "scene_key": f"scene_{scene_index:02d}",
+                "scene_index": scene_index,
+                "source_path": str(entry.get("asset_path", "")),
+                "output_path": str(bundle_output_path),
+                "duration_sec": 8,
+            }
+        )
+        kenburns_timeline.append(
+            {
+                "scene_index": scene_index,
+                "asset_path": str(bundle_output_path),
+                "workload": "kenburns",
+                "asset_kind": "video",
+                "duration_sec": 8,
+            }
+        )
+    if not bundle_entries:
+        return None, timeline
+    payload: dict[str, object] = {
+        "run_id": run_id,
+        "row_ref": row_ref,
+        "reason_code": reason_code,
+        "scene_bundle_map": {"scenes": bundle_entries},
+        "service_artifact_path": str(
+            (asset_root / "video" / f"kenburns-{run_id}.json").resolve()
+        ),
+    }
+    contract = build_explicit_job_contract(
+        job_id=f"kenburns-{run_id}",
+        workload="kenburns",
+        checkpoint_key=f"kenburns:{row_ref}:{run_id}",
+        payload=payload,
+    )
+    return contract, kenburns_timeline
+
+
 def _service_output_name(workload: WorkloadName, run_id: str, scene_index: int) -> str:
     if workload == "geminigen":
         return f"video/#{scene_index:02d}_GEMI.mp4"
@@ -401,6 +459,17 @@ def build_stage2_jobs(
                 "duration_sec": 8,
             }
         )
+
+    kenburns_contract, timeline = _build_kenburns_bundle_contract(
+        run_id=run_id,
+        row_ref=row_ref,
+        asset_root=asset_root,
+        timeline=timeline,
+        reason_code=str(video_plan.get("reason_code", "ok")),
+    )
+    if kenburns_contract is not None:
+        jobs.append(kenburns_contract)
+        asset_refs = [str(entry.get("asset_path", "")) for entry in timeline]
 
     geminigen_jobs, geminigen_asset_refs, geminigen_timeline = _build_geminigen_jobs(
         run_id=run_id,
