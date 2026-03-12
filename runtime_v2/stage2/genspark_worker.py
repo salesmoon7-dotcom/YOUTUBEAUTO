@@ -8,6 +8,7 @@ from runtime_v2.stage2.agent_browser_adapter import (
     attach_evidence_path,
     build_stage2_agent_browser_adapter_command,
     canonical_stage2_adapter_env,
+    load_stage2_attach_evidence,
 )
 from runtime_v2.stage2.request_builders import build_image_prompt_file
 from runtime_v2.workers.external_process import run_verified_adapter_command
@@ -62,6 +63,7 @@ def run_genspark_job(
         stdout_path = Path(str(adapter_result["stdout_path"]))
         stderr_path = Path(str(adapter_result["stderr_path"]))
         attach_evidence = attach_evidence_path(workspace)
+        attach_evidence_payload = load_stage2_attach_evidence(workspace)
         if not bool(adapter_result.get("ok", False)):
             return finalize_worker_result(
                 workspace,
@@ -100,6 +102,8 @@ def run_genspark_job(
                 "model": str(job.payload.get("model", "stage2")),
                 "service_artifact_path": str(verified_output.resolve()),
                 "reused": bool(adapter_result.get("reused", False)),
+                "ref_img_1": str(job.payload.get("ref_img_1", "")).strip(),
+                "ref_img_2": str(job.payload.get("ref_img_2", "")).strip(),
                 "adapter_mode": (
                     "agent_browser"
                     if bool(job.payload.get("use_agent_browser", False))
@@ -108,6 +112,27 @@ def run_genspark_job(
                 ),
                 "attach_evidence_path": (
                     str(attach_evidence.resolve()) if attach_evidence.exists() else ""
+                ),
+                "ref_images_requested": cast(
+                    list[object],
+                    attach_evidence_payload.get("ref_images_requested", []),
+                )
+                if isinstance(
+                    attach_evidence_payload.get("ref_images_requested", []), list
+                )
+                else [],
+                "ref_images_resolved": cast(
+                    list[object], attach_evidence_payload.get("ref_images_resolved", [])
+                )
+                if isinstance(
+                    attach_evidence_payload.get("ref_images_resolved", []), list
+                )
+                else [],
+                "ref_images_attach_attempted": bool(
+                    attach_evidence_payload.get("ref_images_attach_attempted", False)
+                ),
+                "ref_upload_error_code": str(
+                    attach_evidence_payload.get("ref_upload_error_code", "")
                 ),
             },
             completion={

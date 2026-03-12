@@ -118,7 +118,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
-            output_path = root / "exports" / "geminigen-scene-01.mp4"
+            output_path = artifact_root / "exports" / "geminigen-scene-01.mp4"
             first_frame_path = root / "exports" / "first-frame-01.png"
             _ = first_frame_path.parent.mkdir(parents=True, exist_ok=True)
             _ = first_frame_path.write_bytes(b"png")
@@ -176,7 +176,9 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             self.assertTrue(geminigen_jobs)
             for index, job_payload in enumerate(geminigen_jobs, start=1):
                 payload = cast(dict[str, object], job_payload["payload"])
-                output_path = root / "exports" / f"geminigen-row-{index:02d}.mp4"
+                output_path = (
+                    root / "artifacts" / "exports" / f"geminigen-row-{index:02d}.mp4"
+                )
                 first_frame_path = root / "exports" / f"first-frame-{index:02d}.png"
                 _ = first_frame_path.parent.mkdir(parents=True, exist_ok=True)
                 _ = first_frame_path.write_bytes(b"png")
@@ -208,7 +210,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
-            output_path = root / "exports" / "canva-thumb-01.png"
+            output_path = artifact_root / "exports" / "canva-thumb-01.png"
             job = _stage2_job("canva")
             job.payload["service_artifact_path"] = str(output_path)
             job.payload["adapter_command"] = [
@@ -250,7 +252,9 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             self.assertTrue(canva_jobs)
             for index, job_payload in enumerate(canva_jobs, start=1):
                 payload = cast(dict[str, object], job_payload["payload"])
-                output_path = root / "exports" / f"canva-row-{index:02d}.png"
+                output_path = (
+                    root / "artifacts" / "exports" / f"canva-row-{index:02d}.png"
+                )
                 payload["service_artifact_path"] = str(output_path)
                 payload["adapter_command"] = [
                     sys.executable,
@@ -280,7 +284,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
-            output_path = root / "exports" / "genspark-scene-01.png"
+            output_path = artifact_root / "exports" / "genspark-scene-01.png"
             job = _stage2_job("genspark")
             job.payload["service_artifact_path"] = str(output_path)
             job.payload["adapter_command"] = [
@@ -322,7 +326,9 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             self.assertTrue(genspark_jobs)
             for index, job_payload in enumerate(genspark_jobs, start=1):
                 payload = cast(dict[str, object], job_payload["payload"])
-                output_path = root / "exports" / f"genspark-row-{index:02d}.png"
+                output_path = (
+                    root / "artifacts" / "exports" / f"genspark-row-{index:02d}.png"
+                )
                 payload["service_artifact_path"] = str(output_path)
                 payload["adapter_command"] = [
                     sys.executable,
@@ -352,7 +358,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
-            output_path = root / "exports" / "genspark-stale.png"
+            output_path = artifact_root / "exports" / "genspark-stale.png"
             output_path.parent.mkdir(parents=True, exist_ok=True)
             _ = output_path.write_bytes(b"stale")
             job = _stage2_job("genspark")
@@ -373,7 +379,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
-            output_path = root / "exports" / "genspark-missing.png"
+            output_path = artifact_root / "exports" / "genspark-missing.png"
             job = _stage2_job("genspark")
             job.payload["service_artifact_path"] = str(output_path)
             job.payload["adapter_command"] = [sys.executable, "-c", "pass"]
@@ -389,7 +395,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
-            output_path = root / "exports" / "seaart-scene-01.png"
+            output_path = artifact_root / "exports" / "seaart-scene-01.png"
             job = _stage2_job("seaart")
             job.payload["service_artifact_path"] = str(output_path)
             job.payload["adapter_command"] = [
@@ -431,7 +437,9 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             self.assertTrue(seaart_jobs)
             for index, job_payload in enumerate(seaart_jobs, start=1):
                 payload = cast(dict[str, object], job_payload["payload"])
-                output_path = root / "exports" / f"seaart-row-{index:02d}.png"
+                output_path = (
+                    root / "artifacts" / "exports" / f"seaart-row-{index:02d}.png"
+                )
                 payload["service_artifact_path"] = str(output_path)
                 payload["adapter_command"] = [
                     sys.executable,
@@ -477,7 +485,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
             for runner, job, workload, request_artifact in cases:
-                output_path = root / "exports" / f"{workload}-scene-01.out"
+                output_path = artifact_root / "exports" / f"{workload}-scene-01.out"
                 job.payload["service_artifact_path"] = str(output_path)
 
                 result = runner(job, artifact_root)
@@ -588,6 +596,24 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             job = _stage2_job("genspark")
             job.payload["service_artifact_path"] = str(output_path)
             job.payload["use_agent_browser"] = True
+            job.payload["ref_img_1"] = "images/ref1.png"
+            job.payload["ref_img_2"] = "images/ref2.png"
+            _ = attach_evidence.write_text(
+                json.dumps(
+                    {
+                        "status": "ok",
+                        "ref_images_requested": ["images/ref1.png", "images/ref2.png"],
+                        "ref_images_resolved": [
+                            "D:/YOUTUBEAUTO/images/ref1.png",
+                            "D:/YOUTUBEAUTO/images/ref2.png",
+                        ],
+                        "ref_images_attach_attempted": True,
+                        "ref_upload_error_code": "",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
             stdout_path = root / "artifacts" / "stdout.log"
             stderr_path = root / "artifacts" / "stderr.log"
             stdout_path.parent.mkdir(parents=True, exist_ok=True)
@@ -611,9 +637,76 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         self.assertTrue(
             str(details["attach_evidence_path"]).endswith("attach_evidence.json")
         )
+        self.assertEqual(str(details["ref_img_1"]), "images/ref1.png")
+        self.assertEqual(str(details["ref_img_2"]), "images/ref2.png")
+        self.assertEqual(
+            cast(list[object], details["ref_images_requested"]),
+            ["images/ref1.png", "images/ref2.png"],
+        )
+        self.assertTrue(bool(details["ref_images_attach_attempted"]))
         adapter_command = run_adapter.call_args.kwargs["adapter_command"]
         self.assertIn("--agent-browser-stage2-adapter-child", adapter_command)
         self.assertIn("genspark", adapter_command)
+
+    def test_seaart_worker_can_use_agent_browser_adapter_mode_with_ref_details(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "seaart-agent-browser.png"
+            attach_evidence = (
+                root / "artifacts" / "seaart" / "seaart-job-1" / "attach_evidence.json"
+            )
+            attach_evidence.parent.mkdir(parents=True, exist_ok=True)
+            _ = attach_evidence.write_text(
+                json.dumps(
+                    {
+                        "status": "ok",
+                        "ref_images_requested": ["images/ref1.png", "images/ref2.png"],
+                        "ref_images_resolved": [
+                            "D:/YOUTUBEAUTO/images/ref1.png",
+                            "D:/YOUTUBEAUTO/images/ref2.png",
+                        ],
+                        "ref_images_attach_attempted": True,
+                        "ref_upload_error_code": "",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = output_path.write_bytes(b"png")
+            job = _stage2_job("seaart")
+            job.payload["service_artifact_path"] = str(output_path)
+            job.payload["use_agent_browser"] = True
+            job.payload["ref_img_1"] = "images/ref1.png"
+            job.payload["ref_img_2"] = "images/ref2.png"
+            stdout_path = root / "artifacts" / "stdout.log"
+            stderr_path = root / "artifacts" / "stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+
+            with patch(
+                "runtime_v2.stage2.seaart_worker.run_verified_adapter_command",
+                return_value={
+                    "ok": True,
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "output_path": output_path,
+                },
+            ) as run_adapter:
+                result = run_seaart_job(job, root / "artifacts")
+
+        self.assertEqual(result["status"], "ok")
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(str(details["adapter_mode"]), "agent_browser")
+        self.assertEqual(str(details["ref_img_1"]), "images/ref1.png")
+        self.assertEqual(str(details["ref_img_2"]), "images/ref2.png")
+        self.assertTrue(bool(details["ref_images_attach_attempted"]))
+        adapter_command = run_adapter.call_args.kwargs["adapter_command"]
+        self.assertIn("--agent-browser-stage2-adapter-child", adapter_command)
+        self.assertIn("seaart", adapter_command)
 
     def test_canva_worker_can_use_agent_browser_adapter_mode(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
