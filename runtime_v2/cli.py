@@ -42,7 +42,9 @@ from runtime_v2.evidence import load_runtime_readiness
 from runtime_v2.gpt_pool_monitor import tick_gpt_status
 from runtime_v2.gui_adapter import build_gui_status_payload
 from runtime_v2.latest_run import write_cli_runtime_snapshot
-from runtime_v2.manager import seed_excel_row
+from runtime_v2.manager import mark_excel_row_running, seed_excel_row
+from runtime_v2.excel.selector import select_pending_row_indexes
+from runtime_v2.excel.source import read_excel_row
 from runtime_v2.n8n_adapter import (
     build_n8n_webhook_response,
     post_callback,
@@ -71,9 +73,12 @@ class CliArgs(argparse.Namespace):
     control_once_detached: bool
     control_once_probe_child: bool
     excel_once: bool
+    excel_batch: bool
     excel_path: str
     sheet_name: str
     row_index: int
+    batch_count: int
+    max_control_ticks: int
     selftest: bool
     selftest_detached: bool
     selftest_probe_child: bool
@@ -111,9 +116,12 @@ class CliArgs(argparse.Namespace):
         self.control_once_detached = False
         self.control_once_probe_child = False
         self.excel_once = False
+        self.excel_batch = False
         self.excel_path = ""
         self.sheet_name = "Sheet1"
         self.row_index = 0
+        self.batch_count = 5
+        self.max_control_ticks = 50
         self.selftest = False
         self.selftest_detached = False
         self.selftest_probe_child = False
@@ -186,6 +194,113 @@ def exit_code_from_readiness(readiness: dict[str, object]) -> int:
     return exit_codes.BROWSER_BLOCKED
 
 
+def _terminal_excel_status(status: object) -> bool:
+    normalized = str(status or "").strip().lower()
+    return normalized in {"done", "partial", "failed"}
+
+
+def _int_value(value: object, default: int) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return int(str(value))
+    if isinstance(value, float):
+        return int(str(value))
+    if isinstance(value, str):
+        text = value.strip()
+        if text:
+            return int(text)
+    return default
+
+
+def _run_excel_batch_mode(
+    *,
+    owner: str,
+    config: RuntimeConfig,
+    run_id: str,
+    excel_path: str,
+    sheet_name: str,
+    batch_count: int,
+    max_control_ticks: int,
+) -> dict[str, object]:
+    selected_rows = select_pending_row_indexes(
+        excel_path,
+        sheet_name=sheet_name,
+        limit=batch_count,
+    )
+    if not selected_rows:
+        return {"status": "no_work", "code": "NO_WORK", "selected_rows": []}
+    seeded_runs: list[dict[str, object]] = []
+    for offset, row_index in enumerate(selected_rows, start=1):
+        row_run_id = f"{run_id}-row{offset:02d}"
+        seeded = seed_excel_row(
+            config=config,
+            run_id=row_run_id,
+            excel_path=excel_path,
+            sheet_name=sheet_name,
+            row_index=row_index,
+        )
+        if str(seeded.get("status", "")) == "seeded":
+            running_updated = mark_excel_row_running(
+                excel_path=excel_path,
+                sheet_name=sheet_name,
+                row_index=row_index,
+            )
+            if not running_updated:
+                return {
+                    "status": "failed",
+                    "code": "EXCEL_STATUS_UPDATE_FAILED",
+                    "selected_rows": seeded_runs,
+                    "failed_row_index": row_index,
+                }
+            seeded_runs.append(
+                {
+                    "row_index": row_index,
+                    "run_id": row_run_id,
+                    "job_id": str(seeded.get("job_id", "")),
+                }
+            )
+        elif str(seeded.get("status", "")) == "failed":
+            return {
+                "status": "failed",
+                "code": str(seeded.get("code", "EXCEL_STATUS_UPDATE_FAILED")),
+                "selected_rows": seeded_runs,
+                "failed_row_index": row_index,
+            }
+    if not seeded_runs:
+        return {"status": "no_work", "code": "NO_WORK", "selected_rows": []}
+    control_results: list[dict[str, object]] = []
+    for _ in range(max_control_ticks):
+        control_result = run_control_loop_once(
+            owner=owner, config=config, run_id=run_id
+        )
+        control_results.append(control_result)
+        pending_rows = []
+        for seeded in seeded_runs:
+            row_map = read_excel_row(
+                excel_path,
+                sheet_name=sheet_name,
+                row_index=_int_value(seeded["row_index"], -1),
+            )
+            if not _terminal_excel_status(row_map.get("Status", "")):
+                pending_rows.append(_int_value(seeded["row_index"], -1))
+        if not pending_rows:
+            return {
+                "status": "ok",
+                "code": "OK",
+                "selected_rows": seeded_runs,
+                "ticks": len(control_results),
+                "control_results": control_results,
+            }
+    return {
+        "status": "failed",
+        "code": "BATCH_TIMEOUT",
+        "selected_rows": seeded_runs,
+        "ticks": len(control_results),
+        "control_results": control_results,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     _ = parser.add_argument("--owner", default="runtime_v2")
@@ -196,9 +311,12 @@ def main() -> int:
         "--control-once-probe-child", action="store_true", help=argparse.SUPPRESS
     )
     _ = parser.add_argument("--excel-once", action="store_true")
+    _ = parser.add_argument("--excel-batch", action="store_true")
     _ = parser.add_argument("--excel-path", default="")
     _ = parser.add_argument("--sheet-name", default="Sheet1")
     _ = parser.add_argument("--row-index", type=int, default=0)
+    _ = parser.add_argument("--batch-count", type=int, default=5)
+    _ = parser.add_argument("--max-control-ticks", type=int, default=50)
     _ = parser.add_argument("--selftest", action="store_true")
     _ = parser.add_argument("--selftest-detached", action="store_true")
     _ = parser.add_argument(
@@ -256,6 +374,7 @@ def main() -> int:
             args.control_once_detached,
             args.control_once_probe_child,
             args.excel_once,
+            args.excel_batch,
             args.selftest,
             args.selftest_detached,
             args.selftest_probe_child,
@@ -285,6 +404,8 @@ def main() -> int:
     ):
         return exit_codes.CLI_USAGE
     if args.excel_once and args.row_index < 0:
+        return exit_codes.CLI_USAGE
+    if args.excel_batch and (args.batch_count <= 0 or args.max_control_ticks <= 0):
         return exit_codes.CLI_USAGE
     config = _build_runtime_config(args)
     try:
@@ -333,6 +454,8 @@ def main() -> int:
         mode = "stage2_row1"
     elif args.control_once or args.control_once_probe_child or args.excel_once:
         mode = "control_once"
+    elif args.excel_batch:
+        mode = "excel_batch"
     else:
         mode = "once"
     run_id = str(uuid4())
@@ -379,6 +502,18 @@ def main() -> int:
             sheet_name=args.sheet_name,
             row_index=args.row_index,
         )
+    if args.excel_batch:
+        batch_result = _run_excel_batch_mode(
+            owner=args.owner,
+            config=config,
+            run_id=run_id,
+            excel_path=args.excel_path,
+            sheet_name=args.sheet_name,
+            batch_count=args.batch_count,
+            max_control_ticks=args.max_control_ticks,
+        )
+        print(final_report(batch_result))
+        return exit_code_from_status(str(batch_result.get("code", "CLI_USAGE")))
     if args.seed_mock_chain and args.control_once_probe_child:
         _ = seed_mock_chain_probe(config.input_root)
 
