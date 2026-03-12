@@ -346,6 +346,40 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
             self.assertEqual(completion["state"], "succeeded")
             self.assertTrue(bool(completion["final_output"]))
 
+    def test_rvc_worker_accepts_audio_path_in_gemi_video_source_mode(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            audio_path = root / "gemi-audio.wav"
+            output_path = artifact_root / "converted.wav"
+            _ = audio_path.write_bytes(b"wav")
+            job = JobContract(
+                job_id="rvc-job-gemi-audio",
+                workload="rvc",
+                payload={
+                    "audio_path": str(audio_path.resolve()),
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "adapter_command": [
+                        sys.executable,
+                        "-c",
+                        (
+                            "from pathlib import Path; "
+                            f"p=Path(r'{str(output_path)}'); "
+                            "p.parent.mkdir(parents=True, exist_ok=True); "
+                            "p.write_bytes(b'wav')"
+                        ),
+                    ],
+                },
+            )
+
+            result = run_rvc_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        details = cast(dict[object, object], result["details"])
+        self.assertEqual(str(details["source_mode"]), "gemi-video-source")
+        self.assertEqual(str(details["audio_path"]), str(audio_path.resolve()))
+
     def test_rvc_worker_requires_model_name_for_conversion_contract(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -362,6 +396,21 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "missing_model_name")
+
+    def test_rvc_worker_requires_source_or_audio_path(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            job = JobContract(
+                job_id="rvc-job-missing-input",
+                workload="rvc",
+                payload={"model_name": "voice-model-a"},
+            )
+
+            result = run_rvc_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "missing_source_path")
 
     def test_rvc_worker_emits_final_output_or_next_job_only(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -391,6 +440,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(completion["state"], "failed")
         self.assertFalse(bool(completion["final_output"]))
         self.assertEqual(details["model_name"], "voice-model-a")
+        self.assertEqual(details["source_mode"], "tts-source")
 
     def test_rvc_worker_builds_cli_adapter_when_service_artifact_path_exists(
         self,
