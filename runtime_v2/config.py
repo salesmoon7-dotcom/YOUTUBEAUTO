@@ -186,6 +186,12 @@ class RuntimeConfig:
         / "evidence"
         / "failure_summary.json"
     )
+    soak_events_file: Path = field(
+        default_factory=lambda: runtime_state_root() / "evidence" / "soak_events.jsonl"
+    )
+    soak_report_file: Path = field(
+        default_factory=lambda: runtime_state_root() / "evidence" / "soak_24h_report.md"
+    )
     debug_log_root: Path = field(default_factory=lambda: runtime_state_root() / "logs")
     worker_registry_file: Path = field(
         default_factory=lambda: runtime_state_root() / "health" / "worker_registry.json"
@@ -224,6 +230,8 @@ class RuntimeConfig:
             latest_active_run_file=resolved_root / "latest_active_run.json",
             latest_completed_run_file=resolved_root / "latest_completed_run.json",
             failure_summary_file=resolved_root / "evidence" / "failure_summary.json",
+            soak_events_file=resolved_root / "evidence" / "soak_events.jsonl",
+            soak_report_file=resolved_root / "evidence" / "soak_24h_report.md",
             debug_log_root=resolved_root / "logs",
             worker_registry_file=resolved_root / "health" / "worker_registry.json",
         )
