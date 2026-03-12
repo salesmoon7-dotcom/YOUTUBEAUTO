@@ -33,6 +33,58 @@ def _write_excel_fixture(path: Path) -> Path:
 
 
 class RuntimeV2ExcelTopicEndToEndTests(unittest.TestCase):
+    def test_seed_excel_row_carries_optional_legacy_fields_into_topic_spec(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            excel_path = root / "topic.xlsx"
+            workbook = Workbook()
+            sheet = cast(Worksheet, workbook.active)
+            sheet.title = "Sheet1"
+            sheet.append(
+                [
+                    "Topic",
+                    "Status",
+                    "Ref Img 1",
+                    "Ref Img 2",
+                    "BGM",
+                    "URL",
+                    "Video1",
+                    "Video2",
+                ]
+            )
+            sheet.append(
+                [
+                    "Bridge topic",
+                    "",
+                    "ref prompt one",
+                    "ref prompt two",
+                    "serious piano",
+                    "https://example.com/bridge",
+                    "video clip one",
+                    "video clip two",
+                ]
+            )
+            workbook.save(excel_path)
+            workbook.close()
+            config = RuntimeConfig.from_root(root)
+
+            seeded = seed_excel_row(
+                config=config,
+                run_id="carryover-run-1",
+                excel_path=excel_path,
+                sheet_name="Sheet1",
+                row_index=0,
+            )
+
+        topic_spec = cast(dict[str, object], seeded["topic_spec"])
+        self.assertEqual(topic_spec["ref_img_1"], "ref prompt one")
+        self.assertEqual(topic_spec["ref_img_2"], "ref prompt two")
+        self.assertEqual(topic_spec["bgm"], "serious piano")
+        self.assertEqual(topic_spec["url"], "https://example.com/bridge")
+        self.assertEqual(topic_spec["videos"], ["video clip one", "video clip two"])
+
     def test_excel_row1_topic_can_seed_stage1_and_finish_final_video_contracts(
         self,
     ) -> None:
@@ -170,6 +222,47 @@ class RuntimeV2ExcelTopicEndToEndTests(unittest.TestCase):
             cast(dict[str, object], first_stage2["payload"])["run_id"], run_id
         )
         self.assertEqual(latest_result["metadata"]["run_id"], run_id)
+
+    def test_stage2_builder_adds_default_kenburns_motion_settings(self) -> None:
+        video_plan: dict[str, object] = {
+            "contract": "video_plan",
+            "run_id": "stage2-run-kenburns-motion",
+            "row_ref": "Sheet1!row1",
+            "reason_code": "ok",
+            "asset_plan": {
+                "asset_root": str(Path("D:/YOUTUBEAUTO").resolve()),
+                "common_asset_folder": str(Path("D:/YOUTUBEAUTO").resolve()),
+            },
+            "scene_plan": [
+                {"scene_index": 1, "prompt": "scene one"},
+                {"scene_index": 2, "prompt": "scene two"},
+            ],
+        }
+
+        stage2_jobs, _ = build_stage2_jobs(video_plan)
+
+        kenburns_jobs = [
+            cast(dict[str, object], item)
+            for item in stage2_jobs
+            if cast(dict[str, object], item["job"])["worker"] == "kenburns"
+        ]
+        self.assertEqual(len(kenburns_jobs), 1)
+        kenburns_payload = cast(dict[str, object], kenburns_jobs[0]["job"])["payload"]
+        scenes = cast(
+            list[object],
+            cast(
+                dict[str, object],
+                cast(dict[str, object], kenburns_payload)["scene_bundle_map"],
+            )["scenes"],
+        )
+        first_scene = cast(dict[str, object], scenes[0])
+        second_scene = cast(dict[str, object], scenes[1])
+        self.assertEqual(first_scene["pan_direction"], "left")
+        self.assertEqual(second_scene["pan_direction"], "right")
+        self.assertEqual(first_scene["zoom_mode"], "in")
+        self.assertEqual(second_scene["zoom_mode"], "out")
+        self.assertEqual(first_scene["pan_pct"], 0.05)
+        self.assertEqual(first_scene["zoom_pct"], 0.4)
 
     def test_probe_result_uses_canonical_path_and_required_schema(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

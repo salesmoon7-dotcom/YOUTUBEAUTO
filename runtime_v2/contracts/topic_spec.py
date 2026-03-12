@@ -18,8 +18,13 @@ def build_topic_spec(
     topic: str,
     status_snapshot: str,
     excel_snapshot: str,
+    bgm: str = "",
+    url: str = "",
+    ref_img_1: str = "",
+    ref_img_2: str = "",
+    videos: list[str] | None = None,
 ) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "contract": TOPIC_SPEC_CONTRACT,
         "contract_version": TOPIC_SPEC_VERSION,
         "run_id": run_id,
@@ -28,6 +33,18 @@ def build_topic_spec(
         "status_snapshot": status_snapshot.strip(),
         "excel_snapshot_hash": snapshot_hash_for_excel_snapshot(excel_snapshot),
     }
+    if bgm.strip():
+        payload["bgm"] = bgm.strip()
+    if url.strip():
+        payload["url"] = url.strip()
+    if ref_img_1.strip():
+        payload["ref_img_1"] = ref_img_1.strip()
+    if ref_img_2.strip():
+        payload["ref_img_2"] = ref_img_2.strip()
+    normalized_videos = [item.strip() for item in (videos or []) if item.strip()]
+    if normalized_videos:
+        payload["videos"] = normalized_videos
+    return payload
 
 
 def validate_topic_spec(payload: dict[str, object]) -> tuple[bool, list[str]]:
@@ -39,7 +56,10 @@ def validate_topic_spec(payload: dict[str, object]) -> tuple[bool, list[str]]:
         missing.append("run_id")
     if "row_ref" in payload and not str(payload.get("row_ref", "")).strip():
         missing.append("row_ref")
-    if "excel_snapshot_hash" in payload and not str(payload.get("excel_snapshot_hash", "")).strip():
+    if (
+        "excel_snapshot_hash" in payload
+        and not str(payload.get("excel_snapshot_hash", "")).strip()
+    ):
         missing.append("excel_snapshot_hash")
     if str(payload.get("contract", "")).strip() != TOPIC_SPEC_CONTRACT:
         missing.append("contract")

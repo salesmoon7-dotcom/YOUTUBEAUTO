@@ -21,6 +21,20 @@ def _lookup_value(row_map: dict[str, object], field_name: str) -> object:
     return ""
 
 
+def _optional_text(row_map: dict[str, object], field_name: str) -> str:
+    raw_value = _lookup_value(row_map, field_name)
+    return "" if raw_value is None else str(raw_value).strip()
+
+
+def _video_values(row_map: dict[str, object]) -> list[str]:
+    videos: list[str] = []
+    for index in range(1, 51):
+        value = _optional_text(row_map, f"Video{index}")
+        if value:
+            videos.append(value)
+    return videos
+
+
 def select_topic_spec(
     excel_path: str | Path,
     *,
@@ -44,6 +58,11 @@ def select_topic_spec(
         topic=topic,
         status_snapshot=status,
         excel_snapshot=snapshot,
+        bgm=_optional_text(row_map, "BGM"),
+        url=_optional_text(row_map, "URL"),
+        ref_img_1=_optional_text(row_map, "Ref Img 1"),
+        ref_img_2=_optional_text(row_map, "Ref Img 2"),
+        videos=_video_values(row_map),
     )
 
 
