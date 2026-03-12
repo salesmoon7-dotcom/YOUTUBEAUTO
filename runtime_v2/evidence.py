@@ -8,6 +8,7 @@ from typing import Literal, cast
 
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.latest_run import load_joined_latest_run
+from runtime_v2.worker_registry import stalled_workloads
 
 
 JsonState = Literal["ok", "missing", "invalid"]
@@ -58,6 +59,10 @@ def load_runtime_readiness(
     )
     browser_registry, browser_registry_state = _read_json_dict_with_state(
         runtime_config.browser_registry_file
+    )
+    gpu_health, gpu_health_state = _read_json_dict_with_state(runtime_config.lease_file)
+    worker_registry, worker_registry_state = _read_json_dict_with_state(
+        runtime_config.worker_registry_file
     )
     _, pointer_state = _read_json_dict_with_state(pointer_file)
 
@@ -258,6 +263,105 @@ def load_runtime_readiness(
                 }
             )
 
+    if gpu_health_state == "missing":
+        blockers.append(
+            {
+                "axis": "gpu_health",
+                "code": "GPU_HEALTH_MISSING",
+                "reason": "gpu_health_missing",
+                "trace_path": str(runtime_config.lease_file),
+            }
+        )
+    elif gpu_health_state == "invalid":
+        blockers.append(
+            {
+                "axis": "gpu_health",
+                "code": "GPU_HEALTH_INVALID",
+                "reason": "gpu_health_invalid",
+                "trace_path": str(runtime_config.lease_file),
+            }
+        )
+    else:
+        if gpu_health is None:
+            blockers.append(
+                {
+                    "axis": "gpu_health",
+                    "code": "GPU_HEALTH_INVALID",
+                    "reason": "gpu_health_unreadable",
+                    "trace_path": str(runtime_config.lease_file),
+                }
+            )
+            gpu_health = {}
+        gpu_checked_at = _to_float(gpu_health.get("checked_at"))
+        gpu_stale = True
+        if gpu_checked_at is not None:
+            gpu_stale = now - gpu_checked_at > stale_sec
+        if gpu_checked_at is None or gpu_stale:
+            blockers.append(
+                {
+                    "axis": "gpu_health",
+                    "code": "GPU_HEALTH_STALE",
+                    "reason": "gpu_health_stale",
+                    "checked_at": gpu_checked_at,
+                    "stale_sec": stale_sec,
+                    "trace_path": str(runtime_config.lease_file),
+                }
+            )
+        gpu_event = str(gpu_health.get("event", "")).strip().lower()
+        if gpu_event == "lock_busy":
+            blockers.append(
+                {
+                    "axis": "gpu_health",
+                    "code": "GPU_LEASE_BUSY",
+                    "reason": "gpu_lock_busy",
+                    "trace_path": str(runtime_config.lease_file),
+                }
+            )
+        if gpu_event == "renew_failed":
+            blockers.append(
+                {
+                    "axis": "gpu_health",
+                    "code": "GPU_LEASE_RENEW_FAILED",
+                    "reason": "gpu_lease_renew_failed",
+                    "trace_path": str(runtime_config.lease_file),
+                }
+            )
+
+    if worker_registry_state == "missing":
+        blockers.append(
+            {
+                "axis": "worker_registry",
+                "code": "WORKER_REGISTRY_MISSING",
+                "reason": "worker_registry_missing",
+                "trace_path": str(runtime_config.worker_registry_file),
+            }
+        )
+    elif worker_registry_state == "invalid":
+        blockers.append(
+            {
+                "axis": "worker_registry",
+                "code": "WORKER_REGISTRY_INVALID",
+                "reason": "worker_registry_invalid",
+                "trace_path": str(runtime_config.worker_registry_file),
+            }
+        )
+    else:
+        stalled = stalled_workloads(
+            runtime_config.worker_registry_file,
+            now_ts=now,
+            timeout_sec=max(1, int(runtime_config.progress_stall_timeout_sec)),
+        )
+        if stalled:
+            blockers.append(
+                {
+                    "axis": "worker_registry",
+                    "code": "WORKER_STALL_DETECTED",
+                    "reason": "stalled_workloads_present",
+                    "details": {"stalled_workloads": stalled},
+                    "trace_path": str(runtime_config.worker_registry_file),
+                }
+            )
+
     latest_code = str(typed_result_metadata.get("code", "UNKNOWN"))
     latest_result_payload = _dict_from_object(latest_join.get("result"))
     latest_result_checked_at = _to_float(latest_result_payload.get("checked_at"))
@@ -298,10 +402,14 @@ def load_runtime_readiness(
         "gpt_status": gpt_status,
         "browser_health": browser_health,
         "browser_registry": browser_registry,
+        "gpu_health": gpu_health,
+        "worker_registry": worker_registry,
         "trace_paths": {
             "gpt_status": str(runtime_config.gpt_status_file),
             "browser_health": str(runtime_config.browser_health_file),
             "browser_registry": str(runtime_config.browser_registry_file),
+            "gpu_health": str(runtime_config.lease_file),
+            "worker_registry": str(runtime_config.worker_registry_file),
             "result": str(runtime_config.result_router_file),
             "gui_status": str(runtime_config.gui_status_file),
             "control_plane_events": str(runtime_config.control_plane_events_file),

@@ -22,11 +22,50 @@ def _evidence_config(root: Path) -> RuntimeConfig:
         gui_status_file=root / "health" / "gui_status.json",
         browser_health_file=root / "health" / "browser_health.json",
         browser_registry_file=root / "health" / "browser_session_registry.json",
+        lease_file=root / "health" / "gpu_scheduler_health.json",
         gpt_status_file=root / "health" / "gpt_status.json",
+        worker_registry_file=root / "health" / "worker_registry.json",
         result_router_file=root / "evidence" / "result.json",
         control_plane_events_file=root / "evidence" / "control_plane_events.jsonl",
         latest_active_run_file=root / "latest_active_run.json",
         latest_completed_run_file=root / "latest_completed_run.json",
+    )
+
+
+def _write_ready_gpu_and_worker_state(
+    config: RuntimeConfig, *, checked_at: float
+) -> None:
+    config.lease_file.parent.mkdir(parents=True, exist_ok=True)
+    _ = config.lease_file.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "runtime": "runtime_v2",
+                "workload": "qwen3_tts",
+                "lock_key": "lock:qwen3_tts",
+                "event": "acquired",
+                "checked_at": checked_at,
+                "lease": None,
+            },
+            ensure_ascii=True,
+        ),
+        encoding="utf-8",
+    )
+    config.worker_registry_file.parent.mkdir(parents=True, exist_ok=True)
+    _ = config.worker_registry_file.write_text(
+        json.dumps(
+            {
+                "qwen3_tts": {
+                    "workload": "qwen3_tts",
+                    "state": "idle",
+                    "run_id": "run-1",
+                    "last_seen": checked_at,
+                    "progress_ts": checked_at,
+                }
+            },
+            ensure_ascii=True,
+        ),
+        encoding="utf-8",
     )
 
 
@@ -194,6 +233,7 @@ class RuntimeV2EvidenceTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            _write_ready_gpu_and_worker_state(config, checked_at=fresh_checked_at)
 
             readiness = load_runtime_readiness(config, completed=True)
 
@@ -312,6 +352,7 @@ class RuntimeV2EvidenceTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            _write_ready_gpu_and_worker_state(config, checked_at=fresh_checked_at)
 
             readiness = load_runtime_readiness(config, completed=True)
 
@@ -437,6 +478,7 @@ class RuntimeV2EvidenceTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            _write_ready_gpu_and_worker_state(config, checked_at=fresh_checked_at)
 
             readiness = load_runtime_readiness(config, completed=True)
 
@@ -545,6 +587,7 @@ class RuntimeV2EvidenceTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            _write_ready_gpu_and_worker_state(config, checked_at=fresh_checked_at)
 
             readiness = load_runtime_readiness(config, completed=True)
 
@@ -655,6 +698,7 @@ class RuntimeV2EvidenceTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            _write_ready_gpu_and_worker_state(config, checked_at=fresh_checked_at)
 
             readiness = load_runtime_readiness(config, completed=True)
 
@@ -767,6 +811,7 @@ class RuntimeV2EvidenceTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            _write_ready_gpu_and_worker_state(config, checked_at=now_value)
 
             readiness = load_runtime_readiness(config, completed=True)
 
@@ -901,6 +946,7 @@ class RuntimeV2EvidenceTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            _write_ready_gpu_and_worker_state(config, checked_at=fresh_checked_at)
 
             readiness = load_runtime_readiness(config, completed=True)
 
@@ -1036,11 +1082,310 @@ class RuntimeV2EvidenceTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            _write_ready_gpu_and_worker_state(config, checked_at=fresh_checked_at)
 
             readiness = load_runtime_readiness(config, completed=True)
 
         self.assertTrue(bool(readiness["ready"]))
         self.assertEqual(str(readiness["code"]), "OK")
+
+    def test_readiness_blocks_when_gpu_health_is_stale(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _evidence_config(root)
+            fresh_checked_at = round(time(), 3)
+            stale_checked_at = fresh_checked_at - float(config.running_stale_sec + 10)
+            config.gui_status_file.parent.mkdir(parents=True, exist_ok=True)
+            config.browser_health_file.parent.mkdir(parents=True, exist_ok=True)
+            config.browser_registry_file.parent.mkdir(parents=True, exist_ok=True)
+            config.gpt_status_file.parent.mkdir(parents=True, exist_ok=True)
+            config.result_router_file.parent.mkdir(parents=True, exist_ok=True)
+            config.latest_completed_run_file.parent.mkdir(parents=True, exist_ok=True)
+            config.control_plane_events_file.parent.mkdir(parents=True, exist_ok=True)
+            _ = config.control_plane_events_file.write_text("", encoding="utf-8")
+            _ = write_gui_status(
+                build_gui_status_payload(
+                    {"status": "ok", "code": "OK"},
+                    run_id="run-1",
+                    mode="control_loop",
+                    stage="finished",
+                    exit_code=0,
+                ),
+                config.gui_status_file,
+            )
+            _ = config.browser_health_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "run_id": "run-1",
+                        "checked_at": fresh_checked_at,
+                        "session_count": 0,
+                        "healthy_count": 0,
+                        "unhealthy_count": 0,
+                        "sessions": [],
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            _ = config.browser_registry_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "run_id": "run-1",
+                        "checked_at": fresh_checked_at,
+                        "session_count": 0,
+                        "sessions": [],
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            _ = config.gpt_status_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "checked_at": fresh_checked_at,
+                        "ok_count": 1,
+                        "min_ok": 1,
+                        "floor_breached": False,
+                        "breach_started_at": None,
+                        "breach_sec": 0,
+                        "pending_boot": 0,
+                        "last_spawn_at": None,
+                        "spawn_fail_count": 0,
+                        "spawn_needed": False,
+                        "warning_active": False,
+                        "last_warning_at": None,
+                        "cooldown_sec": 300,
+                        "cooldown_elapsed_sec": 300,
+                        "hourly_spawn_count": 0,
+                        "spawn_history": [],
+                        "endpoints": [
+                            {
+                                "name": "chatgpt",
+                                "status": "OK",
+                                "last_seen_at": fresh_checked_at,
+                            }
+                        ],
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            _ = config.result_router_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "checked_at": fresh_checked_at,
+                        "artifacts": [],
+                        "metadata": {"run_id": "run-1", "code": "OK"},
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            _ = config.latest_completed_run_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "checked_at": fresh_checked_at,
+                        "run_id": "run-1",
+                        "gui_status_path": str(config.gui_status_file),
+                        "result_path": str(config.result_router_file),
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            _ = config.lease_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "workload": "qwen3_tts",
+                        "lock_key": "lock:qwen3_tts",
+                        "event": "acquired",
+                        "checked_at": stale_checked_at,
+                        "lease": None,
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            _ = config.worker_registry_file.write_text(
+                json.dumps(
+                    {
+                        "qwen3_tts": {
+                            "workload": "qwen3_tts",
+                            "state": "idle",
+                            "run_id": "run-1",
+                            "last_seen": fresh_checked_at,
+                            "progress_ts": fresh_checked_at,
+                        }
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+
+            readiness = load_runtime_readiness(config, completed=True)
+
+        blockers = cast(list[object], readiness["blockers"])
+        blocker_codes = {
+            str(cast(dict[object, object], item)["code"])
+            for item in blockers
+            if isinstance(item, dict)
+        }
+        self.assertIn("GPU_HEALTH_STALE", blocker_codes)
+
+    def test_readiness_blocks_when_worker_registry_has_stalled_workload(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _evidence_config(root)
+            fresh_checked_at = round(time(), 3)
+            stale_progress = fresh_checked_at - float(
+                config.progress_stall_timeout_sec + 10
+            )
+            config.gui_status_file.parent.mkdir(parents=True, exist_ok=True)
+            config.browser_health_file.parent.mkdir(parents=True, exist_ok=True)
+            config.browser_registry_file.parent.mkdir(parents=True, exist_ok=True)
+            config.gpt_status_file.parent.mkdir(parents=True, exist_ok=True)
+            config.result_router_file.parent.mkdir(parents=True, exist_ok=True)
+            config.latest_completed_run_file.parent.mkdir(parents=True, exist_ok=True)
+            config.control_plane_events_file.parent.mkdir(parents=True, exist_ok=True)
+            _ = config.control_plane_events_file.write_text("", encoding="utf-8")
+            _ = write_gui_status(
+                build_gui_status_payload(
+                    {"status": "ok", "code": "OK"},
+                    run_id="run-1",
+                    mode="control_loop",
+                    stage="finished",
+                    exit_code=0,
+                ),
+                config.gui_status_file,
+            )
+            _ = config.browser_health_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "run_id": "run-1",
+                        "checked_at": fresh_checked_at,
+                        "session_count": 0,
+                        "healthy_count": 0,
+                        "unhealthy_count": 0,
+                        "sessions": [],
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            _ = config.browser_registry_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "run_id": "run-1",
+                        "checked_at": fresh_checked_at,
+                        "session_count": 0,
+                        "sessions": [],
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            _ = config.gpt_status_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "checked_at": fresh_checked_at,
+                        "ok_count": 1,
+                        "min_ok": 1,
+                        "floor_breached": False,
+                        "breach_started_at": None,
+                        "breach_sec": 0,
+                        "pending_boot": 0,
+                        "last_spawn_at": None,
+                        "spawn_fail_count": 0,
+                        "spawn_needed": False,
+                        "warning_active": False,
+                        "last_warning_at": None,
+                        "cooldown_sec": 300,
+                        "cooldown_elapsed_sec": 300,
+                        "hourly_spawn_count": 0,
+                        "spawn_history": [],
+                        "endpoints": [
+                            {
+                                "name": "chatgpt",
+                                "status": "OK",
+                                "last_seen_at": fresh_checked_at,
+                            }
+                        ],
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            _ = config.result_router_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "checked_at": fresh_checked_at,
+                        "artifacts": [],
+                        "metadata": {"run_id": "run-1", "code": "OK"},
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            _ = config.latest_completed_run_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "checked_at": fresh_checked_at,
+                        "run_id": "run-1",
+                        "gui_status_path": str(config.gui_status_file),
+                        "result_path": str(config.result_router_file),
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            _write_ready_gpu_and_worker_state(config, checked_at=fresh_checked_at)
+            _ = config.worker_registry_file.write_text(
+                json.dumps(
+                    {
+                        "qwen3_tts": {
+                            "workload": "qwen3_tts",
+                            "state": "running",
+                            "run_id": "run-1",
+                            "last_seen": fresh_checked_at,
+                            "progress_ts": stale_progress,
+                        }
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+
+            readiness = load_runtime_readiness(config, completed=True)
+
+        blockers = cast(list[object], readiness["blockers"])
+        blocker_codes = {
+            str(cast(dict[object, object], item)["code"])
+            for item in blockers
+            if isinstance(item, dict)
+        }
+        self.assertIn("WORKER_STALL_DETECTED", blocker_codes)
 
 
 if __name__ == "__main__":
