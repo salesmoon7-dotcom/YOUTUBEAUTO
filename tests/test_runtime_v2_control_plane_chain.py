@@ -11,6 +11,7 @@ from runtime_v2 import circuit_breaker, recovery_policy, retry_budget
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.contracts.job_contract import JobContract, build_explicit_job_contract
 from runtime_v2.control_plane import run_control_loop_once, run_worker, seed_control_job
+from runtime_v2.contracts.video_plan import build_video_plan
 from runtime_v2.latest_run import load_joined_latest_run
 from runtime_v2.queue_store import QueueStore, QueueStoreError
 from runtime_v2.stage2.router import route_video_plan
@@ -163,6 +164,11 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 for item in queued_items
                 if str(item.get("job_id", "")).startswith(("genspark-", "seaart-"))
             ]
+            qwen_jobs = [
+                item
+                for item in queued_items
+                if str(item.get("job_id", "")).startswith("qwen3-")
+            ]
             render_jobs = [
                 item
                 for item in queued_items
@@ -171,6 +177,14 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
 
         self.assertEqual(str(by_job_id["chatgpt-job"]["status"]), "completed")
         self.assertTrue(routed_jobs)
+        self.assertEqual(len(qwen_jobs), 1)
+        qwen_payload = cast(dict[object, object], qwen_jobs[0]["payload"])
+        self.assertTrue(bool(cast(list[object], qwen_payload["voice_texts"])))
+        self.assertTrue(
+            str(qwen_payload["service_artifact_path"])
+            .replace("\\", "/")
+            .endswith("/speech.wav")
+        )
         self.assertEqual(len(render_jobs), 1)
 
     def test_control_plane_merges_chatgpt_video_plan_to_excel_main_path(self) -> None:
@@ -452,6 +466,113 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
 
         self.assertEqual(str(by_job_id["qwen-job"]["status"]), "completed")
         self.assertEqual(str(by_job_id["rvc-qwen-job"]["status"]), "queued")
+
+    def test_control_plane_keeps_stage1_declared_qwen_job_when_scene_count_is_three(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            asset_root = config.artifact_root / "stage1-assets"
+            asset_root.mkdir(parents=True, exist_ok=True)
+            video_plan = build_video_plan(
+                run_id="chatgpt-run-qwen-three-scenes",
+                row_ref="Sheet1!row1",
+                topic="Bridge topic",
+                story_outline=["scene one", "scene two", "scene three"],
+                scene_plan=[
+                    {"scene_index": 1, "prompt": "scene one"},
+                    {"scene_index": 2, "prompt": "scene two"},
+                    {"scene_index": 3, "prompt": "scene three"},
+                ],
+                asset_plan={
+                    "asset_root": str(asset_root.resolve()),
+                    "common_asset_folder": str(asset_root.resolve()),
+                },
+                voice_plan={
+                    "mapping_source": "stage1_parsed",
+                    "scene_count": 3,
+                    "groups": [],
+                },
+                reason_code="ok",
+                evidence={"source": "test"},
+            )
+            worker_result = {
+                "status": "ok",
+                "stage": "chatgpt",
+                "error_code": "",
+                "retryable": False,
+                "next_jobs": [],
+                "completion": {"state": "planned", "final_output": False},
+                "details": {
+                    "video_plan": video_plan,
+                    "stage1_handoff": {
+                        "contract": {
+                            "run_id": "chatgpt-run-qwen-three-scenes",
+                            "row_ref": "Sheet1!row1",
+                            "topic": "Bridge topic",
+                            "voice_texts": [
+                                {
+                                    "col": "#01",
+                                    "text": "line one",
+                                    "original_voices": [1],
+                                },
+                                {
+                                    "col": "#02",
+                                    "text": "line two",
+                                    "original_voices": [2],
+                                },
+                                {
+                                    "col": "#03",
+                                    "text": "line three",
+                                    "original_voices": [3],
+                                },
+                            ],
+                        }
+                    },
+                },
+            }
+            seed_control_job(
+                JobContract(
+                    job_id="chatgpt-qwen-three-scenes",
+                    workload="chatgpt",
+                    checkpoint_key="seed:chatgpt-qwen-three-scenes",
+                    payload={
+                        "run_id": "chatgpt-run-qwen-three-scenes",
+                        "row_ref": "Sheet1!row1",
+                        "topic": "Bridge topic",
+                    },
+                ),
+                config=config,
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={
+                    "status": "ok",
+                    "code": "OK",
+                    "worker_result": worker_result,
+                },
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-qwen-three-scenes",
+                )
+
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            queued_job_ids = {str(item["job_id"]) for item in queue_items}
+
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("qwen3-chatgpt-run-qwen-three-scenes", queued_job_ids)
 
     def test_stage1_video_plan_routing_does_not_emit_kenburns_jobs(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

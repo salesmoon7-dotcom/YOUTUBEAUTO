@@ -59,6 +59,7 @@ from runtime_v2.supervisor import run_gated
 
 MAX_CHAIN_DEPTH = 4
 MAX_NEXT_JOBS = 4
+MAX_STAGE1_DECLARED_NEXT_JOBS = 12
 
 
 def run_control_loop_once(
@@ -380,6 +381,7 @@ def run_control_loop_once(
             parent_job=job,
             events_file=events_file,
             run_id=run_id,
+            artifact_root=artifact_root,
         )
         if worker_artifacts:
             artifact_path = worker_artifacts[0]
@@ -418,6 +420,7 @@ def run_control_loop_once(
                 parent_job=job,
                 events_file=events_file,
                 run_id=run_id,
+                artifact_root=artifact_root,
             )
     worker_retryable = bool(worker_contract.get("retryable", False))
     blocked_failure = bool(
@@ -1125,24 +1128,29 @@ def _seed_declared_next_jobs(
     events_file: Path,
     *,
     run_id: str,
+    artifact_root: Path,
 ) -> list[JobContract]:
     queue_store = QueueStore(queue_file)
     typed_next_jobs = _next_jobs_entries(worker_result)
+    next_job_limit = MAX_NEXT_JOBS
     if not typed_next_jobs and parent_job.workload == "chatgpt":
-        typed_next_jobs = _declared_stage1_next_jobs(worker_result)
+        typed_next_jobs = _declared_stage1_next_jobs(
+            worker_result, parent_job, artifact_root
+        )
+        next_job_limit = MAX_STAGE1_DECLARED_NEXT_JOBS
     _ = _attach_asset_manifest(
         typed_next_jobs,
         run_id=str(parent_job.payload.get("run_id", "")).strip(),
         row_ref=str(parent_job.payload.get("row_ref", "")).strip(),
     )
-    if len(typed_next_jobs) > MAX_NEXT_JOBS:
+    if len(typed_next_jobs) > next_job_limit:
         _ = _append_control_event(
             {
                 "event": "next_job_rejected",
                 "parent_job_id": parent_job.job_id,
                 "reason": "too_many_next_jobs",
                 "count": len(typed_next_jobs),
-                "max_count": MAX_NEXT_JOBS,
+                "max_count": next_job_limit,
             },
             events_file,
             run_id=run_id,
@@ -1361,7 +1369,11 @@ def _write_asset_manifest(
     return manifest_path
 
 
-def _declared_stage1_next_jobs(worker_result: dict[str, object]) -> list[object]:
+def _declared_stage1_next_jobs(
+    worker_result: dict[str, object],
+    parent_job: JobContract,
+    artifact_root: Path,
+) -> list[object]:
     details = _mapping_from_obj(worker_result.get("details", {}))
     if details is None:
         return []
@@ -1372,7 +1384,71 @@ def _declared_stage1_next_jobs(worker_result: dict[str, object]) -> list[object]
         next_jobs, _ = route_video_plan(video_plan)
     except ValueError:
         return []
-    return [cast(object, item) for item in next_jobs]
+    qwen_job = _declared_stage1_qwen_job(details, parent_job, artifact_root)
+    typed_jobs = [cast(object, item) for item in next_jobs]
+    if qwen_job is not None:
+        typed_jobs.append(cast(object, qwen_job))
+    return typed_jobs
+
+
+def _declared_stage1_qwen_job(
+    details: dict[str, object],
+    parent_job: JobContract,
+    artifact_root: Path,
+) -> dict[str, object] | None:
+    stage1_handoff = _mapping_from_obj(details.get("stage1_handoff", {}))
+    if stage1_handoff is None:
+        return None
+    handoff_contract = _mapping_from_obj(stage1_handoff.get("contract", {}))
+    if handoff_contract is None:
+        return None
+    raw_voice_texts = handoff_contract.get("voice_texts", [])
+    if not isinstance(raw_voice_texts, list):
+        return None
+    voice_texts: list[dict[str, object]] = []
+    for entry in cast(list[object], raw_voice_texts):
+        if not isinstance(entry, dict):
+            continue
+        typed_entry = _mapping_from_obj(entry)
+        if typed_entry is None:
+            continue
+        text = str(typed_entry.get("text", "")).strip()
+        col = str(typed_entry.get("col", "")).strip()
+        if not text or not col:
+            continue
+        voice_texts.append(
+            {
+                "col": col,
+                "text": text,
+                "original_voices": typed_entry.get("original_voices", []),
+            }
+        )
+    if not voice_texts:
+        return None
+    run_id = str(parent_job.payload.get("run_id", "")).strip()
+    row_ref = str(parent_job.payload.get("row_ref", "")).strip()
+    topic = str(
+        handoff_contract.get("topic", parent_job.payload.get("topic", ""))
+    ).strip()
+    job_id = f"qwen3-{run_id or parent_job.job_id}"
+    service_artifact_path = (
+        artifact_root / "qwen3_tts" / job_id / "speech.wav"
+    ).resolve()
+    return build_explicit_job_contract(
+        job_id=job_id,
+        workload="qwen3_tts",
+        checkpoint_key=f"declared:qwen3_tts:{row_ref or parent_job.job_id}",
+        payload={
+            "run_id": run_id,
+            "row_ref": row_ref,
+            "topic": topic,
+            "voice_texts": voice_texts,
+            "service_artifact_path": str(service_artifact_path),
+            "chain_depth": 0,
+        },
+        chain_step=1,
+        parent_job_id=parent_job.job_id,
+    )
 
 
 def _job_from_declared_next_entry(entry: dict[str, object]) -> JobContract | None:
