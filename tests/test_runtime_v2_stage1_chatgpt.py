@@ -12,6 +12,7 @@ from runtime_v2.stage1.chatgpt_runner import (
     _relaunch_chatgpt_browser,
     attach_gpt_response_text_from_browser_evidence,
     build_live_chatgpt_prompt,
+    build_video_plan_from_stage1_parsed_payload,
     build_video_plan_from_topic_spec,
     run_stage1_chatgpt_job,
 )
@@ -39,6 +40,7 @@ def _gpt_response_text() -> str:
 {
   "story_outline": ["intro beat", "ending beat"],
   "scene_prompts": ["scene one from gpt", "scene two from gpt"],
+  "videos": ["video clip one", "video clip two"],
   "voice_groups": [
     {"scene_index": 1, "voice": "narration"},
     {"scene_index": 2, "voice": "narration"}
@@ -181,6 +183,34 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertEqual(video_plan["contract"], "video_plan")
         self.assertEqual(video_plan["run_id"], "stage1-run-1")
         self.assertEqual(video_plan["row_ref"], "Sheet1!row1")
+
+    def test_stage1_builds_video_plan_with_videos_field_from_parsed_payload(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            workspace = Path(tmp_dir)
+            parsed_payload: dict[str, object] = {
+                "run_id": "stage1-run-1",
+                "row_ref": "Sheet1!row1",
+                "topic": "Bridge topic",
+                "scene_prompts": ["scene one", "scene two"],
+                "voice_groups": [
+                    {"scene_index": 1, "voice": "narration"},
+                    {"scene_index": 2, "voice": "narration"},
+                ],
+                "videos": ["video clip one", "video clip two"],
+                "reason_code": "ok",
+                "excel_snapshot_hash": "hash-1",
+            }
+
+            video_plan = build_video_plan_from_stage1_parsed_payload(
+                parsed_payload, workspace
+            )
+
+        self.assertEqual(
+            cast(list[object], cast(dict[str, object], video_plan)["videos"]),
+            ["video clip one", "video clip two"],
+        )
 
     def test_stage1_chatgpt_runner_accepts_only_topic_spec_contract(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

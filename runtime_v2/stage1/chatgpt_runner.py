@@ -420,6 +420,15 @@ def build_video_plan_from_stage1_parsed_payload(
             "excel_snapshot_hash": str(parsed_payload.get("excel_snapshot_hash", "")),
         },
     )
+    raw_videos = parsed_payload.get("videos", [])
+    if isinstance(raw_videos, list):
+        videos = [
+            str(item).strip()
+            for item in cast(list[object], raw_videos)
+            if str(item).strip()
+        ]
+        if videos:
+            video_plan["videos"] = videos
     _ = write_json_atomic(workspace / "video_plan.json", video_plan)
     return video_plan
 
