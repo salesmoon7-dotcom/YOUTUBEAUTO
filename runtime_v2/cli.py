@@ -56,6 +56,7 @@ from runtime_v2.stage2.agent_browser_adapter import (
     write_stage2_attach_evidence,
 )
 from runtime_v2.agent_browser.cdp_capture import write_functional_evidence_bundle
+from runtime_v2.agent_browser.cdp_capture import _cdp_command, _select_page_target
 from runtime_v2.stage2.genspark_worker import run_genspark_job
 from runtime_v2.stage2.json_builders import build_stage2_jobs
 from runtime_v2.stage2.seaart_worker import run_seaart_job
@@ -951,7 +952,7 @@ def _run_stage2_row1_probe(
     run_id: str,
     agent_browser_services: list[str],
 ) -> dict[str, object]:
-    asset_root = probe_root / "stage2_row1_assets"
+    asset_root = config.artifact_root / "stage2_row1_assets"
     asset_root.mkdir(parents=True, exist_ok=True)
     video_plan = _build_stage2_row1_video_plan(
         asset_root=asset_root,
@@ -1110,7 +1111,8 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
     cwd_workspace = Path.cwd()
     workspace = (
         cwd_workspace
-        if (cwd_workspace / "request_payload.json").exists()
+        if (cwd_workspace / "request.json").exists()
+        or (cwd_workspace / "request_payload.json").exists()
         else (
             target_path.parent.parent
             if len(target_path.parents) >= 2
@@ -1120,30 +1122,99 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
     workspace.mkdir(parents=True, exist_ok=True)
     artifact_root = workspace / "agent_browser_adapter_artifacts"
 
-    actions: list[str] = []
+    pre_actions: list[dict[str, object]] = []
+    actions: list[dict[str, object]] = []
     prompt_path = workspace / "request_payload.json"
+    request_path = workspace / "request.json"
     prompt = ""
-    if prompt_path.exists():
+    ref_img_1 = ""
+    ref_img_2 = ""
+    ref_images_requested: list[str] = []
+    ref_images_resolved: list[str] = []
+    request_payload_obj: dict[str, object] = {}
+    if request_path.exists():
+        try:
+            request_payload = json.loads(request_path.read_text(encoding="utf-8"))
+            typed_request = cast(dict[str, object], request_payload)
+            request_payload_obj = cast(
+                dict[str, object], typed_request.get("payload", {})
+            )
+        except (OSError, json.JSONDecodeError):
+            request_payload_obj = {}
+    elif prompt_path.exists():
         try:
             request_payload = json.loads(prompt_path.read_text(encoding="utf-8"))
-            prompt = str(
-                cast(dict[str, object], request_payload).get("prompt", "")
-            ).strip()
+            request_payload_obj = cast(dict[str, object], request_payload)
         except (OSError, json.JSONDecodeError):
-            prompt = ""
+            request_payload_obj = {}
+
+    if request_payload_obj:
+        prompt = str(request_payload_obj.get("prompt", "")).strip()
+        ref_img_1 = str(request_payload_obj.get("ref_img_1", "")).strip()
+        ref_img_2 = str(request_payload_obj.get("ref_img_2", "")).strip()
+        try:
+            ref_images_requested, ref_images_resolved = _resolve_stage2_ref_image_paths(
+                request_payload_obj
+            )
+        except RuntimeError:
+            write_stage2_attach_evidence(
+                workspace=workspace,
+                service=service,
+                port=args.port,
+                result={"status": "failed", "error_code": "REF_IMAGE_UPLOAD_FAILED"},
+                probe_debug_only=True,
+                recovery_attempted=False,
+                placeholder_artifact=False,
+                ref_images_requested=[ref_img_1, ref_img_2],
+                ref_images_resolved=[],
+                ref_images_attach_attempted=True,
+                ref_upload_error_code="REF_IMAGE_UPLOAD_FAILED",
+            )
+            return exit_codes.BROWSER_UNHEALTHY
     if prompt and service == "genspark":
+        pre_actions = [
+            {
+                "type": "eval",
+                "script": "(() => { if (location.href !== 'https://www.genspark.ai/agents?type=image_generation_agent') { location.href = 'https://www.genspark.ai/agents?type=image_generation_agent'; return JSON.stringify({ok:true, step:'navigated_image_agent'}); } return JSON.stringify({ok:true, step:'already_on_image_agent'}); })()",
+            },
+            {
+                "type": "eval",
+                "script": "(() => { const dismissLabels = ['나중에','Later','닫기','Close']; const buttons = Array.from(document.querySelectorAll('button')); for (const btn of buttons) { const text = (btn.innerText || btn.textContent || '').trim(); const aria = btn.getAttribute ? (btn.getAttribute('aria-label') || '') : ''; if (dismissLabels.includes(text) || dismissLabels.includes(aria)) { btn.click(); return JSON.stringify({ok:true, step:'dismissed_modal'}); } } return JSON.stringify({ok:true, step:'no_modal'}); })()",
+            },
+        ]
         actions = [
-            "(() => { const textarea = document.querySelector('textarea.j-search-input'); if (!textarea) return JSON.stringify({ok:false,error:\"NO_INPUT\"}); textarea.focus(); textarea.value=''; textarea.dispatchEvent(new Event('input',{bubbles:true})); textarea.value="
-            + json.dumps(prompt, ensure_ascii=True)
-            + "; textarea.dispatchEvent(new Event('input',{bubbles:true})); return JSON.stringify({ok:true, step:\"prompt_filled\"}); })()",
-            '(() => { const btn = document.querySelector(\'.enter-icon-wrapper\'); if (!btn) return JSON.stringify({ok:false,error:"NO_BUTTON"}); btn.click(); return JSON.stringify({ok:true, step:"clicked_generate"}); })()',
+            {
+                "type": "wait",
+                "target": "textarea.j-search-input",
+            },
+            {
+                "type": "eval",
+                "script": "(() => { const textarea = document.querySelector('textarea.j-search-input'); if (!textarea) return JSON.stringify({ok:false,error:\"NO_INPUT\"}); textarea.focus(); textarea.value=''; textarea.dispatchEvent(new Event('input',{bubbles:true})); textarea.value="
+                + json.dumps(prompt, ensure_ascii=True)
+                + "; textarea.dispatchEvent(new Event('input',{bubbles:true})); return JSON.stringify({ok:true, step:'prompt_filled'}); })()",
+            },
+            {
+                "type": "eval",
+                "script": '(() => { const btn = document.querySelector(\'.enter-icon-wrapper\'); if (!btn) return JSON.stringify({ok:false,error:"NO_BUTTON"}); btn.click(); return JSON.stringify({ok:true, step:"clicked_generate"}); })()',
+            },
         ]
     elif prompt and service == "seaart":
+        pre_actions = []
         actions = [
-            "(() => { const textarea = document.querySelector('textarea.el-textarea__inner'); if (!textarea) return JSON.stringify({ok:false,error:\"NO_INPUT\"}); textarea.focus(); textarea.value=''; textarea.dispatchEvent(new Event('input',{bubbles:true})); textarea.value="
-            + json.dumps(prompt, ensure_ascii=True)
-            + "; textarea.dispatchEvent(new Event('input',{bubbles:true})); return JSON.stringify({ok:true, step:\"prompt_filled\"}); })()",
-            '(() => { const btn = document.querySelector(\'#generate-btn\'); if (!btn) return JSON.stringify({ok:false,error:"NO_BUTTON"}); btn.click(); return JSON.stringify({ok:true, step:"clicked_generate"}); })()',
+            {
+                "type": "wait",
+                "target": "textarea.el-textarea__inner",
+            },
+            {
+                "type": "eval",
+                "script": "(() => { const textarea = document.querySelector('textarea.el-textarea__inner'); if (!textarea) return JSON.stringify({ok:false,error:\"NO_INPUT\"}); textarea.focus(); textarea.value=''; textarea.dispatchEvent(new Event('input',{bubbles:true})); textarea.value="
+                + json.dumps(prompt, ensure_ascii=True)
+                + "; textarea.dispatchEvent(new Event('input',{bubbles:true})); return JSON.stringify({ok:true, step:'prompt_filled'}); })()",
+            },
+            {
+                "type": "eval",
+                "script": '(() => { const btn = document.querySelector(\'#generate-btn\'); if (!btn) return JSON.stringify({ok:false,error:"NO_BUTTON"}); btn.click(); return JSON.stringify({ok:true, step:"clicked_generate"}); })()',
+            },
         ]
     job = JobContract(
         job_id=f"agent-browser-stage2-{service}",
@@ -1155,9 +1226,98 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             "expected_url_substring": args.expected_url_substring.strip(),
             "expected_title_substring": args.expected_title_substring.strip(),
             "actions": actions,
+            "ref_img_1": ref_img_1,
+            "ref_img_2": ref_img_2,
         },
     )
-    result = run_agent_browser_verify_job(job, artifact_root)
+    if pre_actions:
+        pre_job = JobContract(
+            job_id=f"agent-browser-stage2-pre-{service}",
+            workload="agent_browser_verify",
+            checkpoint_key=f"agent-browser-stage2-pre:{service}:{args.port}",
+            payload={
+                "service": service,
+                "port": args.port,
+                "expected_url_substring": args.expected_url_substring.strip(),
+                "expected_title_substring": args.expected_title_substring.strip(),
+                "actions": pre_actions,
+                "capture_snapshot": False,
+            },
+        )
+        try:
+            pre_result = run_agent_browser_verify_job(pre_job, artifact_root)
+        except Exception as exc:
+            write_stage2_attach_evidence(
+                workspace=workspace,
+                service=service,
+                port=args.port,
+                result={
+                    "status": "failed",
+                    "stage": "agent_browser_verify",
+                    "error_code": "AGENT_BROWSER_PRE_ACTION_EXCEPTION",
+                    "details": {"exception": str(exc)},
+                },
+                probe_debug_only=True,
+                recovery_attempted=False,
+                placeholder_artifact=False,
+            )
+            return exit_codes.BROWSER_UNHEALTHY
+        if not stage2_attach_verify_succeeded(pre_result):
+            write_stage2_attach_evidence(
+                workspace=workspace,
+                service=service,
+                port=args.port,
+                result=pre_result,
+                probe_debug_only=True,
+                recovery_attempted=False,
+                placeholder_artifact=False,
+                ref_images_requested=ref_images_requested,
+                ref_images_resolved=ref_images_resolved,
+            )
+            return exit_codes.BROWSER_UNHEALTHY
+    if service in {"genspark", "seaart"} and (ref_img_1 or ref_img_2):
+        try:
+            _attach_stage2_ref_images(
+                port=args.port,
+                expected_url_substring=args.expected_url_substring.strip(),
+                file_paths=ref_images_resolved,
+            )
+        except Exception:
+            write_stage2_attach_evidence(
+                workspace=workspace,
+                service=service,
+                port=args.port,
+                result={"status": "failed", "error_code": "REF_IMAGE_UPLOAD_FAILED"},
+                probe_debug_only=True,
+                recovery_attempted=False,
+                placeholder_artifact=False,
+                ref_images_requested=ref_images_requested,
+                ref_images_resolved=ref_images_resolved,
+                ref_images_attach_attempted=True,
+                ref_upload_error_code="REF_IMAGE_UPLOAD_FAILED",
+            )
+            return exit_codes.BROWSER_UNHEALTHY
+    try:
+        result = run_agent_browser_verify_job(job, artifact_root)
+    except Exception as exc:
+        write_stage2_attach_evidence(
+            workspace=workspace,
+            service=service,
+            port=args.port,
+            result={
+                "status": "failed",
+                "stage": "agent_browser_verify",
+                "error_code": "AGENT_BROWSER_EXCEPTION",
+                "details": {"exception": str(exc)},
+            },
+            probe_debug_only=True,
+            recovery_attempted=False,
+            placeholder_artifact=False,
+            ref_images_requested=ref_images_requested,
+            ref_images_resolved=ref_images_resolved,
+            ref_images_attach_attempted=bool(ref_images_requested),
+        )
+        return exit_codes.BROWSER_UNHEALTHY
     attach_ok = stage2_attach_verify_succeeded(result)
     if not attach_ok:
         write_stage2_attach_evidence(
@@ -1168,6 +1328,9 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             probe_debug_only=True,
             recovery_attempted=False,
             placeholder_artifact=False,
+            ref_images_requested=ref_images_requested,
+            ref_images_resolved=ref_images_resolved,
+            ref_images_attach_attempted=bool(ref_images_requested),
         )
         return exit_codes.BROWSER_UNHEALTHY
     if service == "geminigen":
@@ -1179,13 +1342,31 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             probe_debug_only=True,
             recovery_attempted=False,
             placeholder_artifact=False,
+            ref_images_requested=ref_images_requested,
+            ref_images_resolved=ref_images_resolved,
+            ref_images_attach_attempted=bool(ref_images_requested),
         )
         return exit_codes.BROWSER_UNHEALTHY
+    write_stage2_attach_evidence(
+        workspace=workspace,
+        service=service,
+        port=args.port,
+        result=result,
+        probe_debug_only=True,
+        recovery_attempted=False,
+        placeholder_artifact=False,
+        ref_images_requested=ref_images_requested,
+        ref_images_resolved=ref_images_resolved,
+        ref_images_attach_attempted=bool(ref_images_requested),
+    )
     if service in {"seaart", "genspark", "canva"}:
         try:
             if service == "genspark":
-                image_ready_script = "(() => { const sels = ['.image-generated img', '.image-grid img', '.generated-images .image-container .image-grid > img:first-child']; const found = sels.map(s => document.querySelector(s)).find(Boolean); if (found && (found.currentSrc || found.src)) return JSON.stringify({ok:true, src: found.currentSrc || found.src}); return JSON.stringify({ok:false,error:'GENSPARK_IMAGE_NOT_READY'}); })()"
-                for _attempt in range(30):
+                image_ready_script = "(() => { const sels = ['img[src*=\"/api/files/\"]', '.image-generated img', '.image-grid img', '.generated-images .image-container .image-grid > img:first-child']; const found = sels.map(s => document.querySelector(s)).find(Boolean); if (found && (found.currentSrc || found.src)) return JSON.stringify({ok:true, src: found.currentSrc || found.src}); return JSON.stringify({ok:false,error:'GENSPARK_IMAGE_NOT_READY'}); })()"
+                action_delay_script = (
+                    "(() => JSON.stringify({ok:true, step:'pre_capture_wait'}))()"
+                )
+                for _attempt in range(90):
                     command = [
                         "agent-browser",
                         "--cdp",
@@ -1201,6 +1382,21 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                         timeout=5,
                     )
                     if '"ok":true' in (poll.stdout or ""):
+                        delay_command = [
+                            "agent-browser",
+                            "--cdp",
+                            str(args.port),
+                            "eval",
+                            action_delay_script,
+                        ]
+                        _ = subprocess.run(
+                            delay_command,
+                            capture_output=True,
+                            text=True,
+                            encoding="utf-8",
+                            timeout=5,
+                        )
+                        sleep(5)
                         break
                     sleep(2)
             _ = write_functional_evidence_bundle(
@@ -1225,6 +1421,9 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 probe_debug_only=True,
                 recovery_attempted=False,
                 placeholder_artifact=placeholder_artifact,
+                ref_images_requested=ref_images_requested,
+                ref_images_resolved=ref_images_resolved,
+                ref_images_attach_attempted=bool(ref_images_requested),
             )
             return exit_codes.BROWSER_UNHEALTHY
     else:
@@ -1239,8 +1438,80 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         probe_debug_only=True,
         recovery_attempted=False,
         placeholder_artifact=placeholder_artifact,
+        ref_images_requested=ref_images_requested,
+        ref_images_resolved=ref_images_resolved,
+        ref_images_attach_attempted=bool(ref_images_requested),
     )
     return exit_codes.SUCCESS
+
+
+def _attach_stage2_ref_images(
+    *, port: int, expected_url_substring: str, file_paths: list[str]
+) -> None:
+    if not file_paths:
+        return
+    target = _select_page_target(port, expected_url_substring)
+    eval_result = _cdp_command(
+        target["webSocketDebuggerUrl"],
+        method="Runtime.evaluate",
+        params={
+            "expression": "(() => document.querySelector('input[type=file]'))()",
+            "returnByValue": False,
+        },
+    )
+    remote_object = cast(
+        dict[str, object],
+        cast(dict[str, object], eval_result.get("result", {})).get("result", {}),
+    )
+    object_id = str(remote_object.get("objectId", "")).strip()
+    if not object_id:
+        raise RuntimeError("NO_FILE_INPUT")
+    node_result = _cdp_command(
+        target["webSocketDebuggerUrl"],
+        method="DOM.requestNode",
+        params={"objectId": object_id},
+    )
+    node_result_payload = cast(dict[str, object], node_result.get("result", {}))
+    raw_node_id = node_result_payload.get("nodeId", 0)
+    try:
+        node_id = int(str(raw_node_id))
+    except ValueError:
+        node_id = 0
+    if node_id <= 0:
+        raise RuntimeError("NO_FILE_NODE")
+    _cdp_command(
+        target["webSocketDebuggerUrl"],
+        method="DOM.setFileInputFiles",
+        params={
+            "nodeId": node_id,
+            "files": [str(Path(path).resolve()) for path in file_paths],
+        },
+    )
+
+
+def _resolve_stage2_ref_image_paths(
+    payload: dict[str, object],
+) -> tuple[list[str], list[str]]:
+    requested = [
+        str(payload.get("ref_img_1", "")).strip(),
+        str(payload.get("ref_img_2", "")).strip(),
+    ]
+    asset_root = str(payload.get("asset_root", "")).strip()
+    asset_root_path = Path(asset_root).resolve() if asset_root else None
+    resolved: list[str] = []
+    for raw_path in requested:
+        if not raw_path:
+            continue
+        candidate = Path(raw_path)
+        if not candidate.is_absolute():
+            if asset_root_path is None:
+                raise RuntimeError("REF_IMAGE_UPLOAD_FAILED")
+            candidate = asset_root_path / candidate
+        candidate = candidate.resolve()
+        if not candidate.exists() or not candidate.is_file():
+            raise RuntimeError("REF_IMAGE_UPLOAD_FAILED")
+        resolved.append(str(candidate))
+    return requested, resolved
 
 
 def _run_qwen3_adapter_child(args: CliArgs) -> int:

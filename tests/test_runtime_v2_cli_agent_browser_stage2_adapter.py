@@ -105,6 +105,114 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             self.assertFalse(bool(evidence["recovery_attempted"]))
             self.assertTrue(bool(evidence["placeholder_artifact"]))
 
+    def test_stage2_adapter_child_resolves_relative_ref_images_against_asset_root(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            asset_root = root / "assets"
+            asset_root.mkdir(parents=True, exist_ok=True)
+            ref1 = asset_root / "images" / "ref1.png"
+            ref2 = asset_root / "images" / "ref2.png"
+            ref1.parent.mkdir(parents=True, exist_ok=True)
+            _ = ref1.write_bytes(b"png")
+            _ = ref2.write_bytes(b"png")
+            output_path = root / "exports" / "scene-01.png"
+            request_payload = {
+                "payload": {
+                    "prompt": "scene one",
+                    "asset_root": str(asset_root.resolve()),
+                    "ref_img_1": "images/ref1.png",
+                    "ref_img_2": "images/ref2.png",
+                }
+            }
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "genspark"
+            args.port = 9333
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "genspark.ai"
+            args.expected_title_substring = "Genspark"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = output_path.write_bytes(b"png")
+
+            completed = cast(object, type("Completed", (), {})())
+            setattr(completed, "stdout", '{"ok":true}')
+            setattr(completed, "stderr", "")
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli._attach_stage2_ref_images",
+                ) as attach_mock,
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok"},
+                ),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "genspark", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", return_value=completed),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+            self.assertEqual(exit_code, exit_codes.SUCCESS)
+            attach_mock.assert_called_once()
+            self.assertEqual(
+                attach_mock.call_args.kwargs["file_paths"],
+                [str(ref1.resolve()), str(ref2.resolve())],
+            )
+            evidence = json.loads(
+                (root / "attach_evidence.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                evidence["ref_images_requested"], ["images/ref1.png", "images/ref2.png"]
+            )
+            self.assertEqual(
+                evidence["ref_images_resolved"],
+                [str(ref1.resolve()), str(ref2.resolve())],
+            )
+            self.assertTrue(bool(evidence["ref_images_attach_attempted"]))
+
+    def test_stage2_adapter_child_fails_closed_when_ref_image_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            asset_root = root / "assets"
+            asset_root.mkdir(parents=True, exist_ok=True)
+            output_path = root / "exports" / "scene-01.png"
+            request_payload = {
+                "payload": {
+                    "prompt": "scene one",
+                    "asset_root": str(asset_root.resolve()),
+                    "ref_img_1": "images/missing-ref.png",
+                }
+            }
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "seaart"
+            args.port = 9444
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "seaart.ai"
+            args.expected_title_substring = "SeaArt"
+
+            with patch("runtime_v2.cli.Path.cwd", return_value=root):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+            evidence = json.loads(
+                (root / "attach_evidence.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(evidence["error_code"], "REF_IMAGE_UPLOAD_FAILED")
+            self.assertEqual(
+                evidence["ref_upload_error_code"], "REF_IMAGE_UPLOAD_FAILED"
+            )
+            self.assertTrue(bool(evidence["ref_images_attach_attempted"]))
+
     def test_stage2_adapter_child_fails_closed_without_internal_recovery(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

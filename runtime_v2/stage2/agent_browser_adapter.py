@@ -87,6 +87,19 @@ def attach_evidence_path(workspace: Path) -> Path:
     return workspace / "attach_evidence.json"
 
 
+def load_stage2_attach_evidence(workspace: Path) -> dict[str, object]:
+    evidence_path = attach_evidence_path(workspace)
+    if not evidence_path.exists():
+        return {}
+    try:
+        raw_payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(raw_payload, dict):
+        return {}
+    return {str(key): value for key, value in raw_payload.items()}
+
+
 def stage2_attach_verify_succeeded(result: Mapping[str, object]) -> bool:
     return str(result.get("status", "")) == "ok"
 
@@ -100,6 +113,10 @@ def write_stage2_attach_evidence(
     probe_debug_only: bool,
     recovery_attempted: bool,
     placeholder_artifact: bool,
+    ref_images_requested: list[str] | None = None,
+    ref_images_resolved: list[str] | None = None,
+    ref_images_attach_attempted: bool = False,
+    ref_upload_error_code: str = "",
 ) -> Path:
     details_raw = result.get("details", {})
     details = details_raw if isinstance(details_raw, dict) else {}
@@ -116,6 +133,10 @@ def write_stage2_attach_evidence(
         "probe_debug_only": probe_debug_only,
         "recovery_attempted": recovery_attempted,
         "placeholder_artifact": placeholder_artifact,
+        "ref_images_requested": ref_images_requested or [],
+        "ref_images_resolved": ref_images_resolved or [],
+        "ref_images_attach_attempted": ref_images_attach_attempted,
+        "ref_upload_error_code": ref_upload_error_code,
     }
     evidence_path = attach_evidence_path(workspace)
     _ = evidence_path.write_text(
