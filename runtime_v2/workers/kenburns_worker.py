@@ -194,7 +194,15 @@ def _run_kenburns_bundle_job(
             target_name=f"{scene_key}_source{source_path.suffix.lower()}",
         )
         artifacts.append(staged_input)
-        silent_output_path = workspace / f"{scene_key}_silent.mp4"
+        output_path_override = str(entry.get("output_path", "")).strip()
+        if output_path_override:
+            resolved_output_path = Path(output_path_override).resolve()
+            resolved_output_path.parent.mkdir(parents=True, exist_ok=True)
+            silent_output_path = resolved_output_path.with_name(
+                f"{resolved_output_path.stem}_silent.mp4"
+            )
+        else:
+            silent_output_path = workspace / f"{scene_key}_silent.mp4"
         process_result = run_external_process(
             _silent_kenburns_command(staged_input, silent_output_path, duration_sec),
             cwd=workspace,
@@ -230,7 +238,11 @@ def _run_kenburns_bundle_job(
                     target_name=f"{scene_key}_audio{audio_source.suffix.lower()}",
                 )
                 artifacts.append(staged_audio)
-                muxed_output_path = workspace / f"{scene_key}.mp4"
+                muxed_output_path = (
+                    Path(output_path_override).resolve()
+                    if output_path_override
+                    else workspace / f"{scene_key}.mp4"
+                )
                 mux_result = run_external_process(
                     _audio_mux_command(
                         silent_output_path, staged_audio, muxed_output_path
@@ -260,6 +272,12 @@ def _run_kenburns_bundle_job(
                     )
                 artifacts.append(muxed_output_path)
                 output_path = muxed_output_path
+        elif output_path_override:
+            final_output_path = Path(output_path_override).resolve()
+            final_output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path = final_output_path
+            if silent_output_path.resolve() != final_output_path:
+                _ = silent_output_path.replace(final_output_path)
         scene_outputs.append(
             {
                 "scene_key": scene_key,

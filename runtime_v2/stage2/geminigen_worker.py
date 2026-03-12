@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import cast
 
 from runtime_v2.contracts.job_contract import JobContract
+from runtime_v2.contracts.job_contract import build_explicit_job_contract
 from runtime_v2.stage2.agent_browser_adapter import (
     attach_evidence_path,
     build_stage2_agent_browser_adapter_command,
@@ -16,6 +17,20 @@ from runtime_v2.workers.native_only import (
     native_not_implemented_result,
     write_native_request,
 )
+
+
+def _int_value(raw_value: object, default: int) -> int:
+    if isinstance(raw_value, bool):
+        return int(raw_value)
+    if isinstance(raw_value, int):
+        return int(str(raw_value))
+    if isinstance(raw_value, float):
+        return int(str(raw_value))
+    if isinstance(raw_value, str):
+        text = raw_value.strip()
+        if text:
+            return int(text)
+    return default
 
 
 def run_geminigen_job(
@@ -83,6 +98,33 @@ def run_geminigen_job(
             )
         verified_output = Path(str(adapter_result["output_path"]))
 
+        next_jobs: list[dict[str, object]] = []
+        model_name = str(job.payload.get("model_name", "")).strip()
+        chain_step = _int_value(job.payload.get("chain_depth", 0), 0) + 1
+        if model_name:
+            next_jobs.append(
+                build_explicit_job_contract(
+                    job_id=f"rvc-{job.job_id}",
+                    workload="rvc",
+                    checkpoint_key=f"derived:rvc:{job.job_id}",
+                    payload={
+                        "audio_path": str(verified_output.resolve()),
+                        "model_name": model_name,
+                        "service_artifact_path": str(
+                            verified_output.with_name(
+                                f"{verified_output.stem}_rvc.wav"
+                            ).resolve()
+                        ),
+                        "chain_depth": chain_step,
+                        "run_id": str(job.payload.get("run_id", "")).strip(),
+                        "row_ref": str(job.payload.get("row_ref", "")).strip(),
+                        "topic": str(job.payload.get("topic", "")).strip(),
+                    },
+                    chain_step=chain_step,
+                    parent_job_id=job.job_id,
+                )
+            )
+
         return finalize_worker_result(
             workspace,
             status="ok",
@@ -96,6 +138,7 @@ def run_geminigen_job(
                 verified_output,
             ],
             retryable=False,
+            next_jobs=next_jobs,
             details={
                 "provider": str(job.payload.get("provider", "google")),
                 "model": str(job.payload.get("model", "veo3")),
@@ -115,7 +158,7 @@ def run_geminigen_job(
                 ),
             },
             completion={
-                "state": "succeeded",
+                "state": "routed" if next_jobs else "succeeded",
                 "final_output": True,
                 "final_artifact": verified_output.name,
                 "final_artifact_path": str(verified_output.resolve()),

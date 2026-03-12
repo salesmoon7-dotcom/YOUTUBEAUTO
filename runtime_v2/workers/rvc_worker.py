@@ -6,7 +6,10 @@ from pathlib import Path
 from typing import cast
 
 from runtime_v2.contracts.job_contract import JobContract
-from runtime_v2.workers.external_process import run_verified_adapter_command
+from runtime_v2.workers.external_process import (
+    run_external_process,
+    run_verified_adapter_command,
+)
 from runtime_v2.workers.job_runtime import (
     finalize_worker_result,
     prepare_workspace,
@@ -18,6 +21,7 @@ from runtime_v2.workers.native_only import native_not_implemented_result
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+VIDEO_SOURCE_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
 
 
 def _canonical_adapter_env() -> dict[str, str]:
@@ -74,9 +78,52 @@ def run_rvc_job(
     voice_folder = project_root / "voice"
     video_folder.mkdir(parents=True, exist_ok=True)
     voice_folder.mkdir(parents=True, exist_ok=True)
-    source_suffix = selected_source.suffix.lower() or ".flac"
+    source_material = selected_source
+    if (
+        audio_source is not None
+        and selected_source.suffix.lower() in VIDEO_SOURCE_EXTENSIONS
+    ):
+        extracted_audio = voice_folder / "#01_extracted.wav"
+        extraction_result = run_external_process(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(selected_source.resolve()),
+                "-vn",
+                "-acodec",
+                "pcm_s16le",
+                str(extracted_audio.resolve()),
+            ],
+            cwd=workspace,
+        )
+        extraction_exit = extraction_result.get("exit_code", 1)
+        extraction_exit_int = (
+            int(extraction_exit)
+            if isinstance(extraction_exit, (int, float, str))
+            else 1
+        )
+        if extraction_exit_int != 0 or not extracted_audio.exists():
+            return finalize_worker_result(
+                workspace,
+                status="failed",
+                stage="validate_input",
+                artifacts=[],
+                error_code="ffmpeg_failed",
+                retryable=True,
+                details={
+                    "model_name": model_name,
+                    "source_mode": source_mode,
+                    "audio_path": str(job.payload.get("audio_path", "")).strip(),
+                    "stdout": str(extraction_result.get("stdout", "")),
+                    "stderr": str(extraction_result.get("stderr", "")),
+                },
+                completion={"state": "failed", "final_output": False},
+            )
+        source_material = extracted_audio
+    source_suffix = source_material.suffix.lower() or ".flac"
     source_copy = stage_local_input(
-        voice_folder, selected_source, target_name=f"#01{source_suffix}"
+        voice_folder, source_material, target_name=f"#01{source_suffix}"
     )
     request_file = write_json_atomic(
         workspace / "rvc_request.json",

@@ -9,6 +9,7 @@ from typing import cast
 from unittest.mock import patch
 
 from runtime_v2.contracts.job_contract import JobContract
+from runtime_v2.stage2.geminigen_worker import run_geminigen_job
 from runtime_v2.workers.kenburns_worker import run_kenburns_job
 from runtime_v2.workers.qwen3_worker import run_qwen3_job
 from runtime_v2.workers.rvc_worker import run_rvc_job
@@ -380,6 +381,66 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(str(details["source_mode"]), "gemi-video-source")
         self.assertEqual(str(details["audio_path"]), str(audio_path.resolve()))
 
+    def test_rvc_worker_extracts_audio_from_video_source_mode(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            video_path = root / "gemi-video.mp4"
+            output_path = artifact_root / "converted.wav"
+            _ = video_path.write_bytes(b"mp4")
+            job = JobContract(
+                job_id="rvc-job-gemi-video",
+                workload="rvc",
+                payload={
+                    "audio_path": str(video_path.resolve()),
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "adapter_command": [
+                        sys.executable,
+                        "-c",
+                        (
+                            "from pathlib import Path; "
+                            f"p=Path(r'{str(output_path)}'); "
+                            "p.parent.mkdir(parents=True, exist_ok=True); "
+                            "p.write_bytes(b'wav')"
+                        ),
+                    ],
+                },
+            )
+
+            def fake_extract(
+                command: list[str],
+                *,
+                cwd: Path,
+                extra_env: dict[str, str] | None = None,
+                timeout_sec: int = 3600,
+            ) -> dict[str, object]:
+                _ = extra_env
+                _ = timeout_sec
+                extracted = cwd / "project" / "voice" / "#01_extracted.wav"
+                extracted.parent.mkdir(parents=True, exist_ok=True)
+                extracted.write_bytes(b"wav")
+                return {
+                    "command": command,
+                    "cwd": str(cwd),
+                    "exit_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "timed_out": False,
+                    "timeout_sec": 3600,
+                    "duration_sec": 0.01,
+                }
+
+            with patch(
+                "runtime_v2.workers.rvc_worker.run_external_process",
+                side_effect=fake_extract,
+            ):
+                result = run_rvc_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        details = cast(dict[object, object], result["details"])
+        self.assertEqual(str(details["source_mode"]), "gemi-video-source")
+
     def test_rvc_worker_requires_model_name_for_conversion_contract(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -671,6 +732,108 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
                 "scene_bundle_manifest.json"
             )
         )
+
+    def test_kenburns_bundle_job_respects_output_path_overrides(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            image_a = root / "scene-a.png"
+            _ = image_a.write_bytes(b"png")
+            bundle_map_path = root / "scene_bundle_map.json"
+            target_output = root / "assets" / "video" / "#01_KEN.mp4"
+            bundle_map_path.write_text(
+                json.dumps(
+                    {
+                        "scenes": [
+                            {
+                                "scene_key": "scene_a",
+                                "source_path": str(image_a.resolve()),
+                                "output_path": str(target_output.resolve()),
+                                "duration_sec": 4,
+                            }
+                        ]
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            job = JobContract(
+                job_id="ken-bundle-output-override",
+                workload="kenburns",
+                payload={"scene_bundle_map_path": str(bundle_map_path.resolve())},
+            )
+
+            def fake_process(
+                command: list[str],
+                *,
+                cwd: Path,
+                extra_env: dict[str, str] | None = None,
+                timeout_sec: int = 3600,
+            ) -> dict[str, object]:
+                _ = extra_env
+                _ = timeout_sec
+                output_path = Path(str(command[-1]))
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"mp4")
+                return {
+                    "command": command,
+                    "cwd": str(cwd),
+                    "exit_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "timed_out": False,
+                    "timeout_sec": 3600,
+                    "duration_sec": 0.01,
+                }
+
+            with patch(
+                "runtime_v2.workers.kenburns_worker.run_external_process",
+                side_effect=fake_process,
+            ):
+                result = run_kenburns_job(job, artifact_root=artifact_root)
+                self.assertTrue(target_output.exists())
+
+        self.assertEqual(result["status"], "ok")
+
+    def test_geminigen_worker_emits_rvc_next_job_for_video_output(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = artifact_root / "exports" / "geminigen-scene-01.mp4"
+            job = JobContract(
+                job_id="geminigen-job-1",
+                workload="geminigen",
+                checkpoint_key="stage2:geminigen:Sheet1!row1:1",
+                payload={
+                    "run_id": "stage2-run-1",
+                    "row_ref": "Sheet1!row1",
+                    "scene_index": 1,
+                    "prompt": "video prompt one",
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "adapter_command": [
+                        sys.executable,
+                        "-c",
+                        (
+                            "from pathlib import Path; "
+                            f"p=Path(r'{str(output_path)}'); "
+                            "p.parent.mkdir(parents=True, exist_ok=True); "
+                            "p.write_bytes(b'mp4')"
+                        ),
+                    ],
+                },
+            )
+
+            result = run_geminigen_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        next_jobs = cast(list[object], result["next_jobs"])
+        self.assertEqual(len(next_jobs), 1)
+        next_job = cast(dict[str, object], next_jobs[0])
+        next_job_block = cast(dict[str, object], next_job["job"])
+        next_payload = cast(dict[str, object], next_job_block["payload"])
+        self.assertEqual(str(next_job_block["job_id"]), "rvc-geminigen-job-1")
+        self.assertEqual(str(next_payload["audio_path"]), str(output_path.resolve()))
 
     def test_kenburns_worker_fails_closed_on_invalid_scene_bundle_map(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
