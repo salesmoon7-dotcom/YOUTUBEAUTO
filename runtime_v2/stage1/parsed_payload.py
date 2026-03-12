@@ -99,6 +99,25 @@ def _build_stage1_parsed_payload_from_parsed_result(
         )
         if str(item).strip()
     ]
+    topic_spec_videos = [
+        str(item).strip()
+        for item in cast(list[object], topic_spec.get("videos", []))
+        if str(item).strip()
+    ]
+    parsed_videos = [
+        str(item).strip()
+        for item in cast(list[object], parsed_result.get("videos", []))
+        if str(item).strip()
+    ]
+    merged_videos = parsed_videos or topic_spec_videos
+    parsed_url = str(parsed_result.get("url", "")).strip()
+    topic_spec_url = str(topic_spec.get("url", "")).strip()
+    parsed_bgm = str(parsed_result.get("bgm", "")).strip()
+    topic_spec_bgm = str(topic_spec.get("bgm", "")).strip()
+    parsed_ref_img_1 = str(parsed_result.get("ref_img_1", "")).strip()
+    parsed_ref_img_2 = str(parsed_result.get("ref_img_2", "")).strip()
+    topic_spec_ref_img_1 = str(topic_spec.get("ref_img_1", "")).strip()
+    topic_spec_ref_img_2 = str(topic_spec.get("ref_img_2", "")).strip()
     return {
         "version": "stage1.v1",
         "run_id": run_id,
@@ -117,8 +136,10 @@ def _build_stage1_parsed_payload_from_parsed_result(
             for item in cast(list[object], parsed_result.get("keywords", []))
             if str(item).strip()
         ],
-        "url": _resolved_capture_url(topic_spec, parsed_result),
-        "bgm": str(parsed_result.get("bgm", "")).strip(),
+        "url": parsed_url
+        or topic_spec_url
+        or _resolved_capture_url(topic_spec, parsed_result),
+        "bgm": parsed_bgm or topic_spec_bgm,
         "scene_prompts": scene_prompts,
         "voice_groups": voice_groups,
         "voice_lines": voice_lines,
@@ -127,14 +148,10 @@ def _build_stage1_parsed_payload_from_parsed_result(
         ).strip()
         or "stage1_parsed",
         "story_outline": story_outline,
-        "ref_img_1": str(parsed_result.get("ref_img_1", "")).strip(),
-        "ref_img_2": str(parsed_result.get("ref_img_2", "")).strip(),
+        "ref_img_1": parsed_ref_img_1 or topic_spec_ref_img_1,
+        "ref_img_2": parsed_ref_img_2 or topic_spec_ref_img_2,
         "scene_map": scene_map,
-        "videos": [
-            str(item).strip()
-            for item in cast(list[object], parsed_result.get("videos", []))
-            if str(item).strip()
-        ],
+        "videos": merged_videos,
         "shorts_description": str(parsed_result.get("shorts_description", "")).strip(),
         "shorts_voice": str(parsed_result.get("shorts_voice", "")).strip(),
         "shorts_clip_mapping": str(
@@ -194,9 +211,17 @@ def _build_stage1_parsed_payload_from_enriched_topic_spec(
         "description": f"{topic} 요약 콘텐츠".strip(),
         "keywords": _keywords(topic),
         "bgm": str(topic_spec.get("bgm", "default_bgm")).strip() or "default_bgm",
+        "url": str(topic_spec.get("url", "")).strip(),
         "scene_prompts": scene_prompts,
         "voice_groups": voice_groups,
         "voice_mapping_source": "excel_scene",
+        "ref_img_1": str(topic_spec.get("ref_img_1", "")).strip(),
+        "ref_img_2": str(topic_spec.get("ref_img_2", "")).strip(),
+        "videos": [
+            str(item).strip()
+            for item in cast(list[object], topic_spec.get("videos", []))
+            if str(item).strip()
+        ],
         "reason_code": "ok",
         "excel_snapshot_hash": str(topic_spec.get("excel_snapshot_hash", "")),
     }

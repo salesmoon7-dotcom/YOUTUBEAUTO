@@ -16,6 +16,7 @@ from runtime_v2.stage1.chatgpt_runner import (
     build_video_plan_from_topic_spec,
     run_stage1_chatgpt_job,
 )
+from runtime_v2.stage1.parsed_payload import build_stage1_parsed_payload_from_topic_spec
 
 
 def _topic_spec(
@@ -108,6 +109,8 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
 
         self.assertIn("영상 제작 모드로 진행하세요.", prompt)
         self.assertIn("출력은 [Voice] 블록부터 시작하세요.", prompt)
+        self.assertIn("[Ref Img 1]", prompt)
+        self.assertIn("[Video1]", prompt)
         self.assertIn("Research Locale: JP", prompt)
         self.assertIn("Topic: 국민연금 수령 시기를 앞당기면 손해인가 이득인가", prompt)
 
@@ -211,6 +214,23 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             cast(list[object], cast(dict[str, object], video_plan)["videos"]),
             ["video clip one", "video clip two"],
         )
+
+    def test_stage1_parsed_payload_falls_back_to_topic_spec_optional_fields(
+        self,
+    ) -> None:
+        topic_spec = _topic_spec()
+        topic_spec["gpt_response_text"] = _inline_gpt_response_text()
+        topic_spec["ref_img_1"] = "ref prompt one"
+        topic_spec["ref_img_2"] = "ref prompt two"
+        topic_spec["url"] = "https://example.com/bridge"
+        topic_spec["videos"] = ["video clip one", "video clip two"]
+
+        parsed_payload = build_stage1_parsed_payload_from_topic_spec(topic_spec)
+
+        self.assertEqual(parsed_payload["ref_img_1"], "ref prompt one")
+        self.assertEqual(parsed_payload["ref_img_2"], "ref prompt two")
+        self.assertEqual(parsed_payload["url"], "https://example.com/bridge")
+        self.assertEqual(parsed_payload["videos"], ["video clip one", "video clip two"])
 
     def test_stage1_chatgpt_runner_accepts_only_topic_spec_contract(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

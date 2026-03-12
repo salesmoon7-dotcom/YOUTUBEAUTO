@@ -112,6 +112,7 @@ def build_live_chatgpt_prompt(topic_spec: dict[str, object]) -> str:
             "영상 제작 모드로 진행하세요.",
             "질문형 설명/근거 요약이 아니라, 가이드 최종 출력 포맷 결과만 생성하세요.",
             "출력은 [Voice] 블록부터 시작하세요.",
+            "가능하면 [Ref Img 1], [Ref Img 2], [Video1], [Video2] ... 블록도 함께 채우세요.",
             "Research Locale: JP",
             "자료 조사/출처는 일본어 기준으로만 구성하세요.",
             f"Topic: {topic}",
