@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
@@ -541,6 +542,102 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(completion["state"], "succeeded")
         self.assertTrue(bool(completion["final_output"]))
         self.assertTrue(str(completion["final_artifact_path"]).endswith("kenburns.mp4"))
+
+    def test_kenburns_worker_processes_scene_bundle_map_and_writes_manifest(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            image_a = root / "scene-a.png"
+            image_b = root / "scene-b.png"
+            audio_b = root / "scene-b.wav"
+            _ = image_a.write_bytes(b"png")
+            _ = image_b.write_bytes(b"png")
+            _ = audio_b.write_bytes(b"wav")
+            bundle_map_path = root / "scene_bundle_map.json"
+            bundle_map_path.write_text(
+                json.dumps(
+                    {
+                        "scenes": [
+                            {
+                                "scene_key": "scene_a",
+                                "source_path": str(image_a.resolve()),
+                                "duration_sec": 4,
+                            },
+                            {
+                                "scene_key": "scene_b",
+                                "source_path": str(image_b.resolve()),
+                                "audio_path": str(audio_b.resolve()),
+                                "duration_sec": 5,
+                            },
+                        ]
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            job = JobContract(
+                job_id="ken-bundle-job",
+                workload="kenburns",
+                payload={"scene_bundle_map_path": str(bundle_map_path.resolve())},
+            )
+
+            def fake_process(
+                command: list[str],
+                *,
+                cwd: Path,
+                extra_env: dict[str, str] | None = None,
+                timeout_sec: int = 3600,
+            ) -> dict[str, object]:
+                _ = extra_env
+                _ = timeout_sec
+                output_path = Path(str(command[-1]))
+                _ = output_path.write_bytes(b"mp4")
+                return {
+                    "command": command,
+                    "cwd": str(cwd),
+                    "exit_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "timed_out": False,
+                    "timeout_sec": 3600,
+                    "duration_sec": 0.01,
+                }
+
+            with patch(
+                "runtime_v2.workers.kenburns_worker.run_external_process",
+                side_effect=fake_process,
+            ):
+                result = run_kenburns_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        details = cast(dict[object, object], result["details"])
+        completion = cast(dict[object, object], result["completion"])
+        self.assertEqual(str(details["bundle_mode"]), "scene_bundle_map")
+        self.assertEqual(int(cast(int, details["scene_count"])), 2)
+        self.assertTrue(
+            str(completion["final_artifact_path"]).endswith(
+                "scene_bundle_manifest.json"
+            )
+        )
+
+    def test_kenburns_worker_fails_closed_on_invalid_scene_bundle_map(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            bundle_map_path = root / "scene_bundle_map.json"
+            bundle_map_path.write_text("{not-json", encoding="utf-8")
+            job = JobContract(
+                job_id="ken-bundle-invalid",
+                workload="kenburns",
+                payload={"scene_bundle_map_path": str(bundle_map_path.resolve())},
+            )
+
+            result = run_kenburns_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "invalid_scene_bundle_map")
 
 
 if __name__ == "__main__":
