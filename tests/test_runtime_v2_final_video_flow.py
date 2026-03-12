@@ -485,6 +485,69 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
             str(details["audio_source_path"]), str(canonical_audio.resolve())
         )
 
+    def test_render_worker_blocks_when_voice_texts_exist_but_audio_is_missing(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            render_folder = root / "render_workspace"
+            video_dir = render_folder / "video"
+            output_dir = render_folder / "output"
+            video_dir.mkdir(parents=True, exist_ok=True)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            clip_path = video_dir / "#01_GEMI.mp4"
+            clip_path.write_bytes(b"mp4")
+            voice_json = root / "voice.json"
+            voice_json.write_text(
+                json.dumps(
+                    {"voice_texts": [{"col": "#01", "text": "bridge line"}]},
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            render_spec = root / "render_spec.json"
+            render_spec.write_text(
+                json.dumps(
+                    {
+                        "contract": "render_spec",
+                        "contract_version": "1.1",
+                        "run_id": "render-run-audio-blocked",
+                        "row_ref": "Sheet1!row1",
+                        "asset_refs": [str(clip_path.resolve())],
+                        "audio_refs": [],
+                        "thumbnail_refs": [],
+                        "timeline": [
+                            {
+                                "scene_index": 1,
+                                "asset_path": str(clip_path.resolve()),
+                                "asset_kind": "video",
+                                "duration_sec": 6,
+                            }
+                        ],
+                        "reason_code": "ok",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            job = JobContract(
+                job_id="render-job-audio-blocked",
+                workload="render",
+                payload={
+                    "render_folder_path": str(render_folder.resolve()),
+                    "voice_json_path": str(voice_json.resolve()),
+                    "render_spec_path": str(render_spec.resolve()),
+                },
+            )
+
+            result = run_render_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "render_audio_not_ready")
+        completion = cast(dict[object, object], result["completion"])
+        self.assertEqual(str(completion["state"]), "blocked")
+
     def test_render_worker_blocks_retry_when_render_assets_are_not_ready(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

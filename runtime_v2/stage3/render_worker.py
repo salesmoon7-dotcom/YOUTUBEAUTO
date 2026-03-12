@@ -209,6 +209,27 @@ def _select_primary_audio(
     return None
 
 
+def _voice_texts_present(voice_json_path: Path) -> bool:
+    try:
+        raw_payload = cast(
+            object, json.loads(voice_json_path.read_text(encoding="utf-8"))
+        )
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(raw_payload, dict):
+        return False
+    raw_voice_texts = cast(dict[object, object], raw_payload).get("voice_texts", [])
+    if not isinstance(raw_voice_texts, list):
+        return False
+    for entry in cast(list[object], raw_voice_texts):
+        if not isinstance(entry, dict):
+            continue
+        typed_entry = cast(dict[object, object], entry)
+        if str(typed_entry.get("text", "")).strip():
+            return True
+    return False
+
+
 def _select_primary_render_asset(
     render_spec: dict[str, object],
 ) -> tuple[Path | None, str]:
@@ -483,6 +504,21 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
         scene_clips: list[Path] = []
         process_details = {"stdout": "", "stderr": ""}
         audio_source = _select_primary_audio(render_spec_payload, artifact_root)
+        if audio_source is None and _voice_texts_present(voice_json_path):
+            return finalize_worker_result(
+                workspace,
+                status="failed",
+                stage="render",
+                artifacts=[staged_render_spec, voice_json_path],
+                error_code="render_audio_not_ready",
+                retryable=True,
+                completion={"state": "blocked", "final_output": False},
+                details={
+                    "render_folder_path": str(render_folder.resolve()),
+                    "voice_json_path": str(voice_json_path.resolve()),
+                    "reason_code": str(render_spec_payload.get("reason_code", "ok")),
+                },
+            )
         if (
             len(timeline_entries) == 1
             and str(timeline_entries[0]["asset_kind"]) == "video"
