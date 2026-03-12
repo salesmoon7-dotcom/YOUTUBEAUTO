@@ -83,6 +83,7 @@ def summarize_soak_events(events: list[dict[str, object]]) -> dict[str, object]:
     restart_count = 0
     failure_count = 0
     latest_failure: dict[str, object] = {}
+    latest_promotion_gates: dict[str, object] = {}
     for event in events:
         code = str(event.get("code", ""))
         summary = (
@@ -117,6 +118,18 @@ def summarize_soak_events(events: list[dict[str, object]]) -> dict[str, object]:
                 "run_id": str(event.get("run_id", "")),
                 "code": code,
             }
+        soak_snapshot = (
+            cast(dict[str, object], summary.get("soak_snapshot", {}))
+            if isinstance(summary.get("soak_snapshot", {}), dict)
+            else {}
+        )
+        promotion_gates = (
+            cast(dict[str, object], soak_snapshot.get("promotion_gates", {}))
+            if isinstance(soak_snapshot.get("promotion_gates", {}), dict)
+            else {}
+        )
+        if promotion_gates:
+            latest_promotion_gates = promotion_gates
     availability = round((browser_healthy / observations) * 100.0, 3)
     verdict = "PASS"
     if availability < 99.5 or gpu_duplicate_count > 0 or gpt_floor_breach_count > 0:
@@ -129,6 +142,7 @@ def summarize_soak_events(events: list[dict[str, object]]) -> dict[str, object]:
         "restart_count": restart_count,
         "failure_count": failure_count,
         "latest_failure": latest_failure,
+        "promotion_gates": latest_promotion_gates,
         "verdict": verdict,
     }
 
@@ -137,6 +151,8 @@ def write_soak_report(config: RuntimeConfig) -> Path:
     events = load_soak_events(config.soak_events_file)
     summary = summarize_soak_events(events)
     latest_failure = cast(dict[str, object], summary.get("latest_failure", {}))
+    promotion_gate_summary = cast(dict[str, object], summary.get("promotion_gates", {}))
+    promotion_gates = _promotion_gate_map(promotion_gate_summary)
     lines = [
         "# Soak 24h Report",
         "",
@@ -156,7 +172,21 @@ def write_soak_report(config: RuntimeConfig) -> Path:
         f"- result_path: {latest_failure.get('result_path', '')}",
         f"- manifest_path: {latest_failure.get('manifest_path', '')}",
         f"- final_artifact_path: {latest_failure.get('final_artifact_path', '')}",
+        "",
+        "## Promotion Gates",
+        "",
     ]
+    for gate_name in ("A", "B", "C", "D"):
+        gate_payload = (
+            cast(dict[str, object], promotion_gates.get(gate_name, {}))
+            if isinstance(promotion_gates.get(gate_name, {}), dict)
+            else {}
+        )
+        passed = bool(gate_payload.get("passed", False))
+        reason = str(gate_payload.get("reason", ""))
+        lines.append(
+            f"- Gate {gate_name}: {'PASS' if passed else 'FAIL'} {reason}".rstrip()
+        )
     config.soak_report_file.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
         "w",
@@ -177,6 +207,9 @@ def build_soak_snapshot(config: RuntimeConfig) -> dict[str, object]:
     return {
         "ready": bool(readiness.get("ready", False)),
         "code": str(readiness.get("code", "CLI_USAGE")),
+        "promotion_gates": cast(dict[str, object], readiness.get("promotion_gates", {}))
+        if isinstance(readiness.get("promotion_gates", {}), dict)
+        else {},
         "trace_paths": cast(dict[str, object], readiness.get("trace_paths", {}))
         if isinstance(readiness.get("trace_paths", {}), dict)
         else {},
@@ -184,3 +217,11 @@ def build_soak_snapshot(config: RuntimeConfig) -> dict[str, object]:
         if isinstance(readiness.get("blockers", []), list)
         else [],
     }
+
+
+def _promotion_gate_map(promotion_gate_summary: dict[str, object]) -> dict[str, object]:
+    nested = promotion_gate_summary.get("gates")
+    if isinstance(nested, dict):
+        nested_map = cast(dict[object, object], nested)
+        return {str(key): value for key, value in nested_map.items()}
+    return {str(key): value for key, value in promotion_gate_summary.items()}
