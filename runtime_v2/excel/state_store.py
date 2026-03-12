@@ -61,7 +61,7 @@ def merge_video_plan_to_excel(
             sheet.cell(row=row_no, column=status_col).value or ""
         ).strip()
         if current_status.lower() in TERMINAL_STATUSES:
-            return current_status == next_status
+            return current_status.lower() == next_status.strip().lower()
         if not can_transition_excel_status(current_status, next_status):
             return False
         if not _assign_cell(
@@ -85,6 +85,24 @@ def merge_video_plan_to_excel(
         return True
     finally:
         workbook.close()
+
+
+def update_excel_status(
+    excel_path: str | Path,
+    *,
+    sheet_name: str,
+    row_index: int,
+    next_status: str,
+    reason_code: str = "",
+) -> bool:
+    return merge_video_plan_to_excel(
+        excel_path,
+        sheet_name=sheet_name,
+        row_index=row_index,
+        next_status=next_status,
+        summary="",
+        reason_code=reason_code,
+    )
 
 
 def finalize_excel_status(

@@ -14,6 +14,7 @@ from runtime_v2.excel.state_store import (
     finalize_excel_status,
     merge_video_plan_to_excel,
     merge_stage1_handoff_to_excel,
+    update_excel_status,
 )
 from runtime_v2.gui_adapter import build_gui_status_payload
 from runtime_v2.latest_run import write_excel_sync_runtime_snapshot
@@ -67,6 +68,24 @@ def seed_excel_row(
     )
     contract_path = config.input_root / "chatgpt" / f"{job_id}.job.json"
     _ = write_json_atomic(contract_path, contract)
+    status_updated = update_excel_status(
+        excel_path,
+        sheet_name=sheet_name,
+        row_index=row_index,
+        next_status="Seeded",
+        reason_code="seeded",
+    )
+    if not status_updated:
+        return {
+            "status": "failed",
+            "code": "EXCEL_STATUS_UPDATE_FAILED",
+            "reason_code": "excel_status_update_failed",
+            "worker_launched": False,
+            "job_id": job_id,
+            "topic_spec": topic_spec,
+            "contract": contract,
+            "contract_path": str(contract_path.resolve()),
+        }
     return {
         "status": "seeded",
         "code": "SEEDED_JOB",
@@ -77,6 +96,21 @@ def seed_excel_row(
         "contract": contract,
         "contract_path": str(contract_path.resolve()),
     }
+
+
+def mark_excel_row_running(
+    *,
+    excel_path: str | Path,
+    sheet_name: str,
+    row_index: int,
+) -> bool:
+    return update_excel_status(
+        excel_path,
+        sheet_name=sheet_name,
+        row_index=row_index,
+        next_status="Running",
+        reason_code="running",
+    )
 
 
 def merge_stage1_result(
