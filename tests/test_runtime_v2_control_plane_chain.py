@@ -574,6 +574,13 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         self.assertIn("qwen3-chatgpt-run-qwen-three-scenes", queued_job_ids)
+        qwen_job = next(
+            item
+            for item in queue_items
+            if str(item["job_id"]) == "qwen3-chatgpt-run-qwen-three-scenes"
+        )
+        qwen_payload = cast(dict[object, object], qwen_job["payload"])
+        self.assertEqual(str(qwen_payload["model_name"]), "voice-model-a")
 
     def test_control_plane_syncs_excel_done_after_render_final_output(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

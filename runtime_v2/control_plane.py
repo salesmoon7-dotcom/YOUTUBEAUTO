@@ -1472,6 +1472,7 @@ def _declared_stage1_qwen_job(
     topic = str(
         handoff_contract.get("topic", parent_job.payload.get("topic", ""))
     ).strip()
+    model_name = str(parent_job.payload.get("model_name", "voice-model-a")).strip()
     job_id = f"qwen3-{run_id or parent_job.job_id}"
     service_artifact_path = (
         artifact_root / "qwen3_tts" / job_id / "speech.wav"
@@ -1485,6 +1486,7 @@ def _declared_stage1_qwen_job(
             "row_ref": row_ref,
             "topic": topic,
             "voice_texts": voice_texts,
+            "model_name": model_name or "voice-model-a",
             "service_artifact_path": str(service_artifact_path),
             "chain_depth": 0,
             "excel_path": excel_path,
