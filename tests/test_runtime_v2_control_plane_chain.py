@@ -495,6 +495,117 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
 
         self.assertNotIn("kenburns", workers)
 
+    def test_control_plane_seeds_and_executes_explicit_kenburns_bundle_contract(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            config.stable_file_age_sec = 0
+            image_a = root / "scene-a.png"
+            image_b = root / "scene-b.png"
+            audio_b = root / "scene-b.wav"
+            _ = image_a.write_bytes(b"png")
+            _ = image_b.write_bytes(b"png")
+            _ = audio_b.write_bytes(b"wav")
+            bundle_map_path = root / "scene_bundle_map.json"
+            bundle_map_path.write_text(
+                json.dumps(
+                    {
+                        "scenes": [
+                            {
+                                "scene_key": "scene_a",
+                                "source_path": str(image_a.resolve()),
+                                "duration_sec": 4,
+                            },
+                            {
+                                "scene_key": "scene_b",
+                                "source_path": str(image_b.resolve()),
+                                "audio_path": str(audio_b.resolve()),
+                                "duration_sec": 5,
+                            },
+                        ]
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            config.input_root.joinpath("kenburns").mkdir(parents=True, exist_ok=True)
+            contract_path = config.input_root / "kenburns" / "kenburns-bundle.job.json"
+            contract_path.write_text(
+                json.dumps(
+                    build_explicit_job_contract(
+                        job_id="kenburns-bundle-job",
+                        workload="kenburns",
+                        checkpoint_key="explicit:kenburns:bundle",
+                        payload={
+                            "run_id": "kenburns-bundle-run",
+                            "scene_bundle_map_path": str(bundle_map_path.resolve()),
+                        },
+                    ),
+                    ensure_ascii=True,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+
+            seed_result = run_control_loop_once(
+                owner="runtime_v2", config=config, run_id="control-run-kenburns-seed"
+            )
+
+            def fake_process(
+                command: list[str],
+                *,
+                cwd: Path,
+                extra_env: dict[str, str] | None = None,
+                timeout_sec: int = 3600,
+            ) -> dict[str, object]:
+                _ = extra_env
+                _ = timeout_sec
+                output_path = Path(str(command[-1]))
+                _ = output_path.write_bytes(b"mp4")
+                return {
+                    "command": command,
+                    "cwd": str(cwd),
+                    "exit_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "timed_out": False,
+                    "timeout_sec": 3600,
+                    "duration_sec": 0.01,
+                }
+
+            with patch(
+                "runtime_v2.workers.kenburns_worker.run_external_process",
+                side_effect=fake_process,
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-kenburns-exec",
+                )
+
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            latest_result = cast(
+                dict[str, object],
+                json.loads(config.result_router_file.read_text(encoding="utf-8")),
+            )
+            latest_metadata = cast(dict[str, object], latest_result["metadata"])
+
+        self.assertEqual(seed_result["status"], "seeded")
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(str(queue_items[0]["status"]), "completed")
+        self.assertEqual(str(latest_metadata["workload"]), "kenburns")
+        self.assertTrue(bool(latest_metadata["final_output"]))
+
     def test_control_plane_escalates_invalid_worker_result_json_and_skips_downstream_queue(
         self,
     ) -> None:

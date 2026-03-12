@@ -136,7 +136,7 @@ def job_from_explicit_payload(
 
 
 def payload_paths_are_local(payload: dict[str, object]) -> bool:
-    for key in ("source_path", "audio_path", "image_path"):
+    for key in ("source_path", "audio_path", "image_path", "scene_bundle_map_path"):
         raw_value = payload.get(key)
         if isinstance(raw_value, str) and raw_value.strip():
             if _normalize_local_path(raw_value) is None:
