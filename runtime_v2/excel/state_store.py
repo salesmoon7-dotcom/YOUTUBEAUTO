@@ -61,7 +61,7 @@ def merge_video_plan_to_excel(
             sheet.cell(row=row_no, column=status_col).value or ""
         ).strip()
         if current_status.lower() in TERMINAL_STATUSES:
-            return False
+            return current_status == next_status
         if not can_transition_excel_status(current_status, next_status):
             return False
         if not _assign_cell(

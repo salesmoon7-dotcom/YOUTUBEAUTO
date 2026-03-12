@@ -453,6 +453,42 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         self.assertTrue(updated)
         self.assertEqual(status_row["status"], "Done")
 
+    def test_done_row_closeout_is_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            excel_path = _write_excel_fixture(root / "topic.xlsx", status="Done")
+            config = RuntimeConfig(result_router_file=root / "evidence" / "result.json")
+            final_video = root / "final_video.mp4"
+            final_video.write_bytes(b"mp4")
+
+            updated = sync_final_video_result(
+                config=config,
+                excel_path=excel_path,
+                sheet_name="Sheet1",
+                row_index=0,
+                worker_result={
+                    "completion": {
+                        "state": "completed",
+                        "final_output": True,
+                        "final_artifact": "final_video.mp4",
+                        "final_artifact_path": str(final_video.resolve()),
+                    },
+                    "details": {"reason_code": "ok"},
+                },
+                run_id="final-run-idempotent",
+                artifact_root=root,
+                debug_log=str((root / "logs" / "final-run-idempotent.jsonl").resolve()),
+            )
+
+            status_row = _read_status_row(excel_path)
+            latest_result = json.loads(
+                config.result_router_file.read_text(encoding="utf-8")
+            )
+
+        self.assertTrue(updated)
+        self.assertEqual(status_row["status"], "Done")
+        self.assertTrue(bool(latest_result["metadata"]["excel_synced"]))
+
     def test_render_spec_is_merged_only_by_manager(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
