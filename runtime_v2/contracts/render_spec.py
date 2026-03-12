@@ -13,7 +13,7 @@ def build_render_spec(
 ) -> dict[str, object]:
     return {
         "contract": "render_spec",
-        "contract_version": "1.0",
+        "contract_version": "1.1",
         "run_id": run_id,
         "row_ref": row_ref,
         "asset_refs": asset_refs,

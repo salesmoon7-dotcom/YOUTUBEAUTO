@@ -299,6 +299,192 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
             str(completion["final_artifact_path"]).endswith("render_final.mp4")
         )
 
+    def test_render_worker_builds_timeline_and_muxes_audio(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            render_folder = root / "render_workspace"
+            image_dir = render_folder / "images"
+            output_dir = render_folder / "output"
+            image_dir.mkdir(parents=True, exist_ok=True)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            image_a = image_dir / "#01_GENS.png"
+            image_b = image_dir / "#02_SEAA.png"
+            image_a.write_bytes(b"png")
+            image_b.write_bytes(b"png")
+            audio_path = root / "speech_rvc.wav"
+            audio_path.write_bytes(b"wav")
+            voice_json = root / "voice.json"
+            voice_json.write_text(
+                json.dumps({"voice_texts": []}, ensure_ascii=True), encoding="utf-8"
+            )
+            render_spec = root / "render_spec.json"
+            render_spec.write_text(
+                json.dumps(
+                    {
+                        "contract": "render_spec",
+                        "contract_version": "1.1",
+                        "run_id": "render-run-1",
+                        "row_ref": "Sheet1!row1",
+                        "asset_refs": [str(image_a.resolve()), str(image_b.resolve())],
+                        "audio_refs": [str(audio_path.resolve())],
+                        "thumbnail_refs": [],
+                        "timeline": [
+                            {
+                                "scene_index": 1,
+                                "asset_path": str(image_a.resolve()),
+                                "asset_kind": "image",
+                                "duration_sec": 4,
+                            },
+                            {
+                                "scene_index": 2,
+                                "asset_path": str(image_b.resolve()),
+                                "asset_kind": "image",
+                                "duration_sec": 5,
+                            },
+                        ],
+                        "reason_code": "ok",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            job = JobContract(
+                job_id="render-job-timeline",
+                workload="render",
+                payload={
+                    "render_folder_path": str(render_folder.resolve()),
+                    "voice_json_path": str(voice_json.resolve()),
+                    "render_spec_path": str(render_spec.resolve()),
+                },
+            )
+
+            def fake_process(
+                command: list[str],
+                *,
+                cwd: Path,
+                extra_env: dict[str, str] | None = None,
+                timeout_sec: int = 3600,
+            ) -> dict[str, object]:
+                _ = extra_env
+                _ = timeout_sec
+                output_path = Path(str(command[-1]))
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"mp4")
+                return {
+                    "command": command,
+                    "cwd": str(cwd),
+                    "exit_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "timed_out": False,
+                    "timeout_sec": 3600,
+                    "duration_sec": 0.01,
+                }
+
+            with patch(
+                "runtime_v2.stage3.render_worker.run_external_process",
+                side_effect=fake_process,
+            ):
+                result = run_render_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        details = cast(dict[object, object], result["details"])
+        completion = cast(dict[object, object], result["completion"])
+        self.assertEqual(str(details["render_mode"]), "timeline_ffmpeg_audio")
+        self.assertEqual(str(details["audio_source_path"]), str(audio_path.resolve()))
+        self.assertTrue(bool(completion["final_output"]))
+
+    def test_render_worker_falls_back_to_canonical_rvc_audio(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            render_folder = root / "render_workspace"
+            video_dir = render_folder / "video"
+            output_dir = render_folder / "output"
+            video_dir.mkdir(parents=True, exist_ok=True)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            clip_path = video_dir / "#01_GEMI.mp4"
+            clip_path.write_bytes(b"mp4")
+            canonical_audio = (
+                artifact_root / "rvc" / "rvc-qwen3-render-run-2" / "speech_rvc.wav"
+            )
+            canonical_audio.parent.mkdir(parents=True, exist_ok=True)
+            canonical_audio.write_bytes(b"wav")
+            voice_json = root / "voice.json"
+            voice_json.write_text(
+                json.dumps({"voice_texts": []}, ensure_ascii=True), encoding="utf-8"
+            )
+            render_spec = root / "render_spec.json"
+            render_spec.write_text(
+                json.dumps(
+                    {
+                        "contract": "render_spec",
+                        "contract_version": "1.1",
+                        "run_id": "render-run-2",
+                        "row_ref": "Sheet1!row1",
+                        "asset_refs": [str(clip_path.resolve())],
+                        "audio_refs": [],
+                        "thumbnail_refs": [],
+                        "timeline": [
+                            {
+                                "scene_index": 1,
+                                "asset_path": str(clip_path.resolve()),
+                                "asset_kind": "video",
+                                "duration_sec": 6,
+                            }
+                        ],
+                        "reason_code": "ok",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            job = JobContract(
+                job_id="render-job-canonical-audio",
+                workload="render",
+                payload={
+                    "render_folder_path": str(render_folder.resolve()),
+                    "voice_json_path": str(voice_json.resolve()),
+                    "render_spec_path": str(render_spec.resolve()),
+                },
+            )
+
+            def fake_process(
+                command: list[str],
+                *,
+                cwd: Path,
+                extra_env: dict[str, str] | None = None,
+                timeout_sec: int = 3600,
+            ) -> dict[str, object]:
+                _ = extra_env
+                _ = timeout_sec
+                output_path = Path(str(command[-1]))
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"mp4")
+                return {
+                    "command": command,
+                    "cwd": str(cwd),
+                    "exit_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "timed_out": False,
+                    "timeout_sec": 3600,
+                    "duration_sec": 0.01,
+                }
+
+            with patch(
+                "runtime_v2.stage3.render_worker.run_external_process",
+                side_effect=fake_process,
+            ):
+                result = run_render_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        details = cast(dict[object, object], result["details"])
+        self.assertEqual(
+            str(details["audio_source_path"]), str(canonical_audio.resolve())
+        )
+
     def test_render_worker_blocks_retry_when_render_assets_are_not_ready(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
