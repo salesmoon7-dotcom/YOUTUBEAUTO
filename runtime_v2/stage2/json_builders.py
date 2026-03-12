@@ -316,6 +316,8 @@ def build_stage2_jobs(
                 "scene_index": scene_index,
                 "asset_path": str(service_artifact_path),
                 "workload": workload,
+                "asset_kind": "video" if workload == "geminigen" else "image",
+                "duration_sec": 8,
             }
         )
 
@@ -325,7 +327,7 @@ def build_stage2_jobs(
         row_ref=row_ref,
         asset_refs=asset_refs,
         timeline=timeline,
-        audio_refs=[str(voice_json_path)],
+        audio_refs=[],
         thumbnail_refs=thumbnail_refs,
         reason_code=str(video_plan.get("reason_code", "ok")),
     )

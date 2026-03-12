@@ -55,6 +55,13 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
         self.assertEqual(first_payload["reason_code"], "ok")
         self.assertEqual(render_spec["row_ref"], "Sheet1!row1")
         self.assertEqual(render_spec["reason_code"], "ok")
+        first_timeline = cast(
+            dict[str, object], cast(list[object], render_spec["timeline"])[0]
+        )
+        self.assertEqual(str(render_spec["contract_version"]), "1.1")
+        self.assertEqual(cast(list[object], render_spec["audio_refs"]), [])
+        self.assertEqual(str(first_timeline["asset_kind"]), "image")
+        self.assertEqual(int(cast(int, first_timeline["duration_sec"])), 8)
         self.assertEqual(render_job["worker"], "render")
         self.assertEqual(render_payload["run_id"], "stage2-run-1")
         self.assertTrue(str(render_payload["render_folder_path"]).endswith(tmp_dir))
