@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from runtime_v2.contracts.topic_spec import build_topic_spec
-from runtime_v2.excel.source import read_excel_row
+from runtime_v2.excel.source import read_excel_row, read_excel_rows
 
 
 PENDING_STATUSES = {"", "partial", "failed", "nan"}
@@ -45,3 +45,28 @@ def select_topic_spec(
         status_snapshot=status,
         excel_snapshot=snapshot,
     )
+
+
+def select_pending_row_indexes(
+    excel_path: str | Path,
+    *,
+    sheet_name: str,
+    limit: int,
+) -> list[int]:
+    if limit <= 0:
+        return []
+    row_maps = read_excel_rows(excel_path, sheet_name=sheet_name)
+    selected: list[int] = []
+    for index, row_map in enumerate(row_maps):
+        raw_topic = _lookup_value(row_map, "Topic")
+        raw_status = _lookup_value(row_map, "Status")
+        topic = "" if raw_topic is None else str(raw_topic).strip()
+        status = "" if raw_status is None else str(raw_status).strip()
+        if not topic:
+            continue
+        if status.lower() not in PENDING_STATUSES:
+            continue
+        selected.append(index)
+        if len(selected) >= limit:
+            break
+    return selected
