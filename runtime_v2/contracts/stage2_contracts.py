@@ -9,8 +9,10 @@ def build_stage2_payload(
     prompt: str,
     asset_root: str,
     reason_code: str,
+    ref_img_1: str = "",
+    ref_img_2: str = "",
 ) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "run_id": run_id,
         "row_ref": row_ref,
         "scene_index": scene_index,
@@ -18,3 +20,8 @@ def build_stage2_payload(
         "asset_root": asset_root,
         "reason_code": reason_code,
     }
+    if ref_img_1.strip():
+        payload["ref_img_1"] = ref_img_1.strip()
+    if ref_img_2.strip():
+        payload["ref_img_2"] = ref_img_2.strip()
+    return payload

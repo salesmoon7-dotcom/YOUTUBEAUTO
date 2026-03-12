@@ -305,6 +305,56 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
 
         self.assertEqual(str(payload["first_frame_path"]), "images/ref1.png")
 
+    def test_genspark_and_seaart_payloads_include_ref_images_from_ref_jobs(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            video_plan = _video_plan(tmp_dir)
+            video_plan["stage1_handoff"] = {
+                "contract": {
+                    "version": "stage1_handoff.v1.0",
+                    "ref_img_1": "legacy ref prompt 1",
+                    "ref_img_2": "legacy ref prompt 2",
+                }
+            }
+            jobs, _ = build_stage2_jobs(video_plan)
+
+        typed_jobs = [cast(dict[str, object], item["job"]) for item in jobs[:-1]]
+        genspark_job = next(
+            job
+            for job in typed_jobs
+            if str(job["worker"]) == "genspark"
+            and str(job["job_id"]) == "genspark-stage2-run-1-1"
+        )
+        seaart_job = next(
+            job
+            for job in typed_jobs
+            if str(job["worker"]) == "seaart"
+            and str(job["job_id"]) == "seaart-stage2-run-1-2"
+        )
+        genspark_payload = cast(dict[str, object], genspark_job["payload"])
+        seaart_payload = cast(dict[str, object], seaart_job["payload"])
+        self.assertTrue(
+            str(genspark_payload["ref_img_1"])
+            .replace("\\", "/")
+            .endswith("images/ref-1-stage2-run-1.png")
+        )
+        self.assertTrue(
+            str(genspark_payload["ref_img_2"])
+            .replace("\\", "/")
+            .endswith("images/ref-2-stage2-run-1.png")
+        )
+        self.assertTrue(
+            str(seaart_payload["ref_img_1"])
+            .replace("\\", "/")
+            .endswith("images/ref-1-stage2-run-1.png")
+        )
+        self.assertTrue(
+            str(seaart_payload["ref_img_2"])
+            .replace("\\", "/")
+            .endswith("images/ref-2-stage2-run-1.png")
+        )
+
     def test_canva_payload_includes_thumb_data_and_deterministic_ref_img(self) -> None:
         video_plan = _video_plan("D:/YOUTUBEAUTO")
         video_plan["scene_plan"] = [

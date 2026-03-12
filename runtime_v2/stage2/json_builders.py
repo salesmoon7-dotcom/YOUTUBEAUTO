@@ -149,6 +149,66 @@ def _select_ref_img_from_stage1(stage1_contract: dict[str, object] | None) -> st
     return ""
 
 
+def _select_ref_images_from_stage1(
+    stage1_contract: dict[str, object] | None,
+) -> tuple[str, str]:
+    if stage1_contract is None:
+        return "", ""
+    ref_img_1 = str(stage1_contract.get("ref_img_1", "")).strip()
+    ref_img_2 = str(stage1_contract.get("ref_img_2", "")).strip()
+    return ref_img_1, ref_img_2
+
+
+def _build_ref_jobs(
+    *,
+    run_id: str,
+    row_ref: str,
+    asset_root: Path,
+    stage1_handoff: dict[str, object] | None,
+    stage1_contract: dict[str, object] | None,
+    reason_code: str,
+    agent_browser_services: set[str],
+) -> tuple[list[dict[str, object]], str, str]:
+    ref_jobs: list[dict[str, object]] = []
+    ref_img_1_prompt, ref_img_2_prompt = _select_ref_images_from_stage1(stage1_contract)
+    ref_img_1_path = ""
+    ref_img_2_path = ""
+    refs = [
+        (ref_img_1_prompt, "genspark", 1, "ref-1"),
+        (ref_img_2_prompt, "seaart", 2, "ref-2"),
+    ]
+    for prompt, workload, scene_index, ref_id in refs:
+        if not prompt:
+            continue
+        service_artifact_path = (asset_root / f"images/{ref_id}-{run_id}.png").resolve()
+        payload = build_stage2_payload(
+            run_id=run_id,
+            row_ref=row_ref,
+            scene_index=scene_index,
+            prompt=prompt,
+            asset_root=str(asset_root.resolve()),
+            reason_code=reason_code,
+        )
+        payload["service_artifact_path"] = str(service_artifact_path)
+        if isinstance(stage1_handoff, dict):
+            payload["stage1_handoff"] = stage1_handoff
+        if workload in agent_browser_services:
+            payload["use_agent_browser"] = True
+        ref_jobs.append(
+            build_explicit_job_contract(
+                job_id=f"{workload}-{run_id}-{ref_id}",
+                workload=cast(WorkloadName, workload),
+                checkpoint_key=f"stage2:{workload}:{row_ref}:{ref_id}",
+                payload=payload,
+            )
+        )
+        if ref_id == "ref-1":
+            ref_img_1_path = str(service_artifact_path)
+        else:
+            ref_img_2_path = str(service_artifact_path)
+    return ref_jobs, ref_img_1_path, ref_img_2_path
+
+
 def build_stage2_jobs(
     video_plan: dict[str, object],
 ) -> tuple[list[dict[str, object]], dict[str, object]]:
@@ -182,6 +242,18 @@ def build_stage2_jobs(
     )
     stage1_handoff = video_plan.get("stage1_handoff")
     stage1_contract = _stage1_contract(video_plan)
+    ref_jobs, ref_img_1_path, ref_img_2_path = _build_ref_jobs(
+        run_id=run_id,
+        row_ref=row_ref,
+        asset_root=asset_root,
+        stage1_handoff=cast(dict[str, object], stage1_handoff)
+        if isinstance(stage1_handoff, dict)
+        else None,
+        stage1_contract=stage1_contract,
+        reason_code=str(video_plan.get("reason_code", "ok")),
+        agent_browser_services=agent_browser_services,
+    )
+    jobs.extend(ref_jobs)
     for scene_offset, raw_scene in enumerate(typed_scene_plan):
         if not isinstance(raw_scene, dict):
             continue
@@ -202,6 +274,8 @@ def build_stage2_jobs(
             prompt=cleaned_prompt,
             asset_root=str(asset_root.resolve()),
             reason_code=str(video_plan.get("reason_code", "ok")),
+            ref_img_1=ref_img_1_path if workload in {"genspark", "seaart"} else "",
+            ref_img_2=ref_img_2_path if workload in {"genspark", "seaart"} else "",
         )
         if legacy_category:
             payload["legacy_category"] = legacy_category
