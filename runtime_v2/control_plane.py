@@ -25,7 +25,7 @@ from runtime_v2.latest_run import (
 from runtime_v2.agent_browser.evidence import build_agent_browser_evidence
 from runtime_v2.gpt_autospawn import apply_autospawn_decision
 from runtime_v2.gpt_pool_monitor import tick_gpt_status
-from runtime_v2.manager import merge_stage1_result
+from runtime_v2.manager import merge_stage1_result, sync_final_video_result
 from runtime_v2 import recovery_policy
 from runtime_v2.queue_store import QueueStore, QueueStoreError
 from runtime_v2.state_machine import (
@@ -522,6 +522,34 @@ def run_control_loop_once(
         latest_artifacts = worker_artifacts
     elif artifact_path is not None:
         latest_artifacts = [artifact_path]
+    excel_sync_updated = False
+    excel_path = str(job.payload.get("excel_path", "")).strip()
+    sheet_name = str(job.payload.get("sheet_name", "")).strip()
+    row_index = _to_int(job.payload.get("row_index", -1))
+    if (
+        success
+        and job.workload == "render"
+        and excel_path
+        and sheet_name
+        and row_index >= 0
+        and completion is not None
+        and bool(completion.get("final_output", False))
+    ):
+        sync_worker_result = dict(worker_contract)
+        sync_completion = dict(completion)
+        if str(sync_completion.get("state", "")).strip() == "succeeded":
+            sync_completion["state"] = "completed"
+        sync_worker_result["completion"] = sync_completion
+        excel_sync_updated = sync_final_video_result(
+            config=runtime_config,
+            excel_path=excel_path,
+            sheet_name=sheet_name,
+            row_index=row_index,
+            worker_result=sync_worker_result,
+            run_id=run_id,
+            artifact_root=artifact_root,
+            debug_log=str(control_debug_log),
+        )
     snapshot_metadata = cast(
         dict[str, object],
         {
@@ -559,6 +587,7 @@ def run_control_loop_once(
             "final_artifact_path": ""
             if completion is None
             else str(completion.get("final_artifact_path", "")),
+            "excel_sync_updated": excel_sync_updated,
             "completion": {} if completion is None else completion,
             "legacy_contracts_summary": (
                 "post_gpt_immediate=seaart,genspark,tts; "
@@ -650,6 +679,7 @@ def run_control_loop_once(
             "final_artifact_path": ""
             if completion is None
             else str(completion.get("final_artifact_path", "")),
+            "excel_sync_updated": excel_sync_updated,
             "manifest_path": worker_manifest_path,
             "result_path": worker_result_path,
         },
@@ -1235,6 +1265,15 @@ def _seed_declared_next_jobs(
             next_job.payload["row_ref"] = expected_row_ref
         next_job.payload["chain_depth"] = next_depth
         next_job.payload["routed_from"] = parent_job.job_id
+        excel_path = str(parent_job.payload.get("excel_path", "")).strip()
+        sheet_name = str(parent_job.payload.get("sheet_name", "")).strip()
+        row_index = _to_int(parent_job.payload.get("row_index", -1))
+        if excel_path:
+            next_job.payload["excel_path"] = excel_path
+        if sheet_name:
+            next_job.payload["sheet_name"] = sheet_name
+        if row_index >= 0:
+            next_job.payload["row_index"] = row_index
         if not payload_paths_are_local(next_job.payload):
             _ = _append_control_event(
                 {
@@ -1427,6 +1466,9 @@ def _declared_stage1_qwen_job(
         return None
     run_id = str(parent_job.payload.get("run_id", "")).strip()
     row_ref = str(parent_job.payload.get("row_ref", "")).strip()
+    excel_path = str(parent_job.payload.get("excel_path", "")).strip()
+    sheet_name = str(parent_job.payload.get("sheet_name", "")).strip()
+    row_index = _to_int(parent_job.payload.get("row_index", -1))
     topic = str(
         handoff_contract.get("topic", parent_job.payload.get("topic", ""))
     ).strip()
@@ -1445,6 +1487,9 @@ def _declared_stage1_qwen_job(
             "voice_texts": voice_texts,
             "service_artifact_path": str(service_artifact_path),
             "chain_depth": 0,
+            "excel_path": excel_path,
+            "sheet_name": sheet_name,
+            "row_index": row_index,
         },
         chain_step=1,
         parent_job_id=parent_job.job_id,

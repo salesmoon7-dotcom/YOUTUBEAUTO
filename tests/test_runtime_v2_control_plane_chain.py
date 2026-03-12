@@ -11,6 +11,7 @@ from runtime_v2 import circuit_breaker, recovery_policy, retry_budget
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.contracts.job_contract import JobContract, build_explicit_job_contract
 from runtime_v2.control_plane import run_control_loop_once, run_worker, seed_control_job
+from runtime_v2.manager import seed_excel_row
 from runtime_v2.contracts.video_plan import build_video_plan
 from runtime_v2.latest_run import load_joined_latest_run
 from runtime_v2.queue_store import QueueStore, QueueStoreError
@@ -573,6 +574,111 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         self.assertIn("qwen3-chatgpt-run-qwen-three-scenes", queued_job_ids)
+
+    def test_control_plane_syncs_excel_done_after_render_final_output(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            from openpyxl import Workbook, load_workbook
+            from openpyxl.worksheet.worksheet import Worksheet
+
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            workbook_path = root / "topic.xlsx"
+            workbook = Workbook()
+            sheet = cast(Worksheet, workbook.active)
+            sheet.title = "Sheet1"
+            sheet.append(
+                ["Topic", "Status", "Video Plan", "Reason Code", "Result Path"]
+            )
+            sheet.append(["Bridge topic", "Voice OK", "", "", ""])
+            workbook.save(workbook_path)
+            workbook.close()
+
+            final_output = (
+                root
+                / "artifacts"
+                / "render"
+                / "render-gate-d-run-1"
+                / "output"
+                / "render_final.mp4"
+            )
+            final_output.parent.mkdir(parents=True, exist_ok=True)
+            final_output.write_bytes(b"mp4")
+            seed_control_job(
+                JobContract(
+                    job_id="render-gate-d-run-1",
+                    workload="render",
+                    checkpoint_key="render:Sheet1!row1:gate-d-run-1",
+                    payload={
+                        "run_id": "gate-d-run-1",
+                        "row_ref": "Sheet1!row1",
+                        "excel_path": str(workbook_path.resolve()),
+                        "sheet_name": "Sheet1",
+                        "row_index": 0,
+                        "render_folder_path": str(final_output.parent.parent.resolve()),
+                        "voice_json": {"voice_texts": []},
+                        "render_spec": {
+                            "contract": "render_spec",
+                            "run_id": "gate-d-run-1",
+                            "row_ref": "Sheet1!row1",
+                            "asset_refs": [str(final_output.resolve())],
+                            "audio_refs": [],
+                            "thumbnail_refs": [],
+                            "timeline": [
+                                {
+                                    "scene_index": 1,
+                                    "asset_path": str(final_output.resolve()),
+                                }
+                            ],
+                            "reason_code": "ok",
+                        },
+                    },
+                ),
+                config=config,
+            )
+
+            runtime_result = {
+                "status": "ok",
+                "code": "OK",
+                "worker_result": {
+                    "status": "ok",
+                    "stage": "render",
+                    "error_code": "",
+                    "retryable": False,
+                    "next_jobs": [],
+                    "details": {"reason_code": "ok"},
+                    "completion": {
+                        "state": "succeeded",
+                        "final_output": True,
+                        "final_artifact": "render_final.mp4",
+                        "final_artifact_path": str(final_output.resolve()),
+                    },
+                },
+            }
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value=runtime_result,
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-gate-d",
+                )
+
+            workbook = load_workbook(workbook_path)
+            try:
+                status_value = workbook["Sheet1"].cell(row=2, column=2).value
+            finally:
+                workbook.close()
+            latest_result = cast(
+                dict[str, object],
+                json.loads(config.result_router_file.read_text(encoding="utf-8")),
+            )
+            latest_metadata = cast(dict[str, object], latest_result["metadata"])
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(status_value, "Done")
+        self.assertTrue(bool(latest_metadata["excel_sync_updated"]))
 
     def test_stage1_video_plan_routing_does_not_emit_kenburns_jobs(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

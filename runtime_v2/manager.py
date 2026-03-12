@@ -147,9 +147,10 @@ def finalize_excel_row(
     final_output: str,
     reason_code: str,
 ) -> bool:
+    completed_states = {"completed", "succeeded"}
     next_status = (
         "Done"
-        if completion_state == "completed" and final_output.strip()
+        if completion_state in completed_states and final_output.strip()
         else "partial"
     )
     return finalize_excel_status(
