@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import cast
 
 from runtime_v2.agent_browser.command_builder import (
+    build_eval_command,
     build_get_title_command,
     build_get_url_command,
     build_snapshot_command,
@@ -60,6 +61,40 @@ def _snapshot_required(service: str, payload: dict[str, object]) -> bool:
     if isinstance(raw, bool):
         return raw
     return service == "chatgpt"
+
+
+def _run_agent_browser_actions(
+    *,
+    port: int,
+    transcript: list[dict[str, object]],
+    actions: list[str],
+    timeout_sec: int,
+) -> None:
+    for index, script in enumerate(actions, start=1):
+        command = build_eval_command(port=port, script=script)
+        output = _run_agent_browser_command(command, timeout_sec=timeout_sec)
+        parsed_output = None
+        stripped = output.strip()
+        if stripped:
+            try:
+                parsed_output = json.loads(stripped)
+            except json.JSONDecodeError:
+                parsed_output = None
+        if isinstance(parsed_output, str):
+            try:
+                reparsed = json.loads(parsed_output)
+                parsed_output = reparsed
+            except json.JSONDecodeError:
+                pass
+        transcript.append(
+            {
+                "command": command,
+                "output": output,
+                "action_index": index,
+            }
+        )
+        if isinstance(parsed_output, dict) and not bool(parsed_output.get("ok", False)):
+            raise RuntimeError(f"agent_browser_action_failed:{parsed_output}")
 
 
 def _http_cdp_tab_list(port: int) -> list[dict[str, object]]:
@@ -232,6 +267,21 @@ def run_agent_browser_verify_job(
                 _run_agent_browser_command(get_title_command, timeout_sec=timeout_sec)
             )
             transcript.append({"command": get_title_command, "output": current_title})
+
+        raw_actions = job.payload.get("actions", [])
+        if isinstance(raw_actions, list):
+            action_items = [
+                str(item)
+                for item in cast(list[object], raw_actions)
+                if str(item).strip()
+            ]
+            if action_items:
+                _run_agent_browser_actions(
+                    port=port,
+                    transcript=transcript,
+                    actions=action_items,
+                    timeout_sec=timeout_sec,
+                )
 
         snapshot_path = None
         if capture_snapshot:

@@ -26,19 +26,37 @@ def capture_page_screenshot(
 
 
 def capture_primary_image_asset(
-    port: int, expected_url_substring: str, output_path: Path
+    port: int, expected_url_substring: str, output_path: Path, *, service: str = ""
 ) -> tuple[Path, str]:
     target = _select_page_target(port, expected_url_substring)
+    if service == "genspark":
+        expression = (
+            "(() => {"
+            "const sels = ['.image-generated img', '.image-grid img', '.generated-images .image-container .image-grid > img:first-child'];"
+            "for (const sel of sels) { const found = document.querySelector(sel); const src = found ? (found.currentSrc || found.src || '') : ''; if (src && /^https?:/i.test(src)) return src; }"
+            "return '';"
+            "})()"
+        )
+    elif service == "seaart":
+        expression = (
+            "(() => {"
+            "const sels = ['.generate-result img', '.el-image img', 'img'];"
+            "for (const sel of sels) { const found = document.querySelector(sel); const src = found ? (found.currentSrc || found.src || '') : ''; if (src && /^https?:/i.test(src)) return src; }"
+            "return '';"
+            "})()"
+        )
+    else:
+        expression = (
+            "(() => {"
+            "const imgs = Array.from(document.images).map(img => img.currentSrc || img.src).filter(Boolean);"
+            "return imgs.find(src => /^https?:/i.test(src)) || '';"
+            "})()"
+        )
     image_payload = _cdp_command(
         target["webSocketDebuggerUrl"],
         method="Runtime.evaluate",
         params={
-            "expression": (
-                "(() => {"
-                "const imgs = Array.from(document.images).map(img => img.currentSrc || img.src).filter(Boolean);"
-                "return imgs[0] || '';"
-                "})()"
-            ),
+            "expression": expression,
             "returnByValue": True,
         },
     )
@@ -71,7 +89,10 @@ def write_functional_evidence_bundle(
         port, expected_url_substring, evidence_root / "final_screen.png"
     )
     asset_path, sha256 = capture_primary_image_asset(
-        port, expected_url_substring, evidence_root / service_artifact_path.name
+        port,
+        expected_url_substring,
+        evidence_root / service_artifact_path.name,
+        service=service,
     )
     service_artifact_path.parent.mkdir(parents=True, exist_ok=True)
     service_artifact_path.write_bytes(asset_path.read_bytes())

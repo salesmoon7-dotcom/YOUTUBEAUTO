@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from time import time
+from time import sleep, time
 from typing import cast
 from uuid import uuid4
 
@@ -1107,11 +1107,44 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
     if not service_artifact_path:
         return exit_codes.CLI_USAGE
     target_path = Path(service_artifact_path)
+    cwd_workspace = Path.cwd()
     workspace = (
-        target_path.parent.parent if len(target_path.parents) >= 2 else Path.cwd()
+        cwd_workspace
+        if (cwd_workspace / "request_payload.json").exists()
+        else (
+            target_path.parent.parent
+            if len(target_path.parents) >= 2
+            else cwd_workspace
+        )
     )
     workspace.mkdir(parents=True, exist_ok=True)
     artifact_root = workspace / "agent_browser_adapter_artifacts"
+
+    actions: list[str] = []
+    prompt_path = workspace / "request_payload.json"
+    prompt = ""
+    if prompt_path.exists():
+        try:
+            request_payload = json.loads(prompt_path.read_text(encoding="utf-8"))
+            prompt = str(
+                cast(dict[str, object], request_payload).get("prompt", "")
+            ).strip()
+        except (OSError, json.JSONDecodeError):
+            prompt = ""
+    if prompt and service == "genspark":
+        actions = [
+            "(() => { const textarea = document.querySelector('textarea.j-search-input'); if (!textarea) return JSON.stringify({ok:false,error:\"NO_INPUT\"}); textarea.focus(); textarea.value=''; textarea.dispatchEvent(new Event('input',{bubbles:true})); textarea.value="
+            + json.dumps(prompt, ensure_ascii=True)
+            + "; textarea.dispatchEvent(new Event('input',{bubbles:true})); return JSON.stringify({ok:true, step:\"prompt_filled\"}); })()",
+            '(() => { const btn = document.querySelector(\'.enter-icon-wrapper\'); if (!btn) return JSON.stringify({ok:false,error:"NO_BUTTON"}); btn.click(); return JSON.stringify({ok:true, step:"clicked_generate"}); })()',
+        ]
+    elif prompt and service == "seaart":
+        actions = [
+            "(() => { const textarea = document.querySelector('textarea.el-textarea__inner'); if (!textarea) return JSON.stringify({ok:false,error:\"NO_INPUT\"}); textarea.focus(); textarea.value=''; textarea.dispatchEvent(new Event('input',{bubbles:true})); textarea.value="
+            + json.dumps(prompt, ensure_ascii=True)
+            + "; textarea.dispatchEvent(new Event('input',{bubbles:true})); return JSON.stringify({ok:true, step:\"prompt_filled\"}); })()",
+            '(() => { const btn = document.querySelector(\'#generate-btn\'); if (!btn) return JSON.stringify({ok:false,error:"NO_BUTTON"}); btn.click(); return JSON.stringify({ok:true, step:"clicked_generate"}); })()',
+        ]
     job = JobContract(
         job_id=f"agent-browser-stage2-{service}",
         workload="agent_browser_verify",
@@ -1121,25 +1154,55 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             "port": args.port,
             "expected_url_substring": args.expected_url_substring.strip(),
             "expected_title_substring": args.expected_title_substring.strip(),
+            "actions": actions,
         },
     )
     result = run_agent_browser_verify_job(job, artifact_root)
     attach_ok = stage2_attach_verify_succeeded(result)
-    write_stage2_attach_evidence(
-        workspace=workspace,
-        service=service,
-        port=args.port,
-        result=result,
-        probe_debug_only=True,
-        recovery_attempted=False,
-        placeholder_artifact=attach_ok and service != "geminigen",
-    )
     if not attach_ok:
+        write_stage2_attach_evidence(
+            workspace=workspace,
+            service=service,
+            port=args.port,
+            result=result,
+            probe_debug_only=True,
+            recovery_attempted=False,
+            placeholder_artifact=False,
+        )
         return exit_codes.BROWSER_UNHEALTHY
     if service == "geminigen":
+        write_stage2_attach_evidence(
+            workspace=workspace,
+            service=service,
+            port=args.port,
+            result=result,
+            probe_debug_only=True,
+            recovery_attempted=False,
+            placeholder_artifact=False,
+        )
         return exit_codes.BROWSER_UNHEALTHY
     if service in {"seaart", "genspark", "canva"}:
         try:
+            if service == "genspark":
+                image_ready_script = "(() => { const sels = ['.image-generated img', '.image-grid img', '.generated-images .image-container .image-grid > img:first-child']; const found = sels.map(s => document.querySelector(s)).find(Boolean); if (found && (found.currentSrc || found.src)) return JSON.stringify({ok:true, src: found.currentSrc || found.src}); return JSON.stringify({ok:false,error:'GENSPARK_IMAGE_NOT_READY'}); })()"
+                for _attempt in range(30):
+                    command = [
+                        "agent-browser",
+                        "--cdp",
+                        str(args.port),
+                        "eval",
+                        image_ready_script,
+                    ]
+                    poll = subprocess.run(
+                        command,
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        timeout=5,
+                    )
+                    if '"ok":true' in (poll.stdout or ""):
+                        break
+                    sleep(2)
             _ = write_functional_evidence_bundle(
                 workspace=workspace,
                 service=service,
@@ -1147,11 +1210,36 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 expected_url_substring=args.expected_url_substring.strip(),
                 service_artifact_path=target_path,
             )
+            placeholder_artifact = False
         except Exception:
+            placeholder_artifact = not (
+                target_path.exists()
+                and target_path.is_file()
+                and target_path.stat().st_size > 0
+            )
+            write_stage2_attach_evidence(
+                workspace=workspace,
+                service=service,
+                port=args.port,
+                result=result,
+                probe_debug_only=True,
+                recovery_attempted=False,
+                placeholder_artifact=placeholder_artifact,
+            )
             return exit_codes.BROWSER_UNHEALTHY
     else:
         target_path.parent.mkdir(parents=True, exist_ok=True)
         _write_stage2_placeholder_artifact(target_path)
+        placeholder_artifact = True
+    write_stage2_attach_evidence(
+        workspace=workspace,
+        service=service,
+        port=args.port,
+        result=result,
+        probe_debug_only=True,
+        recovery_attempted=False,
+        placeholder_artifact=placeholder_artifact,
+    )
     return exit_codes.SUCCESS
 
 

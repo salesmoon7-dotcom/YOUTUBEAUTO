@@ -26,3 +26,7 @@ def build_get_url_command(*, port: int) -> list[str]:
 
 def build_get_title_command(*, port: int) -> list[str]:
     return build_cdp_command(port, "get", "title")
+
+
+def build_eval_command(*, port: int, script: str) -> list[str]:
+    return build_cdp_command(port, "eval", script)
