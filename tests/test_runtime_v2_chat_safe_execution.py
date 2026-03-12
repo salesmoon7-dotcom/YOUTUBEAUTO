@@ -11,6 +11,8 @@ from runtime_v2 import exit_codes
 from runtime_v2.browser import manager as browser_manager
 from runtime_v2.cli import (
     _copy_legacy_sessions,
+    exit_code_from_readiness,
+    exit_code_from_status,
     _spawn_detached_probe,
     _write_detached_summary,
     CliArgs,
@@ -21,6 +23,28 @@ from runtime_v2.workers.job_runtime import prepare_workspace
 
 
 class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
+    def test_exit_code_from_status_maps_stage6_gpu_blockers(self) -> None:
+        self.assertEqual(
+            exit_code_from_status("GPU_HEALTH_STALE"), exit_codes.LEASE_BUSY
+        )
+        self.assertEqual(
+            exit_code_from_status("GPU_LEASE_RENEW_FAILED"), exit_codes.LEASE_BUSY
+        )
+
+    def test_exit_code_from_readiness_maps_worker_stall_blocker(self) -> None:
+        readiness: dict[str, object] = {
+            "ready": False,
+            "blockers": [
+                {
+                    "axis": "worker_registry",
+                    "code": "WORKER_STALL_DETECTED",
+                    "reason": "stalled_workloads_present",
+                }
+            ],
+        }
+
+        self.assertEqual(exit_code_from_readiness(readiness), exit_codes.SELFTEST_FAIL)
+
     def test_prepare_workspace_defaults_to_runtime_config_artifact_root(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             artifact_root = Path(tmp_dir) / "external-artifacts"
