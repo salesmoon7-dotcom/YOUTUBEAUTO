@@ -13,6 +13,7 @@ from runtime_v2.cli import (
     _copy_legacy_sessions,
     exit_code_from_readiness,
     exit_code_from_status,
+    main,
     _spawn_detached_probe,
     _write_detached_summary,
     CliArgs,
@@ -23,6 +24,25 @@ from runtime_v2.workers.job_runtime import prepare_workspace
 
 
 class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
+    def test_cli_soak_report_writes_markdown_report(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig.from_root(root / "runtime")
+            config.soak_events_file.parent.mkdir(parents=True, exist_ok=True)
+            _ = config.soak_events_file.write_text(
+                '{"ts":1.0,"run_id":"run-1","mode":"once","status":"ok","code":"OK","exit_code":0,"debug_log":"logs/run-1.jsonl","result_path":"","gui_status_path":"","browser_health_path":"","gpu_health_path":"","gpt_status_path":"","control_plane_events_path":"","manifest_path":"","final_artifact_path":"artifact.mp4","summary":{}}\n',
+                encoding="utf-8",
+            )
+            with (
+                patch("runtime_v2.cli._build_runtime_config", return_value=config),
+                patch("sys.argv", ["runtime_v2.cli", "--soak-report"]),
+            ):
+                exit_code = main()
+                report_exists = config.soak_report_file.exists()
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        self.assertTrue(report_exists)
+
     def test_exit_code_from_status_maps_stage6_gpu_blockers(self) -> None:
         self.assertEqual(
             exit_code_from_status("GPU_HEALTH_STALE"), exit_codes.LEASE_BUSY

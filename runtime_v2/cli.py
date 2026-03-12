@@ -51,6 +51,11 @@ from runtime_v2.n8n_adapter import (
     write_mock_callback,
 )
 from runtime_v2.preflight import write_preflight_report
+from runtime_v2.soak_report import (
+    append_soak_event,
+    build_soak_snapshot,
+    write_soak_report,
+)
 from runtime_v2.stage2.canva_worker import run_canva_job
 from runtime_v2.stage2.geminigen_worker import run_geminigen_job
 from runtime_v2.stage2.agent_browser_adapter import (
@@ -98,6 +103,8 @@ class CliArgs(argparse.Namespace):
     selftest_force_gpt_fail: bool
     open_browser_login: str
     readiness_check: bool
+    soak_report: bool
+    soak_24h: bool
     runtime_root: str
     service: str
     port: int
@@ -141,6 +148,8 @@ class CliArgs(argparse.Namespace):
         self.selftest_force_gpt_fail = False
         self.open_browser_login = ""
         self.readiness_check = False
+        self.soak_report = False
+        self.soak_24h = False
         self.runtime_root = ""
         self.service = ""
         self.port = 0
@@ -357,6 +366,8 @@ def main() -> int:
     _ = parser.add_argument("--selftest-force-gpt-fail", action="store_true")
     _ = parser.add_argument("--open-browser-login", default="")
     _ = parser.add_argument("--readiness-check", action="store_true")
+    _ = parser.add_argument("--soak-report", action="store_true")
+    _ = parser.add_argument("--soak-24h", action="store_true")
     _ = parser.add_argument("--runtime-root", default="")
     _ = parser.add_argument("--service", default="")
     _ = parser.add_argument("--port", type=int, default=0)
@@ -394,6 +405,8 @@ def main() -> int:
             args.stage2_row1_probe_child,
             bool(args.open_browser_login.strip()),
             args.readiness_check,
+            args.soak_report,
+            args.soak_24h,
             args.migrate_sessions,
         )
         if flag
@@ -427,6 +440,11 @@ def main() -> int:
         readiness = load_runtime_readiness(config, completed=True)
         print(json.dumps(readiness, ensure_ascii=True))
         return exit_code_from_readiness(readiness)
+    if args.soak_report:
+        report_path = write_soak_report(config)
+        report = {"status": "ok", "code": "OK", "report_path": str(report_path)}
+        print(final_report(report))
+        return exit_codes.SUCCESS
     if args.migrate_sessions:
         report = _migrate_legacy_sessions()
         print(json.dumps(report, ensure_ascii=True))
@@ -463,6 +481,8 @@ def main() -> int:
         mode = "control_once"
     elif args.excel_batch:
         mode = "excel_batch"
+    elif args.soak_24h:
+        mode = "soak_24h"
     else:
         mode = "once"
     run_id = str(uuid4())
@@ -654,6 +674,20 @@ def main() -> int:
                 write_mock_callback(callback_payload, args.callback_mock_out)
             except OSError:
                 exit_code = exit_codes.CALLBACK_FAIL
+
+    if args.soak_24h:
+        soak_snapshot = build_soak_snapshot(config)
+        _ = append_soak_event(
+            config,
+            run_id=run_id,
+            mode=mode,
+            status=str(summary.get("status", result.get("status", "unknown"))),
+            code=code,
+            exit_code=exit_code,
+            debug_log=str(debug_log),
+            summary={**summary, "soak_snapshot": soak_snapshot},
+        )
+        _ = write_soak_report(config)
 
     if not args.control_once:
         gui_status_input = dict(result)
