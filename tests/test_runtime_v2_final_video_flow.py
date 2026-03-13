@@ -485,6 +485,96 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
             str(details["audio_source_path"]), str(canonical_audio.resolve())
         )
 
+    def test_render_worker_falls_back_to_canonical_geminigen_rvc_audio(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            render_folder = root / "render_workspace"
+            video_dir = render_folder / "video"
+            output_dir = render_folder / "output"
+            video_dir.mkdir(parents=True, exist_ok=True)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            clip_path = video_dir / "#01_GEMI.mp4"
+            clip_path.write_bytes(b"mp4")
+            canonical_audio = (
+                artifact_root / "rvc" / "rvc-geminigen-render-run-3" / "speech_rvc.wav"
+            )
+            canonical_audio.parent.mkdir(parents=True, exist_ok=True)
+            canonical_audio.write_bytes(b"wav")
+            voice_json = root / "voice.json"
+            voice_json.write_text(
+                json.dumps({"voice_texts": []}, ensure_ascii=True), encoding="utf-8"
+            )
+            render_spec = root / "render_spec.json"
+            render_spec.write_text(
+                json.dumps(
+                    {
+                        "contract": "render_spec",
+                        "contract_version": "1.1",
+                        "run_id": "render-run-3",
+                        "row_ref": "Sheet1!row1",
+                        "asset_refs": [str(clip_path.resolve())],
+                        "audio_refs": [],
+                        "thumbnail_refs": [],
+                        "timeline": [
+                            {
+                                "scene_index": 1,
+                                "asset_path": str(clip_path.resolve()),
+                                "asset_kind": "video",
+                                "duration_sec": 6,
+                            }
+                        ],
+                        "reason_code": "ok",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            job = JobContract(
+                job_id="render-job-canonical-gemi-audio",
+                workload="render",
+                payload={
+                    "render_folder_path": str(render_folder.resolve()),
+                    "voice_json_path": str(voice_json.resolve()),
+                    "render_spec_path": str(render_spec.resolve()),
+                },
+            )
+
+            def fake_process(
+                command: list[str],
+                *,
+                cwd: Path,
+                extra_env: dict[str, str] | None = None,
+                timeout_sec: int = 3600,
+            ) -> dict[str, object]:
+                _ = extra_env
+                _ = timeout_sec
+                output_path = Path(str(command[-1]))
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"mp4")
+                return {
+                    "command": command,
+                    "cwd": str(cwd),
+                    "exit_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "timed_out": False,
+                    "timeout_sec": 3600,
+                    "duration_sec": 0.01,
+                }
+
+            with patch(
+                "runtime_v2.stage3.render_worker.run_external_process",
+                side_effect=fake_process,
+            ):
+                result = run_render_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        details = cast(dict[object, object], result["details"])
+        self.assertEqual(
+            str(details["audio_source_path"]), str(canonical_audio.resolve())
+        )
+
     def test_render_worker_blocks_when_voice_texts_exist_but_audio_is_missing(
         self,
     ) -> None:
