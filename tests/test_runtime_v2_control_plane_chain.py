@@ -1065,8 +1065,26 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 / "output"
                 / "render_final.mp4"
             )
+            asset_manifest_path = (
+                root
+                / "artifacts"
+                / "render"
+                / "render-gate-d-run-1"
+                / "asset_manifest.json"
+            )
             final_output.parent.mkdir(parents=True, exist_ok=True)
             final_output.write_bytes(b"mp4")
+            asset_manifest_path.write_text(
+                json.dumps(
+                    {
+                        "run_id": "gate-d-run-1",
+                        "row_ref": "Sheet1!row1",
+                        "roles": {"voice_json": "D:/voice.json"},
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
             seed_control_job(
                 JobContract(
                     job_id="render-gate-d-run-1",
@@ -1079,6 +1097,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                         "sheet_name": "Sheet1",
                         "row_index": 0,
                         "render_folder_path": str(final_output.parent.parent.resolve()),
+                        "asset_manifest_path": str(asset_manifest_path.resolve()),
                         "voice_json": {"voice_texts": []},
                         "render_spec": {
                             "contract": "render_spec",
@@ -1139,10 +1158,28 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 json.loads(config.result_router_file.read_text(encoding="utf-8")),
             )
             latest_metadata = cast(dict[str, object], latest_result["metadata"])
+            latest_join = load_joined_latest_run(config, completed=True)
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(status_value, "Done")
         self.assertTrue(bool(latest_metadata["excel_sync_updated"]))
+        self.assertEqual(str(latest_metadata["run_id"]), "gate-d-run-1")
+        self.assertEqual(str(latest_metadata["row_ref"]), "Sheet1!row1")
+        self.assertEqual(
+            str(latest_metadata["asset_manifest_path"]),
+            str(asset_manifest_path.resolve()),
+        )
+        self.assertEqual(
+            str(latest_metadata["final_artifact_path"]), str(final_output.resolve())
+        )
+        self.assertEqual(len(cast(list[object], latest_result["artifacts"])), 1)
+        canonical_handoff = cast(
+            dict[object, object], latest_metadata["canonical_handoff"]
+        )
+        self.assertEqual(str(canonical_handoff["run_id"]), "gate-d-run-1")
+        pointer = cast(dict[object, object], latest_join["pointer"])
+        self.assertEqual(str(pointer["run_id"]), "gate-d-run-1")
+        self.assertFalse(bool(latest_join["out_of_sync"]))
 
     def test_stage1_video_plan_routing_does_not_emit_kenburns_jobs(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

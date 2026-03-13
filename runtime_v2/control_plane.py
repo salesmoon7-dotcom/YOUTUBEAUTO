@@ -64,6 +64,20 @@ PROMOTION_GATE_ORDER = {"": 0, "A": 1, "B": 2, "C": 3, "D": 4}
 RVC_SOURCE_MODE_PRIORITY = {"tts-source": 2, "gemi-video-source": 1}
 
 
+def _row_closeout_context(
+    job: JobContract, completion: dict[str, object] | None, control_run_id: str
+) -> tuple[str, bool]:
+    if (
+        job.workload == "render"
+        and completion is not None
+        and bool(completion.get("final_output", False))
+    ):
+        row_run_id = str(job.payload.get("run_id", "")).strip()
+        if row_run_id:
+            return row_run_id, True
+    return control_run_id, False
+
+
 def run_control_loop_once(
     owner: str,
     config: RuntimeConfig | None = None,
@@ -514,14 +528,22 @@ def run_control_loop_once(
         "invalid_reason": invalid_reason_summary(runtime_config.input_root),
         "debug_log": str(control_debug_log),
     }
+    snapshot_run_id, row_closeout_active = _row_closeout_context(
+        job, completion, run_id
+    )
+    row_ref = str(job.payload.get("row_ref", "")).strip()
     gui_payload = _build_control_gui_status(
-        run_id=run_id,
+        run_id=snapshot_run_id,
         stage=str(worker_contract.get("stage", result.get("status", "unknown"))),
         exit_code=0 if success else 1,
         status=gui_status,
     )
     latest_artifacts: list[Path] = []
-    if worker_artifacts:
+    if row_closeout_active and completion is not None:
+        final_artifact_path = str(completion.get("final_artifact_path", "")).strip()
+        if final_artifact_path:
+            latest_artifacts = [Path(final_artifact_path)]
+    elif worker_artifacts:
         latest_artifacts = worker_artifacts
     elif artifact_path is not None:
         latest_artifacts = [artifact_path]
@@ -549,14 +571,14 @@ def run_control_loop_once(
             sheet_name=sheet_name,
             row_index=row_index,
             worker_result=sync_worker_result,
-            run_id=run_id,
+            run_id=snapshot_run_id,
             artifact_root=artifact_root,
             debug_log=str(control_debug_log),
         )
     snapshot_metadata = cast(
         dict[str, object],
         {
-            "run_id": run_id,
+            "run_id": snapshot_run_id,
             "mode": "control_loop",
             "status": result_status,
             "code": "OK" if success else runtime_error_code,
@@ -591,6 +613,13 @@ def run_control_loop_once(
             if completion is None
             else str(completion.get("final_artifact_path", "")),
             "excel_sync_updated": excel_sync_updated,
+            "excel_path": excel_path,
+            "sheet_name": sheet_name,
+            "row_index": row_index,
+            "row_ref": row_ref,
+            "asset_manifest_path": str(
+                job.payload.get("asset_manifest_path", "")
+            ).strip(),
             "completion": {} if completion is None else completion,
             "legacy_contracts_summary": (
                 "post_gpt_immediate=seaart,genspark,tts; "
@@ -605,7 +634,7 @@ def run_control_loop_once(
     )
     normalized_snapshot_metadata = normalize_runtime_snapshot_metadata(
         snapshot_metadata,
-        run_id=run_id,
+        run_id=snapshot_run_id,
         mode="control_loop",
         status=result_status,
         code="OK" if success else runtime_error_code,
@@ -624,7 +653,7 @@ def run_control_loop_once(
 
     write_control_plane_runtime_snapshot(
         runtime_config,
-        run_id=run_id,
+        run_id=snapshot_run_id,
         status=result_status,
         code="OK" if success else runtime_error_code,
         debug_log=str(control_debug_log),
