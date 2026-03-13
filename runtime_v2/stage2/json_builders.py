@@ -41,6 +41,18 @@ KENBURNS_PAN_PCT = 0.05
 KENBURNS_ZOOM_PCT = 0.40
 
 
+def _promotion_gate_for_workload(workload: WorkloadName) -> str:
+    if workload in {"genspark", "seaart"}:
+        return "A"
+    if workload in {"canva", "geminigen"}:
+        return "B"
+    if workload in {"qwen3_tts", "rvc", "kenburns"}:
+        return "C"
+    if workload == "render":
+        return "D"
+    return ""
+
+
 def ensure_common_asset_root(asset_root: str | Path) -> Path:
     root = Path(asset_root)
     if not root.exists() or not root.is_dir():
@@ -118,6 +130,7 @@ def _build_kenburns_bundle_contract(
         "service_artifact_path": str(
             (asset_root / "video" / f"kenburns-{run_id}.json").resolve()
         ),
+        "promotion_gate": _promotion_gate_for_workload("kenburns"),
     }
     contract = build_explicit_job_contract(
         job_id=f"kenburns-{run_id}",
@@ -307,6 +320,9 @@ def _build_ref_jobs(
             reason_code=reason_code,
         )
         payload["service_artifact_path"] = str(service_artifact_path)
+        payload["promotion_gate"] = _promotion_gate_for_workload(
+            cast(WorkloadName, workload)
+        )
         if isinstance(stage1_handoff, dict):
             payload["stage1_handoff"] = stage1_handoff
         if workload in agent_browser_services:
@@ -357,6 +373,7 @@ def _build_geminigen_jobs(
             reason_code=reason_code,
         )
         payload["service_artifact_path"] = str(service_artifact_path)
+        payload["promotion_gate"] = _promotion_gate_for_workload("geminigen")
         if ref_img:
             payload["first_frame_path"] = ref_img
         if isinstance(stage1_handoff, dict):
@@ -461,6 +478,7 @@ def build_stage2_jobs(
         if legacy_category:
             payload["legacy_category"] = legacy_category
         payload["service_artifact_path"] = str(service_artifact_path)
+        payload["promotion_gate"] = _promotion_gate_for_workload(workload)
         if isinstance(stage1_handoff, dict):
             payload["stage1_handoff"] = stage1_handoff
         if workload == "canva":
@@ -547,6 +565,7 @@ def build_stage2_jobs(
         "voice_json_path": str(voice_json_path),
         "render_spec": render_spec,
         "voice_json": _build_voice_json(typed_scene_plan),
+        "promotion_gate": _promotion_gate_for_workload("render"),
     }
     if isinstance(stage1_handoff, dict):
         render_payload["stage1_handoff"] = stage1_handoff
