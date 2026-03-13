@@ -62,7 +62,10 @@ from runtime_v2.stage2.agent_browser_adapter import (
     stage2_attach_verify_succeeded,
     write_stage2_attach_evidence,
 )
-from runtime_v2.agent_browser.cdp_capture import write_functional_evidence_bundle
+from runtime_v2.agent_browser.cdp_capture import (
+    collect_browser_debug_state,
+    write_functional_evidence_bundle,
+)
 from runtime_v2.agent_browser.cdp_capture import _cdp_command, _select_page_target
 from runtime_v2.stage2.genspark_worker import run_genspark_job
 from runtime_v2.stage2.json_builders import build_stage2_jobs
@@ -1854,76 +1857,51 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         ref_images_attach_attempted=bool(ref_images_requested),
     )
     if service in {"seaart", "genspark", "canva", "geminigen"}:
+        debug_state_path: Path | None = None
+        ready_image_url = ""
+        image_ready_script = ""
+        needs_followup_script = ""
+        followup_submit_script = ""
+        interrupted_regenerate_script = ""
+        action_delay_script = ""
         try:
             if service == "genspark":
                 image_ready_script = "(() => { const valid = (src) => !!src && (/^https?:/i.test(src) || /^blob:/i.test(src) || /^data:/i.test(src) || src.startsWith('/api/files/')); const sels = ['img[src*=\"/api/files/\"]', '.image-generated img', '.image-grid img', '.generated-images .image-container .image-grid > img:first-child']; for (const sel of sels) { const found = document.querySelector(sel); const src = found ? (found.currentSrc || found.src || '') : ''; const width = found ? (found.naturalWidth || 0) : 0; if (valid(src) && width >= 256 && !src.includes('/manual/icons/')) return JSON.stringify({ok:true, src}); } const fallback = Array.from(document.images).map(img => ({src: img.currentSrc || img.src || '', width: img.naturalWidth || 0})).find(item => valid(item.src) && item.width >= 256 && !item.src.includes('/manual/icons/')); if (fallback) return JSON.stringify({ok:true, src: fallback.src}); return JSON.stringify({ok:false,error:'GENSPARK_IMAGE_NOT_READY'}); })()"
                 needs_followup_script = "(() => { const body = (document.body.innerText || ''); const needs = ['스타일', '용도', '비주얼', '이미지 스타일', 'Use case', 'Style', 'Visual']; if (window.__stage2_followup_sent) return JSON.stringify({ok:false, reason:'FOLLOWUP_ALREADY_SENT'}); const matched = needs.some(item => body.includes(item)); return JSON.stringify({ok: matched, body: body.slice(0, 400)}); })()"
                 followup_submit_script = "(() => { const textarea = document.querySelector('textarea.j-search-input'); const btn = document.querySelector('.enter-icon-wrapper'); if (!textarea) return JSON.stringify({ok:false,error:'NO_INPUT'}); const reply = '사진풍, 16:9, 유튜브 썸네일, 텍스트 없음, 질문 없이 지금 바로 1장만 생성하세요.'; const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set; textarea.focus(); if (setter) { setter.call(textarea, reply); } else { textarea.value = reply; } textarea.dispatchEvent(new Event('input',{bubbles:true})); textarea.dispatchEvent(new Event('change',{bubbles:true})); for (const type of ['keydown','keypress','keyup']) { textarea.dispatchEvent(new KeyboardEvent(type, {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); } if (btn) { btn.click(); } window.__stage2_followup_sent = true; return JSON.stringify({ok:true, step:'followup_submitted'}); })()"
+                interrupted_regenerate_script = "(() => { if (window.__stage2_regenerate_clicked) return JSON.stringify({ok:false, reason:'REGENERATE_ALREADY_CLICKED'}); const labels = ['재생성','재시도','다시시도','다시 시도','계속','Retry','Continue']; const buttons = Array.from(document.querySelectorAll('button')).filter(btn => { const text = ((btn.innerText || btn.textContent || '') + ' ' + (btn.getAttribute('aria-label') || '')).replace(/\\s+/g,'').trim(); return labels.some(label => text.includes(label.replace(/\\s+/g,''))); }); if (!buttons.length) return JSON.stringify({ok:false, reason:'NO_REGENERATE_BUTTON'}); buttons[0].click(); window.__stage2_regenerate_clicked = true; return JSON.stringify({ok:true, step:'clicked_regenerate'}); })()"
                 action_delay_script = (
                     "(() => JSON.stringify({ok:true, step:'pre_capture_wait'}))()"
                 )
                 for _attempt in range(90):
-                    command = [
-                        "agent-browser",
-                        "--cdp",
-                        str(args.port),
-                        "eval",
-                        image_ready_script,
-                    ]
-                    poll = subprocess.run(
-                        command,
-                        capture_output=True,
-                        text=True,
-                        encoding="utf-8",
-                        timeout=5,
+                    poll = _run_agent_browser_eval(
+                        args.port, image_ready_script, timeout=5
                     )
                     if '"ok":true' in (poll.stdout or ""):
-                        delay_command = [
-                            "agent-browser",
-                            "--cdp",
-                            str(args.port),
-                            "eval",
-                            action_delay_script,
-                        ]
-                        _ = subprocess.run(
-                            delay_command,
-                            capture_output=True,
-                            text=True,
-                            encoding="utf-8",
-                            timeout=5,
+                        try:
+                            poll_payload = json.loads((poll.stdout or "").strip())
+                        except json.JSONDecodeError:
+                            poll_payload = {}
+                        if isinstance(poll_payload, dict):
+                            ready_image_url = str(poll_payload.get("src", "")).strip()
+                        _ = _run_agent_browser_eval(
+                            args.port, action_delay_script, timeout=5
                         )
                         sleep(15)
                         break
-                    followup_command = [
-                        "agent-browser",
-                        "--cdp",
-                        str(args.port),
-                        "eval",
-                        needs_followup_script,
-                    ]
-                    followup_probe = subprocess.run(
-                        followup_command,
-                        capture_output=True,
-                        text=True,
-                        encoding="utf-8",
-                        timeout=5,
+                    followup_probe = _run_agent_browser_eval(
+                        args.port, needs_followup_script, timeout=5
                     )
                     if '"ok":true' in (followup_probe.stdout or ""):
-                        submit_command = [
-                            "agent-browser",
-                            "--cdp",
-                            str(args.port),
-                            "eval",
-                            followup_submit_script,
-                        ]
-                        _ = subprocess.run(
-                            submit_command,
-                            capture_output=True,
-                            text=True,
-                            encoding="utf-8",
-                            timeout=5,
+                        _ = _run_agent_browser_eval(
+                            args.port, followup_submit_script, timeout=5
                         )
                         sleep(5)
+                    regenerate_probe = _run_agent_browser_eval(
+                        args.port, interrupted_regenerate_script, timeout=5
+                    )
+                    if '"ok":true' in (regenerate_probe.stdout or ""):
+                        sleep(8)
                     sleep(2)
             if service == "genspark":
                 capture_error: Exception | None = None
@@ -1935,11 +1913,37 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                             port=args.port,
                             expected_url_substring=args.expected_url_substring.strip(),
                             service_artifact_path=target_path,
+                            image_url_override=ready_image_url,
                         )
                         capture_error = None
                         break
                     except Exception as exc:
                         capture_error = exc
+                        _ = _run_agent_browser_eval(
+                            args.port, needs_followup_script, timeout=5
+                        )
+                        followup_probe = _run_agent_browser_eval(
+                            args.port, needs_followup_script, timeout=5
+                        )
+                        if '"ok":true' in (followup_probe.stdout or ""):
+                            _ = _run_agent_browser_eval(
+                                args.port, followup_submit_script, timeout=5
+                            )
+                            sleep(5)
+                        regenerate_probe = _run_agent_browser_eval(
+                            args.port, interrupted_regenerate_script, timeout=5
+                        )
+                        if '"ok":true' in (regenerate_probe.stdout or ""):
+                            sleep(8)
+                        poll = _run_agent_browser_eval(
+                            args.port, image_ready_script, timeout=5
+                        )
+                        try:
+                            poll_payload = json.loads((poll.stdout or "").strip())
+                        except json.JSONDecodeError:
+                            poll_payload = {}
+                        if isinstance(poll_payload, dict):
+                            ready_image_url = str(poll_payload.get("src", "")).strip()
                         sleep(10)
                 if capture_error is not None:
                     raise capture_error
@@ -1960,6 +1964,13 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                     raise RuntimeError("GEMINIGEN_TRUTHFUL_ARTIFACT_MISSING")
             placeholder_artifact = False
         except Exception:
+            if service == "genspark":
+                debug_state_path = _write_stage2_adapter_debug_state(
+                    workspace=workspace,
+                    service=service,
+                    port=args.port,
+                    expected_url_substring=args.expected_url_substring.strip(),
+                )
             placeholder_artifact = not (
                 target_path.exists()
                 and target_path.is_file()
@@ -1976,6 +1987,11 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 ref_images_requested=ref_images_requested,
                 ref_images_resolved=ref_images_resolved,
                 ref_images_attach_attempted=bool(ref_images_requested),
+                extra_details=(
+                    {"debug_state_path": str(debug_state_path)}
+                    if debug_state_path is not None
+                    else None
+                ),
             )
             return exit_codes.BROWSER_UNHEALTHY
     else:
@@ -2312,6 +2328,44 @@ def _write_text_file(path: Path, content: str) -> Path:
 def _backdate_seed_file(path: Path, age_sec: int = 5) -> None:
     target_ts = max(0.0, time() - float(age_sec))
     os.utime(path, (target_ts, target_ts))
+
+
+def _write_stage2_adapter_debug_state(
+    *, workspace: Path, service: str, port: int, expected_url_substring: str
+) -> Path:
+    debug_state_path = workspace / "adapter_debug_state.json"
+    payload: dict[str, object]
+    try:
+        payload = collect_browser_debug_state(
+            port=port,
+            expected_url_substring=expected_url_substring,
+            service=service,
+        )
+    except Exception as exc:
+        payload = {
+            "service": service,
+            "port": port,
+            "expected_url_substring": expected_url_substring,
+            "snapshot_error": str(exc),
+        }
+    _ = _write_text_file(
+        debug_state_path,
+        json.dumps(_json_safe_mapping(payload), ensure_ascii=True, indent=2),
+    )
+    return debug_state_path
+
+
+def _run_agent_browser_eval(
+    port: int, script: str, *, timeout: int = 5
+) -> subprocess.CompletedProcess[str]:
+    command = ["agent-browser", "--cdp", str(port), "eval", script]
+    return subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=timeout,
+    )
 
 
 if __name__ == "__main__":
