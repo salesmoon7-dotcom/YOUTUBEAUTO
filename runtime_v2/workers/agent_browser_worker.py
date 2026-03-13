@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import json
+import time
 import urllib.request
 from pathlib import Path
 from typing import cast
@@ -63,15 +64,44 @@ def _snapshot_required(service: str, payload: dict[str, object]) -> bool:
     return service == "chatgpt"
 
 
+def _normalize_agent_browser_actions(raw_actions: object) -> list[dict[str, object]]:
+    if not isinstance(raw_actions, list):
+        return []
+    action_items: list[dict[str, object]] = []
+    for item in cast(list[object], raw_actions):
+        if isinstance(item, str):
+            script = item.strip()
+            if script:
+                action_items.append({"type": "eval", "script": script})
+            continue
+        if isinstance(item, dict):
+            action_items.append(cast(dict[str, object], item))
+    return action_items
+
+
 def _run_agent_browser_actions(
     *,
+    service: str,
     port: int,
     transcript: list[dict[str, object]],
-    actions: list[str],
+    actions: list[dict[str, object]],
     timeout_sec: int,
 ) -> None:
-    for index, script in enumerate(actions, start=1):
-        command = build_eval_command(port=port, script=script)
+    for index, action in enumerate(actions, start=1):
+        action_type = str(action.get("type", "eval"))
+        if action_type == "eval":
+            command = build_eval_command(
+                port=port, script=str(action.get("script", ""))
+            )
+        elif action_type == "upload":
+            selector = str(action.get("selector", "input[type=file]"))
+            files = [str(item) for item in cast(list[object], action.get("files", []))]
+            command = ["agent-browser", "--cdp", str(port), "upload", selector, *files]
+        elif action_type == "wait":
+            target = str(action.get("target", "1000"))
+            command = ["agent-browser", "--cdp", str(port), "wait", target]
+        else:
+            raise RuntimeError(f"unknown_agent_browser_action:{action_type}")
         output = _run_agent_browser_command(command, timeout_sec=timeout_sec)
         parsed_output = None
         stripped = output.strip()
@@ -95,6 +125,44 @@ def _run_agent_browser_actions(
         )
         if isinstance(parsed_output, dict) and not bool(parsed_output.get("ok", False)):
             raise RuntimeError(f"agent_browser_action_failed:{parsed_output}")
+        if isinstance(parsed_output, dict) and str(parsed_output.get("step", "")) in {
+            "navigated_image_agent",
+            "clicked_generate",
+        }:
+            if str(parsed_output.get("step", "")) == "clicked_generate":
+                time.sleep(5)
+            tab_list_command = build_tab_list_command(port=port)
+            tab_list_output = _run_agent_browser_command(
+                tab_list_command, timeout_sec=timeout_sec
+            )
+            transcript.append(
+                {
+                    "command": tab_list_command,
+                    "output": tab_list_output,
+                    "action_index": index,
+                }
+            )
+            tabs = parse_tab_list_output(tab_list_output)
+            selected_tab = select_best_tab(
+                tabs,
+                expected_url_substring="genspark.ai/agents?type=image_generation_agent",
+                expected_title_substring="Genspark",
+            )
+            selected_tab = _prefer_service_specific_tab(service, tabs, selected_tab)
+            if selected_tab is not None:
+                select_tab_command = build_tab_select_command(
+                    port=port, index=selected_tab
+                )
+                select_tab_output = _run_agent_browser_command(
+                    select_tab_command, timeout_sec=timeout_sec
+                )
+                transcript.append(
+                    {
+                        "command": select_tab_command,
+                        "output": select_tab_output,
+                        "action_index": index,
+                    }
+                )
 
 
 def _http_cdp_tab_list(port: int) -> list[dict[str, object]]:
@@ -119,6 +187,20 @@ def _http_cdp_tab_list(port: int) -> list[dict[str, object]]:
             }
         )
     return tabs
+
+
+def _prefer_service_specific_tab(
+    service: str, tabs: list[dict[str, object]], selected_tab: int | None
+) -> int | None:
+    if selected_tab is None or not tabs:
+        return selected_tab
+    if service != "genspark":
+        return selected_tab
+    for idx, item in enumerate(tabs):
+        url = str(item.get("url", ""))
+        if url.startswith("https://www.genspark.ai/agents?id="):
+            return idx
+    return selected_tab
 
 
 def _resolve_agent_browser_command(command: list[str]) -> list[str]:
@@ -242,6 +324,7 @@ def run_agent_browser_verify_job(
             expected_url_substring=expected_url,
             expected_title_substring=expected_title,
         )
+        selected_tab = _prefer_service_specific_tab(service, tabs, selected_tab)
         if selected_tab is None and (expected_url or expected_title):
             raise ValueError("agent_browser_matching_tab_not_found")
         current_url = ""
@@ -268,20 +351,15 @@ def run_agent_browser_verify_job(
             )
             transcript.append({"command": get_title_command, "output": current_title})
 
-        raw_actions = job.payload.get("actions", [])
-        if isinstance(raw_actions, list):
-            action_items = [
-                str(item)
-                for item in cast(list[object], raw_actions)
-                if str(item).strip()
-            ]
-            if action_items:
-                _run_agent_browser_actions(
-                    port=port,
-                    transcript=transcript,
-                    actions=action_items,
-                    timeout_sec=timeout_sec,
-                )
+        action_items = _normalize_agent_browser_actions(job.payload.get("actions", []))
+        if action_items:
+            _run_agent_browser_actions(
+                service=service,
+                port=port,
+                transcript=transcript,
+                actions=action_items,
+                timeout_sec=timeout_sec,
+            )
 
         snapshot_path = None
         if capture_snapshot:

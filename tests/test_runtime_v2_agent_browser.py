@@ -313,6 +313,127 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
             str(details["current_url"]), "https://www.seaart.ai/ko/create/image?id=abc"
         )
 
+    def test_agent_browser_verify_accepts_legacy_string_actions(self) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "artifacts"
+            job = JobContract(
+                job_id="agent-browser-legacy-actions",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-legacy-actions",
+                payload={
+                    "service": "chatgpt",
+                    "port": 9222,
+                    "expected_url_substring": "chatgpt.com",
+                    "actions": ["window.__test = true"],
+                },
+            )
+
+            outputs = iter(
+                [
+                    "[0] ChatGPT - https://chatgpt.com/\n",
+                    "selected",
+                    "https://chatgpt.com/",
+                    "ChatGPT",
+                    '{"ok": true}',
+                    "snapshot",
+                ]
+            )
+
+            commands: list[list[str]] = []
+
+            def fake_run(command: list[str], *, timeout_sec: int = 30) -> str:
+                _ = timeout_sec
+                commands.append(command)
+                return next(outputs)
+
+            with patch(
+                "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                side_effect=fake_run,
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        self.assertTrue(
+            any(command[-1] == "window.__test = true" for command in commands)
+        )
+
+    def test_agent_browser_actions_support_structured_commands_and_genspark_reselect(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import _run_agent_browser_actions
+
+        transcript: list[dict[str, object]] = []
+        commands: list[list[str]] = []
+        outputs = iter(
+            [
+                '{"ok": true, "step": "navigated_image_agent"}',
+                '{"ok": true}',
+                "tab-list",
+                "selected",
+                '{"ok": true, "step": "clicked_generate"}',
+                "tab-list",
+                "selected",
+            ]
+        )
+
+        def fake_run(command: list[str], *, timeout_sec: int = 30) -> str:
+            _ = timeout_sec
+            commands.append(command)
+            return next(outputs)
+
+        with (
+            patch(
+                "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                side_effect=fake_run,
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker.build_tab_list_command",
+                return_value=["agent-browser", "tab-list"],
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker.build_tab_select_command",
+                return_value=["agent-browser", "tab-select", "0"],
+            ) as select_tab_mock,
+            patch(
+                "runtime_v2.workers.agent_browser_worker.parse_tab_list_output",
+                return_value=[
+                    {
+                        "index": 0,
+                        "title": "Genspark",
+                        "url": "https://www.genspark.ai/agents?id=123",
+                    }
+                ],
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker.select_best_tab",
+                return_value=0,
+            ),
+            patch("runtime_v2.workers.agent_browser_worker.time.sleep") as sleep_mock,
+        ):
+            _run_agent_browser_actions(
+                service="genspark",
+                port=9333,
+                transcript=transcript,
+                actions=[
+                    {
+                        "type": "upload",
+                        "selector": "input[type=file]",
+                        "files": ["a.png"],
+                    },
+                    {"type": "wait", "target": "selector:#ready"},
+                    {"type": "eval", "script": "generate()"},
+                ],
+                timeout_sec=30,
+            )
+
+        self.assertTrue(any("upload" in command for command in commands))
+        self.assertTrue(any("wait" in command for command in commands))
+        self.assertGreaterEqual(select_tab_mock.call_count, 2)
+        sleep_mock.assert_called_once_with(5)
+        self.assertGreaterEqual(len(transcript), 5)
+
 
 if __name__ == "__main__":
     _ = unittest.main()
