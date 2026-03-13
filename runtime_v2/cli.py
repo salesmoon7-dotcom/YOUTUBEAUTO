@@ -1180,6 +1180,10 @@ def _stage2_runner_for_service(service: str):
     return mapping[service]
 
 
+def _is_stage2_probe_service(service: str) -> bool:
+    return service in {"genspark", "seaart", "geminigen", "canva"}
+
+
 def _build_stage2_row1_video_plan(
     *, asset_root: Path, run_id: str, agent_browser_services: list[str]
 ) -> dict[str, object]:
@@ -1243,6 +1247,8 @@ def _run_stage2_row1_probe(
         typed = cast(dict[str, object], raw)
         job_payload = cast(dict[str, object], typed["job"])
         service = str(job_payload["worker"])
+        if not _is_stage2_probe_service(service):
+            continue
         payload = cast(dict[str, object], job_payload["payload"])
         payload["runtime_root"] = str(config.result_router_file.parent.parent.resolve())
         if service not in agent_browser_services:
