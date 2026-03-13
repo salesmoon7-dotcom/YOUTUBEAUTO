@@ -78,6 +78,47 @@ def capture_primary_image_asset(
     return output_path, digest
 
 
+def capture_primary_video_asset(
+    port: int, expected_url_substring: str, output_path: Path, *, service: str = ""
+) -> tuple[Path, str]:
+    _ = service
+    target = _select_page_target(port, expected_url_substring)
+    expression = (
+        "(() => {"
+        "const selectors = ['video', 'video source'];"
+        "for (const sel of selectors) {"
+        "  const nodes = Array.from(document.querySelectorAll(sel));"
+        "  for (const node of nodes) {"
+        "    const src = node.currentSrc || node.src || node.getAttribute('src') || '';"
+        "    if (src && /^https?:/i.test(src)) return src;"
+        "  }"
+        "}"
+        "return '';"
+        "})()"
+    )
+    video_payload = _cdp_command(
+        target["webSocketDebuggerUrl"],
+        method="Runtime.evaluate",
+        params={
+            "expression": expression,
+            "returnByValue": True,
+        },
+    )
+    video_url = str(
+        cast(
+            dict[str, object],
+            cast(dict[str, object], video_payload.get("result", {})).get("result", {}),
+        ).get("value", "")
+    )
+    if not video_url:
+        raise RuntimeError("GEMINIGEN_VIDEO_URL_NOT_FOUND")
+    data = _download_image_bytes(video_url, target["webSocketDebuggerUrl"])
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(data)
+    digest = hashlib.sha256(data).hexdigest()
+    return output_path, digest
+
+
 def write_functional_evidence_bundle(
     *,
     workspace: Path,
@@ -90,12 +131,20 @@ def write_functional_evidence_bundle(
     screenshot_path = capture_page_screenshot(
         port, expected_url_substring, evidence_root / "final_screen.png"
     )
-    asset_path, sha256 = capture_primary_image_asset(
-        port,
-        expected_url_substring,
-        evidence_root / service_artifact_path.name,
-        service=service,
-    )
+    if service == "geminigen":
+        asset_path, sha256 = capture_primary_video_asset(
+            port,
+            expected_url_substring,
+            evidence_root / service_artifact_path.name,
+            service=service,
+        )
+    else:
+        asset_path, sha256 = capture_primary_image_asset(
+            port,
+            expected_url_substring,
+            evidence_root / service_artifact_path.name,
+            service=service,
+        )
     service_artifact_path.parent.mkdir(parents=True, exist_ok=True)
     service_artifact_path.write_bytes(asset_path.read_bytes())
     payload: dict[str, object] = {
