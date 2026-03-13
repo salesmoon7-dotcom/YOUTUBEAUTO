@@ -10,7 +10,13 @@ from unittest.mock import patch
 from runtime_v2 import circuit_breaker, recovery_policy, retry_budget
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.contracts.job_contract import JobContract, build_explicit_job_contract
-from runtime_v2.control_plane import run_control_loop_once, run_worker, seed_control_job
+from runtime_v2.control_plane import (
+    _load_jobs,
+    _seed_declared_next_jobs,
+    run_control_loop_once,
+    run_worker,
+    seed_control_job,
+)
 from runtime_v2.manager import seed_excel_row
 from runtime_v2.contracts.video_plan import build_video_plan
 from runtime_v2.latest_run import load_joined_latest_run
@@ -611,6 +617,313 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
 
         self.assertEqual(str(by_job_id["qwen-job"]["status"]), "completed")
         self.assertEqual(str(by_job_id["rvc-qwen-job"]["status"]), "queued")
+
+    def test_control_plane_canonicalizes_geminigen_rvc_next_job_for_run(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            gemi_video = root / "gemi.mp4"
+            _ = gemi_video.write_bytes(b"mp4")
+            seed_control_job(
+                JobContract(
+                    job_id="geminigen-job",
+                    workload="geminigen",
+                    checkpoint_key="seed:geminigen-job",
+                    payload={
+                        "run_id": "stage2-run-1",
+                        "row_ref": "Sheet1!row1",
+                        "chain_depth": 0,
+                    },
+                ),
+                config=config,
+            )
+
+            runtime_result: dict[str, object] = {
+                "status": "ok",
+                "code": "OK",
+                "worker_result": {
+                    "status": "ok",
+                    "stage": "geminigen",
+                    "error_code": "",
+                    "retryable": False,
+                    "next_jobs": [
+                        build_explicit_job_contract(
+                            job_id="rvc-geminigen-job",
+                            workload="rvc",
+                            checkpoint_key="derived:rvc:geminigen-job",
+                            payload={
+                                "audio_path": str(gemi_video.resolve()),
+                                "model_name": "voice-model-a",
+                                "run_id": "stage2-run-1",
+                                "row_ref": "Sheet1!row1",
+                                "chain_depth": 1,
+                            },
+                            chain_step=1,
+                            parent_job_id="geminigen-job",
+                        )
+                    ],
+                    "completion": {"state": "routed", "final_output": False},
+                },
+            }
+
+            with patch(
+                "runtime_v2.control_plane.run_gated", return_value=runtime_result
+            ):
+                _ = run_control_loop_once(
+                    owner="runtime_v2", config=config, run_id="control-run-gemi-rvc"
+                )
+
+            queue_payload = cast(
+                object, json.loads(config.queue_store_file.read_text(encoding="utf-8"))
+            )
+            self.assertIsInstance(queue_payload, list)
+            if not isinstance(queue_payload, list):
+                self.fail("queue payload missing")
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            by_job_id = {str(item["job_id"]): item for item in queue_items}
+
+        self.assertIn("rvc-geminigen-stage2-run-1", by_job_id)
+        rvc_payload = cast(
+            dict[object, object], by_job_id["rvc-geminigen-stage2-run-1"]["payload"]
+        )
+        self.assertEqual(str(rvc_payload["source_mode"]), "gemi-video-source")
+        self.assertTrue(
+            str(rvc_payload["service_artifact_path"])
+            .replace("\\", "/")
+            .endswith("rvc-geminigen-stage2-run-1/speech_rvc.wav")
+        )
+
+    def test_control_plane_prefers_qwen3_rvc_lane_over_geminigen_lane_for_same_run(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            gemi_video = root / "gemi.mp4"
+            qwen_audio = root / "speech.wav"
+            _ = gemi_video.write_bytes(b"mp4")
+            _ = qwen_audio.write_bytes(b"wav")
+            seed_control_job(
+                JobContract(
+                    job_id="geminigen-job",
+                    workload="geminigen",
+                    checkpoint_key="seed:geminigen-job",
+                    payload={
+                        "run_id": "stage2-run-1",
+                        "row_ref": "Sheet1!row1",
+                        "chain_depth": 0,
+                    },
+                ),
+                config=config,
+            )
+
+            gemi_result: dict[str, object] = {
+                "status": "ok",
+                "code": "OK",
+                "worker_result": {
+                    "status": "ok",
+                    "stage": "geminigen",
+                    "error_code": "",
+                    "retryable": False,
+                    "next_jobs": [
+                        build_explicit_job_contract(
+                            job_id="rvc-geminigen-job",
+                            workload="rvc",
+                            checkpoint_key="derived:rvc:geminigen-job",
+                            payload={
+                                "audio_path": str(gemi_video.resolve()),
+                                "model_name": "voice-model-a",
+                                "run_id": "stage2-run-1",
+                                "row_ref": "Sheet1!row1",
+                                "chain_depth": 1,
+                            },
+                            chain_step=1,
+                            parent_job_id="geminigen-job",
+                        )
+                    ],
+                    "completion": {"state": "routed", "final_output": False},
+                },
+            }
+            with patch("runtime_v2.control_plane.run_gated", return_value=gemi_result):
+                _ = run_control_loop_once(
+                    owner="runtime_v2", config=config, run_id="control-run-gemi-rvc"
+                )
+
+            qwen_job = JobContract(
+                job_id="qwen-job",
+                workload="qwen3_tts",
+                checkpoint_key="seed:qwen-job",
+                payload={
+                    "run_id": "stage2-run-1",
+                    "row_ref": "Sheet1!row1",
+                    "chain_depth": 0,
+                },
+            )
+            jobs = _load_jobs(QueueStore(config.queue_store_file))
+            qwen_worker_result: dict[str, object] = {
+                "status": "ok",
+                "stage": "qwen3_tts",
+                "error_code": "",
+                "retryable": False,
+                "next_jobs": [
+                    build_explicit_job_contract(
+                        job_id="rvc-qwen-job",
+                        workload="rvc",
+                        checkpoint_key="derived:rvc:qwen-job",
+                        payload={
+                            "source_path": str(qwen_audio.resolve()),
+                            "model_name": "voice-model-a",
+                            "run_id": "stage2-run-1",
+                            "row_ref": "Sheet1!row1",
+                            "chain_depth": 1,
+                        },
+                        chain_step=1,
+                        parent_job_id="qwen-job",
+                    )
+                ],
+                "completion": {"state": "routed", "final_output": False},
+            }
+            _ = _seed_declared_next_jobs(
+                config.queue_store_file,
+                jobs,
+                qwen_worker_result,
+                qwen_job,
+                config.control_plane_events_file,
+                run_id="control-run-qwen-rvc",
+                artifact_root=config.artifact_root,
+            )
+
+            queue_payload = cast(
+                object, json.loads(config.queue_store_file.read_text(encoding="utf-8"))
+            )
+            self.assertIsInstance(queue_payload, list)
+            if not isinstance(queue_payload, list):
+                self.fail("queue payload missing")
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            job_ids = {str(item["job_id"]) for item in queue_items}
+
+        self.assertIn("rvc-qwen3-stage2-run-1", job_ids)
+        self.assertNotIn("rvc-geminigen-stage2-run-1", job_ids)
+
+    def test_control_plane_rejects_geminigen_rvc_lane_when_qwen3_lane_already_exists(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            qwen_audio = root / "speech.wav"
+            gemi_video = root / "gemi.mp4"
+            _ = qwen_audio.write_bytes(b"wav")
+            _ = gemi_video.write_bytes(b"mp4")
+
+            qwen_job = JobContract(
+                job_id="qwen-job",
+                workload="qwen3_tts",
+                checkpoint_key="seed:qwen-job",
+                payload={
+                    "run_id": "stage2-run-1",
+                    "row_ref": "Sheet1!row1",
+                    "chain_depth": 0,
+                },
+            )
+            jobs: list[JobContract] = []
+            _ = _seed_declared_next_jobs(
+                config.queue_store_file,
+                jobs,
+                {
+                    "status": "ok",
+                    "stage": "qwen3_tts",
+                    "error_code": "",
+                    "retryable": False,
+                    "next_jobs": [
+                        build_explicit_job_contract(
+                            job_id="rvc-qwen-job",
+                            workload="rvc",
+                            checkpoint_key="derived:rvc:qwen-job",
+                            payload={
+                                "source_path": str(qwen_audio.resolve()),
+                                "model_name": "voice-model-a",
+                                "run_id": "stage2-run-1",
+                                "row_ref": "Sheet1!row1",
+                                "chain_depth": 1,
+                            },
+                            chain_step=1,
+                            parent_job_id="qwen-job",
+                        )
+                    ],
+                    "completion": {"state": "routed", "final_output": False},
+                },
+                qwen_job,
+                config.control_plane_events_file,
+                run_id="control-run-qwen-rvc",
+                artifact_root=config.artifact_root,
+            )
+            jobs = _load_jobs(QueueStore(config.queue_store_file))
+            gemi_job = JobContract(
+                job_id="geminigen-job",
+                workload="geminigen",
+                checkpoint_key="seed:geminigen-job",
+                payload={
+                    "run_id": "stage2-run-1",
+                    "row_ref": "Sheet1!row1",
+                    "chain_depth": 0,
+                },
+            )
+            _ = _seed_declared_next_jobs(
+                config.queue_store_file,
+                jobs,
+                {
+                    "status": "ok",
+                    "stage": "geminigen",
+                    "error_code": "",
+                    "retryable": False,
+                    "next_jobs": [
+                        build_explicit_job_contract(
+                            job_id="rvc-geminigen-job",
+                            workload="rvc",
+                            checkpoint_key="derived:rvc:geminigen-job",
+                            payload={
+                                "audio_path": str(gemi_video.resolve()),
+                                "model_name": "voice-model-a",
+                                "run_id": "stage2-run-1",
+                                "row_ref": "Sheet1!row1",
+                                "chain_depth": 1,
+                            },
+                            chain_step=1,
+                            parent_job_id="geminigen-job",
+                        )
+                    ],
+                    "completion": {"state": "routed", "final_output": False},
+                },
+                gemi_job,
+                config.control_plane_events_file,
+                run_id="control-run-gemi-rvc",
+                artifact_root=config.artifact_root,
+            )
+
+            queue_payload = cast(
+                object, json.loads(config.queue_store_file.read_text(encoding="utf-8"))
+            )
+            self.assertIsInstance(queue_payload, list)
+            if not isinstance(queue_payload, list):
+                self.fail("queue payload missing")
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            job_ids = {str(item["job_id"]) for item in queue_items}
+
+        self.assertIn("rvc-qwen3-stage2-run-1", job_ids)
+        self.assertNotIn("rvc-geminigen-stage2-run-1", job_ids)
 
     def test_control_plane_keeps_stage1_declared_qwen_job_when_scene_count_is_three(
         self,

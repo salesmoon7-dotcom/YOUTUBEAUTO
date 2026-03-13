@@ -61,6 +61,7 @@ MAX_CHAIN_DEPTH = 4
 MAX_NEXT_JOBS = 4
 MAX_STAGE1_DECLARED_NEXT_JOBS = 12
 PROMOTION_GATE_ORDER = {"": 0, "A": 1, "B": 2, "C": 3, "D": 4}
+RVC_SOURCE_MODE_PRIORITY = {"tts-source": 2, "gemi-video-source": 1}
 
 
 def run_control_loop_once(
@@ -1344,6 +1345,57 @@ def _seed_declared_next_jobs(
                 )
                 continue
             next_job.payload["row_ref"] = expected_row_ref
+        replaced_job_id = ""
+        if next_job.workload == "rvc":
+            replaced_job_id = _normalize_rvc_next_job(
+                next_job, artifact_root=artifact_root
+            )
+            if (
+                replaced_job_id
+                and replaced_job_id != next_job.job_id
+                and replaced_job_id in known_job_ids
+            ):
+                known_job_ids.remove(replaced_job_id)
+            duplicate_rvc = _existing_rvc_job_for_run(jobs, next_job)
+            if duplicate_rvc is not None:
+                existing_priority = _rvc_source_mode_priority(
+                    _rvc_source_mode(duplicate_rvc.payload)
+                )
+                next_priority = _rvc_source_mode_priority(
+                    str(next_job.payload.get("source_mode", "")).strip()
+                )
+                if (
+                    next_priority > existing_priority
+                    and duplicate_rvc.status == "queued"
+                ):
+                    jobs.remove(duplicate_rvc)
+                    known_job_ids.discard(duplicate_rvc.job_id)
+                    _ = _append_control_event(
+                        {
+                            "event": "next_job_replaced",
+                            "parent_job_id": parent_job.job_id,
+                            "job_id": next_job.job_id,
+                            "replaced_job_id": duplicate_rvc.job_id,
+                            "reason": "higher_priority_rvc_source_mode",
+                            "source_mode": str(next_job.payload.get("source_mode", "")),
+                        },
+                        events_file,
+                        run_id=run_id,
+                    )
+                else:
+                    _ = _append_control_event(
+                        {
+                            "event": "next_job_rejected",
+                            "parent_job_id": parent_job.job_id,
+                            "job_id": next_job.job_id,
+                            "reason": "duplicate_rvc_run",
+                            "existing_job_id": duplicate_rvc.job_id,
+                            "source_mode": str(next_job.payload.get("source_mode", "")),
+                        },
+                        events_file,
+                        run_id=run_id,
+                    )
+                    continue
         next_job.payload["chain_depth"] = next_depth
         next_job.payload["routed_from"] = parent_job.job_id
         excel_path = str(parent_job.payload.get("excel_path", "")).strip()
@@ -1384,6 +1436,57 @@ def _seed_declared_next_jobs(
         known_job_ids.add(next_job.job_id)
         seeded.append(next_job)
     return seeded
+
+
+def _rvc_source_mode(payload: dict[str, object]) -> str:
+    declared_mode = str(payload.get("source_mode", "")).strip()
+    if declared_mode in RVC_SOURCE_MODE_PRIORITY:
+        return declared_mode
+    audio_path = str(payload.get("audio_path", "")).strip()
+    return "gemi-video-source" if audio_path else "tts-source"
+
+
+def _rvc_source_mode_priority(source_mode: str) -> int:
+    return RVC_SOURCE_MODE_PRIORITY.get(source_mode, 0)
+
+
+def _normalize_rvc_next_job(next_job: JobContract, *, artifact_root: Path) -> str:
+    run_id = str(next_job.payload.get("run_id", "")).strip()
+    if not run_id:
+        source_mode = _rvc_source_mode(next_job.payload)
+        next_job.payload["source_mode"] = source_mode
+        return ""
+    source_mode = _rvc_source_mode(next_job.payload)
+    next_job.payload["source_mode"] = source_mode
+    previous_job_id = next_job.job_id
+    if source_mode == "tts-source":
+        canonical_job_id = f"rvc-qwen3-{run_id}"
+    else:
+        canonical_job_id = f"rvc-geminigen-{run_id}"
+    next_job.job_id = canonical_job_id
+    next_job.checkpoint_key = f"derived:rvc:{source_mode}:{run_id}"
+    next_job.payload["service_artifact_path"] = str(
+        (artifact_root / "rvc" / canonical_job_id / "speech_rvc.wav").resolve()
+    )
+    return previous_job_id
+
+
+def _existing_rvc_job_for_run(
+    jobs: list[JobContract], next_job: JobContract
+) -> JobContract | None:
+    expected_run_id = str(next_job.payload.get("run_id", "")).strip()
+    if not expected_run_id:
+        return None
+    for current in jobs:
+        if current.workload != "rvc":
+            continue
+        current_run_id = str(current.payload.get("run_id", "")).strip()
+        if current_run_id != expected_run_id:
+            continue
+        if current.job_id == next_job.job_id:
+            continue
+        return current
+    return None
 
 
 def _attach_asset_manifest(
