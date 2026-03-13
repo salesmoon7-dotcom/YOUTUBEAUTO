@@ -6,7 +6,7 @@ from pathlib import Path
 from time import time
 from typing import cast
 
-from runtime_v2.config import RuntimeConfig, allowed_workloads
+from runtime_v2.config import RuntimeConfig, allowed_workloads, external_runtime_root
 from runtime_v2.contracts.job_contract import (
     EXPLICIT_CONTRACT_NAME,
     EXPLICIT_CONTRACT_VERSION,
@@ -136,7 +136,13 @@ def job_from_explicit_payload(
 
 
 def payload_paths_are_local(payload: dict[str, object]) -> bool:
-    for key in ("source_path", "audio_path", "image_path", "scene_bundle_map_path"):
+    for key in (
+        "source_path",
+        "audio_path",
+        "image_path",
+        "scene_bundle_map_path",
+        "service_artifact_path",
+    ):
         raw_value = payload.get(key)
         if isinstance(raw_value, str) and raw_value.strip():
             if _normalize_local_path(raw_value) is None:
@@ -501,7 +507,10 @@ def _normalize_local_path(raw_path: str) -> Path | None:
         candidate = (REPO_ROOT / candidate).resolve()
     else:
         candidate = candidate.resolve()
-    if REPO_ROOT not in candidate.parents and candidate != REPO_ROOT:
+    allowed_roots = {REPO_ROOT.resolve(), external_runtime_root().resolve()}
+    if not any(
+        candidate == root or root in candidate.parents for root in allowed_roots
+    ):
         return None
     return candidate
 

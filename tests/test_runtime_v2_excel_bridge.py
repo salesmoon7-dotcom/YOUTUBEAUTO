@@ -11,7 +11,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from runtime_v2.cli import main
 from runtime_v2.config import RuntimeConfig
-from runtime_v2.control_plane_feeder import seed_local_jobs
+from runtime_v2.control_plane_feeder import job_from_explicit_payload, seed_local_jobs
 from runtime_v2.manager import seed_excel_row
 from runtime_v2.supervisor import run_once
 
@@ -66,6 +66,77 @@ class RuntimeV2ExcelBridgeTests(unittest.TestCase):
             str(queued_job.payload["source_path"]), str(image_path.resolve())
         )
         self.assertEqual(int(cast(int, queued_job.payload["duration_sec"])), 8)
+
+    def test_explicit_contract_rejects_non_local_service_artifact_path(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            source_path = root / "scene01.png"
+            _ = source_path.write_bytes(b"png")
+            explicit_payload: dict[str, object] = {
+                "contract": "runtime_v2_inbox_job",
+                "contract_version": "1.0",
+                "local_only": True,
+                "job": {
+                    "job_id": "kenburns-explicit",
+                    "worker": "kenburns",
+                    "checkpoint_key": "explicit:kenburns-explicit",
+                    "payload": {
+                        "source_path": str(source_path.resolve()),
+                        "service_artifact_path": r"C:\Windows\Temp\kenburns.json",
+                    },
+                },
+            }
+
+            job, invalid_reason = job_from_explicit_payload(
+                explicit_payload, source_hint="test-contract"
+            )
+
+        self.assertIsNone(job)
+        self.assertEqual(
+            invalid_reason,
+            {
+                "code": "non_local_path",
+                "message": "payload paths must stay inside workspace",
+            },
+        )
+
+    def test_explicit_contract_accepts_service_artifact_path_under_external_runtime_root(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            source_path = root / "scene01.png"
+            _ = source_path.write_bytes(b"png")
+            external_root = root / "external-runtime"
+            manifest_path = external_root / "artifacts" / "kenburns.json"
+            explicit_payload: dict[str, object] = {
+                "contract": "runtime_v2_inbox_job",
+                "contract_version": "1.0",
+                "local_only": True,
+                "job": {
+                    "job_id": "kenburns-explicit",
+                    "worker": "kenburns",
+                    "checkpoint_key": "explicit:kenburns-explicit",
+                    "payload": {
+                        "source_path": str(source_path.resolve()),
+                        "service_artifact_path": str(manifest_path.resolve()),
+                    },
+                },
+            }
+
+            with patch.dict(
+                "os.environ",
+                {"RUNTIME_V2_EXTERNAL_ROOT": str(external_root.resolve())},
+                clear=False,
+            ):
+                job, invalid_reason = job_from_explicit_payload(
+                    explicit_payload, source_hint="test-contract"
+                )
+
+        self.assertIsNotNone(job)
+        self.assertIsNone(invalid_reason)
 
     def test_excel_topic_row_seeds_topic_spec_before_stage1_runner(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

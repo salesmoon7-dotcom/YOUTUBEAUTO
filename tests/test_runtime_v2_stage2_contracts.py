@@ -138,6 +138,26 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
         self.assertEqual(last_job["worker"], "genspark")
         self.assertEqual(cast(dict[str, object], jobs[-1]["job"])["worker"], "render")
 
+    def test_stage2_jobs_assign_kenburns_manifest_ssot_under_asset_root(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            video_plan = _video_plan(tmp_dir)
+            jobs, _ = build_stage2_jobs(video_plan)
+
+        kenburns_job = next(
+            cast(dict[str, object], item["job"])
+            for item in jobs
+            if cast(dict[str, object], item["job"])["worker"] == "kenburns"
+        )
+        kenburns_payload = cast(dict[str, object], kenburns_job["payload"])
+        self.assertTrue(
+            str(kenburns_payload["service_artifact_path"]).endswith(
+                "video\\kenburns-stage2-run-1.json"
+            )
+        )
+        self.assertTrue(
+            Path(str(kenburns_payload["service_artifact_path"])).is_absolute()
+        )
+
     def test_stage2_jobs_can_opt_in_agent_browser_services_from_video_plan(
         self,
     ) -> None:
