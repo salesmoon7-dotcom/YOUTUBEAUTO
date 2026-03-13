@@ -35,7 +35,7 @@ class RuntimeV2SoakReportTests(unittest.TestCase):
                             "B": {"passed": True, "reason": ""},
                             "C": {
                                 "passed": False,
-                                "reason": "missing_voice_json_or_kenburns_role",
+                                "reason": "missing_voice_json_audio_or_kenburns_role",
                             },
                             "D": {"passed": True, "reason": ""},
                         }
@@ -64,7 +64,9 @@ class RuntimeV2SoakReportTests(unittest.TestCase):
         self.assertIn("# Soak 24h Report", report_text)
         self.assertIn("GPU Duplicate Run: 1", report_text)
         self.assertIn("manifest.json", report_text)
-        self.assertIn("Gate C: FAIL missing_voice_json_or_kenburns_role", report_text)
+        self.assertIn(
+            "Gate C: FAIL missing_voice_json_audio_or_kenburns_role", report_text
+        )
 
     def test_build_soak_snapshot_uses_readiness_payload(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
