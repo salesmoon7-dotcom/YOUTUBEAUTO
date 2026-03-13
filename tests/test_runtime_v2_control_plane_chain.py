@@ -1079,7 +1079,10 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                     {
                         "run_id": "gate-d-run-1",
                         "row_ref": "Sheet1!row1",
-                        "roles": {"voice_json": "D:/voice.json"},
+                        "roles": {
+                            "voice_json": "D:/voice.json",
+                            "image_primary": "D:/image.png",
+                        },
                     },
                     ensure_ascii=True,
                 ),
@@ -1159,6 +1162,9 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             )
             latest_metadata = cast(dict[str, object], latest_result["metadata"])
             latest_join = load_joined_latest_run(config, completed=True)
+            manifest_payload = json.loads(
+                asset_manifest_path.read_text(encoding="utf-8")
+            )
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(status_value, "Done")
@@ -1177,6 +1183,11 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             dict[object, object], latest_metadata["canonical_handoff"]
         )
         self.assertEqual(str(canonical_handoff["run_id"]), "gate-d-run-1")
+        roles = cast(
+            dict[object, object], cast(dict[object, object], manifest_payload)["roles"]
+        )
+        self.assertEqual(str(roles["thumb_primary"]), "D:/image.png")
+        self.assertEqual(str(roles["video_primary"]), str(final_output.resolve()))
         pointer = cast(dict[object, object], latest_join["pointer"])
         self.assertEqual(str(pointer["run_id"]), "gate-d-run-1")
         self.assertFalse(bool(latest_join["out_of_sync"]))

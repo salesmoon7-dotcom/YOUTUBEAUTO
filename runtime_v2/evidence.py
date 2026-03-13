@@ -36,7 +36,7 @@ def evaluate_promotion_gates(
         for key, value in roles.items()
         if ".genspark" in key or ".seaart" in key
     )
-    stage2_video_present = any(
+    stage2_video_present = bool(str(roles.get("video_primary", "")).strip()) or any(
         key.startswith("stage2.scene_") and str(value).strip()
         for key, value in roles.items()
         if ".geminigen" in key

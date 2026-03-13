@@ -560,6 +560,10 @@ def run_control_loop_once(
         and completion is not None
         and bool(completion.get("final_output", False))
     ):
+        _augment_asset_manifest_for_render_closeout(
+            str(job.payload.get("asset_manifest_path", "")),
+            final_artifact_path=str(completion.get("final_artifact_path", "")),
+        )
         sync_worker_result = dict(worker_contract)
         sync_completion = dict(completion)
         if str(sync_completion.get("state", "")).strip() == "succeeded":
@@ -1619,6 +1623,44 @@ def _write_asset_manifest(
         temp_path = Path(handle.name)
     _ = temp_path.replace(manifest_path)
     return manifest_path
+
+
+def _augment_asset_manifest_for_render_closeout(
+    asset_manifest_path: str, *, final_artifact_path: str
+) -> None:
+    manifest_path = Path(asset_manifest_path)
+    if not manifest_path.exists() or not manifest_path.is_file():
+        return
+    try:
+        raw_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(raw_payload, dict):
+        return
+    payload = cast(dict[str, object], raw_payload)
+    roles_raw = payload.get("roles", {})
+    if not isinstance(roles_raw, dict):
+        return
+    roles = {
+        str(key): str(value) for key, value in roles_raw.items() if str(value).strip()
+    }
+    image_primary = roles.get("image_primary", "").strip()
+    if image_primary and not roles.get("thumb_primary", "").strip():
+        roles["thumb_primary"] = image_primary
+    if final_artifact_path.strip() and not roles.get("video_primary", "").strip():
+        roles["video_primary"] = final_artifact_path.strip()
+    payload["roles"] = roles
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=manifest_path.parent,
+        prefix=f"{manifest_path.stem}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        _ = handle.write(json.dumps(payload, ensure_ascii=True, indent=2))
+        temp_path = Path(handle.name)
+    _ = temp_path.replace(manifest_path)
 
 
 def _declared_stage1_next_jobs(
