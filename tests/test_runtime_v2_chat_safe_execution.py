@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 from runtime_v2 import exit_codes
 from runtime_v2.browser import manager as browser_manager
 from runtime_v2.cli import (
+    _build_runtime_config,
     _copy_legacy_sessions,
     exit_code_from_readiness,
     exit_code_from_status,
@@ -165,6 +166,46 @@ class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
         self.assertEqual(payload["status"], "spawned")
         self.assertEqual(payload["kind"], "selftest")
         self.assertEqual(payload["exit_code"], exit_codes.SUCCESS)
+
+    def test_spawn_detached_probe_for_stage5_forwards_excel_arguments(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            args = CliArgs()
+            args.probe_root = str(root / "probe")
+            args.excel_path = str(root / "topic.xlsx")
+            args.sheet_name = "Sheet1"
+            args.row_index = 2
+            args.max_control_ticks = 7
+            popen_result = MagicMock()
+            popen_result.pid = 13579
+
+            with patch(
+                "runtime_v2.cli.subprocess.Popen", return_value=popen_result
+            ) as popen:
+                exit_code = _spawn_detached_probe(args, mode="stage5_row1")
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        command = popen.call_args.args[0]
+        self.assertIn("--stage5-row1-probe-child", command)
+        self.assertIn("--excel-path", command)
+        self.assertIn(str(root / "topic.xlsx"), command)
+        self.assertIn("--row-index", command)
+        self.assertIn("2", command)
+        self.assertIn("--max-control-ticks", command)
+        self.assertIn("7", command)
+
+    def test_build_runtime_config_uses_probe_root_for_stage5_child(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            probe_root = Path(tmp_dir) / "probe"
+            args = CliArgs()
+            args.probe_root = str(probe_root)
+            args.stage5_row1_probe_child = True
+
+            config = _build_runtime_config(args)
+
+        self.assertEqual(
+            config.result_router_file, probe_root / "evidence" / "result.json"
+        )
 
     def test_default_session_profile_dir_uses_legacy_only_when_explicitly_allowed(
         self,

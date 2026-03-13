@@ -94,6 +94,8 @@ class CliArgs(argparse.Namespace):
     rvc_adapter_child: bool
     stage2_row1_detached: bool
     stage2_row1_probe_child: bool
+    stage5_row1_detached: bool
+    stage5_row1_probe_child: bool
     callback_url: str
     callback_mock_out: str
     gui_status_out: str
@@ -139,6 +141,8 @@ class CliArgs(argparse.Namespace):
         self.rvc_adapter_child = False
         self.stage2_row1_detached = False
         self.stage2_row1_probe_child = False
+        self.stage5_row1_detached = False
+        self.stage5_row1_probe_child = False
         self.callback_url = ""
         self.callback_mock_out = ""
         self.gui_status_out = "system/runtime_v2/health/gui_status.json"
@@ -357,6 +361,10 @@ def main() -> int:
     _ = parser.add_argument(
         "--stage2-row1-probe-child", action="store_true", help=argparse.SUPPRESS
     )
+    _ = parser.add_argument("--stage5-row1-detached", action="store_true")
+    _ = parser.add_argument(
+        "--stage5-row1-probe-child", action="store_true", help=argparse.SUPPRESS
+    )
     _ = parser.add_argument("--callback-url", default="")
     _ = parser.add_argument("--callback-mock-out", default="")
     _ = parser.add_argument("--gui-status-out", default="")
@@ -403,6 +411,8 @@ def main() -> int:
             args.rvc_adapter_child,
             args.stage2_row1_detached,
             args.stage2_row1_probe_child,
+            args.stage5_row1_detached,
+            args.stage5_row1_probe_child,
             bool(args.open_browser_login.strip()),
             args.readiness_check,
             args.soak_report,
@@ -458,6 +468,8 @@ def main() -> int:
         return _spawn_detached_probe(args, mode="browser_recover")
     if args.stage2_row1_detached:
         return _spawn_detached_probe(args, mode="stage2_row1")
+    if args.stage5_row1_detached:
+        return _spawn_detached_probe(args, mode="stage5_row1")
 
     if args.agent_browser_stage2_adapter_child:
         return _run_agent_browser_stage2_adapter_child(args)
@@ -477,6 +489,8 @@ def main() -> int:
         mode = "browser_recover"
     elif args.stage2_row1_probe_child:
         mode = "stage2_row1"
+    elif args.stage5_row1_probe_child:
+        mode = "stage5_row1"
     elif args.control_once or args.control_once_probe_child or args.excel_once:
         mode = "control_once"
     elif args.excel_batch:
@@ -514,6 +528,26 @@ def main() -> int:
             out_root=_probe_root_path(args.probe_root),
             kind="stage2_row1",
             target="runtime_v2.cli --stage2-row1-probe-child",
+            exit_code=exit_code_from_status(str(report.get("code", "CLI_USAGE"))),
+            payload=report,
+        )
+        print(final_report(report))
+        return exit_code_from_status(str(report.get("code", "CLI_USAGE")))
+    if args.stage5_row1_probe_child:
+        report = _run_stage5_row1_probe(
+            owner=args.owner,
+            config=config,
+            probe_root=_probe_root_path(args.probe_root),
+            run_id=run_id,
+            excel_path=args.excel_path,
+            sheet_name=args.sheet_name,
+            row_index=args.row_index,
+            max_control_ticks=args.max_control_ticks,
+        )
+        _ = _write_detached_summary(
+            out_root=_probe_root_path(args.probe_root),
+            kind="stage5_row1",
+            target="runtime_v2.cli --stage5-row1-probe-child",
             exit_code=exit_code_from_status(str(report.get("code", "CLI_USAGE"))),
             payload=report,
         )
@@ -821,7 +855,7 @@ def _run_control_probe_until_terminal(
             "GPU_LEASE_RENEW_FAILED",
         }:
             return last_result
-        if str(last_result.get("status", "")) == "failed":
+        if str(last_result.get("status", "")) in {"failed", "blocked"}:
             return last_result
     return last_result
 
@@ -851,6 +885,7 @@ def _build_runtime_config(args: CliArgs) -> RuntimeConfig:
         args.selftest_probe_child
         or args.control_once_probe_child
         or args.stage2_row1_probe_child
+        or args.stage5_row1_probe_child
         or args.readiness_check
     ):
         root = _probe_root_path(args.probe_root)
@@ -893,6 +928,7 @@ def _spawn_detached_probe(args: CliArgs, *, mode: str) -> int:
         "control_once": "--control-once-probe-child",
         "browser_recover": "--browser-recover-probe-child",
         "stage2_row1": "--stage2-row1-probe-child",
+        "stage5_row1": "--stage5-row1-probe-child",
     }[mode]
     command = [
         sys.executable,
@@ -916,6 +952,19 @@ def _spawn_detached_probe(args: CliArgs, *, mode: str) -> int:
             [
                 "--stage2-agent-browser-services",
                 args.stage2_agent_browser_services,
+            ]
+        )
+    if mode == "stage5_row1":
+        command.extend(
+            [
+                "--excel-path",
+                args.excel_path,
+                "--sheet-name",
+                args.sheet_name,
+                "--row-index",
+                str(args.row_index),
+                "--max-control-ticks",
+                str(args.max_control_ticks),
             ]
         )
     if args.runtime_root.strip():
@@ -1212,6 +1261,109 @@ def _run_stage2_row1_probe(
         "video_plan": video_plan,
         "render_spec": render_spec,
         "results": stage2_results,
+    }
+    _ = _write_probe_result(probe_root, report)
+    return report
+
+
+def _run_stage5_row1_probe(
+    *,
+    owner: str,
+    config: RuntimeConfig,
+    probe_root: Path,
+    run_id: str,
+    excel_path: str,
+    sheet_name: str,
+    row_index: int,
+    max_control_ticks: int,
+) -> dict[str, object]:
+    seed_result = seed_excel_row(
+        config=config,
+        run_id=run_id,
+        excel_path=excel_path,
+        sheet_name=sheet_name,
+        row_index=row_index,
+    )
+    if str(seed_result.get("status", "")) != "seeded":
+        report: dict[str, object] = {
+            "run_id": run_id,
+            "mode": "stage5_row1",
+            "status": str(seed_result.get("status", "failed")),
+            "code": str(seed_result.get("code", "CLI_USAGE")),
+            "exit_code": exit_code_from_status(
+                str(seed_result.get("code", "CLI_USAGE"))
+            ),
+            "probe_success": False,
+            "seed_result": seed_result,
+            "ticks": 0,
+            "control_results": [],
+            "placeholder_services": [],
+        }
+        _ = _write_probe_result(probe_root, report)
+        return report
+    control_results: list[dict[str, object]] = []
+    final_metadata: dict[str, object] = {}
+    for _ in range(max_control_ticks):
+        result = run_control_loop_once(owner=owner, config=config, run_id=run_id)
+        control_results.append(result)
+        latest_payload_path = config.result_router_file
+        if latest_payload_path.exists():
+            latest_payload = json.loads(latest_payload_path.read_text(encoding="utf-8"))
+            if isinstance(latest_payload, dict):
+                metadata_obj = cast(
+                    dict[str, object], latest_payload.get("metadata", {})
+                )
+                final_metadata = metadata_obj if isinstance(metadata_obj, dict) else {}
+        if bool(final_metadata.get("final_output", False)):
+            report: dict[str, object] = {
+                "run_id": run_id,
+                "mode": "stage5_row1",
+                "status": "ok",
+                "code": "OK",
+                "exit_code": exit_codes.SUCCESS,
+                "probe_success": True,
+                "seed_result": seed_result,
+                "ticks": len(control_results),
+                "control_results": control_results,
+                "placeholder_services": [],
+                "final_artifact_path": str(
+                    final_metadata.get("final_artifact_path", "")
+                ),
+            }
+            _ = _write_probe_result(probe_root, report)
+            return report
+        if str(result.get("status", "")) in {"failed", "blocked"}:
+            report: dict[str, object] = {
+                "run_id": run_id,
+                "mode": "stage5_row1",
+                "status": str(result.get("status", "failed")),
+                "code": str(result.get("code", "CLI_USAGE")),
+                "exit_code": exit_code_from_status(
+                    str(result.get("code", "CLI_USAGE"))
+                ),
+                "probe_success": False,
+                "seed_result": seed_result,
+                "ticks": len(control_results),
+                "control_results": control_results,
+                "placeholder_services": [],
+                "final_artifact_path": str(
+                    final_metadata.get("final_artifact_path", "")
+                ),
+            }
+            _ = _write_probe_result(probe_root, report)
+            return report
+    report: dict[str, object] = {
+        "run_id": run_id,
+        "mode": "stage5_row1",
+        "status": "failed",
+        "code": "BATCH_TIMEOUT",
+        "exit_code": exit_code_from_status("BATCH_TIMEOUT"),
+        "probe_success": False,
+        "seed_result": seed_result,
+        "ticks": len(control_results),
+        "control_results": control_results,
+        "placeholder_services": [],
+        "final_artifact_path": str(final_metadata.get("final_artifact_path", "")),
     }
     _ = _write_probe_result(probe_root, report)
     return report

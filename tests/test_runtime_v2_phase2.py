@@ -16,7 +16,7 @@ from unittest.mock import patch
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from runtime_v2 import exit_codes
-from runtime_v2.cli import exit_code_from_status, main
+from runtime_v2.cli import _run_stage5_row1_probe, exit_code_from_status, main
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
 from runtime_v2.gpu.lease import LeaseStore, lease_key_for_workload
@@ -130,6 +130,118 @@ def _write_readiness_fixture(
 
 
 class RuntimeV2Phase2Tests(unittest.TestCase):
+    def test_stage5_row1_probe_reaches_final_output(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            seed_result = {
+                "status": "seeded",
+                "code": "SEEDED_JOB",
+                "job_id": "chatgpt-row1",
+                "topic_spec": {"row_ref": "Sheet1!row1"},
+            }
+            first = {"status": "ok", "code": "OK"}
+            second = {"status": "ok", "code": "OK"}
+            result_payload_path = config.result_router_file
+            result_payload_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = result_payload_path.write_text(
+                json.dumps(
+                    {
+                        "metadata": {
+                            "run_id": "run-1",
+                            "final_output": True,
+                            "final_artifact_path": "D:/runtime/final.mp4",
+                        }
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+
+            with (
+                patch("runtime_v2.cli.seed_excel_row", return_value=seed_result),
+                patch(
+                    "runtime_v2.cli.run_control_loop_once",
+                    side_effect=[first, second],
+                ),
+            ):
+                report = _run_stage5_row1_probe(
+                    owner="runtime_v2",
+                    config=config,
+                    probe_root=root / "probe",
+                    run_id="run-1",
+                    excel_path=str(root / "topic.xlsx"),
+                    sheet_name="Sheet1",
+                    row_index=0,
+                    max_control_ticks=3,
+                )
+
+        self.assertEqual(report["status"], "ok")
+        self.assertTrue(bool(report["probe_success"]))
+        self.assertEqual(report["code"], "OK")
+
+    def test_stage5_row1_probe_fail_closes_when_control_loop_fails(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            seed_result = {
+                "status": "seeded",
+                "code": "SEEDED_JOB",
+                "job_id": "chatgpt-row1",
+                "topic_spec": {"row_ref": "Sheet1!row1"},
+            }
+            failed = {"status": "failed", "code": "BROWSER_UNHEALTHY"}
+
+            with (
+                patch("runtime_v2.cli.seed_excel_row", return_value=seed_result),
+                patch("runtime_v2.cli.run_control_loop_once", return_value=failed),
+            ):
+                report = _run_stage5_row1_probe(
+                    owner="runtime_v2",
+                    config=config,
+                    probe_root=root / "probe",
+                    run_id="run-1",
+                    excel_path=str(root / "topic.xlsx"),
+                    sheet_name="Sheet1",
+                    row_index=0,
+                    max_control_ticks=3,
+                )
+
+        self.assertEqual(report["status"], "failed")
+        self.assertFalse(bool(report["probe_success"]))
+        self.assertEqual(report["code"], "BROWSER_UNHEALTHY")
+
+    def test_stage5_row1_probe_treats_blocked_result_as_terminal(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            seed_result = {
+                "status": "seeded",
+                "code": "SEEDED_JOB",
+                "job_id": "chatgpt-row1",
+                "topic_spec": {"row_ref": "Sheet1!row1"},
+            }
+            blocked = {"status": "blocked", "code": "BROWSER_BLOCKED"}
+
+            with (
+                patch("runtime_v2.cli.seed_excel_row", return_value=seed_result),
+                patch("runtime_v2.cli.run_control_loop_once", return_value=blocked),
+            ):
+                report = _run_stage5_row1_probe(
+                    owner="runtime_v2",
+                    config=config,
+                    probe_root=root / "probe",
+                    run_id="run-1",
+                    excel_path=str(root / "topic.xlsx"),
+                    sheet_name="Sheet1",
+                    row_index=0,
+                    max_control_ticks=3,
+                )
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(bool(report["probe_success"]))
+        self.assertEqual(report["code"], "BROWSER_BLOCKED")
+
     def test_exit_code_mapping_includes_callback_fail(self) -> None:
         self.assertEqual(exit_code_from_status("OK"), exit_codes.SUCCESS)
         self.assertEqual(exit_code_from_status("GPU_LEASE_BUSY"), exit_codes.LEASE_BUSY)
