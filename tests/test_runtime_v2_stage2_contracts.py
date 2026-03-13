@@ -188,6 +188,38 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
             "use_agent_browser", cast(dict[str, object], seaart_job["payload"])
         )
 
+    def test_stage2_jobs_default_real_row_browser_services_to_agent_browser(
+        self,
+    ) -> None:
+        video_plan = _video_plan("D:/YOUTUBEAUTO")
+        video_plan["scene_plan"] = [
+            {"scene_index": 1, "prompt": "scene one"},
+            {"scene_index": 2, "prompt": "scene two"},
+            {"scene_index": 3, "prompt": "scene three"},
+            {"scene_index": 4, "prompt": "scene four"},
+        ]
+        video_plan["stage1_handoff"] = {
+            "contract": {"version": "stage1_handoff.v1.0", "title": "Money title"}
+        }
+
+        jobs, _ = build_stage2_jobs(video_plan)
+        typed_jobs = [cast(dict[str, object], item["job"]) for item in jobs[:-1]]
+        genspark_job = next(
+            job for job in typed_jobs if str(job["worker"]) == "genspark"
+        )
+        seaart_job = next(job for job in typed_jobs if str(job["worker"]) == "seaart")
+        canva_job = next(job for job in typed_jobs if str(job["worker"]) == "canva")
+
+        self.assertTrue(
+            bool(cast(dict[str, object], genspark_job["payload"])["use_agent_browser"])
+        )
+        self.assertTrue(
+            bool(cast(dict[str, object], seaart_job["payload"])["use_agent_browser"])
+        )
+        self.assertTrue(
+            bool(cast(dict[str, object], canva_job["payload"])["use_agent_browser"])
+        )
+
     def test_stage2_jobs_include_stage1_handoff_when_present(self) -> None:
         video_plan = _video_plan("D:/YOUTUBEAUTO")
         video_plan["stage1_handoff"] = {

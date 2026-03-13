@@ -39,6 +39,12 @@ KENBURNS_PAN_DIRECTIONS: tuple[str, ...] = ("left", "right", "up", "down")
 KENBURNS_ZOOM_MODES: tuple[str, ...] = ("in", "out")
 KENBURNS_PAN_PCT = 0.05
 KENBURNS_ZOOM_PCT = 0.40
+DEFAULT_REAL_ROW_AGENT_BROWSER_SERVICES: set[str] = {
+    "genspark",
+    "seaart",
+    "canva",
+    "geminigen",
+}
 
 
 def _promotion_gate_for_workload(workload: WorkloadName) -> str:
@@ -431,6 +437,8 @@ def build_stage2_jobs(
         else set()
     )
     stage1_handoff = video_plan.get("stage1_handoff")
+    if not agent_browser_services and isinstance(stage1_handoff, dict):
+        agent_browser_services = set(DEFAULT_REAL_ROW_AGENT_BROWSER_SERVICES)
     stage1_contract = _stage1_contract(video_plan)
     stage1_videos = _stage1_videos(video_plan, stage1_contract)
     ref_jobs, ref_img_1_path, ref_img_2_path = _build_ref_jobs(
