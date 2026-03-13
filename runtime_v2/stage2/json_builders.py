@@ -35,6 +35,10 @@ LEGACY_IMAGE_CATEGORY_WORKLOADS: dict[str, WorkloadName] = {
     "풍경": "seaart",
 }
 LEGACY_CATEGORY_PREFIX = re.compile(r"^\[(?P<label>[^\]]+)\]\s*(?P<body>.*)$")
+KENBURNS_PAN_DIRECTIONS: tuple[str, ...] = ("left", "right", "up", "down")
+KENBURNS_ZOOM_MODES: tuple[str, ...] = ("in", "out")
+KENBURNS_PAN_PCT = 0.05
+KENBURNS_ZOOM_PCT = 0.40
 
 
 def ensure_common_asset_root(asset_root: str | Path) -> Path:
@@ -85,6 +89,14 @@ def _build_kenburns_bundle_contract(
                 "source_path": str(entry.get("asset_path", "")),
                 "output_path": str(bundle_output_path),
                 "duration_sec": 8,
+                "pan_direction": KENBURNS_PAN_DIRECTIONS[
+                    len(bundle_entries) % len(KENBURNS_PAN_DIRECTIONS)
+                ],
+                "pan_pct": KENBURNS_PAN_PCT,
+                "zoom_mode": KENBURNS_ZOOM_MODES[
+                    len(bundle_entries) % len(KENBURNS_ZOOM_MODES)
+                ],
+                "zoom_pct": KENBURNS_ZOOM_PCT,
             }
         )
         kenburns_timeline.append(
@@ -220,13 +232,30 @@ def _select_ref_img(timeline: list[dict[str, object]]) -> str:
     return ""
 
 
-def _select_ref_img_from_stage1(stage1_contract: dict[str, object] | None) -> str:
+def _resolve_ref_input_as_file(candidate: str, asset_root: Path) -> str:
+    text = candidate.strip()
+    if not text:
+        return ""
+    path = Path(text)
+    if not path.is_absolute():
+        path = (asset_root / path).resolve()
+    else:
+        path = path.resolve()
+    if path.exists() and path.is_file():
+        return str(path)
+    return ""
+
+
+def _select_ref_img_from_stage1(
+    stage1_contract: dict[str, object] | None, asset_root: Path
+) -> str:
     if stage1_contract is None:
         return ""
     for key in ("ref_img_1", "ref_img_2"):
         candidate = str(stage1_contract.get(key, "")).strip()
-        if candidate:
-            return candidate
+        resolved = _resolve_ref_input_as_file(candidate, asset_root)
+        if resolved:
+            return resolved
     return ""
 
 
@@ -251,22 +280,29 @@ def _build_ref_jobs(
     agent_browser_services: set[str],
 ) -> tuple[list[dict[str, object]], str, str]:
     ref_jobs: list[dict[str, object]] = []
-    ref_img_1_prompt, ref_img_2_prompt = _select_ref_images_from_stage1(stage1_contract)
+    ref_img_1_spec, ref_img_2_spec = _select_ref_images_from_stage1(stage1_contract)
     ref_img_1_path = ""
     ref_img_2_path = ""
     refs = [
-        (ref_img_1_prompt, "genspark", 1, "ref-1"),
-        (ref_img_2_prompt, "seaart", 2, "ref-2"),
+        (ref_img_1_spec, "genspark", 1, "ref-1"),
+        (ref_img_2_spec, "seaart", 2, "ref-2"),
     ]
-    for prompt, workload, scene_index, ref_id in refs:
-        if not prompt:
+    for ref_input, workload, scene_index, ref_id in refs:
+        if not ref_input:
+            continue
+        resolved_file = _resolve_ref_input_as_file(ref_input, asset_root)
+        if resolved_file:
+            if ref_id == "ref-1":
+                ref_img_1_path = resolved_file
+            else:
+                ref_img_2_path = resolved_file
             continue
         service_artifact_path = (asset_root / f"images/{ref_id}-{run_id}.png").resolve()
         payload = build_stage2_payload(
             run_id=run_id,
             row_ref=row_ref,
             scene_index=scene_index,
-            prompt=prompt,
+            prompt=ref_input,
             asset_root=str(asset_root.resolve()),
             reason_code=reason_code,
         )
@@ -306,7 +342,7 @@ def _build_geminigen_jobs(
     geminigen_jobs: list[dict[str, object]] = []
     asset_refs: list[str] = []
     timeline: list[dict[str, object]] = []
-    ref_img = _select_ref_img_from_stage1(stage1_contract)
+    ref_img = _select_ref_img_from_stage1(stage1_contract, asset_root)
     for offset, video_prompt in enumerate(videos, start=1):
         scene_index = scene_index_start + offset
         service_artifact_path = (
@@ -431,11 +467,17 @@ def build_stage2_jobs(
             payload["thumb_data"] = _build_thumb_data(
                 prompt=prompt, stage1_contract=stage1_contract
             )
-            ref_img = _select_ref_img_from_stage1(stage1_contract)
+            ref_img = _select_ref_img_from_stage1(stage1_contract, asset_root)
             if not ref_img:
                 ref_img = _select_ref_img(timeline)
             if ref_img:
                 payload["ref_img"] = ref_img
+        if workload == "geminigen":
+            ref_img = _select_ref_img_from_stage1(stage1_contract, asset_root)
+            if not ref_img:
+                ref_img = _select_ref_img(timeline)
+            if ref_img:
+                payload["first_frame_path"] = ref_img
         if workload in agent_browser_services:
             payload["use_agent_browser"] = True
         jobs.append(

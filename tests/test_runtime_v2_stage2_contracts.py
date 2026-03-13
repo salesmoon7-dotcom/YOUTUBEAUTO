@@ -256,23 +256,27 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
         self.assertNotIn("legacy_category", first_payload)
 
     def test_canva_stage2_payload_prefers_stage1_ref_image_when_present(self) -> None:
-        video_plan = _video_plan("D:/YOUTUBEAUTO")
-        video_plan["scene_plan"] = [
-            {"scene_index": 1, "prompt": "scene one"},
-            {"scene_index": 2, "prompt": "scene two"},
-            {"scene_index": 3, "prompt": "scene three"},
-            {"scene_index": 4, "prompt": "scene four"},
-        ]
-        video_plan["stage1_handoff"] = {
-            "contract": {
-                "version": "stage1_handoff.v1.0",
-                "title": "Money title",
-                "title_for_thumb": "Thumb line 1\nThumb line 2",
-                "ref_img_1": "images/ref1.png",
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            video_plan = _video_plan(tmp_dir)
+            ref_img = Path(tmp_dir) / "images" / "ref1.png"
+            ref_img.parent.mkdir(parents=True, exist_ok=True)
+            ref_img.write_bytes(b"png")
+            video_plan["scene_plan"] = [
+                {"scene_index": 1, "prompt": "scene one"},
+                {"scene_index": 2, "prompt": "scene two"},
+                {"scene_index": 3, "prompt": "scene three"},
+                {"scene_index": 4, "prompt": "scene four"},
+            ]
+            video_plan["stage1_handoff"] = {
+                "contract": {
+                    "version": "stage1_handoff.v1.0",
+                    "title": "Money title",
+                    "title_for_thumb": "Thumb line 1\nThumb line 2",
+                    "ref_img_1": str(ref_img.resolve()),
+                }
             }
-        }
 
-        jobs, _ = build_stage2_jobs(video_plan)
+            jobs, _ = build_stage2_jobs(video_plan)
         canva_job = next(
             cast(dict[str, object], item["job"])
             for item in jobs
@@ -281,28 +285,32 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
         payload = cast(dict[str, object], canva_job["payload"])
         thumb_data = cast(dict[str, object], payload["thumb_data"])
 
-        self.assertEqual(str(payload["ref_img"]), "images/ref1.png")
+        self.assertEqual(str(payload["ref_img"]), str(ref_img.resolve()))
         self.assertEqual(str(thumb_data["line1"]), "Thumb line 1")
         self.assertEqual(str(thumb_data["line2"]), "Thumb line 2")
 
     def test_geminigen_stage2_payload_prefers_stage1_ref_image_when_present(
         self,
     ) -> None:
-        video_plan = _video_plan("D:/YOUTUBEAUTO")
-        video_plan["scene_plan"] = [
-            {"scene_index": 1, "prompt": "scene one"},
-            {"scene_index": 2, "prompt": "scene two"},
-            {"scene_index": 3, "prompt": "scene three"},
-        ]
-        video_plan["stage1_handoff"] = {
-            "contract": {
-                "version": "stage1_handoff.v1.0",
-                "title": "Money title",
-                "ref_img_1": "images/ref1.png",
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            video_plan = _video_plan(tmp_dir)
+            ref_img = Path(tmp_dir) / "images" / "ref1.png"
+            ref_img.parent.mkdir(parents=True, exist_ok=True)
+            ref_img.write_bytes(b"png")
+            video_plan["scene_plan"] = [
+                {"scene_index": 1, "prompt": "scene one"},
+                {"scene_index": 2, "prompt": "scene two"},
+                {"scene_index": 3, "prompt": "scene three"},
+            ]
+            video_plan["stage1_handoff"] = {
+                "contract": {
+                    "version": "stage1_handoff.v1.0",
+                    "title": "Money title",
+                    "ref_img_1": str(ref_img.resolve()),
+                }
             }
-        }
 
-        jobs, _ = build_stage2_jobs(video_plan)
+            jobs, _ = build_stage2_jobs(video_plan)
         geminigen_job = next(
             cast(dict[str, object], item["job"])
             for item in jobs
@@ -310,7 +318,7 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
         )
         payload = cast(dict[str, object], geminigen_job["payload"])
 
-        self.assertEqual(str(payload["first_frame_path"]), "images/ref1.png")
+        self.assertEqual(str(payload["first_frame_path"]), str(ref_img.resolve()))
 
     def test_genspark_and_seaart_payloads_include_ref_images_from_ref_jobs(
         self,
@@ -362,18 +370,68 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
             .endswith("images/ref-2-stage2-run-1.png")
         )
 
-    def test_stage2_jobs_create_geminigen_tasks_from_stage1_videos(self) -> None:
-        video_plan = _video_plan("D:/YOUTUBEAUTO")
-        video_plan["videos"] = ["video prompt 1", "video prompt 2"]
-        video_plan["stage1_handoff"] = {
-            "contract": {
-                "version": "stage1_handoff.v1.0",
-                "ref_img_1": "images/ref1.png",
-                "videos": ["video prompt 1", "video prompt 2"],
+    def test_stage2_jobs_skip_ref_generation_when_stage1_refs_are_real_files(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            video_plan = _video_plan(tmp_dir)
+            ref1 = Path(tmp_dir) / "images" / "ref1.png"
+            ref2 = Path(tmp_dir) / "images" / "ref2.png"
+            ref1.parent.mkdir(parents=True, exist_ok=True)
+            ref1.write_bytes(b"png")
+            ref2.write_bytes(b"png")
+            video_plan["stage1_handoff"] = {
+                "contract": {
+                    "version": "stage1_handoff.v1.0",
+                    "ref_img_1": str(ref1.resolve()),
+                    "ref_img_2": str(ref2.resolve()),
+                }
             }
-        }
 
-        jobs, render_spec = build_stage2_jobs(video_plan)
+            jobs, _ = build_stage2_jobs(video_plan)
+
+        typed_jobs = [cast(dict[str, object], item["job"]) for item in jobs[:-1]]
+        ref_jobs = [
+            job
+            for job in typed_jobs
+            if str(job["worker"]) in {"genspark", "seaart"}
+            and str(job["job_id"]).endswith(("ref-1", "ref-2"))
+        ]
+        genspark_scene_job = next(
+            job
+            for job in typed_jobs
+            if str(job["worker"]) == "genspark"
+            and str(job["job_id"]) == "genspark-stage2-run-1-1"
+        )
+        seaart_scene_job = next(
+            job
+            for job in typed_jobs
+            if str(job["worker"]) == "seaart"
+            and str(job["job_id"]) == "seaart-stage2-run-1-2"
+        )
+        genspark_payload = cast(dict[str, object], genspark_scene_job["payload"])
+        seaart_payload = cast(dict[str, object], seaart_scene_job["payload"])
+        self.assertEqual(ref_jobs, [])
+        self.assertEqual(str(genspark_payload["ref_img_1"]), str(ref1.resolve()))
+        self.assertEqual(str(seaart_payload["ref_img_2"]), str(ref2.resolve()))
+
+    def test_stage2_jobs_create_geminigen_tasks_from_stage1_videos(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            video_plan = _video_plan(tmp_dir)
+            ref1 = Path(tmp_dir) / "images" / "ref1.png"
+            ref1.parent.mkdir(parents=True, exist_ok=True)
+            ref1.write_bytes(b"png")
+            video_plan["videos"] = ["video prompt 1", "video prompt 2"]
+            video_plan["stage1_handoff"] = {
+                "contract": {
+                    "version": "stage1_handoff.v1.0",
+                    "ref_img_1": str(ref1.resolve()),
+                    "videos": ["video prompt 1", "video prompt 2"],
+                }
+            }
+
+            jobs, render_spec = build_stage2_jobs(video_plan)
+
         typed_jobs = [cast(dict[str, object], item["job"]) for item in jobs[:-1]]
         geminigen_jobs = [
             job for job in typed_jobs if str(job["worker"]) == "geminigen"
@@ -384,7 +442,7 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
         second_payload = cast(dict[str, object], geminigen_jobs[1]["payload"])
         self.assertEqual(str(first_payload["prompt"]), "video prompt 1")
         self.assertEqual(str(second_payload["prompt"]), "video prompt 2")
-        self.assertEqual(str(first_payload["first_frame_path"]), "images/ref1.png")
+        self.assertEqual(str(first_payload["first_frame_path"]), str(ref1.resolve()))
         render_timeline = cast(list[object], render_spec["timeline"])
         gemi_timeline = [
             cast(dict[str, object], item)
