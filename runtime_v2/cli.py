@@ -96,6 +96,8 @@ class CliArgs(argparse.Namespace):
     stage2_row1_probe_child: bool
     stage5_row1_detached: bool
     stage5_row1_probe_child: bool
+    stage5b_5row_detached: bool
+    stage5b_5row_probe_child: bool
     callback_url: str
     callback_mock_out: str
     gui_status_out: str
@@ -143,6 +145,8 @@ class CliArgs(argparse.Namespace):
         self.stage2_row1_probe_child = False
         self.stage5_row1_detached = False
         self.stage5_row1_probe_child = False
+        self.stage5b_5row_detached = False
+        self.stage5b_5row_probe_child = False
         self.callback_url = ""
         self.callback_mock_out = ""
         self.gui_status_out = "system/runtime_v2/health/gui_status.json"
@@ -365,6 +369,10 @@ def main() -> int:
     _ = parser.add_argument(
         "--stage5-row1-probe-child", action="store_true", help=argparse.SUPPRESS
     )
+    _ = parser.add_argument("--stage5b-5row-detached", action="store_true")
+    _ = parser.add_argument(
+        "--stage5b-5row-probe-child", action="store_true", help=argparse.SUPPRESS
+    )
     _ = parser.add_argument("--callback-url", default="")
     _ = parser.add_argument("--callback-mock-out", default="")
     _ = parser.add_argument("--gui-status-out", default="")
@@ -413,6 +421,8 @@ def main() -> int:
             args.stage2_row1_probe_child,
             args.stage5_row1_detached,
             args.stage5_row1_probe_child,
+            args.stage5b_5row_detached,
+            args.stage5b_5row_probe_child,
             bool(args.open_browser_login.strip()),
             args.readiness_check,
             args.soak_report,
@@ -470,6 +480,8 @@ def main() -> int:
         return _spawn_detached_probe(args, mode="stage2_row1")
     if args.stage5_row1_detached:
         return _spawn_detached_probe(args, mode="stage5_row1")
+    if args.stage5b_5row_detached:
+        return _spawn_detached_probe(args, mode="stage5b_5row")
 
     if args.agent_browser_stage2_adapter_child:
         return _run_agent_browser_stage2_adapter_child(args)
@@ -491,6 +503,8 @@ def main() -> int:
         mode = "stage2_row1"
     elif args.stage5_row1_probe_child:
         mode = "stage5_row1"
+    elif args.stage5b_5row_probe_child:
+        mode = "stage5b_5row"
     elif args.control_once or args.control_once_probe_child or args.excel_once:
         mode = "control_once"
     elif args.excel_batch:
@@ -548,6 +562,26 @@ def main() -> int:
             out_root=_probe_root_path(args.probe_root),
             kind="stage5_row1",
             target="runtime_v2.cli --stage5-row1-probe-child",
+            exit_code=exit_code_from_status(str(report.get("code", "CLI_USAGE"))),
+            payload=report,
+        )
+        print(final_report(report))
+        return exit_code_from_status(str(report.get("code", "CLI_USAGE")))
+    if args.stage5b_5row_probe_child:
+        report = _run_stage5b_5row_probe(
+            owner=args.owner,
+            config=config,
+            probe_root=_probe_root_path(args.probe_root),
+            run_id=run_id,
+            excel_path=args.excel_path,
+            sheet_name=args.sheet_name,
+            batch_count=args.batch_count,
+            max_control_ticks=args.max_control_ticks,
+        )
+        _ = _write_detached_summary(
+            out_root=_probe_root_path(args.probe_root),
+            kind="stage5b_5row",
+            target="runtime_v2.cli --stage5b-5row-probe-child",
             exit_code=exit_code_from_status(str(report.get("code", "CLI_USAGE"))),
             payload=report,
         )
@@ -886,6 +920,7 @@ def _build_runtime_config(args: CliArgs) -> RuntimeConfig:
         or args.control_once_probe_child
         or args.stage2_row1_probe_child
         or args.stage5_row1_probe_child
+        or args.stage5b_5row_probe_child
         or args.readiness_check
     ):
         root = _probe_root_path(args.probe_root)
@@ -929,6 +964,7 @@ def _spawn_detached_probe(args: CliArgs, *, mode: str) -> int:
         "browser_recover": "--browser-recover-probe-child",
         "stage2_row1": "--stage2-row1-probe-child",
         "stage5_row1": "--stage5-row1-probe-child",
+        "stage5b_5row": "--stage5b-5row-probe-child",
     }[mode]
     command = [
         sys.executable,
@@ -963,6 +999,19 @@ def _spawn_detached_probe(args: CliArgs, *, mode: str) -> int:
                 args.sheet_name,
                 "--row-index",
                 str(args.row_index),
+                "--max-control-ticks",
+                str(args.max_control_ticks),
+            ]
+        )
+    if mode == "stage5b_5row":
+        command.extend(
+            [
+                "--excel-path",
+                args.excel_path,
+                "--sheet-name",
+                args.sheet_name,
+                "--batch-count",
+                str(args.batch_count),
                 "--max-control-ticks",
                 str(args.max_control_ticks),
             ]
@@ -1367,6 +1416,77 @@ def _run_stage5_row1_probe(
     }
     _ = _write_probe_result(probe_root, report)
     return report
+
+
+def _run_stage5b_5row_probe(
+    *,
+    owner: str,
+    config: RuntimeConfig,
+    probe_root: Path,
+    run_id: str,
+    excel_path: str,
+    sheet_name: str,
+    batch_count: int,
+    max_control_ticks: int,
+) -> dict[str, object]:
+    selected_rows = select_pending_row_indexes(
+        excel_path,
+        sheet_name=sheet_name,
+        limit=batch_count,
+    )
+    if not selected_rows:
+        report: dict[str, object] = {
+            "run_id": run_id,
+            "mode": "stage5b_5row",
+            "status": "no_work",
+            "code": "NO_WORK",
+            "exit_code": exit_codes.SUCCESS,
+            "probe_success": False,
+            "selected_rows": [],
+            "row_reports": [],
+        }
+        _ = _write_probe_result(probe_root, report)
+        return report
+    row_reports: list[dict[str, object]] = []
+    for offset, row_index in enumerate(selected_rows, start=1):
+        row_report = _run_stage5_row1_probe(
+            owner=owner,
+            config=config,
+            probe_root=probe_root / f"row_{offset:02d}",
+            run_id=f"{run_id}-row{offset:02d}",
+            excel_path=excel_path,
+            sheet_name=sheet_name,
+            row_index=row_index,
+            max_control_ticks=max_control_ticks,
+        )
+        row_reports.append(row_report)
+        if str(row_report.get("status", "")) != "ok":
+            report: dict[str, object] = {
+                "run_id": run_id,
+                "mode": "stage5b_5row",
+                "status": "failed",
+                "code": str(row_report.get("code", "CLI_USAGE")),
+                "exit_code": exit_code_from_status(
+                    str(row_report.get("code", "CLI_USAGE"))
+                ),
+                "probe_success": False,
+                "selected_rows": selected_rows,
+                "row_reports": row_reports,
+            }
+            _ = _write_probe_result(probe_root, report)
+            return report
+    report = {
+        "run_id": run_id,
+        "mode": "stage5b_5row",
+        "status": "ok",
+        "code": "OK",
+        "exit_code": exit_codes.SUCCESS,
+        "probe_success": True,
+        "selected_rows": selected_rows,
+        "row_reports": row_reports,
+    }
+    _ = _write_probe_result(probe_root, cast(dict[str, object], report))
+    return cast(dict[str, object], report)
 
 
 def _run_browser_recovery_probe(

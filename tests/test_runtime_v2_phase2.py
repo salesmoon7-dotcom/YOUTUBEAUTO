@@ -16,7 +16,12 @@ from unittest.mock import patch
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from runtime_v2 import exit_codes
-from runtime_v2.cli import _run_stage5_row1_probe, exit_code_from_status, main
+from runtime_v2.cli import (
+    _run_stage5_row1_probe,
+    _run_stage5b_5row_probe,
+    exit_code_from_status,
+    main,
+)
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
 from runtime_v2.gpu.lease import LeaseStore, lease_key_for_workload
@@ -241,6 +246,79 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         self.assertFalse(bool(report["probe_success"]))
         self.assertEqual(report["code"], "BROWSER_BLOCKED")
+
+    def test_stage5b_5row_probe_runs_selected_rows_in_order(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+
+            with (
+                patch(
+                    "runtime_v2.cli.select_pending_row_indexes",
+                    return_value=[0, 2, 4],
+                ),
+                patch(
+                    "runtime_v2.cli._run_stage5_row1_probe",
+                    side_effect=[
+                        {"status": "ok", "code": "OK", "probe_success": True},
+                        {"status": "ok", "code": "OK", "probe_success": True},
+                        {"status": "ok", "code": "OK", "probe_success": True},
+                    ],
+                ) as run_row_probe,
+            ):
+                report = _run_stage5b_5row_probe(
+                    owner="runtime_v2",
+                    config=config,
+                    probe_root=root / "probe",
+                    run_id="batch-run-1",
+                    excel_path=str(root / "topic.xlsx"),
+                    sheet_name="Sheet1",
+                    batch_count=3,
+                    max_control_ticks=5,
+                )
+
+        self.assertEqual(report["status"], "ok")
+        self.assertTrue(bool(report["probe_success"]))
+        self.assertEqual(cast(list[object], report["selected_rows"]), [0, 2, 4])
+        self.assertEqual(run_row_probe.call_count, 3)
+
+    def test_stage5b_5row_probe_stops_on_first_failed_row(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+
+            with (
+                patch(
+                    "runtime_v2.cli.select_pending_row_indexes",
+                    return_value=[0, 1, 2],
+                ),
+                patch(
+                    "runtime_v2.cli._run_stage5_row1_probe",
+                    side_effect=[
+                        {"status": "ok", "code": "OK", "probe_success": True},
+                        {
+                            "status": "failed",
+                            "code": "BROWSER_UNHEALTHY",
+                            "probe_success": False,
+                        },
+                    ],
+                ) as run_row_probe,
+            ):
+                report = _run_stage5b_5row_probe(
+                    owner="runtime_v2",
+                    config=config,
+                    probe_root=root / "probe",
+                    run_id="batch-run-1",
+                    excel_path=str(root / "topic.xlsx"),
+                    sheet_name="Sheet1",
+                    batch_count=3,
+                    max_control_ticks=5,
+                )
+
+        self.assertEqual(report["status"], "failed")
+        self.assertFalse(bool(report["probe_success"]))
+        self.assertEqual(report["code"], "BROWSER_UNHEALTHY")
+        self.assertEqual(run_row_probe.call_count, 2)
 
     def test_exit_code_mapping_includes_callback_fail(self) -> None:
         self.assertEqual(exit_code_from_status("OK"), exit_codes.SUCCESS)

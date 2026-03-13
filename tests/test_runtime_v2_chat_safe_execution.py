@@ -207,6 +207,33 @@ class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
             config.result_router_file, probe_root / "evidence" / "result.json"
         )
 
+    def test_spawn_detached_probe_for_stage5b_forwards_batch_arguments(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            args = CliArgs()
+            args.probe_root = str(root / "probe")
+            args.excel_path = str(root / "topic.xlsx")
+            args.sheet_name = "Sheet1"
+            args.batch_count = 5
+            args.max_control_ticks = 9
+            popen_result = MagicMock()
+            popen_result.pid = 24681
+
+            with patch(
+                "runtime_v2.cli.subprocess.Popen", return_value=popen_result
+            ) as popen:
+                exit_code = _spawn_detached_probe(args, mode="stage5b_5row")
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        command = popen.call_args.args[0]
+        self.assertIn("--stage5b-5row-probe-child", command)
+        self.assertIn("--excel-path", command)
+        self.assertIn(str(root / "topic.xlsx"), command)
+        self.assertIn("--batch-count", command)
+        self.assertIn("5", command)
+        self.assertIn("--max-control-ticks", command)
+        self.assertIn("9", command)
+
     def test_default_session_profile_dir_uses_legacy_only_when_explicitly_allowed(
         self,
     ) -> None:
