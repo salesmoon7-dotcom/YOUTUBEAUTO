@@ -346,8 +346,49 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             )
             self.assertEqual(evidence["service"], "geminigen")
             self.assertEqual(evidence["status"], "ok")
-            self.assertFalse(bool(evidence["placeholder_artifact"]))
+            self.assertTrue(bool(evidence["placeholder_artifact"]))
             self.assertFalse(output_path.exists())
+
+    def test_stage2_adapter_child_succeeds_for_geminigen_with_truthful_artifact(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "geminigen-scene-01.mp4"
+            args = CliArgs()
+            args.service = "geminigen"
+            args.port = 9555
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "geminigen.ai"
+            args.expected_title_substring = "Gemini"
+
+            def fake_bundle(**kwargs: object) -> dict[str, object]:
+                target = Path(str(kwargs["service_artifact_path"]))
+                target.parent.mkdir(parents=True, exist_ok=True)
+                _ = target.write_bytes(b"mp4")
+                return {"service": "geminigen", "sha256": "ok"}
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok"},
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    side_effect=fake_bundle,
+                ) as evidence_mock,
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+                evidence = json.loads(
+                    (root / "attach_evidence.json").read_text(encoding="utf-8")
+                )
+                self.assertEqual(exit_code, exit_codes.SUCCESS)
+                evidence_mock.assert_called_once()
+                self.assertEqual(evidence["service"], "geminigen")
+                self.assertEqual(evidence["status"], "ok")
+                self.assertFalse(bool(evidence["placeholder_artifact"]))
+                self.assertTrue(output_path.exists())
 
     def test_stage2_row1_probe_records_all_browser_results(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

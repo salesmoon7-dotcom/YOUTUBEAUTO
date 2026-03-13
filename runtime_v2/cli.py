@@ -1829,20 +1829,6 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             ref_images_attach_attempted=bool(ref_images_requested),
         )
         return exit_codes.BROWSER_UNHEALTHY
-    if service == "geminigen":
-        write_stage2_attach_evidence(
-            workspace=workspace,
-            service=service,
-            port=args.port,
-            result=result,
-            probe_debug_only=True,
-            recovery_attempted=False,
-            placeholder_artifact=False,
-            ref_images_requested=ref_images_requested,
-            ref_images_resolved=ref_images_resolved,
-            ref_images_attach_attempted=bool(ref_images_requested),
-        )
-        return exit_codes.BROWSER_UNHEALTHY
     write_stage2_attach_evidence(
         workspace=workspace,
         service=service,
@@ -1855,7 +1841,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         ref_images_resolved=ref_images_resolved,
         ref_images_attach_attempted=bool(ref_images_requested),
     )
-    if service in {"seaart", "genspark", "canva"}:
+    if service in {"seaart", "genspark", "canva", "geminigen"}:
         try:
             if service == "genspark":
                 image_ready_script = "(() => { const sels = ['img[src*=\"/api/files/\"]', '.image-generated img', '.image-grid img', '.generated-images .image-container .image-grid > img:first-child']; const found = sels.map(s => document.querySelector(s)).find(Boolean); if (found && (found.currentSrc || found.src)) return JSON.stringify({ok:true, src: found.currentSrc || found.src}); return JSON.stringify({ok:false,error:'GENSPARK_IMAGE_NOT_READY'}); })()"
@@ -1902,6 +1888,13 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 expected_url_substring=args.expected_url_substring.strip(),
                 service_artifact_path=target_path,
             )
+            if service == "geminigen":
+                if not (
+                    target_path.exists()
+                    and target_path.is_file()
+                    and target_path.stat().st_size > 0
+                ):
+                    raise RuntimeError("GEMINIGEN_TRUTHFUL_ARTIFACT_MISSING")
             placeholder_artifact = False
         except Exception:
             placeholder_artifact = not (
