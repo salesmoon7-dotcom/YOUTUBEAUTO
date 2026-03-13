@@ -1352,6 +1352,7 @@ def _run_stage5_row1_probe(
         return report
     control_results: list[dict[str, object]] = []
     final_metadata: dict[str, object] = {}
+    readiness_snapshot: dict[str, object] = {}
     for _ in range(max_control_ticks):
         result = run_control_loop_once(owner=owner, config=config, run_id=run_id)
         control_results.append(result)
@@ -1364,6 +1365,44 @@ def _run_stage5_row1_probe(
                 )
                 final_metadata = metadata_obj if isinstance(metadata_obj, dict) else {}
         if bool(final_metadata.get("final_output", False)):
+            readiness = load_runtime_readiness(config, completed=True)
+            readiness_snapshot = {
+                "ready": bool(readiness.get("ready", False)),
+                "code": str(readiness.get("code", "CLI_USAGE")),
+                "blockers": cast(list[object], readiness.get("blockers", []))
+                if isinstance(readiness.get("blockers", []), list)
+                else [],
+                "promotion_gates": cast(
+                    dict[str, object], readiness.get("promotion_gates", {})
+                )
+                if isinstance(readiness.get("promotion_gates", {}), dict)
+                else {},
+                "snapshot_run_id": str(readiness.get("snapshot_run_id", "")),
+                "trace_paths": cast(dict[str, object], readiness.get("trace_paths", {}))
+                if isinstance(readiness.get("trace_paths", {}), dict)
+                else {},
+            }
+            if not bool(readiness_snapshot.get("ready", False)):
+                report: dict[str, object] = {
+                    "run_id": run_id,
+                    "mode": "stage5_row1",
+                    "status": "failed",
+                    "code": str(readiness_snapshot.get("code", "CLI_USAGE")),
+                    "exit_code": exit_code_from_status(
+                        str(readiness_snapshot.get("code", "CLI_USAGE"))
+                    ),
+                    "probe_success": False,
+                    "seed_result": seed_result,
+                    "ticks": len(control_results),
+                    "control_results": control_results,
+                    "placeholder_services": [],
+                    "final_artifact_path": str(
+                        final_metadata.get("final_artifact_path", "")
+                    ),
+                    "readiness": readiness_snapshot,
+                }
+                _ = _write_probe_result(probe_root, report)
+                return report
             report: dict[str, object] = {
                 "run_id": run_id,
                 "mode": "stage5_row1",
@@ -1378,6 +1417,7 @@ def _run_stage5_row1_probe(
                 "final_artifact_path": str(
                     final_metadata.get("final_artifact_path", "")
                 ),
+                "readiness": readiness_snapshot,
             }
             _ = _write_probe_result(probe_root, report)
             return report
@@ -1398,6 +1438,7 @@ def _run_stage5_row1_probe(
                 "final_artifact_path": str(
                     final_metadata.get("final_artifact_path", "")
                 ),
+                "readiness": readiness_snapshot,
             }
             _ = _write_probe_result(probe_root, report)
             return report
@@ -1413,6 +1454,7 @@ def _run_stage5_row1_probe(
         "control_results": control_results,
         "placeholder_services": [],
         "final_artifact_path": str(final_metadata.get("final_artifact_path", "")),
+        "readiness": readiness_snapshot,
     }
     _ = _write_probe_result(probe_root, report)
     return report
