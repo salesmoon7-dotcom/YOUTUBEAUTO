@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import cast
 from unittest.mock import patch
 
+from runtime_v2.stage2.agent_browser_adapter import (
+    build_stage2_agent_browser_adapter_command,
+)
 from runtime_v2.config import allowed_workloads
 from runtime_v2.contracts.job_contract import JobContract
 from runtime_v2.control_plane import _run_worker
@@ -128,6 +131,19 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
 
         self.assertEqual(result["stage"], "agent_browser_verify")
         run_verify.assert_called_once()
+
+    def test_stage2_adapter_command_uses_canonical_genspark_target_contract(
+        self,
+    ) -> None:
+        command = build_stage2_agent_browser_adapter_command(
+            service="genspark",
+            service_artifact_path="D:/runtime/output.png",
+        )
+
+        self.assertIn("--expected-url-substring", command)
+        self.assertIn("genspark.ai/agents?type=image_generation_agent", command)
+        self.assertIn("--expected-title-substring", command)
+        self.assertIn("Genspark", command)
 
     def test_agent_browser_verify_requires_explicit_target_matcher(self) -> None:
         from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job

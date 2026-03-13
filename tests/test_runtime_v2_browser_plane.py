@@ -15,6 +15,8 @@ from runtime_v2.browser.manager import (
     BrowserSession,
     CHATGPT_PARITY_EXTRA_FLAGS,
     _launch_debug_browser,
+    expected_title_substring_for_service,
+    expected_url_substring_for_service,
     ensure_browser_plane_ownership,
     _manager_owns_browser,
     _refresh_session_ready_marker,
@@ -61,6 +63,13 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             _start_url_for_service("canva"),
             "https://www.canva.com/design/DAHAnm1uUBA/-FWB5gw_ir1U7Ls0ZHF9Ig/edit",
         )
+
+    def test_service_expected_targets_follow_runtime_defaults(self) -> None:
+        self.assertEqual(
+            expected_url_substring_for_service("genspark"),
+            "genspark.ai/agents?type=image_generation_agent",
+        )
+        self.assertEqual(expected_title_substring_for_service("genspark"), "Genspark")
 
     def test_launch_debug_browser_uses_service_start_url(self) -> None:
         with self._temp_dir() as tmp_dir:
