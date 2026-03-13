@@ -15,12 +15,21 @@ def load_worker_registry(path: Path) -> dict[str, dict[str, object]]:
         return {}
     if not isinstance(raw, dict):
         return {}
-    return {str(key): dict(value) for key, value in raw.items() if isinstance(value, dict)}
+    return {
+        str(key): dict(value) for key, value in raw.items() if isinstance(value, dict)
+    }
 
 
 def write_worker_registry(path: Path, payload: dict[str, dict[str, object]]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, prefix=f"{path.stem}.", suffix=".tmp", delete=False) as handle:
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f"{path.stem}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
         handle.write(json.dumps(payload, ensure_ascii=True, indent=2))
         temp_path = Path(handle.name)
     temp_path.replace(path)
@@ -50,7 +59,9 @@ def update_worker_state(
     return write_worker_registry(path, registry)
 
 
-def has_progress_stall(entry: dict[str, object], *, now_ts: float, timeout_sec: int) -> bool:
+def has_progress_stall(
+    entry: dict[str, object], *, now_ts: float, timeout_sec: int
+) -> bool:
     progress_ts = entry.get("progress_ts", 0.0)
     if not isinstance(progress_ts, (int, float)):
         return True
@@ -61,6 +72,8 @@ def stalled_workloads(path: Path, *, now_ts: float, timeout_sec: int) -> list[st
     registry = load_worker_registry(path)
     stalled: list[str] = []
     for workload, entry in registry.items():
+        if str(entry.get("state", "")).strip().lower() != "running":
+            continue
         if has_progress_stall(entry, now_ts=now_ts, timeout_sec=timeout_sec):
             stalled.append(workload)
     return stalled

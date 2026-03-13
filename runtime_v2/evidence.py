@@ -359,10 +359,18 @@ def load_runtime_readiness(
             )
             gpu_health = {}
         gpu_checked_at = _to_float(gpu_health.get("checked_at"))
+        gpu_event = str(gpu_health.get("event", "")).strip().lower()
+        gpu_lease = gpu_health.get("lease")
+        idle_without_lease = gpu_event == "idle" and (
+            gpu_lease is None or gpu_lease == "" or gpu_lease == {}
+        )
+        released_lease_snapshot = gpu_event == "lock_release"
         gpu_stale = True
         if gpu_checked_at is not None:
             gpu_stale = now - gpu_checked_at > stale_sec
-        if gpu_checked_at is None or gpu_stale:
+        if gpu_checked_at is None or (
+            gpu_stale and not idle_without_lease and not released_lease_snapshot
+        ):
             blockers.append(
                 {
                     "axis": "gpu_health",
@@ -373,7 +381,6 @@ def load_runtime_readiness(
                     "trace_path": str(runtime_config.lease_file),
                 }
             )
-        gpu_event = str(gpu_health.get("event", "")).strip().lower()
         if gpu_event == "lock_busy":
             blockers.append(
                 {
