@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import cast
@@ -68,8 +69,7 @@ def capture_primary_image_asset(
     )
     if not image_url:
         raise RuntimeError("SEAART_IMAGE_URL_NOT_FOUND")
-    with urllib.request.urlopen(image_url, timeout=30) as response:
-        data = response.read()
+    data = _download_image_bytes(image_url, target["webSocketDebuggerUrl"])
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_bytes(data)
     digest = hashlib.sha256(data).hexdigest()
@@ -123,13 +123,27 @@ def _select_page_target(port: int, expected_url_substring: str) -> dict[str, str
         for item in cast(list[object], payload)
         if isinstance(item, dict)
     ]
+    if expected_url_substring == "genspark.ai/agents?type=image_generation_agent":
+        for item in pages:
+            if str(item.get("type", "")) != "page":
+                continue
+            url = str(item.get("url", ""))
+            if url.startswith("https://www.genspark.ai/agents?id="):
+                return {
+                    "webSocketDebuggerUrl": str(item.get("webSocketDebuggerUrl", "")),
+                    "url": url,
+                }
     for item in pages:
         if str(item.get("type", "")) != "page":
             continue
-        if expected_url_substring in str(item.get("url", "")):
+        url = str(item.get("url", ""))
+        if expected_url_substring in url or (
+            expected_url_substring == "genspark.ai/agents?type=image_generation_agent"
+            and url.startswith("https://www.genspark.ai/agents?id=")
+        ):
             return {
                 "webSocketDebuggerUrl": str(item.get("webSocketDebuggerUrl", "")),
-                "url": str(item.get("url", "")),
+                "url": url,
             }
     raise RuntimeError("CDP_TARGET_NOT_FOUND")
 
@@ -148,3 +162,48 @@ def _cdp_command(
                 return cast(dict[str, object], response)
     finally:
         ws.close()
+
+
+def _download_image_bytes(image_url: str, ws_url: str) -> bytes:
+    try:
+        with urllib.request.urlopen(image_url, timeout=30) as response:
+            return response.read()
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError):
+        return _fetch_bytes_via_page_context(ws_url, image_url)
+
+
+def _fetch_bytes_via_page_context(ws_url: str, image_url: str) -> bytes:
+    expression = """
+(async () => {
+  const response = await fetch(%s, {credentials: 'include'});
+  if (!response.ok) {
+    return {ok: false, status: response.status};
+  }
+  const buffer = await response.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.slice(index, index + chunkSize));
+  }
+  return {ok: true, base64: btoa(binary)};
+})()
+""" % json.dumps(image_url)
+    payload = _cdp_command(
+        ws_url,
+        method="Runtime.evaluate",
+        params={
+            "expression": expression,
+            "awaitPromise": True,
+            "returnByValue": True,
+        },
+    )
+    result = cast(dict[str, object], payload.get("result", {}))
+    remote_result = cast(dict[str, object], result.get("result", {}))
+    value = cast(dict[str, object], remote_result.get("value", {}))
+    if not bool(value.get("ok", False)):
+        raise RuntimeError("AGENT_BROWSER_CAPTURE_FETCH_FAILED")
+    encoded = str(value.get("base64", "")).strip()
+    if not encoded:
+        raise RuntimeError("AGENT_BROWSER_CAPTURE_FETCH_FAILED")
+    return base64.b64decode(encoded)

@@ -80,6 +80,9 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             args.service_artifact_path = str(output_path)
             args.expected_url_substring = "genspark.ai"
             args.expected_title_substring = "Genspark"
+            completed = cast(object, type("Completed", (), {})())
+            setattr(completed, "stdout", '{"ok":true}')
+            setattr(completed, "stderr", "")
 
             with patch(
                 "runtime_v2.cli.run_agent_browser_verify_job",
@@ -91,6 +94,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                         "runtime_v2.cli.write_functional_evidence_bundle",
                         return_value={"service": "genspark", "sha256": "ok"},
                     ) as evidence_mock,
+                    patch("runtime_v2.cli.subprocess.run", return_value=completed),
                 ):
                     exit_code = _run_agent_browser_stage2_adapter_child(args)
 
@@ -103,7 +107,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             self.assertEqual(evidence["status"], "ok")
             self.assertTrue(bool(evidence["probe_debug_only"]))
             self.assertFalse(bool(evidence["recovery_attempted"]))
-            self.assertTrue(bool(evidence["placeholder_artifact"]))
+            self.assertFalse(bool(evidence["placeholder_artifact"]))
 
     def test_stage2_adapter_child_resolves_relative_ref_images_against_asset_root(
         self,
@@ -279,6 +283,40 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertEqual(evidence["service"], "canva")
         self.assertEqual(evidence["status"], "ok")
         self.assertFalse(bool(evidence["placeholder_artifact"]))
+
+    def test_stage2_adapter_child_fail_closes_when_functional_capture_fails(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "scene-01.png"
+            args = CliArgs()
+            args.service = "genspark"
+            args.port = 9333
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "genspark.ai"
+            args.expected_title_substring = "Genspark"
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok"},
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    side_effect=RuntimeError("capture failed"),
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+            evidence = json.loads(
+                (root / "attach_evidence.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+        self.assertEqual(evidence["status"], "ok")
+        self.assertTrue(bool(evidence["placeholder_artifact"]))
 
     def test_stage2_adapter_child_fails_closed_for_geminigen_without_truthful_artifact(
         self,
