@@ -4,7 +4,9 @@ import unittest
 
 from runtime_v2_manager_gui import (
     _display_worker_error_code,
+    _format_batch_summary,
     _format_seed_summary,
+    _format_soak_summary,
     _format_terminal_evidence_summary,
     _readiness_blocker_messages,
     _worker_error_code_mismatch_warning,
@@ -86,6 +88,25 @@ class RuntimeV2ManagerGuiTests(unittest.TestCase):
                 row_index=1,
             ),
             "seed: seeded row=Sheet1!row2 job=chatgpt-sheet1-2",
+        )
+
+    def test_format_batch_summary_reports_success_with_rows_and_ticks(self) -> None:
+        self.assertEqual(
+            _format_batch_summary(
+                {
+                    "status": "ok",
+                    "code": "OK",
+                    "selected_rows": [0, 1, 2],
+                    "ticks": 7,
+                }
+            ),
+            "batch: ok rows=3 ticks=7",
+        )
+
+    def test_format_soak_summary_reports_path(self) -> None:
+        self.assertEqual(
+            _format_soak_summary("D:/runtime/evidence/soak_24h_report.md"),
+            "soak: report=D:/runtime/evidence/soak_24h_report.md",
         )
 
     def test_format_terminal_evidence_summary_prefers_final_output_path(self) -> None:

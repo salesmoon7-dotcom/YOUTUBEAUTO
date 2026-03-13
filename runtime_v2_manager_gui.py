@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import queue
 import threading
 import tkinter as tk
 from pathlib import Path
 from time import sleep, time
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 from typing import Callable, cast
 from uuid import uuid4
 
@@ -27,6 +28,7 @@ from runtime_v2.debug_log import (
     exception_payload,
     summarize_runtime_result,
 )
+from runtime_v2.cli import _run_excel_batch_mode
 from runtime_v2.evidence import load_runtime_readiness
 from runtime_v2.gpt.floor import load_gpt_status, write_gpt_status
 from runtime_v2.gpu.lease import (
@@ -36,6 +38,7 @@ from runtime_v2.gpu.lease import (
 )
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
 from runtime_v2.manager import seed_excel_row
+from runtime_v2.soak_report import write_soak_report
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -304,6 +307,31 @@ def _format_terminal_evidence_summary(
     return "evidence: latest result unavailable"
 
 
+def _format_batch_summary(batch_result: dict[str, object] | None) -> str:
+    if batch_result is None:
+        return "batch: not started"
+    status = str(batch_result.get("status", "unknown")).strip()
+    code = str(batch_result.get("code", "UNKNOWN")).strip()
+    selected_rows = (
+        cast(list[object], batch_result.get("selected_rows", []))
+        if isinstance(batch_result.get("selected_rows", []), list)
+        else []
+    )
+    ticks = _to_int(batch_result.get("ticks", 0))
+    if status == "ok":
+        return f"batch: ok rows={len(selected_rows)} ticks={ticks}"
+    if status == "no_work":
+        return "batch: no work"
+    return f"batch: status={status} code={code} rows={len(selected_rows)}"
+
+
+def _format_soak_summary(report_path: str) -> str:
+    normalized = report_path.strip()
+    if not normalized:
+        return "soak: report unavailable"
+    return f"soak: report={normalized}"
+
+
 def _blocking_browser_service_messages(
     browser_registry: dict[str, object] | None,
 ) -> list[str]:
@@ -329,13 +357,21 @@ class RuntimeV2ManagerGUI:
     SETTINGS_FILE: Path = (
         BASE_DIR / "system" / "runtime_v2" / "config" / "manager_gui_settings.json"
     )
+    LOGIN_SERVICES: tuple[str, ...] = (
+        "chatgpt",
+        "genspark",
+        "seaart",
+        "geminigen",
+        "canva",
+    )
 
     def __init__(self) -> None:
         self.root: tk.Tk = tk.Tk()
         self.root.title("runtime_v2 매니저")
-        self.root.geometry("640x900")
+        self.root.geometry("1120x900")
         _ = self.root.configure(bg="#f4f4f4")
         _ = self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+        _ = self.root.resizable(True, True)
 
         self.style: ttk.Style = ttk.Style()
         try:
@@ -421,10 +457,18 @@ class RuntimeV2ManagerGUI:
             if default_excel_path.exists()
             else ""
         )
+        self.poll_ms_text: tk.StringVar = tk.StringVar(value="1000")
+        self.loop_sleep_text: tk.StringVar = tk.StringVar(value="2.0")
         self.sheet_name_text: tk.StringVar = tk.StringVar(value="Sheet1")
         self.row_index_text: tk.StringVar = tk.StringVar(value="0")
+        self.batch_count_text: tk.StringVar = tk.StringVar(value="5")
+        self.max_control_ticks_text: tk.StringVar = tk.StringVar(value="50")
         self.login_service_text: tk.StringVar = tk.StringVar(value="chatgpt")
         self.selected_workload: tk.StringVar = tk.StringVar(value="qwen3_tts")
+        self.preset_gpt_var: tk.BooleanVar = tk.BooleanVar(value=True)
+        self.preset_browser_var: tk.BooleanVar = tk.BooleanVar(value=True)
+        self.preset_seed_var: tk.BooleanVar = tk.BooleanVar(value=True)
+        self.preset_control_var: tk.BooleanVar = tk.BooleanVar(value=True)
         self.source_path_text: tk.StringVar = tk.StringVar(value="")
         self.audio_path_text: tk.StringVar = tk.StringVar(value="")
         self.script_text: tk.StringVar = tk.StringVar(value="")
@@ -450,6 +494,12 @@ class RuntimeV2ManagerGUI:
         self.seed_result_summary_text: tk.StringVar = tk.StringVar(
             value="seed: not started"
         )
+        self.batch_result_summary_text: tk.StringVar = tk.StringVar(
+            value="batch: not started"
+        )
+        self.soak_summary_text: tk.StringVar = tk.StringVar(
+            value="soak: report unavailable"
+        )
         self.evidence_summary_text: tk.StringVar = tk.StringVar(
             value="evidence: latest result unavailable"
         )
@@ -462,18 +512,30 @@ class RuntimeV2ManagerGUI:
         self.home_browser_text: tk.StringVar = tk.StringVar(
             value="브라우저 상태를 확인하는 중입니다"
         )
+        self.browser_progress_value: tk.IntVar = tk.IntVar(value=0)
+        self.queue_progress_value: tk.IntVar = tk.IntVar(value=0)
+        self.gpt_progress_value: tk.IntVar = tk.IntVar(value=0)
+        self.artifact_progress_value: tk.IntVar = tk.IntVar(value=0)
+        self.log_filter_text: tk.StringVar = tk.StringVar(value="")
+        self.log_level_filter_text: tk.StringVar = tk.StringVar(value="전체")
+        self.log_autoscroll_var: tk.BooleanVar = tk.BooleanVar(value=True)
+        self.log_recent_only_var: tk.BooleanVar = tk.BooleanVar(value=False)
         self.log_buffer: list[str] = []
         self.last_event_ts: float = 0.0
         self.ui_queue: queue.SimpleQueue[tuple[str, str]] = queue.SimpleQueue()
+        self._json_cache: dict[tuple[str, int], tuple[float, int, object]] = {}
+        self._sheet_cache: dict[str, tuple[float, int, list[str]]] = {}
 
-        self.program_rows: dict[str, dict[str, ttk.Label]] = {}
-        self.queue_list: tk.Listbox = tk.Listbox(self.root)
-        self.sheet_listbox: tk.Listbox = tk.Listbox(self.root)
-        self.log_text: tk.Text = tk.Text(self.root)
+        self.program_rows: dict[str, dict[str, object]] = {}
+        self.home_action_buttons: dict[str, tk.Button] = {}
+        self.queue_list: tk.Listbox | None = None
+        self.sheet_listbox: tk.Listbox | None = None
+        self.log_text: tk.Text | None = None
 
         self._load_settings()
         self._refresh_runtime_config()
         self._build_ui()
+        self._apply_home_presets()
         self._refresh_sheet_list()
         self._ensure_snapshot_contracts()
         self.refresh_after_id = self.root.after(200, self.refresh_dashboard)
@@ -488,25 +550,28 @@ class RuntimeV2ManagerGUI:
         notebook.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
 
         home = ttk.Frame(notebook, padding=14, style="AppBody.TFrame")
-        details = ttk.Frame(notebook, padding=14, style="AppBody.TFrame")
+        progress = ttk.Frame(notebook, padding=14, style="AppBody.TFrame")
+        logs = ttk.Frame(notebook, padding=14, style="AppBody.TFrame")
         notebook.add(home, text="홈")
-        notebook.add(details, text="상세 상태")
+        notebook.add(progress, text="진행")
+        notebook.add(logs, text="로그")
 
         self._build_home_tab(home)
-        self._build_details_tab(details)
+        self._build_progress_tab(progress)
+        self._build_logs_tab(logs)
 
     def _build_home_tab(self, parent: ttk.Frame) -> None:
-        hero = ttk.Frame(parent, padding=18, style="HeroCard.TFrame")
-        hero.pack(fill=tk.X, pady=(0, 12))
-        ttk.Label(hero, text="간편 실행", style="HeroTitle.TLabel").pack(anchor="w")
+        hero = ttk.Frame(parent, padding=14, style="HeroCard.TFrame")
+        hero.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(hero, text="제어 홈", style="HeroTitle.TLabel").pack(anchor="w")
         ttk.Label(
             hero,
-            text="필요한 값만 입력하고 아래 큰 버튼 순서대로 실행하세요.",
+            text="레거시 매니저처럼 설정을 먼저 맞추고, 홈 탭에서 바로 실행을 시작하세요.",
             style="HeroBody.TLabel",
         ).pack(anchor="w", pady=(6, 0))
 
         card_row = ttk.Frame(parent, style="AppBody.TFrame")
-        card_row.pack(fill=tk.X, pady=(0, 12))
+        card_row.pack(fill=tk.X, pady=(0, 8))
         for column in range(3):
             _ = card_row.grid_columnconfigure(column, weight=1)
         self._build_status_card(card_row, 0, "현재 상태", self.status_text)
@@ -515,43 +580,172 @@ class RuntimeV2ManagerGUI:
 
         body = ttk.Frame(parent, style="AppBody.TFrame")
         body.pack(fill=tk.BOTH, expand=True)
-        for column in range(2):
-            _ = body.grid_columnconfigure(column, weight=1)
+        _ = body.grid_columnconfigure(0, weight=5, minsize=700)
+        _ = body.grid_columnconfigure(1, weight=3, minsize=320)
+        _ = body.grid_rowconfigure(0, weight=1)
 
-        quick = ttk.LabelFrame(
-            body, text="빠른 시작", padding=14, style="ManagerSection.TLabelframe"
-        )
-        _ = quick.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        self._build_quick_start_frame(quick)
+        control = ttk.Frame(body, style="AppBody.TFrame")
+        _ = control.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        self._build_control_frame(control)
 
         summary = ttk.LabelFrame(
-            body, text="현재 진행 상황", padding=14, style="ManagerSection.TLabelframe"
+            body, text="홈 요약", padding=10, style="ManagerSection.TLabelframe"
         )
-        _ = summary.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+        _ = summary.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
         self._build_home_summary_frame(summary)
 
-    def _build_details_tab(self, parent: ttk.Frame) -> None:
-        top = ttk.Frame(parent, style="AppBody.TFrame")
-        top.pack(fill=tk.BOTH, expand=True)
+    def _build_progress_tab(self, parent: ttk.Frame) -> None:
+        intro = ttk.Frame(parent, padding=14, style="HeroCard.TFrame")
+        intro.pack(fill=tk.X, pady=(0, 12))
+        ttk.Label(intro, text="실행 진행 현황", style="HeroTitle.TLabel").pack(
+            anchor="w"
+        )
+        ttk.Label(
+            intro,
+            text="현재 준비 상태, 서브시스템, 큐 처리 흐름을 한곳에서 확인할 수 있습니다.",
+            style="HeroBody.TLabel",
+        ).pack(anchor="w", pady=(6, 0))
 
-        top_body: ttk.Panedwindow = ttk.Panedwindow(top, orient=tk.HORIZONTAL)
-        top_body.pack(fill=tk.BOTH, expand=True)
-        left = ttk.Frame(top_body, padding=(0, 0, 8, 0), style="AppBody.TFrame")
-        right = ttk.Frame(top_body, padding=(8, 0, 0, 0), style="AppBody.TFrame")
-        _ = top_body.add(left, weight=3)
-        _ = top_body.add(right, weight=4)
+        card_row = ttk.Frame(parent, style="AppBody.TFrame")
+        card_row.pack(fill=tk.X, pady=(0, 12))
+        for column in range(3):
+            _ = card_row.grid_columnconfigure(column, weight=1)
+        self._build_status_card(card_row, 0, "실행 상태", self.status_text)
+        self._build_status_card(card_row, 1, "주의/안내", self.warning_text)
+        self._build_status_card(card_row, 2, "실행 증거", self.evidence_summary_text)
+
+        content = ttk.Frame(parent, style="AppBody.TFrame")
+        content.pack(fill=tk.BOTH, expand=True)
+
+        split: ttk.Panedwindow = ttk.Panedwindow(content, orient=tk.HORIZONTAL)
+        split.pack(fill=tk.BOTH, expand=True)
+        left = ttk.Frame(split, padding=(0, 0, 8, 0), style="AppBody.TFrame")
+        right = ttk.Frame(split, padding=(8, 0, 0, 0), style="AppBody.TFrame")
+        _ = split.add(left, weight=3)
+        _ = split.add(right, weight=4)
 
         self._build_overview_frame(left)
+        self._build_progress_meter_frame(left)
         self._build_programs_frame(left)
-        self._build_control_frame(right)
         self._build_queue_frame(right)
-        self._build_logs_frame(right)
+
+    def _build_logs_tab(self, parent: ttk.Frame) -> None:
+        intro = ttk.Frame(parent, padding=14, style="HeroCard.TFrame")
+        intro.pack(fill=tk.X, pady=(0, 12))
+        ttk.Label(intro, text="실행 로그", style="HeroTitle.TLabel").pack(anchor="w")
+        ttk.Label(
+            intro,
+            text="최근 이벤트와 작업 요약 로그를 확인하는 전용 화면입니다.",
+            style="HeroBody.TLabel",
+        ).pack(anchor="w", pady=(6, 0))
+
+        status_strip = ttk.Frame(parent, style="AppBody.TFrame")
+        status_strip.pack(fill=tk.X, pady=(0, 12))
+        _ = status_strip.grid_columnconfigure(0, weight=1)
+        _ = status_strip.grid_columnconfigure(1, weight=1)
+        self._build_status_card(status_strip, 0, "최근 실행", self.last_result_text)
+        self._build_status_card(status_strip, 1, "최근 Run ID", self.latest_run_text)
+
+        filter_row = ttk.Frame(parent, style="AppBody.TFrame")
+        filter_row.pack(fill=tk.X, pady=(0, 10))
+        ttk.Label(filter_row, text="검색:").pack(side=tk.LEFT)
+        filter_entry = ttk.Entry(filter_row, textvariable=self.log_filter_text)
+        filter_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(6, 8))
+        _ = filter_entry.bind("<KeyRelease>", self._on_log_filter_changed)
+        ttk.Label(filter_row, text="레벨:").pack(side=tk.LEFT)
+        level_combo = ttk.Combobox(
+            filter_row,
+            textvariable=self.log_level_filter_text,
+            state="readonly",
+            width=10,
+        )
+        level_combo["values"] = ("전체", "INFO", "WARNING", "ERROR")
+        level_combo.pack(side=tk.LEFT)
+        _ = level_combo.bind("<<ComboboxSelected>>", self._on_log_filter_changed)
+        ttk.Checkbutton(
+            filter_row,
+            text="자동 스크롤",
+            variable=self.log_autoscroll_var,
+            command=self._on_log_filter_changed,
+        ).pack(side=tk.LEFT, padx=(8, 4))
+        ttk.Checkbutton(
+            filter_row,
+            text="최근 100개",
+            variable=self.log_recent_only_var,
+            command=self._on_log_filter_changed,
+        ).pack(side=tk.LEFT)
+
+        body = ttk.Frame(parent, style="AppBody.TFrame")
+        body.pack(fill=tk.BOTH, expand=True)
+        tool_row = ttk.Frame(parent, style="AppBody.TFrame")
+        tool_row.pack(fill=tk.X, pady=(0, 10))
+        tk.Button(
+            tool_row,
+            text="로그 지우기",
+            width=11,
+            command=self.clear_logs,
+            bg="#f8fafc",
+            fg="#1f2937",
+            relief=tk.GROOVE,
+            font=("Malgun Gothic", 9, "bold"),
+        ).pack(side=tk.LEFT)
+        tk.Button(
+            tool_row,
+            text="이벤트 파일 열기",
+            width=15,
+            command=self.open_events_file,
+            bg="#eff6ff",
+            fg="#1d4ed8",
+            relief=tk.GROOVE,
+            font=("Malgun Gothic", 9, "bold"),
+        ).pack(side=tk.LEFT, padx=4)
+        tk.Button(
+            tool_row,
+            text="디버그 폴더 열기",
+            width=15,
+            command=self.open_debug_dir,
+            bg="#ecfeff",
+            fg="#0f766e",
+            relief=tk.GROOVE,
+            font=("Malgun Gothic", 9, "bold"),
+        ).pack(side=tk.LEFT, padx=4)
+        tk.Button(
+            tool_row,
+            text="로그 복사",
+            width=11,
+            command=self.copy_visible_logs,
+            bg="#f8fafc",
+            fg="#1f2937",
+            relief=tk.GROOVE,
+            font=("Malgun Gothic", 9, "bold"),
+        ).pack(side=tk.LEFT, padx=4)
+        tk.Button(
+            tool_row,
+            text="로그 저장",
+            width=11,
+            command=self.save_visible_logs,
+            bg="#eff6ff",
+            fg="#1d4ed8",
+            relief=tk.GROOVE,
+            font=("Malgun Gothic", 9, "bold"),
+        ).pack(side=tk.LEFT, padx=4)
+        tk.Button(
+            tool_row,
+            text="에러만 추출",
+            width=12,
+            command=self.extract_error_logs,
+            bg="#fee2e2",
+            fg="#b91c1c",
+            relief=tk.GROOVE,
+            font=("Malgun Gothic", 9, "bold"),
+        ).pack(side=tk.LEFT, padx=4)
+        self._build_logs_frame(body)
 
     def _build_status_card(
         self, parent: ttk.Frame, column: int, title: str, text_var: tk.StringVar
     ) -> None:
-        card = ttk.Frame(parent, padding=14, style="Card.TFrame")
-        _ = card.grid(row=0, column=column, sticky="nsew", padx=6)
+        card = ttk.Frame(parent, padding=10, style="Card.TFrame")
+        _ = card.grid(row=0, column=column, sticky="nsew", padx=4)
         ttk.Label(card, text=title, style="CardTitle.TLabel").pack(anchor="w")
         ttk.Label(
             card,
@@ -560,6 +754,29 @@ class RuntimeV2ManagerGUI:
             wraplength=180,
             justify=tk.LEFT,
         ).pack(anchor="w", pady=(8, 0))
+
+    def _build_progress_meter_frame(self, parent: ttk.Frame) -> None:
+        frame = ttk.LabelFrame(
+            parent, text="진행 미터", padding=8, style="ManagerSection.TLabelframe"
+        )
+        frame.pack(fill=tk.X, pady=(0, 8))
+        meters = (
+            ("브라우저 준비", self.browser_progress_value, self.browser_text),
+            ("GPT 준비", self.gpt_progress_value, self.gpt_text),
+            ("큐 적재", self.queue_progress_value, self.queue_text),
+            ("결과 산출", self.artifact_progress_value, self.artifact_text),
+        )
+        for title, value_var, text_var in meters:
+            row = ttk.Frame(frame)
+            row.pack(fill=tk.X, pady=3)
+            ttk.Label(row, text=title, width=10).pack(side=tk.LEFT)
+            ttk.Progressbar(
+                row,
+                mode="determinate",
+                variable=value_var,
+                maximum=100,
+            ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(6, 8))
+            ttk.Label(row, textvariable=text_var, width=26).pack(side=tk.LEFT)
 
     def _build_quick_start_frame(self, parent: ttk.LabelFrame) -> None:
         ttk.Label(parent, text="Excel 파일", style="CardTitle.TLabel").pack(anchor="w")
@@ -603,7 +820,7 @@ class RuntimeV2ManagerGUI:
             state="readonly",
             width=14,
         )
-        combo["values"] = ("chatgpt", "genspark", "seaart", "geminigen", "canva")
+        combo["values"] = self.LOGIN_SERVICES
         combo.pack(side=tk.LEFT, padx=(8, 0))
 
         action_col = ttk.Frame(parent)
@@ -655,14 +872,14 @@ class RuntimeV2ManagerGUI:
             ("브라우저 상태", self.home_browser_text),
         )
         for title, var in items:
-            card = ttk.Frame(parent, padding=10, style="Card.TFrame")
-            card.pack(fill=tk.X, pady=(0, 10))
+            card = ttk.Frame(parent, padding=8, style="Card.TFrame")
+            card.pack(fill=tk.X, pady=(0, 8))
             ttk.Label(card, text=title, style="CardTitle.TLabel").pack(anchor="w")
             ttk.Label(
                 card,
                 textvariable=var,
                 style="CardBody.TLabel",
-                wraplength=260,
+                wraplength=240,
                 justify=tk.LEFT,
             ).pack(anchor="w", pady=(6, 0))
 
@@ -673,13 +890,23 @@ class RuntimeV2ManagerGUI:
         path = Path(excel_path)
         if not path.exists():
             return []
+        stamp = self._file_stamp(path)
+        cache_key = str(path.resolve())
+        cached = self._sheet_cache.get(cache_key)
+        if stamp is not None and cached is not None and cached[:2] == stamp:
+            return list(cached[2])
         workbook = load_workbook(path, read_only=True, data_only=True)
         try:
-            return [str(name) for name in workbook.sheetnames]
+            names = [str(name) for name in workbook.sheetnames]
         finally:
             workbook.close()
+        if stamp is not None:
+            self._sheet_cache[cache_key] = (stamp[0], stamp[1], list(names))
+        return names
 
     def _refresh_sheet_list(self) -> None:
+        if self.sheet_listbox is None:
+            return
         current = self.sheet_name_text.get().strip()
         self.sheet_listbox.delete(0, tk.END)
         names = self._sheet_names_for_excel()
@@ -696,6 +923,8 @@ class RuntimeV2ManagerGUI:
         self.sheet_name_text.set(names[selected_index])
 
     def _on_sheet_select(self, _event: tk.Event[tk.Listbox]) -> None:
+        if self.sheet_listbox is None:
+            return
         selected = cast(tuple[int, ...], self.sheet_listbox.curselection())
         if not selected:
             return
@@ -704,7 +933,19 @@ class RuntimeV2ManagerGUI:
             self.sheet_name_text.set(value)
 
     def _sheet_listbox_yview(self, *args: str) -> tuple[float, float] | None:
+        if self.sheet_listbox is None:
+            return None
         return cast(tuple[float, float] | None, self.sheet_listbox.yview(*args))
+
+    def _queue_list_yview(self, *args: str) -> tuple[float, float] | None:
+        if self.queue_list is None:
+            return None
+        return cast(tuple[float, float] | None, self.queue_list.yview(*args))
+
+    def _log_text_yview(self, *args: str) -> tuple[float, float] | None:
+        if self.log_text is None:
+            return None
+        return cast(tuple[float, float] | None, self.log_text.yview(*args))
 
     def _build_header_frame(self, parent: ttk.Frame) -> None:
         frame = ttk.Frame(parent, style="ManagerHeader.TFrame", padding=12)
@@ -720,7 +961,7 @@ class RuntimeV2ManagerGUI:
         ).pack(side=tk.LEFT, anchor="w")
         ttk.Label(
             title_row,
-            text="간단하게 실행하고, 필요할 때만 상세 상태를 확인하세요.",
+            text="레거시 제어 흐름을 유지하면서 홈 / 진행 / 로그 3탭으로 분리했습니다.",
             style="ManagerHeader.TLabel",
             font=("Malgun Gothic", 10),
         ).pack(side=tk.RIGHT, anchor="e")
@@ -728,13 +969,55 @@ class RuntimeV2ManagerGUI:
     def _build_control_frame(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(
             parent,
-            text="운영자용 고급 설정",
-            padding=8,
+            text="제어",
+            padding=6,
             style="ManagerSection.TLabelframe",
         )
         frame.pack(fill=tk.X, pady=(0, 8))
+        mode_row = ttk.Frame(frame)
+        mode_row.pack(fill=tk.X, pady=(0, 4))
+        for column in range(4):
+            _ = mode_row.grid_columnconfigure(column, weight=1)
+        ttk.Label(mode_row, text="작업군", style="CardTitle.TLabel").grid(
+            row=0, column=0, sticky="w", padx=(2, 8)
+        )
+        workload_combo = ttk.Combobox(
+            mode_row,
+            textvariable=self.selected_workload,
+            state="readonly",
+            width=14,
+        )
+        workload_combo["values"] = ("qwen3_tts", "rvc", "kenburns")
+        workload_combo.grid(row=0, column=1, sticky="ew", padx=(0, 8))
+        ttk.Label(mode_row, text="로그인", style="CardTitle.TLabel").grid(
+            row=0, column=2, sticky="w", padx=(2, 8)
+        )
+        login_combo = ttk.Combobox(
+            mode_row,
+            textvariable=self.login_service_text,
+            state="readonly",
+            width=14,
+        )
+        login_combo["values"] = self.LOGIN_SERVICES
+        login_combo.grid(row=0, column=3, sticky="ew")
+
+        settings_row = ttk.Frame(frame)
+        settings_row.pack(fill=tk.X, pady=(0, 4))
+        ttk.Label(settings_row, text="갱신(ms):").pack(side=tk.LEFT)
+        ttk.Entry(settings_row, textvariable=self.poll_ms_text, width=8).pack(
+            side=tk.LEFT, padx=(4, 8)
+        )
+        ttk.Label(settings_row, text="루프 대기(s):").pack(side=tk.LEFT)
+        ttk.Entry(settings_row, textvariable=self.loop_sleep_text, width=8).pack(
+            side=tk.LEFT, padx=(4, 8)
+        )
+        ttk.Label(settings_row, text="최근 실행", style="CardTitle.TLabel").pack(
+            side=tk.LEFT, padx=(12, 4)
+        )
+        ttk.Label(settings_row, textvariable=self.latest_run_text).pack(side=tk.LEFT)
+
         runtime_row = ttk.Frame(frame)
-        runtime_row.pack(fill=tk.X, pady=(0, 6))
+        runtime_row.pack(fill=tk.X, pady=(0, 4))
         ttk.Label(runtime_row, text="런타임 루트:").pack(side=tk.LEFT, padx=(0, 4))
         ttk.Entry(runtime_row, textvariable=self.runtime_root_text).pack(
             side=tk.LEFT, fill=tk.X, expand=True
@@ -747,14 +1030,14 @@ class RuntimeV2ManagerGUI:
         ).pack(side=tk.LEFT, padx=(8, 0))
 
         excel_row = ttk.Frame(frame)
-        excel_row.pack(fill=tk.X, pady=(0, 6))
+        excel_row.pack(fill=tk.X, pady=(0, 4))
         ttk.Label(excel_row, text="엑셀 파일:").pack(side=tk.LEFT, padx=(0, 4))
         ttk.Entry(excel_row, textvariable=self.excel_path_text).pack(
             side=tk.LEFT, fill=tk.X, expand=True
         )
 
         row_select = ttk.Frame(frame)
-        row_select.pack(fill=tk.X, pady=(0, 6))
+        row_select.pack(fill=tk.X, pady=(0, 4))
         ttk.Label(row_select, text="시트:").pack(side=tk.LEFT, padx=(0, 4))
         ttk.Entry(row_select, textvariable=self.sheet_name_text, width=16).pack(
             side=tk.LEFT
@@ -763,60 +1046,212 @@ class RuntimeV2ManagerGUI:
         ttk.Entry(row_select, textvariable=self.row_index_text, width=8).pack(
             side=tk.LEFT
         )
+        ttk.Label(row_select, text="배치 수:").pack(side=tk.LEFT, padx=(8, 4))
+        ttk.Entry(row_select, textvariable=self.batch_count_text, width=6).pack(
+            side=tk.LEFT
+        )
+        ttk.Label(row_select, text="최대 Tick:").pack(side=tk.LEFT, padx=(8, 4))
+        ttk.Entry(row_select, textvariable=self.max_control_ticks_text, width=6).pack(
+            side=tk.LEFT
+        )
         ttk.Label(row_select, text="로그인 브라우저:").pack(side=tk.LEFT, padx=(8, 4))
         browser_combo = ttk.Combobox(
             row_select, textvariable=self.login_service_text, state="readonly", width=12
         )
-        browser_combo["values"] = (
-            "chatgpt",
-            "genspark",
-            "seaart",
-            "geminigen",
-            "canva",
-        )
+        browser_combo["values"] = self.LOGIN_SERVICES
         browser_combo.pack(side=tk.LEFT)
+
+        preset_frame = ttk.LabelFrame(
+            frame,
+            text="빠른 프리셋",
+            padding=6,
+            style="ManagerSection.TLabelframe",
+        )
+        preset_frame.pack(fill=tk.X, pady=(0, 4))
+        preset_row = ttk.Frame(preset_frame)
+        preset_row.pack(fill=tk.X)
+        ttk.Checkbutton(
+            preset_row,
+            text="GPT 준비",
+            variable=self.preset_gpt_var,
+            command=self._apply_home_presets,
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Checkbutton(
+            preset_row,
+            text="브라우저",
+            variable=self.preset_browser_var,
+            command=self._apply_home_presets,
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Checkbutton(
+            preset_row,
+            text="행 적재",
+            variable=self.preset_seed_var,
+            command=self._apply_home_presets,
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Checkbutton(
+            preset_row,
+            text="제어 실행",
+            variable=self.preset_control_var,
+            command=self._apply_home_presets,
+        ).pack(side=tk.LEFT)
+        preset_button_row = ttk.Frame(preset_frame)
+        preset_button_row.pack(fill=tk.X, pady=(6, 0))
+        tk.Button(
+            preset_button_row,
+            text="전체 선택",
+            width=10,
+            command=lambda: self._apply_named_preset("all"),
+            bg="#ecfeff",
+            fg="#0f766e",
+            relief=tk.GROOVE,
+            font=("Malgun Gothic", 9, "bold"),
+        ).pack(side=tk.LEFT)
+        tk.Button(
+            preset_button_row,
+            text="최소 실행",
+            width=10,
+            command=lambda: self._apply_named_preset("minimal"),
+            bg="#eff6ff",
+            fg="#1d4ed8",
+            relief=tk.GROOVE,
+            font=("Malgun Gothic", 9, "bold"),
+        ).pack(side=tk.LEFT, padx=4)
+        tk.Button(
+            preset_button_row,
+            text="복구 모드",
+            width=10,
+            command=lambda: self._apply_named_preset("recovery"),
+            bg="#fef3c7",
+            fg="#92400e",
+            relief=tk.GROOVE,
+            font=("Malgun Gothic", 9, "bold"),
+        ).pack(side=tk.LEFT)
 
         action_row = ttk.Frame(frame)
         action_row.pack(fill=tk.X)
-        tk.Button(
+        refresh_button = tk.Button(
             action_row,
             text="새로고침",
             width=10,
             command=self.refresh_dashboard_now,
-        ).pack(side=tk.LEFT)
-        tk.Button(
+            bg="#f8fafc",
+            fg="#1f2937",
+            relief=tk.GROOVE,
+            font=("Malgun Gothic", 9, "bold"),
+        )
+        refresh_button.pack(side=tk.LEFT)
+        self.home_action_buttons["refresh"] = refresh_button
+        inbox_button = tk.Button(
             action_row,
             text="받은 작업 확인",
             width=12,
             command=self.trigger_scan_inbox,
-        ).pack(side=tk.LEFT, padx=4)
-        tk.Button(
+            bg="#eff6ff",
+            fg="#1d4ed8",
+            relief=tk.GROOVE,
+            font=("Malgun Gothic", 9, "bold"),
+        )
+        inbox_button.pack(side=tk.LEFT, padx=4)
+        self.home_action_buttons["scan_inbox"] = inbox_button
+        gpt_button = tk.Button(
             action_row,
             text="GPT 준비 실행",
             width=12,
             command=self.trigger_gpt_spawn,
-        ).pack(side=tk.LEFT, padx=4)
+            bg="#ecfeff",
+            fg="#0f766e",
+            relief=tk.GROOVE,
+            font=("Malgun Gothic", 9, "bold"),
+        )
+        gpt_button.pack(side=tk.LEFT, padx=4)
+        self.home_action_buttons["gpt_spawn"] = gpt_button
+        browser_button = tk.Button(
+            action_row,
+            text="로그인 브라우저",
+            width=12,
+            command=self.trigger_open_login_browser,
+            bg="#ffffff",
+            fg="#334155",
+            relief=tk.GROOVE,
+            font=("Malgun Gothic", 9, "bold"),
+        )
+        browser_button.pack(side=tk.LEFT, padx=4)
+        self.home_action_buttons["open_browser"] = browser_button
 
         action_row2 = ttk.Frame(frame)
-        action_row2.pack(fill=tk.X, pady=(6, 0))
-        tk.Button(
+        action_row2.pack(fill=tk.X, pady=(4, 0))
+        seed_button = tk.Button(
             action_row2,
-            text="행 불러오기(단축)",
-            width=16,
-            command=self.trigger_excel_seed,
-        ).pack(side=tk.LEFT)
-        tk.Button(
-            action_row2,
-            text="한 단계 실행(단축)",
+            text="행 불러오기",
             width=12,
-            command=self.trigger_control_once,
-        ).pack(side=tk.LEFT, padx=4)
-        tk.Button(
+            command=self.trigger_excel_seed,
+            bg="#dbeafe",
+            fg="#1d4ed8",
+            relief=tk.FLAT,
+            font=("Malgun Gothic", 10, "bold"),
+        )
+        seed_button.pack(side=tk.LEFT)
+        self.home_action_buttons["seed"] = seed_button
+        batch_button = tk.Button(
             action_row2,
-            text="로그인 브라우저 열기(단축)",
-            width=16,
-            command=self.trigger_open_login_browser,
-        ).pack(side=tk.LEFT, padx=4)
+            text="5행 배치",
+            width=11,
+            command=self.trigger_excel_batch,
+            bg="#ede9fe",
+            fg="#5b21b6",
+            relief=tk.FLAT,
+            font=("Malgun Gothic", 10, "bold"),
+        )
+        batch_button.pack(side=tk.LEFT, padx=4)
+        self.home_action_buttons["batch"] = batch_button
+        control_button = tk.Button(
+            action_row2,
+            text="한 단계 실행",
+            width=11,
+            command=self.trigger_control_once,
+            bg="#dcfce7",
+            fg="#166534",
+            relief=tk.FLAT,
+            font=("Malgun Gothic", 10, "bold"),
+        )
+        control_button.pack(side=tk.LEFT, padx=4)
+        self.home_action_buttons["control"] = control_button
+        recovery_button = tk.Button(
+            action_row2,
+            text="Recovery",
+            width=11,
+            command=self.trigger_recovery,
+            bg="#fef3c7",
+            fg="#92400e",
+            relief=tk.FLAT,
+            font=("Malgun Gothic", 10, "bold"),
+        )
+        recovery_button.pack(side=tk.LEFT, padx=4)
+        self.home_action_buttons["recovery"] = recovery_button
+        soak_button = tk.Button(
+            action_row2,
+            text="Soak Report",
+            width=11,
+            command=self.trigger_soak_report,
+            bg="#fef3c7",
+            fg="#92400e",
+            relief=tk.FLAT,
+            font=("Malgun Gothic", 10, "bold"),
+        )
+        soak_button.pack(side=tk.LEFT, padx=4)
+        self.home_action_buttons["soak"] = soak_button
+        start_button = tk.Button(
+            action_row2,
+            text="Start Loop",
+            width=11,
+            command=self.start_loop,
+            bg="#00a86b",
+            fg="#ffffff",
+            relief=tk.FLAT,
+            font=("Malgun Gothic", 10, "bold"),
+        )
+        start_button.pack(side=tk.LEFT, padx=4)
+        self.home_action_buttons["start_loop"] = start_button
 
         advanced = ttk.LabelFrame(
             frame,
@@ -824,11 +1259,11 @@ class RuntimeV2ManagerGUI:
             padding=6,
             style="ManagerSection.TLabelframe",
         )
-        advanced.pack(fill=tk.X, pady=(8, 0))
+        advanced.pack(fill=tk.X, pady=(6, 0))
 
         top = ttk.Frame(advanced)
         top.pack(fill=tk.X, pady=(0, 6))
-        ttk.Label(top, text="기본 작업군:").pack(side=tk.LEFT)
+        ttk.Label(top, text="수동 작업군:").pack(side=tk.LEFT)
         combo = ttk.Combobox(
             top, textvariable=self.selected_workload, state="readonly", width=16
         )
@@ -917,6 +1352,12 @@ class RuntimeV2ManagerGUI:
         ttk.Label(operator, textvariable=self.seed_result_summary_text).pack(
             anchor="w", pady=(2, 0)
         )
+        ttk.Label(operator, textvariable=self.batch_result_summary_text).pack(
+            anchor="w", pady=(2, 0)
+        )
+        ttk.Label(operator, textvariable=self.soak_summary_text).pack(
+            anchor="w", pady=(2, 0)
+        )
         ttk.Label(operator, textvariable=self.evidence_summary_text).pack(
             anchor="w", pady=(2, 0)
         )
@@ -959,14 +1400,54 @@ class RuntimeV2ManagerGUI:
             "Result",
             "GUI",
         ):
-            row = ttk.Frame(frame)
-            row.pack(fill=tk.X, pady=2)
-            ttk.Label(row, text=program, width=12).pack(side=tk.LEFT)
-            status = ttk.Label(row, text="대기", width=20)
-            status.pack(side=tk.LEFT)
-            detail = ttk.Label(row, text="", width=40)
-            detail.pack(side=tk.LEFT, padx=(6, 0))
-            self.program_rows[program] = {"status": status, "detail": detail}
+            card = ttk.Frame(frame, padding=6, style="Card.TFrame")
+            card.pack(fill=tk.X, pady=3)
+            top = ttk.Frame(card, style="Card.TFrame")
+            top.pack(fill=tk.X)
+            ttk.Label(top, text=program, width=12, style="CardTitle.TLabel").pack(
+                side=tk.LEFT
+            )
+            badge = tk.Label(
+                top,
+                text="대기",
+                width=10,
+                bg="#dfe6ee",
+                fg="#223142",
+                font=("Malgun Gothic", 9, "bold"),
+                padx=6,
+                pady=2,
+            )
+            badge.pack(side=tk.LEFT, padx=(0, 8))
+            indicator = tk.Canvas(
+                top, width=12, height=12, highlightthickness=0, bg="#ffffff"
+            )
+            indicator.pack(side=tk.LEFT, padx=(0, 8))
+            _ = indicator.create_oval(2, 2, 10, 10, fill="#cbd5e1", outline="#94a3b8")
+            detail = ttk.Label(top, text="", style="CardBody.TLabel")
+            detail.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            chip_row = ttk.Frame(card, style="Card.TFrame")
+            chip_row.pack(fill=tk.X, pady=(6, 0))
+            chip_labels: list[ttk.Label] = []
+            for _index in range(3):
+                chip = ttk.Label(
+                    chip_row,
+                    text="-",
+                    relief=tk.GROOVE,
+                    padding=(6, 2),
+                    width=14,
+                )
+                chip.pack(side=tk.LEFT, padx=(0, 6))
+                chip_labels.append(chip)
+            progress = ttk.Progressbar(card, mode="determinate", maximum=100)
+            progress.pack(fill=tk.X, pady=(6, 0))
+            row_widgets: dict[str, object] = {
+                "chips": chip_labels,
+                "indicator": indicator,
+                "status": badge,
+                "detail": detail,
+                "progress": progress,
+            }
+            self.program_rows[program] = row_widgets
 
     def _build_queue_frame(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(
@@ -976,28 +1457,260 @@ class RuntimeV2ManagerGUI:
             style="ManagerSection.TLabelframe",
         )
         frame.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
-        self.queue_list = tk.Listbox(frame, height=18, font=("Consolas", 9))
-        self.queue_list.pack(fill=tk.BOTH, expand=True)
+        queue_container = ttk.Frame(frame)
+        queue_container.pack(fill=tk.BOTH, expand=True)
+        self.queue_list = tk.Listbox(queue_container, height=18, font=("Consolas", 9))
+        queue_scroll = ttk.Scrollbar(
+            queue_container,
+            orient=tk.VERTICAL,
+            command=self._queue_list_yview,
+        )
+        _ = self.queue_list.configure(
+            yscrollcommand=cast(Callable[..., object], queue_scroll.set)
+        )
+        self.queue_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        queue_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
     def _build_logs_frame(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(
             parent, text="Event Console", padding=8, style="ManagerSection.TLabelframe"
         )
         frame.pack(fill=tk.BOTH, expand=True)
+        log_container = ttk.Frame(frame)
+        log_container.pack(fill=tk.BOTH, expand=True)
         self.log_text = tk.Text(
-            frame, height=14, font=("Consolas", 9), bg="#1f252b", fg="#eceff1"
+            log_container,
+            height=14,
+            font=("Consolas", 9),
+            bg="#1f252b",
+            fg="#eceff1",
         )
-        self.log_text.pack(fill=tk.BOTH, expand=True)
+        log_scroll = ttk.Scrollbar(
+            log_container,
+            orient=tk.VERTICAL,
+            command=self._log_text_yview,
+        )
+        _ = self.log_text.configure(
+            yscrollcommand=cast(Callable[..., object], log_scroll.set),
+            state=tk.DISABLED,
+        )
+        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        log_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
     def _append_log(self, message: str) -> None:
         timestamp = time()
         line = f"[{timestamp:.3f}] {message}"
         self.log_buffer.append(line)
+        trimmed = False
         if len(self.log_buffer) > 300:
             self.log_buffer = self.log_buffer[-300:]
+            trimmed = True
+        self._render_log_buffer(force_full_render=trimmed)
+
+    def _render_log_buffer(self, *, force_full_render: bool = False) -> None:
+        if self.log_text is None:
+            return
+        filter_text = self.log_filter_text.get().strip().lower()
+        level = self.log_level_filter_text.get().strip().upper()
+        source_lines = (
+            self.log_buffer[-100:]
+            if self.log_recent_only_var.get()
+            else self.log_buffer
+        )
+        filtered_lines: list[str] = []
+        for line in source_lines:
+            upper_line = line.upper()
+            if (
+                level == "WARNING"
+                and "WARNING" not in upper_line
+                and "WARN" not in upper_line
+            ):
+                continue
+            if (
+                level == "ERROR"
+                and "ERROR" not in upper_line
+                and "FAIL" not in upper_line
+            ):
+                continue
+            if level == "INFO" and (
+                "ERROR" in upper_line
+                or "FAIL" in upper_line
+                or "WARNING" in upper_line
+                or "WARN" in upper_line
+            ):
+                continue
+            if filter_text and filter_text not in line.lower():
+                continue
+            filtered_lines.append(line)
+        _ = self.log_text.configure(state=tk.NORMAL)
+        if force_full_render or True:
+            self.log_text.delete("1.0", tk.END)
+            self.log_text.insert(tk.END, "\n".join(filtered_lines))
+        if self.log_autoscroll_var.get():
+            self.log_text.see(tk.END)
+        _ = self.log_text.configure(state=tk.DISABLED)
+
+    def _on_log_filter_changed(self, _event: object | None = None) -> None:
+        self._render_log_buffer(force_full_render=True)
+        self._save_settings()
+
+    def _apply_named_preset(self, preset_name: str) -> None:
+        if preset_name == "all":
+            self.preset_gpt_var.set(True)
+            self.preset_browser_var.set(True)
+            self.preset_seed_var.set(True)
+            self.preset_control_var.set(True)
+        elif preset_name == "minimal":
+            self.preset_gpt_var.set(False)
+            self.preset_browser_var.set(True)
+            self.preset_seed_var.set(True)
+            self.preset_control_var.set(True)
+        elif preset_name == "recovery":
+            self.preset_gpt_var.set(False)
+            self.preset_browser_var.set(False)
+            self.preset_seed_var.set(False)
+            self.preset_control_var.set(False)
+        self._apply_home_presets()
+
+    def _apply_home_presets(self) -> None:
+        selected_steps: list[str] = []
+        if self.preset_gpt_var.get():
+            selected_steps.append("GPT 준비")
+        if self.preset_browser_var.get():
+            selected_steps.append("브라우저 로그인")
+        if self.preset_seed_var.get():
+            selected_steps.append("행 적재")
+        if self.preset_control_var.get():
+            selected_steps.append("제어 실행")
+        if selected_steps:
+            self.home_warning_text.set("프리셋: " + " -> ".join(selected_steps))
+        else:
+            self.home_warning_text.set("프리셋이 선택되지 않았습니다")
+        preset_states = {
+            "gpt_spawn": self.preset_gpt_var.get(),
+            "open_browser": self.preset_browser_var.get(),
+            "seed": self.preset_seed_var.get(),
+            "control": self.preset_control_var.get(),
+        }
+        for button_key, enabled in preset_states.items():
+            button = self.home_action_buttons.get(button_key)
+            if button is not None:
+                _ = button.config(state=(tk.NORMAL if enabled else tk.DISABLED))
+        self._save_settings()
+
+    def _visible_log_text(self) -> str:
+        if self.log_text is None:
+            return ""
+        return str(self.log_text.get("1.0", "end-1c"))
+
+    def clear_logs(self) -> None:
+        self.log_buffer.clear()
+        if self.log_text is None:
+            return
+        _ = self.log_text.configure(state=tk.NORMAL)
         self.log_text.delete("1.0", tk.END)
-        self.log_text.insert(tk.END, "\n".join(self.log_buffer))
-        self.log_text.see(tk.END)
+        _ = self.log_text.configure(state=tk.DISABLED)
+
+    def open_events_file(self) -> None:
+        path = self.config.control_plane_events_file
+        if not path.exists():
+            _ = messagebox.showwarning(
+                "runtime_v2", "이벤트 로그 파일이 아직 없습니다."
+            )
+            return
+        os.startfile(str(path))
+
+    def open_debug_dir(self) -> None:
+        path = self.config.debug_log_root
+        path.mkdir(parents=True, exist_ok=True)
+        os.startfile(str(path))
+
+    def copy_visible_logs(self) -> None:
+        visible = self._visible_log_text()
+        self.root.clipboard_clear()
+        self.root.clipboard_append(visible)
+        self.last_result_text.set("현재 표시 중인 로그를 클립보드에 복사했습니다")
+
+    def save_visible_logs(self) -> None:
+        visible = self._visible_log_text()
+        target = filedialog.asksaveasfilename(
+            title="로그 저장",
+            defaultextension=".log",
+            filetypes=(
+                ("Log files", "*.log"),
+                ("Text files", "*.txt"),
+                ("All files", "*.*"),
+            ),
+        )
+        if not target:
+            return
+        _ = Path(target).write_text(visible, encoding="utf-8")
+        self.last_result_text.set(f"로그를 저장했습니다: {target}")
+
+    def extract_error_logs(self) -> None:
+        self.log_level_filter_text.set("ERROR")
+        self._on_log_filter_changed()
+        self.last_result_text.set("에러/실패 로그만 표시 중입니다")
+
+    def _file_stamp(self, path: Path) -> tuple[float, int] | None:
+        if not path.exists():
+            return None
+        stat = path.stat()
+        return (stat.st_mtime, stat.st_size)
+
+    def _read_cached_json(self, path: Path) -> dict[str, object] | None:
+        key = (str(path.resolve()), 0)
+        stamp = self._file_stamp(path)
+        if stamp is None:
+            _ = self._json_cache.pop(key, None)
+            return None
+        cached = self._json_cache.get(key)
+        if cached is not None and cached[:2] == stamp:
+            payload = cached[2]
+            return (
+                cast(dict[str, object], payload) if isinstance(payload, dict) else None
+            )
+        payload = _read_json(path)
+        self._json_cache[key] = (stamp[0], stamp[1], payload)
+        return payload
+
+    def _read_cached_json_list(self, path: Path) -> list[dict[str, object]]:
+        key = (str(path.resolve()), 1)
+        stamp = self._file_stamp(path)
+        if stamp is None:
+            _ = self._json_cache.pop(key, None)
+            return []
+        cached = self._json_cache.get(key)
+        if cached is not None and cached[:2] == stamp:
+            payload = cached[2]
+            return (
+                cast(list[dict[str, object]], payload)
+                if isinstance(payload, list)
+                else []
+            )
+        payload = _read_json_list(path)
+        self._json_cache[key] = (stamp[0], stamp[1], payload)
+        return payload
+
+    def _read_cached_jsonl_tail(
+        self, path: Path, *, limit: int = 40
+    ) -> list[dict[str, object]]:
+        key = (str(path.resolve()), limit + 1000)
+        stamp = self._file_stamp(path)
+        if stamp is None:
+            _ = self._json_cache.pop(key, None)
+            return []
+        cached = self._json_cache.get(key)
+        if cached is not None and cached[:2] == stamp:
+            payload = cached[2]
+            return (
+                cast(list[dict[str, object]], payload)
+                if isinstance(payload, list)
+                else []
+            )
+        payload = _read_jsonl_tail(path, limit=limit)
+        self._json_cache[key] = (stamp[0], stamp[1], payload)
+        return payload
 
     def _summarize_control_result(self, result: dict[str, object]) -> str:
         summary = summarize_runtime_result(result)
@@ -1036,19 +1749,82 @@ class RuntimeV2ManagerGUI:
                 self.status_text.set(value)
             elif action == "seed_summary":
                 self.seed_result_summary_text.set(value)
+            elif action == "batch_summary":
+                self.batch_result_summary_text.set(value)
+            elif action == "soak_summary":
+                self.soak_summary_text.set(value)
             elif action == "refresh":
                 self._refresh_dashboard_once()
 
     def _set_program_row(
-        self, program: str, *, status: str | None = None, detail: str | None = None
+        self,
+        program: str,
+        *,
+        status: str | None = None,
+        detail: str | None = None,
+        chips: tuple[str, str, str] | None = None,
     ) -> None:
         row = self.program_rows.get(program)
         if row is None:
             return
         if status is not None:
-            _ = row["status"].config(text=status)
+            badge_bg = "#dfe6ee"
+            badge_fg = "#223142"
+            indicator_fill = "#cbd5e1"
+            progress_value = 15
+            normalized = status.strip().lower()
+            if any(
+                token in normalized for token in ("정상", "ready", "완료", "최종완료")
+            ):
+                badge_bg = "#d5f5e3"
+                badge_fg = "#166534"
+                indicator_fill = "#22c55e"
+                progress_value = 100
+            elif any(
+                token in normalized
+                for token in ("실행", "running", "seeded", "boot", "retry")
+            ):
+                badge_bg = "#dbeafe"
+                badge_fg = "#1d4ed8"
+                indicator_fill = "#3b82f6"
+                progress_value = 70
+            elif any(
+                token in normalized
+                for token in ("경고", "blocked", "fail", "error", "missing", "stale")
+            ):
+                badge_bg = "#fee2e2"
+                badge_fg = "#b91c1c"
+                indicator_fill = "#ef4444"
+                progress_value = 35
+            elif any(
+                token in normalized for token in ("유휴", "대기", "idle", "unknown")
+            ):
+                badge_bg = "#e5e7eb"
+                badge_fg = "#374151"
+                indicator_fill = "#94a3b8"
+                progress_value = 15
+            badge = row["status"]
+            progress = row["progress"]
+            indicator = row.get("indicator")
+            if isinstance(badge, tk.Label):
+                _ = badge.config(text=status, bg=badge_bg, fg=badge_fg)
+            if isinstance(progress, ttk.Progressbar):
+                _ = progress.config(value=progress_value)
+            if isinstance(indicator, tk.Canvas):
+                _ = indicator.delete("all")
+                _ = indicator.create_oval(
+                    2, 2, 10, 10, fill=indicator_fill, outline=indicator_fill
+                )
         if detail is not None:
-            _ = row["detail"].config(text=detail)
+            detail_label = row["detail"]
+            if isinstance(detail_label, ttk.Label):
+                _ = detail_label.config(text=detail)
+        if chips is not None:
+            chip_widgets = row.get("chips")
+            if isinstance(chip_widgets, list):
+                typed_chip_widgets = cast(list[ttk.Label], chip_widgets)
+                for chip_widget, chip_text in zip(typed_chip_widgets, chips):
+                    _ = chip_widget.config(text=chip_text)
 
     def _snapshot_warning(
         self, name: str, payload: dict[str, object] | None, fresh_sec: int
@@ -1063,18 +1839,33 @@ class RuntimeV2ManagerGUI:
             return f"{name} snapshot stale ({int(age)}s)"
         return None
 
+    def _recent_time_chip(self, raw_ts: object) -> str:
+        ts = _to_float(raw_ts, 0.0)
+        if ts <= 0:
+            return "updated -"
+        age = max(0, int(time() - ts))
+        if age < 60:
+            return f"updated {age}s"
+        if age < 3600:
+            return f"updated {age // 60}m"
+        return f"updated {age // 3600}h"
+
     def _load_settings(self) -> None:
         payload = _read_json(self.SETTINGS_FILE)
         if payload is None:
             return
         self.runtime_root_text.set(str(payload.get("runtime_root", "")))
+        self.poll_ms_text.set(str(payload.get("poll_ms", "1000")))
+        self.loop_sleep_text.set(str(payload.get("loop_sleep_sec", "2.0")))
         self.excel_path_text.set(
             str(payload.get("excel_path", self.excel_path_text.get()))
         )
         self.sheet_name_text.set(str(payload.get("sheet_name", "Sheet1")))
         self.row_index_text.set(str(payload.get("row_index", "0")))
+        self.batch_count_text.set(str(payload.get("batch_count", "5")))
+        self.max_control_ticks_text.set(str(payload.get("max_control_ticks", "50")))
         login_service = str(payload.get("login_service", "chatgpt")).strip().lower()
-        if login_service in {"chatgpt", "genspark", "seaart", "geminigen", "canva"}:
+        if login_service in self.LOGIN_SERVICES:
             self.login_service_text.set(login_service)
         workload = str(payload.get("selected_workload", "qwen3_tts"))
         if workload in {"qwen3_tts", "rvc", "kenburns"}:
@@ -1084,14 +1875,27 @@ class RuntimeV2ManagerGUI:
         self.script_text.set(str(payload.get("script_text", "")))
         self.duration_text.set(str(payload.get("duration_sec", "8")))
         self.model_name_text.set(str(payload.get("model_name", "")))
+        self.preset_gpt_var.set(bool(payload.get("preset_gpt", True)))
+        self.preset_browser_var.set(bool(payload.get("preset_browser", True)))
+        self.preset_seed_var.set(bool(payload.get("preset_seed", True)))
+        self.preset_control_var.set(bool(payload.get("preset_control", True)))
+        self.log_filter_text.set(str(payload.get("log_filter_text", "")))
+        log_level = str(payload.get("log_level_filter", "전체"))
+        self.log_level_filter_text.set(log_level if log_level else "전체")
+        self.log_autoscroll_var.set(bool(payload.get("log_autoscroll", True)))
+        self.log_recent_only_var.set(bool(payload.get("log_recent_only", False)))
 
     def _save_settings(self) -> None:
         self.SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "runtime_root": self.runtime_root_text.get().strip(),
+            "poll_ms": self.poll_ms_text.get().strip(),
+            "loop_sleep_sec": self.loop_sleep_text.get().strip(),
             "excel_path": self.excel_path_text.get().strip(),
             "sheet_name": self.sheet_name_text.get().strip(),
             "row_index": self.row_index_text.get().strip(),
+            "batch_count": self.batch_count_text.get().strip(),
+            "max_control_ticks": self.max_control_ticks_text.get().strip(),
             "login_service": self.login_service_text.get().strip(),
             "selected_workload": self.selected_workload.get(),
             "source_path": self.source_path_text.get().strip(),
@@ -1099,6 +1903,14 @@ class RuntimeV2ManagerGUI:
             "script_text": self.script_text.get().strip(),
             "duration_sec": self.duration_text.get().strip(),
             "model_name": self.model_name_text.get().strip(),
+            "preset_gpt": self.preset_gpt_var.get(),
+            "preset_browser": self.preset_browser_var.get(),
+            "preset_seed": self.preset_seed_var.get(),
+            "preset_control": self.preset_control_var.get(),
+            "log_filter_text": self.log_filter_text.get().strip(),
+            "log_level_filter": self.log_level_filter_text.get().strip(),
+            "log_autoscroll": self.log_autoscroll_var.get(),
+            "log_recent_only": self.log_recent_only_var.get(),
         }
         _ = self.SETTINGS_FILE.write_text(
             json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8"
@@ -1111,6 +1923,10 @@ class RuntimeV2ManagerGUI:
         if not force and (self.running or action_running):
             return
         self.config = _runtime_config_from_text(self.runtime_root_text.get())
+        parsed_poll = _to_int(self.poll_ms_text.get().strip())
+        self.poll_ms = parsed_poll if parsed_poll > 0 else 1000
+        parsed_sleep = _to_float(self.loop_sleep_text.get().strip(), 2.0)
+        self.loop_sleep_sec = parsed_sleep if parsed_sleep > 0 else 2.0
 
     def _parsed_row_index(self) -> int | None:
         raw = self.row_index_text.get().strip()
@@ -1201,11 +2017,58 @@ class RuntimeV2ManagerGUI:
         self._append_log(summary)
         self._refresh_dashboard_once()
 
+    def trigger_excel_batch(self) -> None:
+        if self.running:
+            _ = messagebox.showwarning(
+                "runtime_v2",
+                "batch 실행 전에는 long-running loop를 먼저 중지하세요.",
+            )
+            return
+        self._refresh_runtime_config(force=True)
+        batch_count = max(1, _to_int(self.batch_count_text.get().strip()))
+        max_ticks = max(1, _to_int(self.max_control_ticks_text.get().strip()))
+        excel_path = self.excel_path_text.get().strip()
+        sheet_name = self.sheet_name_text.get().strip() or "Sheet1"
+        if not excel_path:
+            _ = messagebox.showwarning("runtime_v2", "excel path를 입력하세요.")
+            return
+
+        def action() -> None:
+            result = _run_excel_batch_mode(
+                owner=self.owner,
+                config=self.config,
+                run_id=str(uuid4()),
+                excel_path=excel_path,
+                sheet_name=sheet_name,
+                batch_count=batch_count,
+                max_control_ticks=max_ticks,
+            )
+            summary = _format_batch_summary(result)
+            self._enqueue_ui("last_result", summary)
+            self._enqueue_ui("log", summary)
+            self._enqueue_ui("batch_summary", summary)
+            self._enqueue_ui("refresh", "")
+
+        self._start_background_action("excel batch", action)
+
+    def trigger_soak_report(self) -> None:
+        self._refresh_runtime_config(force=True)
+
+        def action() -> None:
+            report_path = write_soak_report(self.config)
+            summary = _format_soak_summary(str(report_path.resolve()))
+            self._enqueue_ui("last_result", summary)
+            self._enqueue_ui("log", summary)
+            self._enqueue_ui("soak_summary", summary)
+            self._enqueue_ui("refresh", "")
+
+        self._start_background_action("soak report", action)
+
     def _manual_control_stop_reasons(self) -> list[str]:
         self._refresh_runtime_config(force=True)
         readiness = load_runtime_readiness(self.config, completed=True)
         stop_reasons = _readiness_blocker_messages(readiness)
-        browser_registry = _read_json(self.config.browser_registry_file)
+        browser_registry = self._read_cached_json(self.config.browser_registry_file)
         stop_reasons.extend(_blocking_browser_service_messages(browser_registry))
         return stop_reasons
 
@@ -1224,9 +2087,9 @@ class RuntimeV2ManagerGUI:
             _ = messagebox.showwarning("runtime_v2", f"No-Go 상태입니다: {message}")
             self._refresh_dashboard_once()
             return
+        self._refresh_runtime_config(force=True)
 
         def action() -> None:
-            self._refresh_runtime_config(force=True)
             result = self._run_control_once()
             summary_line = self._summarize_control_result(result)
             self._enqueue_ui("last_result", f"control once: {summary_line}")
@@ -1236,7 +2099,7 @@ class RuntimeV2ManagerGUI:
 
     def trigger_open_login_browser(self) -> None:
         service = self.login_service_text.get().strip().lower()
-        if service not in {"chatgpt", "genspark", "seaart", "geminigen", "canva"}:
+        if service not in self.LOGIN_SERVICES:
             _ = messagebox.showwarning(
                 "runtime_v2", "지원하지 않는 브라우저 서비스입니다."
             )
@@ -1478,8 +2341,8 @@ class RuntimeV2ManagerGUI:
                 str(readiness.get("code", "UNKNOWN")).strip() or "UNKNOWN"
             )
 
-        result_payload = _read_json(self.config.result_router_file)
-        gui_payload = _read_json(self.config.gui_status_file)
+        result_payload = self._read_cached_json(self.config.result_router_file)
+        gui_payload = self._read_cached_json(self.config.gui_status_file)
         self.evidence_summary_text.set(
             _format_terminal_evidence_summary(result_payload, gui_payload)
         )
@@ -1510,7 +2373,7 @@ class RuntimeV2ManagerGUI:
         )
 
     def _normalize_gpu_health_snapshot(self) -> None:
-        payload = _read_json(self.config.lease_file)
+        payload = self._read_cached_json(self.config.lease_file)
         if payload is None:
             _ = write_gpu_health_payload(
                 build_gpu_health_payload(
@@ -1544,7 +2407,7 @@ class RuntimeV2ManagerGUI:
         _ = write_gpu_health_payload(normalized, self.config.lease_file)
 
     def _normalize_gui_status_snapshot(self) -> None:
-        payload = _read_json(self.config.gui_status_file)
+        payload = self._read_cached_json(self.config.gui_status_file)
         if payload is None:
             return
         has_schema = isinstance(payload.get("schema_version"), str) and isinstance(
@@ -1571,16 +2434,20 @@ class RuntimeV2ManagerGUI:
         return "qwen3_tts"
 
     def _update_browser_panel(self) -> None:
-        payload = _read_json(self.config.browser_health_file)
-        registry = _read_json(self.config.browser_registry_file)
+        payload = self._read_cached_json(self.config.browser_health_file)
+        registry = self._read_cached_json(self.config.browser_registry_file)
         if payload is None:
             self.browser_text.set("browser missing")
+            self.browser_progress_value.set(0)
             self.browser_services_text.set("브라우저 상태 정보를 찾을 수 없습니다")
             self.home_browser_text.set("브라우저 상태 정보를 찾을 수 없습니다")
             return
         healthy = _to_int(payload.get("healthy_count", 0))
         total = _to_int(payload.get("session_count", 0))
         self.browser_text.set(f"browser {healthy}/{total} healthy")
+        self.browser_progress_value.set(
+            0 if total <= 0 else max(0, min(100, int((healthy / total) * 100)))
+        )
         service_summaries: list[str] = []
         if registry is not None:
             sessions = registry.get("sessions", [])
@@ -1609,6 +2476,11 @@ class RuntimeV2ManagerGUI:
                         row_name,
                         status=row_status,
                         detail=f"port={port} fail={failures}",
+                        chips=(
+                            f"port {port}",
+                            f"fail {failures}",
+                            self._recent_time_chip(item_dict.get("checked_at", 0)),
+                        ),
                     )
                     service_summaries.append(f"{row_name}={row_status}")
         browser_summary = (
@@ -1625,7 +2497,7 @@ class RuntimeV2ManagerGUI:
             self.home_browser_text.set(_truncate_ui_text(browser_summary, 40))
 
     def _update_gpu_panel(self) -> None:
-        payload = _read_json(self.config.lease_file)
+        payload = self._read_cached_json(self.config.lease_file)
         if payload is None:
             self.gpu_text.set("gpu: missing")
             return
@@ -1637,22 +2509,50 @@ class RuntimeV2ManagerGUI:
         workload = str(payload.get("workload", "qwen3_tts")).strip().lower()
         row_name = _program_row_for_workload(workload)
         self._set_program_row(
-            row_name, status=str(payload.get("event", "대기")), detail=f"owner={owner}"
+            row_name,
+            status=str(payload.get("event", "대기")),
+            detail=f"owner={owner}",
+            chips=(
+                f"owner {owner}",
+                f"work {workload}",
+                self._recent_time_chip(payload.get("checked_at", 0)),
+            ),
         )
 
     def _update_gpt_panel(self) -> None:
         payload = load_gpt_status(self.config.gpt_status_file)
         if payload is None:
             self.gpt_text.set("gpt: missing")
+            self.gpt_progress_value.set(0)
             return
         ok_count = _to_int(payload.get("ok_count", 0))
         pending_boot = _to_int(payload.get("pending_boot", 0))
         self.gpt_text.set(f"gpt: ok={ok_count}, pending_boot={pending_boot}")
+        ready_score = ok_count * 25
+        if pending_boot > 0:
+            ready_score = min(95, ready_score)
+        self.gpt_progress_value.set(max(0, min(100, ready_score)))
+        self._set_program_row(
+            "GPT",
+            status="정상" if ok_count > 0 else ("실행" if pending_boot > 0 else "대기"),
+            detail=f"ok={ok_count} pending={pending_boot}",
+            chips=(
+                f"ok {ok_count}",
+                f"boot {pending_boot}",
+                self._recent_time_chip(
+                    payload.get("last_spawn_at", payload.get("checked_at", 0))
+                ),
+            ),
+        )
 
     def _update_queue_panel(self) -> None:
-        items = _read_json_list(self.config.queue_store_file)
+        items = self._read_cached_json_list(self.config.queue_store_file)
         self.queue_text.set(f"queue: {len(items)}")
-        self.queue_list.delete(0, tk.END)
+        self.queue_progress_value.set(max(0, min(100, len(items) * 10)))
+        queue_list = self.queue_list
+        if queue_list is None:
+            return
+        queue_list.delete(0, tk.END)
         for item in items[:100]:
             job_id = str(item.get("job_id", "unknown"))
             workload = str(item.get("workload", "?"))
@@ -1665,13 +2565,13 @@ class RuntimeV2ManagerGUI:
             routed_from = (
                 "-" if payload is None else str(payload.get("routed_from", "-"))
             )
-            self.queue_list.insert(
+            queue_list.insert(
                 tk.END,
                 f"{status:10} {workload:10} d={chain_depth} tries={attempts} from={routed_from} {job_id}",
             )
 
     def _update_artifact_panel(self) -> None:
-        payload = _read_json(self.config.result_router_file)
+        payload = self._read_cached_json(self.config.result_router_file)
         if payload is None:
             inbox_root = self.config.input_root
             accepted = _archived_contract_count(inbox_root / "accepted")
@@ -1679,6 +2579,7 @@ class RuntimeV2ManagerGUI:
             self.artifact_text.set(
                 f"artifacts: 0 / accepted={accepted} invalid={invalid}"
             )
+            self.artifact_progress_value.set(0)
             return
         artifacts_obj = payload.get("artifacts", [])
         artifacts = (
@@ -1712,6 +2613,7 @@ class RuntimeV2ManagerGUI:
         if last_final_artifact:
             latest_text = f"{latest_text} / last={last_final_artifact}"
         self.artifact_text.set(latest_text)
+        self.artifact_progress_value.set(max(0, min(100, count * 20)))
         render_detail = f"art={count} acc={accepted} inv={invalid} run={result_run_id} code={result_code}"
         if final_output and final_artifact:
             render_detail = f"final={final_artifact}"
@@ -1724,10 +2626,19 @@ class RuntimeV2ManagerGUI:
             render_status = "유휴"
         elif not render_status or render_status == "-":
             render_status = "완료" if count > 0 else "대기"
-        self._set_program_row("Result", status=render_status, detail=render_detail[:40])
+        self._set_program_row(
+            "Result",
+            status=render_status,
+            detail=render_detail[:40],
+            chips=(
+                f"run {result_run_id or '-'}",
+                f"code {result_code}",
+                self._recent_time_chip(payload.get("checked_at", 0)),
+            ),
+        )
 
     def _update_program_panel(self) -> None:
-        gui_payload = _read_json(self.config.gui_status_file)
+        gui_payload = self._read_cached_json(self.config.gui_status_file)
         if gui_payload is not None:
             status_payload = _coerce_mapping(gui_payload.get("status", {}))
             worker_stage = str(gui_payload.get("worker_stage", "")).strip()
@@ -1759,6 +2670,11 @@ class RuntimeV2ManagerGUI:
                     f"exit={gui_payload.get('exit_code', '?')} stage={worker_stage} err={worker_error_display or '-'} "
                     f"retry={backoff_sec}s"
                 )[:40],
+                chips=(
+                    f"run {str(gui_payload.get('run_id', '-'))}",
+                    f"retry {backoff_sec}s",
+                    self._recent_time_chip(gui_payload.get("checked_at", 0)),
+                ),
             )
             if worker_error_code or str(gui_payload.get("exit_code", 0)) != "0":
                 path_ref = result_path or manifest_path or "-"
@@ -1766,7 +2682,7 @@ class RuntimeV2ManagerGUI:
                     f"실패정보: stage={worker_stage} error={worker_error_display or '-'} path={path_ref}"
                 )
 
-        browser_health = _read_json(self.config.browser_health_file)
+        browser_health = self._read_cached_json(self.config.browser_health_file)
         if browser_health is not None:
             unhealthy = browser_health.get("unhealthy_count", 0)
             self._set_program_row(
@@ -1775,13 +2691,19 @@ class RuntimeV2ManagerGUI:
                 detail=f"availability={browser_health.get('availability_percent', 0)}% unhealthy={unhealthy}"[
                     :40
                 ],
+                chips=(
+                    f"avail {browser_health.get('availability_percent', 0)}%",
+                    f"bad {unhealthy}",
+                    self._recent_time_chip(browser_health.get("checked_at", 0)),
+                ),
             )
 
     def _update_log_panel(self) -> None:
-        event_records = _read_jsonl_tail(
+        event_records = self._read_cached_jsonl_tail(
             self.config.control_plane_events_file, limit=20
         )
         new_lines: list[str] = []
+        latest_seen_ts = self.last_event_ts
         for record in event_records:
             ts = _to_float(record.get("ts", 0.0), 0.0)
             if ts <= self.last_event_ts:
@@ -1809,23 +2731,24 @@ class RuntimeV2ManagerGUI:
                 new_lines.append(
                     f"event job={record.get('job_id', '?')} {record.get('previous_status', '?')} -> {record.get('status', '?')} from={record.get('routed_from', '-')} depth={record.get('chain_depth', 0)}"
                 )
-            self.last_event_ts = ts
+            latest_seen_ts = max(latest_seen_ts, ts)
         for line in new_lines:
             self._append_log(line)
+        self.last_event_ts = latest_seen_ts
 
     def _update_warning_panel(self) -> None:
         warnings: list[str] = []
-        gui_status = _read_json(self.config.gui_status_file)
+        gui_status = self._read_cached_json(self.config.gui_status_file)
         gui_warning = self._snapshot_warning("gui", gui_status, fresh_sec=120)
         if gui_warning is not None:
             warnings.append(gui_warning)
-        browser_health = _read_json(self.config.browser_health_file)
+        browser_health = self._read_cached_json(self.config.browser_health_file)
         browser_warning = self._snapshot_warning(
             "browser", browser_health, fresh_sec=120
         )
         if browser_warning is not None:
             warnings.append(browser_warning)
-        browser_registry = _read_json(self.config.browser_registry_file)
+        browser_registry = self._read_cached_json(self.config.browser_registry_file)
         browser_registry_warning = self._snapshot_warning(
             "browser_registry", browser_registry, fresh_sec=120
         )
@@ -1864,14 +2787,14 @@ class RuntimeV2ManagerGUI:
             "renew_failed",
         }:
             warnings.append(str(gpu_health.get("event", "gpu warning")))
-        result_payload = _read_json(self.config.result_router_file)
+        result_payload = self._read_cached_json(self.config.result_router_file)
         result_warning = self._snapshot_warning("result", result_payload, fresh_sec=300)
         if result_warning is not None and result_payload is not None:
             warnings.append(result_warning)
         mismatch_warning = _worker_error_code_mismatch_warning(result_payload)
         if mismatch_warning:
             warnings.append(f"worker error mismatch: {mismatch_warning}")
-        gui_payload = _read_json(self.config.gui_status_file)
+        gui_payload = self._read_cached_json(self.config.gui_status_file)
         status_payload = (
             None
             if gui_payload is None
