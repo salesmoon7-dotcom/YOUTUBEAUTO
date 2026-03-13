@@ -109,6 +109,175 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             self.assertFalse(bool(evidence["recovery_attempted"]))
             self.assertFalse(bool(evidence["placeholder_artifact"]))
 
+    def test_stage2_adapter_child_uses_native_setter_and_enter_for_genspark_prompt(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "scene-01.png"
+            request_payload = {"payload": {"prompt": "scene one"}}
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "genspark"
+            args.port = 9333
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "genspark.ai"
+            args.expected_title_substring = "Genspark"
+            completed = cast(object, type("Completed", (), {})())
+            setattr(completed, "stdout", '{"ok":true}')
+            setattr(completed, "stderr", "")
+            captured_actions: list[dict[str, object]] = []
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                _ = artifact_root
+                payload = cast(dict[str, object], job.payload)
+                captured_actions.extend(
+                    cast(list[dict[str, object]], payload.get("actions", []))
+                )
+                return {"status": "ok"}
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "genspark", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", return_value=completed),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        scripts = [str(action.get("script", "")) for action in captured_actions]
+        self.assertTrue(
+            any("HTMLTextAreaElement.prototype" in script for script in scripts)
+        )
+        self.assertTrue(any("KeyboardEvent" in script for script in scripts))
+
+    def test_stage2_adapter_child_sends_single_genspark_followup_when_questions_appear(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "scene-01.png"
+            request_payload = {"payload": {"prompt": "scene one"}}
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "genspark"
+            args.port = 9333
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "genspark.ai"
+            args.expected_title_substring = "Genspark"
+
+            responses: list[object] = []
+            for payload in [
+                '{"ok":false,"error":"GENSPARK_IMAGE_NOT_READY"}',
+                '{"ok":true,"body":"스타일이 필요합니다"}',
+                '{"ok":false,"error":"GENSPARK_IMAGE_NOT_READY"}',
+                '{"ok":false,"reason":"FOLLOWUP_ALREADY_SENT"}',
+                '{"ok":true,"src":"https://www.genspark.ai/api/files/example.png"}',
+                '{"ok":true}',
+            ]:
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", payload)
+                setattr(completed, "stderr", "")
+                responses.append(completed)
+
+            commands: list[list[str]] = []
+
+            def fake_run(*args_: object, **kwargs: object) -> object:
+                _ = kwargs
+                command = cast(list[str], args_[0])
+                commands.append(command)
+                if responses:
+                    return responses.pop(0)
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", '{"ok":true}')
+                setattr(completed, "stderr", "")
+                return completed
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok"},
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "genspark", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        eval_scripts = [
+            cmd[-1] for cmd in commands if len(cmd) >= 5 and cmd[3] == "eval"
+        ]
+        self.assertTrue(
+            any(
+                "FOLLOWUP_ALREADY_SENT" in script and "스타일" in script
+                for script in eval_scripts
+            )
+        )
+        self.assertTrue(any("followup_submitted" in script for script in eval_scripts))
+
+    def test_stage2_adapter_child_strengthens_genspark_prompt_for_direct_generation(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "scene-01.png"
+            request_payload = {"payload": {"prompt": "scene one"}}
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "genspark"
+            args.port = 9333
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "genspark.ai"
+            args.expected_title_substring = "Genspark"
+            completed = cast(object, type("Completed", (), {})())
+            setattr(completed, "stdout", '{"ok":true}')
+            setattr(completed, "stderr", "")
+            captured_actions: list[dict[str, object]] = []
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                _ = artifact_root
+                payload = cast(dict[str, object], job.payload)
+                captured_actions.extend(
+                    cast(list[dict[str, object]], payload.get("actions", []))
+                )
+                return {"status": "ok"}
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "genspark", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", return_value=completed),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        scripts = [str(action.get("script", "")) for action in captured_actions]
+        self.assertTrue(
+            any("scene one" in script and "16:9" in script for script in scripts)
+        )
+
     def test_stage2_adapter_child_resolves_relative_ref_images_against_asset_root(
         self,
     ) -> None:

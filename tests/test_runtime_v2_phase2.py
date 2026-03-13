@@ -146,7 +146,6 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
                 "topic_spec": {"row_ref": "Sheet1!row1"},
             }
             first = {"status": "ok", "code": "OK"}
-            second = {"status": "ok", "code": "OK"}
             result_payload_path = config.result_router_file
             result_payload_path.parent.mkdir(parents=True, exist_ok=True)
             _ = result_payload_path.write_text(
@@ -154,6 +153,7 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
                     {
                         "metadata": {
                             "run_id": "run-1",
+                            "workload": "render",
                             "final_output": True,
                             "final_artifact_path": "D:/runtime/final.mp4",
                         }
@@ -167,7 +167,7 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
                 patch("runtime_v2.cli.seed_excel_row", return_value=seed_result),
                 patch(
                     "runtime_v2.cli.run_control_loop_once",
-                    side_effect=[first, second],
+                    return_value=first,
                 ),
                 patch(
                     "runtime_v2.cli.load_runtime_readiness",
@@ -213,6 +213,7 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
                     {
                         "metadata": {
                             "run_id": "run-1",
+                            "workload": "render",
                             "final_output": True,
                             "final_artifact_path": "D:/runtime/final.mp4",
                         }
@@ -254,6 +255,88 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
         self.assertEqual(report["status"], "failed")
         self.assertFalse(bool(report["probe_success"]))
         self.assertEqual(report["code"], "PROMOTION_GATE_A_FAIL")
+
+    def test_stage5_row1_probe_ignores_intermediate_worker_final_output(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            seed_result = {
+                "status": "seeded",
+                "code": "SEEDED_JOB",
+                "job_id": "chatgpt-row1",
+                "topic_spec": {"row_ref": "Sheet1!row1"},
+            }
+            result_payload_path = config.result_router_file
+            result_payload_path.parent.mkdir(parents=True, exist_ok=True)
+            call_count = {"value": 0}
+
+            def fake_control_once(**kwargs: object) -> dict[str, object]:
+                _ = kwargs
+                call_count["value"] += 1
+                if call_count["value"] == 1:
+                    result_payload_path.write_text(
+                        json.dumps(
+                            {
+                                "metadata": {
+                                    "run_id": "run-1",
+                                    "workload": "qwen3_tts",
+                                    "final_output": True,
+                                    "final_artifact_path": "D:/runtime/speech.wav",
+                                }
+                            },
+                            ensure_ascii=True,
+                        ),
+                        encoding="utf-8",
+                    )
+                    return {"status": "ok", "code": "OK"}
+                result_payload_path.write_text(
+                    json.dumps(
+                        {
+                            "metadata": {
+                                "run_id": "run-1",
+                                "workload": "render",
+                                "final_output": True,
+                                "final_artifact_path": "D:/runtime/final.mp4",
+                            }
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                return {"status": "ok", "code": "OK"}
+
+            with (
+                patch("runtime_v2.cli.seed_excel_row", return_value=seed_result),
+                patch(
+                    "runtime_v2.cli.run_control_loop_once",
+                    side_effect=fake_control_once,
+                ),
+                patch(
+                    "runtime_v2.cli.load_runtime_readiness",
+                    return_value={
+                        "ready": True,
+                        "code": "OK",
+                        "blockers": [],
+                        "promotion_gates": {"gates": {}},
+                        "snapshot_run_id": "run-1",
+                        "trace_paths": {},
+                    },
+                ),
+            ):
+                report = _run_stage5_row1_probe(
+                    owner="runtime_v2",
+                    config=config,
+                    probe_root=root / "probe",
+                    run_id="run-1",
+                    excel_path=str(root / "topic.xlsx"),
+                    sheet_name="Sheet1",
+                    row_index=0,
+                    max_control_ticks=3,
+                )
+
+        self.assertEqual(report["status"], "ok")
+        self.assertTrue(bool(report["probe_success"]))
+        self.assertEqual(report["ticks"], 2)
 
     def test_stage5_row1_probe_fail_closes_when_control_loop_fails(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

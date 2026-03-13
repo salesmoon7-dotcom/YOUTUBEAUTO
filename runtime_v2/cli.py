@@ -1370,7 +1370,11 @@ def _run_stage5_row1_probe(
                     dict[str, object], latest_payload.get("metadata", {})
                 )
                 final_metadata = metadata_obj if isinstance(metadata_obj, dict) else {}
-        if bool(final_metadata.get("final_output", False)):
+        latest_workload = str(final_metadata.get("workload", "")).strip()
+        if (
+            bool(final_metadata.get("final_output", False))
+            and latest_workload == "render"
+        ):
             readiness = load_runtime_readiness(config, completed=True)
             readiness_snapshot = {
                 "ready": bool(readiness.get("ready", False)),
@@ -1668,6 +1672,12 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             )
             return exit_codes.BROWSER_UNHEALTHY
     if prompt and service == "genspark":
+        effective_prompt = (
+            f"{prompt}\n"
+            "추가 질문 없이 지금 바로 한 장의 이미지를 생성하세요. "
+            "사진풍, 16:9, 유튜브 썸네일, 텍스트 없음. "
+            "누락된 세부사항은 합리적으로 가정하고 바로 최종 결과 이미지를 생성하세요."
+        )
         pre_actions = [
             {
                 "type": "eval",
@@ -1685,13 +1695,15 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
             {
                 "type": "eval",
-                "script": "(() => { const textarea = document.querySelector('textarea.j-search-input'); if (!textarea) return JSON.stringify({ok:false,error:\"NO_INPUT\"}); textarea.focus(); textarea.value=''; textarea.dispatchEvent(new Event('input',{bubbles:true})); textarea.value="
-                + json.dumps(prompt, ensure_ascii=True)
-                + "; textarea.dispatchEvent(new Event('input',{bubbles:true})); return JSON.stringify({ok:true, step:'prompt_filled'}); })()",
+                "script": "(() => { const textarea = document.querySelector('textarea.j-search-input'); if (!textarea) return JSON.stringify({ok:false,error:\"NO_INPUT\"}); const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set; textarea.focus(); if (setter) { setter.call(textarea, ''); } else { textarea.value=''; } textarea.dispatchEvent(new Event('input',{bubbles:true})); textarea.dispatchEvent(new Event('change',{bubbles:true})); if (setter) { setter.call(textarea, "
+                + json.dumps(effective_prompt, ensure_ascii=True)
+                + "); } else { textarea.value="
+                + json.dumps(effective_prompt, ensure_ascii=True)
+                + "; } textarea.dispatchEvent(new Event('input',{bubbles:true})); textarea.dispatchEvent(new Event('change',{bubbles:true})); return JSON.stringify({ok:true, step:'prompt_filled'}); })()",
             },
             {
                 "type": "eval",
-                "script": '(() => { const btn = document.querySelector(\'.enter-icon-wrapper\'); if (!btn) return JSON.stringify({ok:false,error:"NO_BUTTON"}); btn.click(); return JSON.stringify({ok:true, step:"clicked_generate"}); })()',
+                "script": '(() => { const textarea = document.querySelector(\'textarea.j-search-input\'); const btn = document.querySelector(\'.enter-icon-wrapper\'); if (!textarea && !btn) return JSON.stringify({ok:false,error:"NO_BUTTON"}); if (textarea) { textarea.focus(); for (const type of ["keydown","keypress","keyup"]) { textarea.dispatchEvent(new KeyboardEvent(type, {key:"Enter", code:"Enter", keyCode:13, which:13, bubbles:true})); } } if (btn) { btn.click(); } return JSON.stringify({ok:true, step:"clicked_generate"}); })()',
             },
         ]
     elif prompt and service == "seaart":
@@ -1844,7 +1856,9 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
     if service in {"seaart", "genspark", "canva", "geminigen"}:
         try:
             if service == "genspark":
-                image_ready_script = "(() => { const sels = ['img[src*=\"/api/files/\"]', '.image-generated img', '.image-grid img', '.generated-images .image-container .image-grid > img:first-child']; const found = sels.map(s => document.querySelector(s)).find(Boolean); if (found && (found.currentSrc || found.src)) return JSON.stringify({ok:true, src: found.currentSrc || found.src}); return JSON.stringify({ok:false,error:'GENSPARK_IMAGE_NOT_READY'}); })()"
+                image_ready_script = "(() => { const valid = (src) => !!src && (/^https?:/i.test(src) || /^blob:/i.test(src) || /^data:/i.test(src) || src.startsWith('/api/files/')); const sels = ['img[src*=\"/api/files/\"]', '.image-generated img', '.image-grid img', '.generated-images .image-container .image-grid > img:first-child']; for (const sel of sels) { const found = document.querySelector(sel); const src = found ? (found.currentSrc || found.src || '') : ''; const width = found ? (found.naturalWidth || 0) : 0; if (valid(src) && width >= 256 && !src.includes('/manual/icons/')) return JSON.stringify({ok:true, src}); } const fallback = Array.from(document.images).map(img => ({src: img.currentSrc || img.src || '', width: img.naturalWidth || 0})).find(item => valid(item.src) && item.width >= 256 && !item.src.includes('/manual/icons/')); if (fallback) return JSON.stringify({ok:true, src: fallback.src}); return JSON.stringify({ok:false,error:'GENSPARK_IMAGE_NOT_READY'}); })()"
+                needs_followup_script = "(() => { const body = (document.body.innerText || ''); const needs = ['스타일', '용도', '비주얼', '이미지 스타일', 'Use case', 'Style', 'Visual']; if (window.__stage2_followup_sent) return JSON.stringify({ok:false, reason:'FOLLOWUP_ALREADY_SENT'}); const matched = needs.some(item => body.includes(item)); return JSON.stringify({ok: matched, body: body.slice(0, 400)}); })()"
+                followup_submit_script = "(() => { const textarea = document.querySelector('textarea.j-search-input'); const btn = document.querySelector('.enter-icon-wrapper'); if (!textarea) return JSON.stringify({ok:false,error:'NO_INPUT'}); const reply = '사진풍, 16:9, 유튜브 썸네일, 텍스트 없음, 질문 없이 지금 바로 1장만 생성하세요.'; const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set; textarea.focus(); if (setter) { setter.call(textarea, reply); } else { textarea.value = reply; } textarea.dispatchEvent(new Event('input',{bubbles:true})); textarea.dispatchEvent(new Event('change',{bubbles:true})); for (const type of ['keydown','keypress','keyup']) { textarea.dispatchEvent(new KeyboardEvent(type, {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); } if (btn) { btn.click(); } window.__stage2_followup_sent = true; return JSON.stringify({ok:true, step:'followup_submitted'}); })()"
                 action_delay_script = (
                     "(() => JSON.stringify({ok:true, step:'pre_capture_wait'}))()"
                 )
@@ -1878,16 +1892,65 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                             encoding="utf-8",
                             timeout=5,
                         )
-                        sleep(5)
+                        sleep(15)
                         break
+                    followup_command = [
+                        "agent-browser",
+                        "--cdp",
+                        str(args.port),
+                        "eval",
+                        needs_followup_script,
+                    ]
+                    followup_probe = subprocess.run(
+                        followup_command,
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        timeout=5,
+                    )
+                    if '"ok":true' in (followup_probe.stdout or ""):
+                        submit_command = [
+                            "agent-browser",
+                            "--cdp",
+                            str(args.port),
+                            "eval",
+                            followup_submit_script,
+                        ]
+                        _ = subprocess.run(
+                            submit_command,
+                            capture_output=True,
+                            text=True,
+                            encoding="utf-8",
+                            timeout=5,
+                        )
+                        sleep(5)
                     sleep(2)
-            _ = write_functional_evidence_bundle(
-                workspace=workspace,
-                service=service,
-                port=args.port,
-                expected_url_substring=args.expected_url_substring.strip(),
-                service_artifact_path=target_path,
-            )
+            if service == "genspark":
+                capture_error: Exception | None = None
+                for _capture_attempt in range(12):
+                    try:
+                        _ = write_functional_evidence_bundle(
+                            workspace=workspace,
+                            service=service,
+                            port=args.port,
+                            expected_url_substring=args.expected_url_substring.strip(),
+                            service_artifact_path=target_path,
+                        )
+                        capture_error = None
+                        break
+                    except Exception as exc:
+                        capture_error = exc
+                        sleep(10)
+                if capture_error is not None:
+                    raise capture_error
+            else:
+                _ = write_functional_evidence_bundle(
+                    workspace=workspace,
+                    service=service,
+                    port=args.port,
+                    expected_url_substring=args.expected_url_substring.strip(),
+                    service_artifact_path=target_path,
+                )
             if service == "geminigen":
                 if not (
                     target_path.exists()
