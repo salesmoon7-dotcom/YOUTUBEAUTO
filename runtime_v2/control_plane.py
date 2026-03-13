@@ -60,6 +60,7 @@ from runtime_v2.supervisor import run_gated
 MAX_CHAIN_DEPTH = 4
 MAX_NEXT_JOBS = 4
 MAX_STAGE1_DECLARED_NEXT_JOBS = 12
+PROMOTION_GATE_ORDER = {"": 0, "A": 1, "B": 2, "C": 3, "D": 4}
 
 
 def run_control_loop_once(
@@ -140,6 +141,7 @@ def run_control_loop_once(
     _recover_stale_running_jobs(
         queue_store, jobs, now, runtime_config, events_file, run_id=run_id
     )
+    _fail_closed_blocked_rows(queue_store, jobs, events_file, run_id=run_id)
     job = _next_runnable_job(jobs, now)
     if job is None:
         accepted_count, invalid_count = archived_contract_counts(
@@ -747,8 +749,47 @@ def _mapping_from_obj(value: object) -> dict[str, object] | None:
 _load_jobs = QueueStore.load
 
 
+def _promotion_gate(job: JobContract) -> str:
+    gate = str(job.payload.get("promotion_gate", "")).strip().upper()
+    if gate in PROMOTION_GATE_ORDER:
+        return gate
+    if job.workload in {"genspark", "seaart"}:
+        return "A"
+    if job.workload in {"canva", "geminigen"}:
+        return "B"
+    if job.workload in {"qwen3_tts", "rvc", "kenburns"}:
+        return "C"
+    if job.workload == "render":
+        return "D"
+    return ""
+
+
+def _row_ref(job: JobContract) -> str:
+    return str(job.payload.get("row_ref", "")).strip()
+
+
+def _gate_rank(job: JobContract) -> int:
+    return PROMOTION_GATE_ORDER.get(_promotion_gate(job), 0)
+
+
 def _next_runnable_job(jobs: list[JobContract], now: float) -> JobContract | None:
+    row_pending_gate: dict[str, int] = {}
     for entry in jobs:
+        if entry.status not in {"queued", "retry", "running"}:
+            continue
+        row_ref = _row_ref(entry)
+        if not row_ref:
+            continue
+        gate_rank = _gate_rank(entry)
+        current = row_pending_gate.get(row_ref)
+        if current is None or gate_rank < current:
+            row_pending_gate[row_ref] = gate_rank
+    for entry in jobs:
+        row_ref = _row_ref(entry)
+        if row_ref and _gate_rank(entry) > row_pending_gate.get(
+            row_ref, _gate_rank(entry)
+        ):
+            continue
         if entry.status == "queued":
             return entry
         if entry.status == "retry":
@@ -756,6 +797,46 @@ def _next_runnable_job(jobs: list[JobContract], now: float) -> JobContract | Non
             if next_attempt_at <= now:
                 return entry
     return None
+
+
+def _fail_closed_blocked_rows(
+    queue_store: QueueStore,
+    jobs: list[JobContract],
+    events_file: Path,
+    *,
+    run_id: str,
+) -> None:
+    failed_rows: dict[str, int] = {}
+    for entry in jobs:
+        if entry.status != "failed":
+            continue
+        row_ref = _row_ref(entry)
+        if not row_ref:
+            continue
+        gate_rank = _gate_rank(entry)
+        current = failed_rows.get(row_ref)
+        if current is None or gate_rank < current:
+            failed_rows[row_ref] = gate_rank
+    if not failed_rows:
+        return
+    for job in jobs:
+        row_ref = _row_ref(job)
+        if not row_ref or row_ref not in failed_rows:
+            continue
+        if job.status not in {"queued", "retry"}:
+            continue
+        if _gate_rank(job) < failed_rows[row_ref]:
+            continue
+        previous_status = job.status
+        if not can_transition(previous_status, "failed"):
+            continue
+        job.status = "failed"
+        _ = _upsert_job(queue_store, job)
+        cancelled_record = transition_record(job.job_id, previous_status, job.status)
+        cancelled_record["routed_from"] = str(job.payload.get("routed_from", ""))
+        cancelled_record["chain_depth"] = _to_int(job.payload.get("chain_depth", 0))
+        cancelled_record["reason"] = "promotion_gate_blocked"
+        _ = _append_transition_record(cancelled_record, events_file, run_id=run_id)
 
 
 def _recover_stale_running_jobs(

@@ -6,7 +6,7 @@ from time import time
 
 
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
-    "queued": {"running"},
+    "queued": {"running", "failed"},
     "running": {"completed", "failed", "retry", "queued"},
     "retry": {"running", "failed"},
     "completed": set(),

@@ -30,6 +30,150 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertIs(control_plane_module._save_jobs, QueueStore.save)
         self.assertIs(control_plane_module._upsert_job, QueueStore.upsert)
 
+    def test_control_plane_prefers_lowest_promotion_gate_within_same_row(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            queue_store = QueueStore(config.queue_store_file)
+            job_gate_b = JobContract(
+                job_id="canva-row1-gate-b",
+                workload="canva",
+                checkpoint_key="stage2:canva:Sheet1!row1:4",
+                payload={
+                    "run_id": "row-run-1",
+                    "row_ref": "Sheet1!row1",
+                    "promotion_gate": "B",
+                    "scene_index": 4,
+                },
+            )
+            job_gate_a = JobContract(
+                job_id="genspark-row1-gate-a",
+                workload="genspark",
+                checkpoint_key="stage2:genspark:Sheet1!row1:1",
+                payload={
+                    "run_id": "row-run-1",
+                    "row_ref": "Sheet1!row1",
+                    "promotion_gate": "A",
+                    "scene_index": 1,
+                },
+            )
+            queue_store.save([job_gate_b, job_gate_a])
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={
+                    "status": "ok",
+                    "code": "OK",
+                    "worker_result": {
+                        "status": "ok",
+                        "stage": "genspark",
+                        "error_code": "",
+                        "retryable": False,
+                        "next_jobs": [],
+                        "details": {},
+                        "completion": {"state": "succeeded", "final_output": False},
+                    },
+                },
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-gate-pref",
+                )
+
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            by_job_id = {str(item["job_id"]): item for item in queue_items}
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(str(by_job_id["genspark-row1-gate-a"]["status"]), "completed")
+        self.assertEqual(str(by_job_id["canva-row1-gate-b"]["status"]), "queued")
+
+    def test_control_plane_fail_closes_later_gates_for_same_row_only(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            queue_store = QueueStore(config.queue_store_file)
+            failed_gate_a = JobContract(
+                job_id="genspark-row1-failed",
+                workload="genspark",
+                status="failed",
+                checkpoint_key="stage2:genspark:Sheet1!row1:1",
+                payload={
+                    "run_id": "row-run-1",
+                    "row_ref": "Sheet1!row1",
+                    "promotion_gate": "A",
+                    "scene_index": 1,
+                },
+            )
+            blocked_gate_b = JobContract(
+                job_id="canva-row1-blocked",
+                workload="canva",
+                checkpoint_key="stage2:canva:Sheet1!row1:4",
+                payload={
+                    "run_id": "row-run-1",
+                    "row_ref": "Sheet1!row1",
+                    "promotion_gate": "B",
+                    "scene_index": 4,
+                },
+            )
+            other_row_gate_a = JobContract(
+                job_id="genspark-row2-open",
+                workload="genspark",
+                checkpoint_key="stage2:genspark:Sheet1!row2:1",
+                payload={
+                    "run_id": "row-run-2",
+                    "row_ref": "Sheet1!row2",
+                    "promotion_gate": "A",
+                    "scene_index": 1,
+                },
+            )
+            queue_store.save([failed_gate_a, blocked_gate_b, other_row_gate_a])
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={
+                    "status": "ok",
+                    "code": "OK",
+                    "worker_result": {
+                        "status": "ok",
+                        "stage": "genspark",
+                        "error_code": "",
+                        "retryable": False,
+                        "next_jobs": [],
+                        "details": {},
+                        "completion": {"state": "succeeded", "final_output": False},
+                    },
+                },
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-gate-fail-close",
+                )
+
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            by_job_id = {str(item["job_id"]): item for item in queue_items}
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(str(by_job_id["canva-row1-blocked"]["status"]), "failed")
+        self.assertEqual(str(by_job_id["genspark-row2-open"]["status"]), "completed")
+
     def test_run_worker_rejects_unsupported_workload_explicitly(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             job = JobContract(
