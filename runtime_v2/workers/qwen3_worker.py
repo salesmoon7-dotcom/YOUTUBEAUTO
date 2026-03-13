@@ -153,8 +153,6 @@ def run_qwen3_job(
             "-m",
             "runtime_v2.cli",
             "--qwen3-adapter-child",
-            "--workspace-root",
-            str(workspace.resolve()),
             "--service-artifact-path",
             str(job.payload.get("service_artifact_path", "")),
         ]

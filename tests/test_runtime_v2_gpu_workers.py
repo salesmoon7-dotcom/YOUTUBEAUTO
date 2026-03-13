@@ -134,6 +134,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
             dict[object, object], run_adapter.call_args.kwargs["extra_env"]
         )
         self.assertIn("--qwen3-adapter-child", adapter_command)
+        self.assertNotIn("--workspace-root", adapter_command)
         self.assertTrue(
             str(adapter_extra_env["PYTHONPATH"]).startswith(
                 str(Path("D:/YOUTUBEAUTO").resolve())
