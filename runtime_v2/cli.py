@@ -1858,12 +1858,40 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
     )
     if service in {"seaart", "genspark", "canva", "geminigen"}:
         debug_state_path: Path | None = None
+        retry_trace_path: Path | None = None
+        retry_trace: list[dict[str, object]] = []
         ready_image_url = ""
         image_ready_script = ""
         needs_followup_script = ""
         followup_submit_script = ""
         interrupted_regenerate_script = ""
         action_delay_script = ""
+
+        def _trace_eval(
+            phase: str, attempt: int, script: str, *, timeout: int = 5
+        ) -> subprocess.CompletedProcess[str] | None:
+            try:
+                result_local = _run_agent_browser_eval(
+                    args.port, script, timeout=timeout
+                )
+            except Exception as exc:
+                retry_trace.append(
+                    {
+                        "phase": phase,
+                        "attempt": attempt,
+                        "exception": exc.__class__.__name__,
+                        "message": str(exc),
+                    }
+                )
+                return None
+            _append_retry_trace(
+                retry_trace,
+                phase=phase,
+                attempt=attempt,
+                result=result_local,
+            )
+            return result_local
+
         try:
             if service == "genspark":
                 image_ready_script = "(() => { const valid = (src) => !!src && (/^https?:/i.test(src) || /^blob:/i.test(src) || /^data:/i.test(src) || src.startsWith('/api/files/')); const sels = ['img[src*=\"/api/files/\"]', '.image-generated img', '.image-grid img', '.generated-images .image-container .image-grid > img:first-child']; for (const sel of sels) { const found = document.querySelector(sel); const src = found ? (found.currentSrc || found.src || '') : ''; const width = found ? (found.naturalWidth || 0) : 0; if (valid(src) && width >= 256 && !src.includes('/manual/icons/')) return JSON.stringify({ok:true, src}); } const fallback = Array.from(document.images).map(img => ({src: img.currentSrc || img.src || '', width: img.naturalWidth || 0})).find(item => valid(item.src) && item.width >= 256 && !item.src.includes('/manual/icons/')); if (fallback) return JSON.stringify({ok:true, src: fallback.src}); return JSON.stringify({ok:false,error:'GENSPARK_IMAGE_NOT_READY'}); })()"
@@ -1873,10 +1901,14 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 action_delay_script = (
                     "(() => JSON.stringify({ok:true, step:'pre_capture_wait'}))()"
                 )
+
                 for _attempt in range(90):
-                    poll = _run_agent_browser_eval(
-                        args.port, image_ready_script, timeout=5
+                    poll = _trace_eval(
+                        "image_ready_poll", _attempt + 1, image_ready_script, timeout=10
                     )
+                    if poll is None:
+                        sleep(2)
+                        continue
                     if '"ok":true' in (poll.stdout or ""):
                         try:
                             poll_payload = json.loads((poll.stdout or "").strip())
@@ -1889,17 +1921,32 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                         )
                         sleep(15)
                         break
-                    followup_probe = _run_agent_browser_eval(
-                        args.port, needs_followup_script, timeout=5
+                    followup_probe = _trace_eval(
+                        "followup_probe",
+                        _attempt + 1,
+                        needs_followup_script,
+                        timeout=10,
                     )
+                    if followup_probe is None:
+                        sleep(2)
+                        continue
                     if '"ok":true' in (followup_probe.stdout or ""):
-                        _ = _run_agent_browser_eval(
-                            args.port, followup_submit_script, timeout=5
+                        _ = _trace_eval(
+                            "followup_submit",
+                            _attempt + 1,
+                            followup_submit_script,
+                            timeout=10,
                         )
                         sleep(5)
-                    regenerate_probe = _run_agent_browser_eval(
-                        args.port, interrupted_regenerate_script, timeout=5
+                    regenerate_probe = _trace_eval(
+                        "regenerate_probe",
+                        _attempt + 1,
+                        interrupted_regenerate_script,
+                        timeout=10,
                     )
+                    if regenerate_probe is None:
+                        sleep(2)
+                        continue
                     if '"ok":true' in (regenerate_probe.stdout or ""):
                         sleep(8)
                     sleep(2)
@@ -1919,25 +1966,43 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                         break
                     except Exception as exc:
                         capture_error = exc
-                        _ = _run_agent_browser_eval(
-                            args.port, needs_followup_script, timeout=5
+                        followup_probe = _trace_eval(
+                            "capture_followup_probe",
+                            _capture_attempt + 1,
+                            needs_followup_script,
+                            timeout=10,
                         )
-                        followup_probe = _run_agent_browser_eval(
-                            args.port, needs_followup_script, timeout=5
-                        )
+                        if followup_probe is None:
+                            sleep(5)
+                            continue
                         if '"ok":true' in (followup_probe.stdout or ""):
-                            _ = _run_agent_browser_eval(
-                                args.port, followup_submit_script, timeout=5
+                            _ = _trace_eval(
+                                "capture_followup_submit",
+                                _capture_attempt + 1,
+                                followup_submit_script,
+                                timeout=10,
                             )
                             sleep(5)
-                        regenerate_probe = _run_agent_browser_eval(
-                            args.port, interrupted_regenerate_script, timeout=5
+                        regenerate_probe = _trace_eval(
+                            "capture_regenerate_probe",
+                            _capture_attempt + 1,
+                            interrupted_regenerate_script,
+                            timeout=10,
                         )
+                        if regenerate_probe is None:
+                            sleep(5)
+                            continue
                         if '"ok":true' in (regenerate_probe.stdout or ""):
                             sleep(8)
-                        poll = _run_agent_browser_eval(
-                            args.port, image_ready_script, timeout=5
+                        poll = _trace_eval(
+                            "capture_image_ready_poll",
+                            _capture_attempt + 1,
+                            image_ready_script,
+                            timeout=10,
                         )
+                        if poll is None:
+                            sleep(5)
+                            continue
                         try:
                             poll_payload = json.loads((poll.stdout or "").strip())
                         except json.JSONDecodeError:
@@ -1971,6 +2036,10 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                     port=args.port,
                     expected_url_substring=args.expected_url_substring.strip(),
                 )
+                retry_trace_path = _write_stage2_adapter_retry_trace(
+                    workspace=workspace,
+                    trace=retry_trace,
+                )
             placeholder_artifact = not (
                 target_path.exists()
                 and target_path.is_file()
@@ -1988,8 +2057,23 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 ref_images_resolved=ref_images_resolved,
                 ref_images_attach_attempted=bool(ref_images_requested),
                 extra_details=(
-                    {"debug_state_path": str(debug_state_path)}
-                    if debug_state_path is not None
+                    {
+                        key: value
+                        for key, value in {
+                            "debug_state_path": (
+                                str(debug_state_path)
+                                if debug_state_path is not None
+                                else ""
+                            ),
+                            "retry_trace_path": (
+                                str(retry_trace_path)
+                                if retry_trace_path is not None
+                                else ""
+                            ),
+                        }.items()
+                        if value
+                    }
+                    if debug_state_path is not None or retry_trace_path is not None
                     else None
                 ),
             )
@@ -2353,6 +2437,43 @@ def _write_stage2_adapter_debug_state(
         json.dumps(_json_safe_mapping(payload), ensure_ascii=True, indent=2),
     )
     return debug_state_path
+
+
+def _trim_retry_text(raw: str, *, limit: int = 800) -> str:
+    text = raw.strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit]
+
+
+def _append_retry_trace(
+    trace: list[dict[str, object]],
+    *,
+    phase: str,
+    attempt: int,
+    result: subprocess.CompletedProcess[str],
+) -> None:
+    trace.append(
+        {
+            "phase": phase,
+            "attempt": attempt,
+            "returncode": int(getattr(result, "returncode", 0) or 0),
+            "stdout": _trim_retry_text(str(getattr(result, "stdout", "") or "")),
+            "stderr": _trim_retry_text(str(getattr(result, "stderr", "") or "")),
+        }
+    )
+
+
+def _write_stage2_adapter_retry_trace(
+    *, workspace: Path, trace: list[dict[str, object]]
+) -> Path:
+    retry_trace_path = workspace / "adapter_retry_trace.json"
+    payload: dict[str, object] = {"entries": trace[-40:]}
+    _ = _write_text_file(
+        retry_trace_path,
+        json.dumps(_json_safe_mapping(payload), ensure_ascii=True, indent=2),
+    )
+    return retry_trace_path
 
 
 def _run_agent_browser_eval(

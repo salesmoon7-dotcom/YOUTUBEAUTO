@@ -533,12 +533,88 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             )
             details = cast(dict[object, object], evidence["details"])
             debug_state_path = Path(str(details["debug_state_path"]))
+            retry_trace_path = Path(str(details["retry_trace_path"]))
             self.assertTrue(debug_state_path.exists())
+            self.assertTrue(retry_trace_path.exists())
             debug_payload = json.loads(debug_state_path.read_text(encoding="utf-8"))
+            retry_payload = json.loads(retry_trace_path.read_text(encoding="utf-8"))
             self.assertEqual(
                 cast(dict[object, object], debug_payload["selected_target"])["url"],
                 "https://www.genspark.ai/agents?id=fresh",
             )
+            entries = cast(list[object], retry_payload["entries"])
+            self.assertGreaterEqual(len(entries), 1)
+
+    def test_stage2_adapter_child_persists_retry_trace_entries_on_genspark_failure(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "scene-01.png"
+            args = CliArgs()
+            args.service = "genspark"
+            args.port = 9333
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "genspark.ai"
+            args.expected_title_substring = "Genspark"
+
+            responses: list[object] = []
+            for payload in [
+                '{"ok":false,"error":"GENSPARK_IMAGE_NOT_READY"}',
+                '{"ok":false,"reason":"FOLLOWUP_ALREADY_SENT"}',
+                '{"ok":false,"reason":"NO_REGENERATE_BUTTON"}',
+                '{"ok":false,"error":"GENSPARK_IMAGE_NOT_READY"}',
+            ]:
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", payload)
+                setattr(completed, "stderr", "stderr-" + payload)
+                setattr(completed, "returncode", 0)
+                responses.append(completed)
+
+            def fake_run(*args_: object, **kwargs: object) -> object:
+                _ = kwargs
+                if responses:
+                    return responses.pop(0)
+                completed = cast(object, type("Completed", (), {})())
+                setattr(
+                    completed, "stdout", '{"ok":false,"reason":"FOLLOWUP_ALREADY_SENT"}'
+                )
+                setattr(completed, "stderr", "")
+                setattr(completed, "returncode", 0)
+                return completed
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok"},
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli.sleep"),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    side_effect=RuntimeError("capture-failed"),
+                ),
+                patch(
+                    "runtime_v2.cli.collect_browser_debug_state",
+                    return_value={
+                        "selected_target": {
+                            "url": "https://www.genspark.ai/agents?id=fresh"
+                        }
+                    },
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+            evidence = json.loads(
+                (root / "attach_evidence.json").read_text(encoding="utf-8")
+            )
+            details = cast(dict[object, object], evidence["details"])
+            retry_trace_path = Path(str(details["retry_trace_path"]))
+            retry_payload = json.loads(retry_trace_path.read_text(encoding="utf-8"))
+            entries = cast(list[object], retry_payload["entries"])
+            self.assertGreaterEqual(len(entries), 4)
             self.assertFalse(output_path.exists())
 
     def test_stage2_adapter_child_writes_functional_evidence_for_canva(self) -> None:
