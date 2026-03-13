@@ -482,6 +482,51 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
             "https://www.genspark.ai/agents?type=image_generation_agent",
         )
 
+    def test_genspark_initial_attach_accepts_single_remaining_result_tab(self) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "artifacts"
+            job = JobContract(
+                job_id="agent-browser-genspark-single-tab",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-genspark-single-tab",
+                payload={
+                    "service": "genspark",
+                    "port": 9333,
+                    "expected_url_substring": "genspark.ai/agents?type=image_generation_agent",
+                    "expected_title_substring": "Genspark",
+                    "capture_snapshot": False,
+                },
+            )
+
+            outputs = iter(
+                [
+                    "[0] image_generation_agent - https://www.genspark.ai/agents?id=single\n",
+                    "selected single",
+                    "https://www.genspark.ai/agents?id=single",
+                    "image_generation_agent",
+                ]
+            )
+
+            def fake_run(command: list[str], *, timeout_sec: int = 30) -> str:
+                _ = timeout_sec
+                return next(outputs)
+
+            with patch(
+                "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                side_effect=fake_run,
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(
+            str(details["current_url"]),
+            "https://www.genspark.ai/agents?id=single",
+        )
+        self.assertEqual(str(details["current_title"]), "image_generation_agent")
+
 
 if __name__ == "__main__":
     _ = unittest.main()

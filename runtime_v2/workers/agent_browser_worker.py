@@ -214,6 +214,34 @@ def _prefer_genspark_compose_tab(tabs: list[dict[str, object]]) -> int | None:
     return None
 
 
+def _fallback_single_genspark_tab(
+    tabs: list[dict[str, object]],
+    *,
+    expected_title_substring: str,
+) -> int | None:
+    candidates: list[int] = []
+    expected_title = expected_title_substring.strip().lower()
+    accepted_title_tokens = {
+        token for token in {expected_title, "image_generation_agent"} if token
+    }
+    for item in tabs:
+        raw_index = item.get("index")
+        if not isinstance(raw_index, int):
+            continue
+        url = str(item.get("url", "")).strip().lower()
+        title = str(item.get("title", "")).strip().lower()
+        if not url.startswith("https://www.genspark.ai/agents?id="):
+            continue
+        if accepted_title_tokens and not any(
+            token in title for token in accepted_title_tokens
+        ):
+            continue
+        candidates.append(raw_index)
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
 def _resolve_agent_browser_command(command: list[str]) -> list[str]:
     if not command:
         return command
@@ -339,6 +367,10 @@ def run_agent_browser_verify_job(
             compose_tab = _prefer_genspark_compose_tab(tabs)
             if compose_tab is not None:
                 selected_tab = compose_tab
+            elif selected_tab is None:
+                selected_tab = _fallback_single_genspark_tab(
+                    tabs, expected_title_substring=expected_title
+                )
         if selected_tab is None and (expected_url or expected_title):
             raise ValueError("agent_browser_matching_tab_not_found")
         current_url = ""
