@@ -185,8 +185,22 @@ def _canonical_audio_candidates(run_id: str, artifact_root: Path) -> list[Path]:
     ]
 
 
+def _render_run_context(
+    job_payload: dict[str, object], render_spec: dict[str, object]
+) -> tuple[str, str, str]:
+    payload_run_id = str(job_payload.get("run_id", "")).strip()
+    spec_run_id = str(render_spec.get("run_id", "")).strip()
+    if payload_run_id and spec_run_id and payload_run_id != spec_run_id:
+        return "", "", "render_run_id_mismatch"
+    payload_row_ref = str(job_payload.get("row_ref", "")).strip()
+    spec_row_ref = str(render_spec.get("row_ref", "")).strip()
+    if payload_row_ref and spec_row_ref and payload_row_ref != spec_row_ref:
+        return "", "", "render_row_ref_mismatch"
+    return payload_run_id or spec_run_id, payload_row_ref or spec_row_ref, ""
+
+
 def _select_primary_audio(
-    render_spec: dict[str, object], artifact_root: Path
+    render_spec: dict[str, object], artifact_root: Path, *, run_id: str = ""
 ) -> Path | None:
     candidates: list[Path] = []
     raw_audio_refs = render_spec.get("audio_refs", [])
@@ -199,7 +213,7 @@ def _select_primary_audio(
                 candidates.append(resolved.resolve())
     candidates.extend(
         _canonical_audio_candidates(
-            str(render_spec.get("run_id", "")).strip(), artifact_root
+            run_id or str(render_spec.get("run_id", "")).strip(), artifact_root
         )
     )
     for candidate in candidates:
@@ -210,6 +224,29 @@ def _select_primary_audio(
         ):
             return candidate.resolve()
     return None
+
+
+def _validate_asset_manifest(
+    asset_manifest_path: Path, *, run_id: str, row_ref: str
+) -> str:
+    if not asset_manifest_path.exists() or not asset_manifest_path.is_file():
+        return "missing_asset_manifest"
+    try:
+        raw_payload = cast(
+            object, json.loads(asset_manifest_path.read_text(encoding="utf-8"))
+        )
+    except (OSError, json.JSONDecodeError):
+        return "invalid_asset_manifest"
+    if not isinstance(raw_payload, dict):
+        return "invalid_asset_manifest"
+    typed_payload = cast(dict[object, object], raw_payload)
+    manifest_run_id = str(typed_payload.get("run_id", "")).strip()
+    manifest_row_ref = str(typed_payload.get("row_ref", "")).strip()
+    if run_id and manifest_run_id and manifest_run_id != run_id:
+        return "render_manifest_run_id_mismatch"
+    if row_ref and manifest_row_ref and manifest_row_ref != row_ref:
+        return "render_manifest_row_ref_mismatch"
+    return ""
 
 
 def _voice_texts_present(voice_json_path: Path) -> bool:
@@ -429,6 +466,47 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
             retryable=False,
             completion={"state": "failed", "final_output": False},
         )
+    render_run_id, render_row_ref, render_context_error = _render_run_context(
+        job.payload, render_spec_payload
+    )
+    if render_context_error:
+        return finalize_worker_result(
+            workspace,
+            status="failed",
+            stage="render",
+            artifacts=[staged_render_spec, voice_json_path],
+            error_code=render_context_error,
+            retryable=False,
+            completion={"state": "failed", "final_output": False},
+        )
+    raw_asset_manifest_path = str(job.payload.get("asset_manifest_path", "")).strip()
+    if raw_asset_manifest_path:
+        asset_manifest_path = resolve_local_input(raw_asset_manifest_path)
+        if asset_manifest_path is None:
+            return finalize_worker_result(
+                workspace,
+                status="failed",
+                stage="render",
+                artifacts=[staged_render_spec, voice_json_path],
+                error_code="missing_asset_manifest",
+                retryable=True,
+                completion={"state": "blocked", "final_output": False},
+            )
+        manifest_error = _validate_asset_manifest(
+            asset_manifest_path, run_id=render_run_id, row_ref=render_row_ref
+        )
+        if manifest_error:
+            retryable = manifest_error == "missing_asset_manifest"
+            completion_state = "blocked" if retryable else "failed"
+            return finalize_worker_result(
+                workspace,
+                status="failed",
+                stage="render",
+                artifacts=[staged_render_spec, voice_json_path, asset_manifest_path],
+                error_code=manifest_error,
+                retryable=retryable,
+                completion={"state": completion_state, "final_output": False},
+            )
 
     missing_paths = _missing_render_paths(render_spec_payload)
     if missing_paths:
@@ -506,7 +584,9 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
 
         scene_clips: list[Path] = []
         process_details = {"stdout": "", "stderr": ""}
-        audio_source = _select_primary_audio(render_spec_payload, artifact_root)
+        audio_source = _select_primary_audio(
+            render_spec_payload, artifact_root, run_id=render_run_id
+        )
         if audio_source is None and _voice_texts_present(voice_json_path):
             return finalize_worker_result(
                 workspace,
