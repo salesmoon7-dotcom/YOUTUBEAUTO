@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
+from runtime_v2.config import external_runtime_root
 from runtime_v2.contracts.job_contract import JobContract
 from runtime_v2.workers.external_process import run_external_process
 from runtime_v2.workers.job_runtime import (
@@ -13,6 +14,21 @@ from runtime_v2.workers.job_runtime import (
     stage_local_input,
     write_json_atomic,
 )
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+PanDirection = Literal["left", "right", "up", "down"]
+ZoomMode = Literal["in", "out"]
+
+OUTPUT_WIDTH = 1920
+OUTPUT_HEIGHT = 1080
+OUTPUT_FPS = 30
+UPSCALE_WIDTH = 2400
+DEFAULT_PAN_PCT = 0.05
+DEFAULT_ZOOM_PCT = 0.40
+PAN_DIRECTION_SEQUENCE: tuple[PanDirection, ...] = ("left", "right", "up", "down")
+ZOOM_MODE_SEQUENCE: tuple[ZoomMode, ...] = ("in", "out")
 
 
 def run_kenburns_job(
@@ -25,6 +41,7 @@ def run_kenburns_job(
     if bundle_entries is not None:
         return _run_kenburns_bundle_job(
             workspace=workspace,
+            payload=job.payload,
             bundle_map_path=bundle_map_path,
             bundle_entries=bundle_entries,
         )
@@ -48,25 +65,17 @@ def run_kenburns_job(
         int(duration_value) if isinstance(duration_value, (int, float, str)) else 8
     )
     duration_sec = max(1, duration_sec)
+    motion = _resolve_motion_settings(job.payload, scene_index=1)
     staged_input = stage_local_input(
         workspace, source, target_name=f"source{source.suffix.lower()}"
     )
     silent_output_path = workspace / "kenburns_silent.mp4"
-    command = [
-        "ffmpeg",
-        "-y",
-        "-loop",
-        "1",
-        "-i",
-        str(staged_input.resolve()),
-        "-vf",
-        "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
-        "-t",
-        str(duration_sec),
-        "-r",
-        "30",
-        str(silent_output_path.resolve()),
-    ]
+    command = _silent_kenburns_command(
+        staged_input,
+        silent_output_path,
+        duration_sec,
+        motion=motion,
+    )
     process_result = run_external_process(command, cwd=workspace)
     exit_code = process_result.get("exit_code", 1)
     exit_code_int = int(exit_code) if isinstance(exit_code, (int, float, str)) else 1
@@ -153,6 +162,7 @@ def run_kenburns_job(
 def _run_kenburns_bundle_job(
     *,
     workspace: Path,
+    payload: dict[str, object],
     bundle_map_path: Path | None,
     bundle_entries: list[dict[str, object]],
 ) -> dict[str, object]:
@@ -167,9 +177,23 @@ def _run_kenburns_bundle_job(
             completion={"state": "failed", "final_output": False},
         )
     artifacts: list[Path] = [] if bundle_map_path is None else [bundle_map_path]
+    bundle_manifest_path, manifest_error = _resolve_bundle_manifest_path(
+        workspace, payload
+    )
+    if manifest_error:
+        return finalize_worker_result(
+            workspace,
+            status="failed",
+            stage="validate_input",
+            artifacts=artifacts,
+            error_code=manifest_error,
+            retryable=False,
+            completion={"state": "failed", "final_output": False},
+        )
     scene_outputs: list[dict[str, object]] = []
     for index, entry in enumerate(bundle_entries, start=1):
         scene_key = _scene_key(entry, index)
+        resolved_output_path: Path | None = None
         raw_source = entry.get("source_path", entry.get("image_path", ""))
         source_path = (
             resolve_local_input(str(raw_source).strip())
@@ -188,6 +212,7 @@ def _run_kenburns_bundle_job(
                 completion={"state": "failed", "final_output": False},
             )
         duration_sec = _duration_sec(entry.get("duration_sec", 8))
+        motion = _resolve_motion_settings(entry, scene_index=index)
         staged_input = stage_local_input(
             workspace,
             source_path,
@@ -196,7 +221,23 @@ def _run_kenburns_bundle_job(
         artifacts.append(staged_input)
         output_path_override = str(entry.get("output_path", "")).strip()
         if output_path_override:
-            resolved_output_path = Path(output_path_override).resolve()
+            resolved_output_path = _resolve_local_output_path(
+                output_path_override, base_dir=workspace
+            )
+            if resolved_output_path is None:
+                return finalize_worker_result(
+                    workspace,
+                    status="failed",
+                    stage="validate_input",
+                    artifacts=artifacts,
+                    error_code="invalid_output_path",
+                    retryable=False,
+                    details={
+                        "scene_key": scene_key,
+                        "output_path": output_path_override,
+                    },
+                    completion={"state": "failed", "final_output": False},
+                )
             resolved_output_path.parent.mkdir(parents=True, exist_ok=True)
             silent_output_path = resolved_output_path.with_name(
                 f"{resolved_output_path.stem}_silent.mp4"
@@ -204,7 +245,12 @@ def _run_kenburns_bundle_job(
         else:
             silent_output_path = workspace / f"{scene_key}_silent.mp4"
         process_result = run_external_process(
-            _silent_kenburns_command(staged_input, silent_output_path, duration_sec),
+            _silent_kenburns_command(
+                staged_input,
+                silent_output_path,
+                duration_sec,
+                motion=motion,
+            ),
             cwd=workspace,
         )
         exit_code = process_result.get("exit_code", 1)
@@ -238,11 +284,25 @@ def _run_kenburns_bundle_job(
                     target_name=f"{scene_key}_audio{audio_source.suffix.lower()}",
                 )
                 artifacts.append(staged_audio)
-                muxed_output_path = (
-                    Path(output_path_override).resolve()
-                    if output_path_override
-                    else workspace / f"{scene_key}.mp4"
-                )
+                if output_path_override:
+                    if resolved_output_path is None:
+                        return finalize_worker_result(
+                            workspace,
+                            status="failed",
+                            stage="validate_input",
+                            artifacts=artifacts,
+                            error_code="invalid_output_path",
+                            retryable=False,
+                            details={
+                                "scene_key": scene_key,
+                                "output_path": output_path_override,
+                            },
+                            completion={"state": "failed", "final_output": False},
+                        )
+                    assert resolved_output_path is not None
+                    muxed_output_path = resolved_output_path
+                else:
+                    muxed_output_path = workspace / f"{scene_key}.mp4"
                 mux_result = run_external_process(
                     _audio_mux_command(
                         silent_output_path, staged_audio, muxed_output_path
@@ -273,7 +333,22 @@ def _run_kenburns_bundle_job(
                 artifacts.append(muxed_output_path)
                 output_path = muxed_output_path
         elif output_path_override:
-            final_output_path = Path(output_path_override).resolve()
+            if resolved_output_path is None:
+                return finalize_worker_result(
+                    workspace,
+                    status="failed",
+                    stage="validate_input",
+                    artifacts=artifacts,
+                    error_code="invalid_output_path",
+                    retryable=False,
+                    details={
+                        "scene_key": scene_key,
+                        "output_path": output_path_override,
+                    },
+                    completion={"state": "failed", "final_output": False},
+                )
+            assert resolved_output_path is not None
+            final_output_path = resolved_output_path
             final_output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path = final_output_path
             if silent_output_path.resolve() != final_output_path:
@@ -285,10 +360,15 @@ def _run_kenburns_bundle_job(
                 "output_path": str(output_path.resolve()),
                 "duration_sec": duration_sec,
                 "audio_path": raw_audio,
+                "pan_direction": motion["pan_direction"],
+                "pan_pct": motion["pan_pct"],
+                "zoom_mode": motion["zoom_mode"],
+                "zoom_pct": motion["zoom_pct"],
             }
         )
+    bundle_manifest_path.parent.mkdir(parents=True, exist_ok=True)
     bundle_manifest_path = write_json_atomic(
-        workspace / "scene_bundle_manifest.json",
+        bundle_manifest_path,
         {
             "scene_count": len(scene_outputs),
             "scenes": scene_outputs,
@@ -383,9 +463,97 @@ def _duration_sec(value: object) -> int:
     return max(1, duration_sec)
 
 
+def _resolve_bundle_manifest_path(
+    workspace: Path, payload: dict[str, object]
+) -> tuple[Path, str]:
+    raw_target = str(payload.get("service_artifact_path", "")).strip()
+    if not raw_target:
+        return workspace / "scene_bundle_manifest.json", ""
+    resolved_target = _resolve_local_output_path(raw_target, base_dir=workspace)
+    if resolved_target is None:
+        return workspace / "scene_bundle_manifest.json", "invalid_service_artifact_path"
+    return resolved_target, ""
+
+
+def _resolve_local_output_path(raw_path: str, *, base_dir: Path) -> Path | None:
+    candidate = Path(raw_path).expanduser()
+    if not candidate.is_absolute():
+        candidate = (base_dir / candidate).resolve()
+    else:
+        candidate = candidate.resolve()
+    allowed_roots = {REPO_ROOT.resolve(), external_runtime_root().resolve()}
+    if not any(
+        candidate == root or root in candidate.parents for root in allowed_roots
+    ):
+        return None
+    return candidate
+
+
+def _resolve_motion_settings(
+    payload: dict[str, object], *, scene_index: int
+) -> dict[str, object]:
+    pan_direction = _normalize_pan_direction(
+        payload.get("pan_direction"),
+        fallback=PAN_DIRECTION_SEQUENCE[
+            (max(scene_index, 1) - 1) % len(PAN_DIRECTION_SEQUENCE)
+        ],
+    )
+    zoom_mode = _normalize_zoom_mode(
+        payload.get("zoom_mode"),
+        fallback=ZOOM_MODE_SEQUENCE[
+            (max(scene_index, 1) - 1) % len(ZOOM_MODE_SEQUENCE)
+        ],
+    )
+    pan_pct = _normalize_percentage(payload.get("pan_pct"), DEFAULT_PAN_PCT)
+    zoom_pct = _normalize_percentage(payload.get("zoom_pct"), DEFAULT_ZOOM_PCT)
+    return {
+        "pan_direction": pan_direction,
+        "zoom_mode": zoom_mode,
+        "pan_pct": pan_pct,
+        "zoom_pct": zoom_pct,
+    }
+
+
+def _normalize_pan_direction(value: object, *, fallback: PanDirection) -> PanDirection:
+    normalized = str(value).strip().lower()
+    if normalized in {"left", "right", "up", "down"}:
+        return cast(PanDirection, normalized)
+    return fallback
+
+
+def _normalize_zoom_mode(value: object, *, fallback: ZoomMode) -> ZoomMode:
+    normalized = str(value).strip().lower()
+    if normalized in {"in", "out"}:
+        return cast(ZoomMode, normalized)
+    return fallback
+
+
+def _normalize_percentage(value: object, default: float) -> float:
+    if isinstance(value, str):
+        candidate_text = value.strip()
+        if not candidate_text:
+            return default
+        candidate = float(candidate_text)
+    elif isinstance(value, (int, float)):
+        candidate = float(value)
+    else:
+        return default
+    if candidate > 1.0:
+        candidate = candidate / 100.0
+    if candidate < 0:
+        return 0.0
+    return min(candidate, 0.95)
+
+
 def _silent_kenburns_command(
-    source: Path, output: Path, duration_sec: int
+    source: Path,
+    output: Path,
+    duration_sec: int,
+    *,
+    motion: dict[str, object],
 ) -> list[str]:
+    frame_count = max(1, duration_sec * OUTPUT_FPS)
+    filter_chain = _build_kenburns_filter(frame_count=frame_count, motion=motion)
     return [
         "ffmpeg",
         "-y",
@@ -394,13 +562,51 @@ def _silent_kenburns_command(
         "-i",
         str(source.resolve()),
         "-vf",
-        "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+        filter_chain,
         "-t",
         str(duration_sec),
         "-r",
-        "30",
+        str(OUTPUT_FPS),
         str(output.resolve()),
     ]
+
+
+def _build_kenburns_filter(*, frame_count: int, motion: dict[str, object]) -> str:
+    progress = "if(eq(duration,1),0,on/(duration-1))"
+    pan_direction = cast(PanDirection, motion["pan_direction"])
+    zoom_mode = cast(ZoomMode, motion["zoom_mode"])
+    pan_pct = cast(float, motion["pan_pct"])
+    zoom_pct = cast(float, motion["zoom_pct"])
+    max_zoom = 1.0 + zoom_pct
+    if zoom_mode == "out":
+        zoom_expr = f"max({max_zoom:.4f}-{zoom_pct:.4f}*{progress},1.0)"
+    else:
+        zoom_expr = f"min(1.0+{zoom_pct:.4f}*{progress},{max_zoom:.4f})"
+    travel_x = "(iw-iw/zoom)"
+    travel_y = "(ih-ih/zoom)"
+    center_x = f"({travel_x}/2)"
+    center_y = f"({travel_y}/2)"
+    pan_ratio = f"{pan_pct:.4f}"
+    if pan_direction == "left":
+        x_expr = f"max({center_x}-{travel_x}*{pan_ratio}*{progress},0)"
+        y_expr = center_y
+    elif pan_direction == "right":
+        x_expr = f"min({center_x}+{travel_x}*{pan_ratio}*{progress},{travel_x})"
+        y_expr = center_y
+    elif pan_direction == "up":
+        x_expr = center_x
+        y_expr = f"max({center_y}-{travel_y}*{pan_ratio}*{progress},0)"
+    else:
+        x_expr = center_x
+        y_expr = f"min({center_y}+{travel_y}*{pan_ratio}*{progress},{travel_y})"
+    return (
+        f"scale={OUTPUT_WIDTH}:{OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,"
+        f"pad={OUTPUT_WIDTH}:{OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2,"
+        f"scale={UPSCALE_WIDTH}:-2,"
+        f"zoompan=z='{zoom_expr}':x='{x_expr}':y='{y_expr}':"
+        f"d={frame_count}:fps={OUTPUT_FPS}:s={OUTPUT_WIDTH}x{OUTPUT_HEIGHT},"
+        "format=yuv420p"
+    )
 
 
 def _audio_mux_command(video: Path, audio: Path, output: Path) -> list[str]:
