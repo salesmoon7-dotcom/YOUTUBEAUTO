@@ -4,6 +4,7 @@ import base64
 import json
 import tempfile
 import urllib.error
+import urllib.request
 import unittest
 from email.message import Message
 from pathlib import Path
@@ -130,6 +131,142 @@ class RuntimeV2CdpCaptureTests(unittest.TestCase):
                 self.assertEqual(asset_path.read_bytes(), b"image-bytes")
 
         self.assertEqual(len(sha256), 64)
+
+    def test_capture_primary_image_asset_accepts_relative_genspark_api_file_url(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "genspark-relative.png"
+            encoded = base64.b64encode(b"image-bytes-relative").decode("ascii")
+
+            def fake_cdp(
+                ws_url: str, *, method: str, params: dict[str, object]
+            ) -> dict[str, object]:
+                _ = ws_url
+                if method == "Runtime.evaluate" and params.get("awaitPromise"):
+                    return {
+                        "result": {"result": {"value": {"ok": True, "base64": encoded}}}
+                    }
+                return {
+                    "result": {"result": {"value": "/api/files/example-relative.png"}}
+                }
+
+            with (
+                patch(
+                    "runtime_v2.agent_browser.cdp_capture._select_page_target",
+                    return_value={
+                        "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/1",
+                        "url": "https://www.genspark.ai/agents?id=1",
+                    },
+                ),
+                patch(
+                    "runtime_v2.agent_browser.cdp_capture.urllib.request.urlopen",
+                    side_effect=ValueError("relative-url"),
+                ),
+                patch(
+                    "runtime_v2.agent_browser.cdp_capture._cdp_command",
+                    side_effect=fake_cdp,
+                ),
+            ):
+                asset_path, sha256 = capture_primary_image_asset(
+                    9333,
+                    "genspark.ai",
+                    output_path,
+                    service="genspark",
+                )
+                self.assertTrue(asset_path.exists())
+                self.assertEqual(asset_path.read_bytes(), b"image-bytes-relative")
+
+        self.assertEqual(len(sha256), 64)
+
+    def test_capture_primary_image_asset_prefers_newest_genspark_result_tab(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "genspark-newest.png"
+
+            class FakeResponse:
+                def __init__(self, payload: object) -> None:
+                    self._payload = payload
+
+                def read(self) -> bytes:
+                    if isinstance(self._payload, bytes):
+                        return self._payload
+                    return json.dumps(self._payload, ensure_ascii=True).encode("utf-8")
+
+                def __enter__(self) -> "FakeResponse":
+                    return self
+
+                def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+                    _ = exc_type
+                    _ = exc
+                    _ = tb
+                    return None
+
+            def fake_urlopen(url: str, timeout: int = 30) -> FakeResponse:
+                _ = timeout
+                if url == "http://127.0.0.1:9333/json/list":
+                    return FakeResponse(
+                        [
+                            {
+                                "type": "page",
+                                "url": "https://www.genspark.ai/agents?id=stale",
+                                "title": "image_generation_agent",
+                                "webSocketDebuggerUrl": "ws://stale",
+                            },
+                            {
+                                "type": "page",
+                                "url": "https://www.genspark.ai/agents?id=fresh",
+                                "title": "Genspark Agents",
+                                "webSocketDebuggerUrl": "ws://fresh",
+                            },
+                        ]
+                    )
+                if url == "https://www.genspark.ai/api/files/fresh.png":
+                    return FakeResponse(b"fresh-image")
+                raise AssertionError(url)
+
+            def fake_cdp(
+                ws_url: str, *, method: str, params: dict[str, object]
+            ) -> dict[str, object]:
+                _ = method
+                _ = params
+                if ws_url == "ws://fresh":
+                    return {
+                        "result": {
+                            "result": {
+                                "value": "https://www.genspark.ai/api/files/fresh.png"
+                            }
+                        }
+                    }
+                return {
+                    "result": {
+                        "result": {
+                            "value": "https://www.genspark.ai/api/files/stale.png"
+                        }
+                    }
+                }
+
+            with (
+                patch(
+                    "runtime_v2.agent_browser.cdp_capture.urllib.request.urlopen",
+                    side_effect=fake_urlopen,
+                ),
+                patch(
+                    "runtime_v2.agent_browser.cdp_capture._cdp_command",
+                    side_effect=fake_cdp,
+                ),
+            ):
+                asset_path, _ = capture_primary_image_asset(
+                    9333,
+                    "genspark.ai/agents?type=image_generation_agent",
+                    output_path,
+                    service="genspark",
+                )
+                self.assertTrue(asset_path.exists())
+                self.assertEqual(asset_path.read_bytes(), b"fresh-image")
 
     def test_write_functional_evidence_bundle_copies_downloaded_video_for_geminigen(
         self,

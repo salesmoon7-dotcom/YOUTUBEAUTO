@@ -35,8 +35,11 @@ def capture_primary_image_asset(
     if service == "genspark":
         expression = (
             "(() => {"
+            "const valid = (src) => !!src && (/^https?:/i.test(src) || /^blob:/i.test(src) || /^data:/i.test(src) || src.startsWith('/api/files/'));"
             "const sels = ['.image-generated img', '.image-grid img', '.generated-images .image-container .image-grid > img:first-child'];"
-            "for (const sel of sels) { const found = document.querySelector(sel); const src = found ? (found.currentSrc || found.src || '') : ''; if (src && /^https?:/i.test(src)) return src; }"
+            "for (const sel of sels) { const found = document.querySelector(sel); const src = found ? (found.currentSrc || found.src || '') : ''; const width = found ? (found.naturalWidth || 0) : 0; if (valid(src) && width >= 256 && !src.includes('/manual/icons/')) return src; }"
+            "const candidates = Array.from(document.images).map(img => ({src: img.currentSrc || img.src || '', w: img.naturalWidth || 0})).filter(item => valid(item.src) && item.w >= 256 && !item.src.includes('/manual/icons/')).sort((a,b) => b.w - a.w);"
+            "if (candidates.length) return candidates[0].src;"
             "return '';"
             "})()"
         )
@@ -175,7 +178,7 @@ def _select_page_target(port: int, expected_url_substring: str) -> dict[str, str
         if isinstance(item, dict)
     ]
     if expected_url_substring == expected_url_substring_for_service("genspark"):
-        for item in pages:
+        for item in reversed(pages):
             if str(item.get("type", "")) != "page":
                 continue
             url = str(item.get("url", ""))
@@ -219,7 +222,13 @@ def _download_image_bytes(image_url: str, ws_url: str) -> bytes:
     try:
         with urllib.request.urlopen(image_url, timeout=30) as response:
             return response.read()
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError):
+    except (
+        urllib.error.HTTPError,
+        urllib.error.URLError,
+        TimeoutError,
+        OSError,
+        ValueError,
+    ):
         return _fetch_bytes_via_page_context(ws_url, image_url)
 
 

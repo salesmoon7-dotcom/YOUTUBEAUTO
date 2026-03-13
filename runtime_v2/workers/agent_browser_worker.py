@@ -203,6 +203,17 @@ def _prefer_service_specific_tab(
     return selected_tab
 
 
+def _prefer_genspark_compose_tab(tabs: list[dict[str, object]]) -> int | None:
+    for item in tabs:
+        url = str(item.get("url", ""))
+        raw_index = item.get("index")
+        if not isinstance(raw_index, int):
+            continue
+        if url.startswith("https://www.genspark.ai/agents?type=image_generation_agent"):
+            return raw_index
+    return None
+
+
 def _resolve_agent_browser_command(command: list[str]) -> list[str]:
     if not command:
         return command
@@ -324,7 +335,10 @@ def run_agent_browser_verify_job(
             expected_url_substring=expected_url,
             expected_title_substring=expected_title,
         )
-        selected_tab = _prefer_service_specific_tab(service, tabs, selected_tab)
+        if service == "genspark":
+            compose_tab = _prefer_genspark_compose_tab(tabs)
+            if compose_tab is not None:
+                selected_tab = compose_tab
         if selected_tab is None and (expected_url or expected_title):
             raise ValueError("agent_browser_matching_tab_not_found")
         current_url = ""

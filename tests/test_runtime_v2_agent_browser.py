@@ -434,6 +434,54 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         sleep_mock.assert_called_once_with(5)
         self.assertGreaterEqual(len(transcript), 5)
 
+    def test_genspark_initial_attach_keeps_compose_tab_when_it_matches_expected_url(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "artifacts"
+            job = JobContract(
+                job_id="agent-browser-genspark-compose-tab",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-genspark-compose-tab",
+                payload={
+                    "service": "genspark",
+                    "port": 9333,
+                    "expected_url_substring": "genspark.ai/agents?type=image_generation_agent",
+                    "expected_title_substring": "Genspark",
+                    "capture_snapshot": False,
+                },
+            )
+
+            outputs = iter(
+                [
+                    "[0] AI 이미지 - https://www.genspark.ai/agents?type=image_generation_agent\n[1] image_generation_agent - https://www.genspark.ai/agents?id=stale\n",
+                    "selected compose",
+                    "https://www.genspark.ai/agents?type=image_generation_agent",
+                    "AI 이미지",
+                ]
+            )
+            commands: list[list[str]] = []
+
+            def fake_run(command: list[str], *, timeout_sec: int = 30) -> str:
+                _ = timeout_sec
+                commands.append(command)
+                return next(outputs)
+
+            with patch(
+                "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                side_effect=fake_run,
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(
+            str(details["current_url"]),
+            "https://www.genspark.ai/agents?type=image_generation_agent",
+        )
+
 
 if __name__ == "__main__":
     _ = unittest.main()
