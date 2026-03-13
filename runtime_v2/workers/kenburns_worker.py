@@ -23,7 +23,7 @@ ZoomMode = Literal["in", "out"]
 
 OUTPUT_WIDTH = 1920
 OUTPUT_HEIGHT = 1080
-OUTPUT_FPS = 30
+OUTPUT_FPS = 60
 UPSCALE_WIDTH = 2400
 DEFAULT_PAN_PCT = 0.05
 DEFAULT_ZOOM_PCT = 0.40
@@ -60,9 +60,9 @@ def run_kenburns_job(
             error_code="missing_source_path",
             retryable=False,
         )
-    duration_value = job.payload.get("duration_sec", 8)
+    duration_value = job.payload.get("duration_sec", 12)
     duration_sec = (
-        int(duration_value) if isinstance(duration_value, (int, float, str)) else 8
+        int(duration_value) if isinstance(duration_value, (int, float, str)) else 12
     )
     duration_sec = max(1, duration_sec)
     motion = _resolve_motion_settings(job.payload, scene_index=1)
@@ -459,7 +459,7 @@ def _scene_key(entry: dict[str, object], index: int) -> str:
 
 
 def _duration_sec(value: object) -> int:
-    duration_sec = int(value) if isinstance(value, (int, float, str)) else 8
+    duration_sec = int(value) if isinstance(value, (int, float, str)) else 12
     return max(1, duration_sec)
 
 
