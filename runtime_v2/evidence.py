@@ -16,9 +16,13 @@ JsonState = Literal["ok", "missing", "invalid"]
 
 def evaluate_promotion_gates(
     latest_join: dict[str, object],
+    *,
+    runtime_config: RuntimeConfig | None = None,
 ) -> dict[str, object]:
     result_metadata = _dict_from_object(latest_join.get("result_metadata"))
     asset_manifest_path = _resolve_asset_manifest_path(result_metadata)
+    if asset_manifest_path is None:
+        return {"asset_manifest_path": "", "gates": {}}
     asset_manifest = _read_json_file(asset_manifest_path)
     roles = (
         _dict_from_object(asset_manifest.get("roles", {}))
@@ -40,6 +44,12 @@ def evaluate_promotion_gates(
     kenburns_present = any(
         ".kenburns" in key and str(value).strip() for key, value in roles.items()
     )
+    active_runtime = runtime_config or RuntimeConfig()
+    current_run_id = str(result_metadata.get("run_id", "")).strip()
+    gate_c_audio_present = _gate_c_audio_present(
+        run_id=current_run_id,
+        artifact_root=active_runtime.artifact_root,
+    )
     gates = {
         "A": {
             "passed": bool(str(roles.get("image_primary", "")).strip())
@@ -53,8 +63,9 @@ def evaluate_promotion_gates(
         },
         "C": {
             "passed": bool(str(roles.get("voice_json", "")).strip())
+            and gate_c_audio_present
             and kenburns_present,
-            "reason": "missing_voice_json_or_kenburns_role",
+            "reason": "missing_voice_json_audio_or_kenburns_role",
         },
         "D": {
             "passed": final_output and bool(final_artifact_path),
@@ -419,7 +430,9 @@ def load_runtime_readiness(
 
     latest_code = str(typed_result_metadata.get("code", "UNKNOWN"))
     latest_result_payload = _dict_from_object(latest_join.get("result"))
-    promotion_gates = evaluate_promotion_gates(latest_join)
+    promotion_gates = evaluate_promotion_gates(
+        latest_join, runtime_config=runtime_config
+    )
     gate_entries = _dict_from_object(promotion_gates.get("gates", {}))
     asset_manifest_path = str(promotion_gates.get("asset_manifest_path", "")).strip()
     latest_result_checked_at = _to_float(latest_result_payload.get("checked_at"))
@@ -518,6 +531,22 @@ def resolve_snapshot_run_id(
         if value:
             return value, source
     return "", ""
+
+
+def _canonical_audio_candidates(run_id: str, artifact_root: Path) -> list[Path]:
+    if not run_id.strip():
+        return []
+    return [
+        (artifact_root / "rvc" / f"rvc-qwen3-{run_id}" / "speech_rvc.wav").resolve(),
+        (artifact_root / "qwen3_tts" / f"qwen3-{run_id}" / "speech.wav").resolve(),
+    ]
+
+
+def _gate_c_audio_present(*, run_id: str, artifact_root: Path) -> bool:
+    for candidate in _canonical_audio_candidates(run_id, artifact_root):
+        if candidate.exists() and candidate.is_file() and candidate.stat().st_size > 0:
+            return True
+    return False
 
 
 def _read_json_dict_with_state(
