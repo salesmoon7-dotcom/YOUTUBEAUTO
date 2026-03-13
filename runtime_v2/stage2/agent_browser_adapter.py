@@ -103,27 +103,29 @@ def write_stage2_attach_evidence(
     ref_images_resolved: list[str] | None = None,
     ref_images_attach_attempted: bool = False,
     ref_upload_error_code: str = "",
+    extra_details: dict[str, object] | None = None,
 ) -> Path:
     details_raw = result.get("details", {})
     details = details_raw if isinstance(details_raw, dict) else {}
-    payload = {
-        "schema_version": "1.0",
-        "service": service,
-        "port": port,
-        "status": str(result.get("status", "unknown")),
-        "stage": str(result.get("stage", "agent_browser_verify")),
-        "error_code": str(result.get("error_code", "")),
-        "current_url": str(details.get("current_url", "")),
-        "current_title": str(details.get("current_title", "")),
-        "transcript_path": str(details.get("transcript_path", "")),
-        "probe_debug_only": probe_debug_only,
-        "recovery_attempted": recovery_attempted,
-        "placeholder_artifact": placeholder_artifact,
-        "ref_images_requested": ref_images_requested or [],
-        "ref_images_resolved": ref_images_resolved or [],
-        "ref_images_attach_attempted": ref_images_attach_attempted,
-        "ref_upload_error_code": ref_upload_error_code,
-    }
+    payload: dict[str, object] = {}
+    payload["schema_version"] = "1.0"
+    payload["service"] = service
+    payload["port"] = port
+    payload["status"] = str(result.get("status", "unknown"))
+    payload["stage"] = str(result.get("stage", "agent_browser_verify"))
+    payload["error_code"] = str(result.get("error_code", ""))
+    payload["current_url"] = str(details.get("current_url", ""))
+    payload["current_title"] = str(details.get("current_title", ""))
+    payload["transcript_path"] = str(details.get("transcript_path", ""))
+    payload["probe_debug_only"] = probe_debug_only
+    payload["recovery_attempted"] = recovery_attempted
+    payload["placeholder_artifact"] = placeholder_artifact
+    payload["ref_images_requested"] = ref_images_requested or []
+    payload["ref_images_resolved"] = ref_images_resolved or []
+    payload["ref_images_attach_attempted"] = ref_images_attach_attempted
+    payload["ref_upload_error_code"] = ref_upload_error_code
+    if extra_details:
+        payload["details"] = {str(key): value for key, value in extra_details.items()}
     evidence_path = attach_evidence_path(workspace)
     _ = evidence_path.write_text(
         json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8"

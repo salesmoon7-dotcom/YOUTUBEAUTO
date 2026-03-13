@@ -29,10 +29,16 @@ def capture_page_screenshot(
 
 
 def capture_primary_image_asset(
-    port: int, expected_url_substring: str, output_path: Path, *, service: str = ""
+    port: int,
+    expected_url_substring: str,
+    output_path: Path,
+    *,
+    service: str = "",
+    image_url_override: str = "",
 ) -> tuple[Path, str]:
     target = _select_page_target(port, expected_url_substring)
-    if service == "genspark":
+    image_url = image_url_override.strip()
+    if not image_url and service == "genspark":
         expression = (
             "(() => {"
             "const valid = (src) => !!src && (/^https?:/i.test(src) || /^blob:/i.test(src) || /^data:/i.test(src) || src.startsWith('/api/files/'));"
@@ -58,20 +64,23 @@ def capture_primary_image_asset(
             "return imgs.find(src => /^https?:/i.test(src)) || '';"
             "})()"
         )
-    image_payload = _cdp_command(
-        target["webSocketDebuggerUrl"],
-        method="Runtime.evaluate",
-        params={
-            "expression": expression,
-            "returnByValue": True,
-        },
-    )
-    image_url = str(
-        cast(
-            dict[str, object],
-            cast(dict[str, object], image_payload.get("result", {})).get("result", {}),
-        ).get("value", "")
-    )
+    if not image_url:
+        image_payload = _cdp_command(
+            target["webSocketDebuggerUrl"],
+            method="Runtime.evaluate",
+            params={
+                "expression": expression,
+                "returnByValue": True,
+            },
+        )
+        image_url = str(
+            cast(
+                dict[str, object],
+                cast(dict[str, object], image_payload.get("result", {})).get(
+                    "result", {}
+                ),
+            ).get("value", "")
+        )
     if not image_url:
         raise RuntimeError("SEAART_IMAGE_URL_NOT_FOUND")
     data = _download_image_bytes(image_url, target["webSocketDebuggerUrl"])
@@ -129,6 +138,7 @@ def write_functional_evidence_bundle(
     port: int,
     expected_url_substring: str,
     service_artifact_path: Path,
+    image_url_override: str = "",
 ) -> dict[str, object]:
     evidence_root = workspace / "functional_evidence"
     screenshot_path = capture_page_screenshot(
@@ -147,6 +157,7 @@ def write_functional_evidence_bundle(
             expected_url_substring,
             evidence_root / service_artifact_path.name,
             service=service,
+            image_url_override=image_url_override,
         )
     service_artifact_path.parent.mkdir(parents=True, exist_ok=True)
     service_artifact_path.write_bytes(asset_path.read_bytes())
@@ -165,6 +176,64 @@ def write_functional_evidence_bundle(
         json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8"
     )
     return payload
+
+
+def collect_browser_debug_state(
+    *, port: int, expected_url_substring: str, service: str = ""
+) -> dict[str, object]:
+    with urllib.request.urlopen(
+        f"http://127.0.0.1:{port}/json/list", timeout=10
+    ) as response:
+        payload = json.loads(response.read().decode("utf-8", "ignore"))
+    pages = [
+        cast(dict[str, object], item)
+        for item in cast(list[object], payload)
+        if isinstance(item, dict) and str(item.get("type", "")) == "page"
+    ]
+    page_summaries = [
+        {
+            "index": idx,
+            "title": str(item.get("title", "")),
+            "url": str(item.get("url", "")),
+        }
+        for idx, item in enumerate(pages)
+    ]
+    target = _select_page_target(port, expected_url_substring)
+    expression = (
+        "(() => {"
+        "const imgs = Array.from(document.images).map((img, i) => ({index: i, src: img.currentSrc || img.src || '', width: img.naturalWidth || 0, height: img.naturalHeight || 0})).filter(item => item.src).slice(0, 20);"
+        "const textarea = document.querySelector('textarea, textarea.j-search-input');"
+        "const body = (document.body && document.body.innerText ? document.body.innerText : '').slice(0, 2000);"
+        "return JSON.stringify({url: location.href, title: document.title, textarea: textarea ? textarea.value || '' : '', followupSent: !!window.__stage2_followup_sent, regenerateClicked: !!window.__stage2_regenerate_clicked, body, images: imgs});"
+        "})()"
+    )
+    payload = _cdp_command(
+        target["webSocketDebuggerUrl"],
+        method="Runtime.evaluate",
+        params={"expression": expression, "returnByValue": True},
+    )
+    dom_state_raw = str(
+        cast(
+            dict[str, object],
+            cast(dict[str, object], payload.get("result", {})).get("result", {}),
+        ).get("value", "")
+    )
+    dom_state = {}
+    if dom_state_raw:
+        try:
+            parsed = json.loads(dom_state_raw)
+            if isinstance(parsed, dict):
+                dom_state = {str(key): value for key, value in parsed.items()}
+        except json.JSONDecodeError:
+            dom_state = {"raw": dom_state_raw}
+    return {
+        "service": service,
+        "port": port,
+        "expected_url_substring": expected_url_substring,
+        "tabs": page_summaries,
+        "selected_target": target,
+        "dom_state": dom_state,
+    }
 
 
 def _select_page_target(port: int, expected_url_substring: str) -> dict[str, str]:
