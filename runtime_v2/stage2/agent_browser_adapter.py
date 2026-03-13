@@ -7,27 +7,13 @@ from pathlib import Path
 from typing import Mapping
 
 from runtime_v2.config import RuntimeConfig
-from runtime_v2.browser.manager import default_browser_sessions_by_service
+from runtime_v2.browser.manager import (
+    default_browser_sessions_by_service,
+    expected_title_substring_for_service,
+    expected_url_substring_for_service,
+)
 
 
-_DEFAULT_TARGETS: dict[str, dict[str, str]] = {
-    "genspark": {
-        "expected_url_substring": "genspark.ai",
-        "expected_title_substring": "Genspark",
-    },
-    "seaart": {
-        "expected_url_substring": "seaart.ai",
-        "expected_title_substring": "SeaArt",
-    },
-    "geminigen": {
-        "expected_url_substring": "geminigen.ai",
-        "expected_title_substring": "Gemini",
-    },
-    "canva": {
-        "expected_url_substring": "canva.com",
-        "expected_title_substring": "Canva",
-    },
-}
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -39,13 +25,13 @@ def build_stage2_agent_browser_adapter_command(
     expected_url_substring: str = "",
     expected_title_substring: str = "",
 ) -> list[str]:
-    target = _DEFAULT_TARGETS.get(service, {})
     resolved_port = port if port is not None else _default_port_for_service(service)
-    resolved_url = expected_url_substring.strip() or str(
-        target.get("expected_url_substring", "")
+    resolved_url = expected_url_substring.strip() or expected_url_substring_for_service(
+        service
     )
-    resolved_title = expected_title_substring.strip() or str(
-        target.get("expected_title_substring", "")
+    resolved_title = (
+        expected_title_substring.strip()
+        or expected_title_substring_for_service(service)
     )
     command = [
         sys.executable,

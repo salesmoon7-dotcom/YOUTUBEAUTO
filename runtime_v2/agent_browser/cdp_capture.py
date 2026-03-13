@@ -10,6 +10,8 @@ from typing import cast
 
 import websocket
 
+from runtime_v2.browser.manager import expected_url_substring_for_service
+
 
 def capture_page_screenshot(
     port: int, expected_url_substring: str, output_path: Path
@@ -123,7 +125,7 @@ def _select_page_target(port: int, expected_url_substring: str) -> dict[str, str
         for item in cast(list[object], payload)
         if isinstance(item, dict)
     ]
-    if expected_url_substring == "genspark.ai/agents?type=image_generation_agent":
+    if expected_url_substring == expected_url_substring_for_service("genspark"):
         for item in pages:
             if str(item.get("type", "")) != "page":
                 continue
@@ -138,7 +140,7 @@ def _select_page_target(port: int, expected_url_substring: str) -> dict[str, str
             continue
         url = str(item.get("url", ""))
         if expected_url_substring in url or (
-            expected_url_substring == "genspark.ai/agents?type=image_generation_agent"
+            expected_url_substring == expected_url_substring_for_service("genspark")
             and url.startswith("https://www.genspark.ai/agents?id=")
         ):
             return {

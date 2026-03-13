@@ -13,16 +13,44 @@ import urllib.request
 from runtime_v2.config import RuntimeConfig, browser_session_root
 
 
+SERVICE_TARGETS: dict[str, dict[str, str]] = {
+    "chatgpt": {
+        "start_url": "https://chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom",
+        "expected_url_substring": "chatgpt.com",
+        "expected_title_substring": "ChatGPT",
+    },
+    "genspark": {
+        "start_url": "https://www.genspark.ai/",
+        "expected_url_substring": "genspark.ai/agents?type=image_generation_agent",
+        "expected_title_substring": "Genspark",
+    },
+    "seaart": {
+        "start_url": "https://www.seaart.ai/ko/create/image?id=d4kssode878c7387fae0&model_ver_no=ef24b47a8d618127c9342fd0635aedb9",
+        "expected_url_substring": "seaart.ai",
+        "expected_title_substring": "SeaArt",
+    },
+    "geminigen": {
+        "start_url": "https://geminigen.ai/app/video-gen",
+        "expected_url_substring": "geminigen.ai",
+        "expected_title_substring": "Gemini",
+    },
+    "canva": {
+        "start_url": "https://www.canva.com/design/DAHAnm1uUBA/-FWB5gw_ir1U7Ls0ZHF9Ig/edit",
+        "expected_url_substring": "canva.com",
+        "expected_title_substring": "Canva",
+    },
+}
+
 START_URLS: dict[str, str] = {
-    "chatgpt": "https://chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom",
-    "genspark": "https://www.genspark.ai/",
-    "seaart": "https://www.seaart.ai/ko/create/image?id=d4kssode878c7387fae0&model_ver_no=ef24b47a8d618127c9342fd0635aedb9",
-    "geminigen": "https://geminigen.ai/app/video-gen",
-    "canva": "https://www.canva.com/design/DAHAnm1uUBA/-FWB5gw_ir1U7Ls0ZHF9Ig/edit",
+    service: target["start_url"] for service, target in SERVICE_TARGETS.items()
 }
 
 READY_URL_RULES: dict[str, tuple[str, ...]] = {
     "chatgpt": ("https://chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom",),
+    "genspark": (
+        "https://www.genspark.ai/agents?type=image_generation_agent",
+        "https://www.genspark.ai/agents?id=",
+    ),
     "seaart": ("https://www.seaart.ai/ko/create/image",),
     "canva": ("/design/", "/edit"),
 }
@@ -1076,6 +1104,16 @@ def _start_url_for_service(service: str) -> str:
     if override:
         return override
     return START_URLS.get(service, "about:blank")
+
+
+def expected_url_substring_for_service(service: str) -> str:
+    target = SERVICE_TARGETS.get(service, {})
+    return str(target.get("expected_url_substring", ""))
+
+
+def expected_title_substring_for_service(service: str) -> str:
+    target = SERVICE_TARGETS.get(service, {})
+    return str(target.get("expected_title_substring", ""))
 
 
 def _launch_debug_browser(session: BrowserSession) -> bool:
