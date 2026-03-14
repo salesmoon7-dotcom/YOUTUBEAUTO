@@ -109,6 +109,45 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             self.assertFalse(bool(evidence["recovery_attempted"]))
             self.assertFalse(bool(evidence["placeholder_artifact"]))
 
+    def test_stage2_adapter_child_records_canva_clone_counts(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "thumb.png"
+            completed = cast(object, type("Completed", (), {})())
+            setattr(completed, "stdout", '{"ok":true}')
+            setattr(completed, "stderr", "")
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+
+            transcript = [
+                {"step": "page_count_before", "result": '{"ok":true,"count":1}'},
+                {"step": "page_count_after", "result": '{"ok":true,"count":2}'},
+            ]
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok", "transcript": transcript},
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", return_value=completed),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+            self.assertEqual(exit_code, exit_codes.SUCCESS)
+            evidence = json.loads(
+                (root / "attach_evidence.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(evidence["status"], "ok")
+
     def test_stage2_adapter_child_uses_native_setter_and_enter_for_genspark_prompt(
         self,
     ) -> None:

@@ -1727,6 +1727,33 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 "script": '(() => { const btn = document.querySelector(\'#generate-btn\'); if (!btn) return JSON.stringify({ok:false,error:"NO_BUTTON"}); btn.click(); return JSON.stringify({ok:true, step:"clicked_generate"}); })()',
             },
         ]
+    elif service == "canva":
+        pre_actions = [
+            {
+                "type": "eval",
+                "script": "(() => { const count = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; return JSON.stringify({ok:true, step:'page_count_before', count}); })()",
+            },
+            {
+                "type": "eval",
+                "script": "(() => { document.body && document.body.click(); return JSON.stringify({ok:true, step:'body_focused'}); })()",
+            },
+            {
+                "type": "eval",
+                "script": "(() => { document.dispatchEvent(new KeyboardEvent('keydown', {key:'a', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'a', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keydown', {key:'c', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'c', ctrlKey:true, bubbles:true})); return JSON.stringify({ok:true, step:'copied_template'}); })()",
+            },
+            {
+                "type": "eval",
+                "script": "(() => { const labels=['페이지 추가','Add a new page']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text=((item.innerText||item.textContent||'')+' '+(item.getAttribute('aria-label')||'')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:false,error:'NO_ADD_PAGE_BUTTON'}); btn.click(); return JSON.stringify({ok:true, step:'clicked_add_page'}); })()",
+            },
+            {
+                "type": "eval",
+                "script": "(() => { document.dispatchEvent(new KeyboardEvent('keydown', {key:'v', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'v', ctrlKey:true, bubbles:true})); return JSON.stringify({ok:true, step:'pasted_template'}); })()",
+            },
+            {
+                "type": "eval",
+                "script": "(() => { const count = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; return JSON.stringify({ok:true, step:'page_count_after', count}); })()",
+            },
+        ]
     job = JobContract(
         job_id=f"agent-browser-stage2-{service}",
         workload="agent_browser_verify",
@@ -1856,6 +1883,40 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         ref_images_resolved=ref_images_resolved,
         ref_images_attach_attempted=bool(ref_images_requested),
     )
+    if service == "canva":
+        transcript_items = result.get("transcript", [])
+        before_count = 0
+        after_count = 0
+        if isinstance(transcript_items, list):
+            for item in transcript_items:
+                if not isinstance(item, dict):
+                    continue
+                step = str(item.get("step", ""))
+                result_text = str(item.get("result", ""))
+                try:
+                    parsed = json.loads(result_text)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+                if not isinstance(parsed, dict):
+                    continue
+                if step == "page_count_before":
+                    before_count = int(parsed.get("count", 0) or 0)
+                elif step == "page_count_after":
+                    after_count = int(parsed.get("count", 0) or 0)
+        write_stage2_attach_evidence(
+            workspace=workspace,
+            service=service,
+            port=args.port,
+            result=result,
+            probe_debug_only=True,
+            recovery_attempted=False,
+            placeholder_artifact=False,
+            extra_details={
+                "page_count_before": before_count,
+                "page_count_after": after_count,
+                "clone_ok": after_count > before_count,
+            },
+        )
     if service in {"seaart", "genspark", "canva", "geminigen"}:
         debug_state_path: Path | None = None
         retry_trace_path: Path | None = None

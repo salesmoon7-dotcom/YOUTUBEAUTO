@@ -23,6 +23,21 @@ from runtime_v2.workers.native_only import (
 )
 
 
+def _int_detail(details: dict[str, object], key: str) -> int:
+    raw_value = details.get(key, 0)
+    if isinstance(raw_value, bool):
+        return int(raw_value)
+    if isinstance(raw_value, int):
+        return raw_value
+    if isinstance(raw_value, float):
+        return int(raw_value)
+    if isinstance(raw_value, str):
+        text = raw_value.strip()
+        if text:
+            return int(text)
+    return 0
+
+
 def run_canva_job(
     job: JobContract, artifact_root: Path, registry_file: Path | None = None
 ) -> dict[str, object]:
@@ -69,6 +84,12 @@ def run_canva_job(
         stderr_path = Path(str(adapter_result["stderr_path"]))
         attach_evidence = attach_evidence_path(workspace)
         attach_evidence_payload = load_stage2_attach_evidence(workspace)
+        attach_details_raw = attach_evidence_payload.get("details", {})
+        attach_details = (
+            cast(dict[str, object], attach_details_raw)
+            if isinstance(attach_details_raw, dict)
+            else {}
+        )
         if not bool(adapter_result.get("ok", False)):
             return finalize_worker_result(
                 workspace,
@@ -126,6 +147,9 @@ def run_canva_job(
                 ),
                 "current_url": str(attach_evidence_payload.get("current_url", "")),
                 "current_title": str(attach_evidence_payload.get("current_title", "")),
+                "page_count_before": _int_detail(attach_details, "page_count_before"),
+                "page_count_after": _int_detail(attach_details, "page_count_after"),
+                "clone_ok": bool(attach_details.get("clone_ok", False)),
             },
             completion={
                 "state": "succeeded",
