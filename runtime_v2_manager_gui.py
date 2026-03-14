@@ -5,6 +5,7 @@ import os
 import queue
 import threading
 import tkinter as tk
+from collections import deque
 from pathlib import Path
 from time import sleep, time
 from tkinter import filedialog, messagebox, ttk
@@ -109,11 +110,12 @@ def _read_jsonl_tail(path: Path, limit: int = 40) -> list[dict[str, object]]:
     if not path.exists():
         return []
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        with path.open("r", encoding="utf-8") as handle:
+            lines = deque(handle, maxlen=max(1, limit))
     except OSError:
         return []
     records: list[dict[str, object]] = []
-    for line in lines[-limit:]:
+    for line in lines:
         if not line.strip():
             continue
         try:
@@ -126,8 +128,9 @@ def _read_jsonl_tail(path: Path, limit: int = 40) -> list[dict[str, object]]:
     return records
 
 
-def _latest_final_output_record(path: Path) -> dict[str, object] | None:
-    records = _read_jsonl_tail(path, limit=200)
+def _latest_final_output_record_from_records(
+    records: list[dict[str, object]],
+) -> dict[str, object] | None:
     for record in reversed(records):
         if str(record.get("event", "")).strip() != "job_summary":
             continue
@@ -2600,9 +2603,10 @@ class RuntimeV2ManagerGUI:
         )
         result_status = "-" if metadata is None else str(metadata.get("status", "-"))
         result_code = "-" if metadata is None else str(metadata.get("code", "-"))
-        final_record = _latest_final_output_record(
-            self.config.control_plane_events_file
+        event_records = self._read_cached_jsonl_tail(
+            self.config.control_plane_events_file, limit=200
         )
+        final_record = _latest_final_output_record_from_records(event_records)
         last_final_artifact = (
             "" if final_record is None else str(final_record.get("final_artifact", ""))
         )

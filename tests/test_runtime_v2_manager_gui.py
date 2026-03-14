@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from runtime_v2_manager_gui import (
     _display_worker_error_code,
@@ -8,12 +10,45 @@ from runtime_v2_manager_gui import (
     _format_seed_summary,
     _format_soak_summary,
     _format_terminal_evidence_summary,
+    _latest_final_output_record_from_records,
+    _read_jsonl_tail,
     _readiness_blocker_messages,
     _worker_error_code_mismatch_warning,
 )
 
 
 class RuntimeV2ManagerGuiTests(unittest.TestCase):
+    def test_read_jsonl_tail_returns_only_latest_records(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "events.jsonl"
+            payload = "\n".join(
+                f'{{"index": {index}, "event": "job_summary"}}' for index in range(10)
+            )
+            _ = path.write_text(payload + "\n", encoding="utf-8")
+
+            records = _read_jsonl_tail(path, limit=3)
+
+        self.assertEqual([record["index"] for record in records], [7, 8, 9])
+
+    def test_latest_final_output_record_from_records_uses_existing_tail(self) -> None:
+        self.assertEqual(
+            _latest_final_output_record_from_records(
+                [
+                    {"event": "job_summary", "final_output": False},
+                    {
+                        "event": "job_summary",
+                        "final_output": True,
+                        "final_artifact": "final.mp4",
+                    },
+                ]
+            ),
+            {
+                "event": "job_summary",
+                "final_output": True,
+                "final_artifact": "final.mp4",
+            },
+        )
+
     def test_display_worker_error_code_expands_restart_exhausted(self) -> None:
         self.assertEqual(
             _display_worker_error_code("BROWSER_RESTART_EXHAUSTED"),
