@@ -24,9 +24,9 @@ ZoomMode = Literal["in", "out"]
 OUTPUT_WIDTH = 1920
 OUTPUT_HEIGHT = 1080
 OUTPUT_FPS = 60
-UPSCALE_WIDTH = 2400
-DEFAULT_PAN_PCT = 0.05
-DEFAULT_ZOOM_PCT = 0.40
+UPSCALE_WIDTH = 8000
+DEFAULT_PAN_PCT = 0.40
+DEFAULT_ZOOM_PCT = 0.13
 PAN_DIRECTION_SEQUENCE: tuple[PanDirection, ...] = ("left", "right", "up", "down")
 ZOOM_MODE_SEQUENCE: tuple[ZoomMode, ...] = ("in", "out")
 

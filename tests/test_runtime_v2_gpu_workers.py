@@ -635,8 +635,8 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
                 if output_name == "kenburns_silent.mp4":
                     filter_arg = str(command[command.index("-vf") + 1])
                     self.assertIn("zoompan=", filter_arg)
-                    self.assertIn("1.4000", filter_arg)
-                    self.assertIn("0.0500", filter_arg)
+                    self.assertIn("1.1300", filter_arg)
+                    self.assertIn("0.4000", filter_arg)
                 _ = (cwd / output_name).write_bytes(b"mp4")
                 return {
                     "command": command,
@@ -719,9 +719,9 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
                     filter_arg = str(command[command.index("-vf") + 1])
                     if output_path.name == "scene_a_silent.mp4":
                         self.assertIn("zoompan=", filter_arg)
-                        self.assertIn("0.0500", filter_arg)
+                        self.assertIn("0.4000", filter_arg)
                     if output_path.name == "scene_b_silent.mp4":
-                        self.assertIn("1.4000", filter_arg)
+                        self.assertIn("1.1300", filter_arg)
                 _ = output_path.write_bytes(b"mp4")
                 return {
                     "command": command,
@@ -825,8 +825,8 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertIn("scene_a_silent.mp4", filter_args)
         self.assertIn("scene_b_silent.mp4", filter_args)
-        self.assertIn("1.4000", filter_args["scene_a_silent.mp4"])
-        self.assertIn("1.4000", filter_args["scene_b_silent.mp4"])
+        self.assertIn("1.1300", filter_args["scene_a_silent.mp4"])
+        self.assertIn("1.1300", filter_args["scene_b_silent.mp4"])
         self.assertNotEqual(
             filter_args["scene_a_silent.mp4"], filter_args["scene_b_silent.mp4"]
         )
