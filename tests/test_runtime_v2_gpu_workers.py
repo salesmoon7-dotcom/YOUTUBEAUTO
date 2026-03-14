@@ -1193,9 +1193,86 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertIn("scene_a_silent.mp4", filter_args)
         self.assertIn("scene_b_silent.mp4", filter_args)
         self.assertIn("1.1300", filter_args["scene_a_silent.mp4"])
-        self.assertIn("1.1300", filter_args["scene_b_silent.mp4"])
+        self.assertIn("z='1.1'", filter_args["scene_b_silent.mp4"])
         self.assertNotEqual(
             filter_args["scene_a_silent.mp4"], filter_args["scene_b_silent.mp4"]
+        )
+
+    def test_kenburns_bundle_manifest_records_legacy_effect_sequence(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            scenes = []
+            for idx in range(8):
+                image = root / f"scene-{idx}.png"
+                _ = image.write_bytes(b"png")
+                scenes.append(
+                    {
+                        "scene_key": f"scene_{idx + 1:02d}",
+                        "source_path": str(image.resolve()),
+                        "duration_sec": 4,
+                    }
+                )
+            bundle_map_path = root / "scene_bundle_map.json"
+            bundle_map_path.write_text(
+                json.dumps({"scenes": scenes}, ensure_ascii=True), encoding="utf-8"
+            )
+            job = JobContract(
+                job_id="ken-effect-sequence",
+                workload="kenburns",
+                payload={"scene_bundle_map_path": str(bundle_map_path.resolve())},
+            )
+
+            def fake_process(
+                command: list[str],
+                *,
+                cwd: Path,
+                extra_env: dict[str, str] | None = None,
+                timeout_sec: int = 3600,
+            ) -> dict[str, object]:
+                _ = extra_env
+                _ = timeout_sec
+                output_path = Path(str(command[-1]))
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"mp4")
+                return {
+                    "command": command,
+                    "cwd": str(cwd),
+                    "exit_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "timed_out": False,
+                    "timeout_sec": 3600,
+                    "duration_sec": 0.01,
+                }
+
+            with patch(
+                "runtime_v2.workers.kenburns_worker.run_external_process",
+                side_effect=fake_process,
+            ):
+                result = run_kenburns_job(job, artifact_root=artifact_root)
+
+            completion = cast(dict[object, object], result["completion"])
+            manifest_path = Path(str(completion["final_artifact_path"]))
+            manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+        scenes_payload = cast(list[object], manifest_payload["scenes"])
+        effect_types: list[object] = []
+        for scene in scenes_payload:
+            typed_scene = cast(dict[object, object], scene)
+            effect_types.append(typed_scene["effect_type"])
+        self.assertEqual(
+            effect_types,
+            [
+                "zoom_in_center",
+                "pan_left_to_right",
+                "zoom_out_center",
+                "pan_right_to_left",
+                "zoom_in_top_left",
+                "pan_up_to_down",
+                "zoom_in_bottom_right",
+                "pan_down_to_up",
+            ],
         )
 
     def test_kenburns_bundle_job_respects_output_path_overrides(self) -> None:

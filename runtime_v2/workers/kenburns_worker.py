@@ -20,6 +20,16 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 PanDirection = Literal["left", "right", "up", "down"]
 ZoomMode = Literal["in", "out"]
+EffectType = Literal[
+    "zoom_in_center",
+    "zoom_out_center",
+    "pan_left_to_right",
+    "pan_right_to_left",
+    "zoom_in_top_left",
+    "zoom_in_bottom_right",
+    "pan_up_to_down",
+    "pan_down_to_up",
+]
 
 OUTPUT_WIDTH = 1920
 OUTPUT_HEIGHT = 1080
@@ -29,6 +39,16 @@ DEFAULT_PAN_PCT = 0.40
 DEFAULT_ZOOM_PCT = 0.13
 PAN_DIRECTION_SEQUENCE: tuple[PanDirection, ...] = ("left", "right", "up", "down")
 ZOOM_MODE_SEQUENCE: tuple[ZoomMode, ...] = ("in", "out")
+EFFECT_SEQUENCE: tuple[EffectType, ...] = (
+    "zoom_in_center",
+    "pan_left_to_right",
+    "zoom_out_center",
+    "pan_right_to_left",
+    "zoom_in_top_left",
+    "pan_up_to_down",
+    "zoom_in_bottom_right",
+    "pan_down_to_up",
+)
 
 
 def run_kenburns_job(
@@ -360,6 +380,7 @@ def _run_kenburns_bundle_job(
                 "output_path": str(output_path.resolve()),
                 "duration_sec": duration_sec,
                 "audio_path": raw_audio,
+                "effect_type": motion["effect_type"],
                 "pan_direction": motion["pan_direction"],
                 "pan_pct": motion["pan_pct"],
                 "zoom_mode": motion["zoom_mode"],
@@ -492,6 +513,10 @@ def _resolve_local_output_path(raw_path: str, *, base_dir: Path) -> Path | None:
 def _resolve_motion_settings(
     payload: dict[str, object], *, scene_index: int
 ) -> dict[str, object]:
+    effect_type = _normalize_effect_type(
+        payload.get("effect_type"),
+        fallback=EFFECT_SEQUENCE[(max(scene_index, 1) - 1) % len(EFFECT_SEQUENCE)],
+    )
     pan_direction = _normalize_pan_direction(
         payload.get("pan_direction"),
         fallback=PAN_DIRECTION_SEQUENCE[
@@ -507,11 +532,19 @@ def _resolve_motion_settings(
     pan_pct = _normalize_percentage(payload.get("pan_pct"), DEFAULT_PAN_PCT)
     zoom_pct = _normalize_percentage(payload.get("zoom_pct"), DEFAULT_ZOOM_PCT)
     return {
+        "effect_type": effect_type,
         "pan_direction": pan_direction,
         "zoom_mode": zoom_mode,
         "pan_pct": pan_pct,
         "zoom_pct": zoom_pct,
     }
+
+
+def _normalize_effect_type(value: object, *, fallback: EffectType) -> EffectType:
+    normalized = str(value).strip().lower()
+    if normalized in set(EFFECT_SEQUENCE):
+        return cast(EffectType, normalized)
+    return fallback
 
 
 def _normalize_pan_direction(value: object, *, fallback: PanDirection) -> PanDirection:
@@ -573,10 +606,43 @@ def _silent_kenburns_command(
 
 def _build_kenburns_filter(*, frame_count: int, motion: dict[str, object]) -> str:
     progress = "if(eq(duration,1),0,on/(duration-1))"
+    effect_type = cast(EffectType, motion["effect_type"])
     pan_direction = cast(PanDirection, motion["pan_direction"])
     zoom_mode = cast(ZoomMode, motion["zoom_mode"])
     pan_pct = cast(float, motion["pan_pct"])
     zoom_pct = cast(float, motion["zoom_pct"])
+    if effect_type in {
+        "pan_left_to_right",
+        "pan_right_to_left",
+        "pan_up_to_down",
+        "pan_down_to_up",
+    }:
+        ease_expr = f"({progress}*{progress}*(3-2*{progress}))"
+        zoom_expr = "1.1"
+        travel_x = "(iw-iw/zoom)"
+        travel_y = "(ih-ih/zoom)"
+        if effect_type == "pan_left_to_right":
+            x_expr = f"{travel_x}*{pan_pct:.4f}*{ease_expr}"
+            y_expr = "ih/2-(ih/zoom/2)"
+        elif effect_type == "pan_right_to_left":
+            x_expr = f"{travel_x}*(1-{pan_pct:.4f}*{ease_expr})"
+            y_expr = "ih/2-(ih/zoom/2)"
+        elif effect_type == "pan_up_to_down":
+            x_expr = "iw/2-(iw/zoom/2)"
+            y_expr = f"{travel_y}*{pan_pct:.4f}*{ease_expr}"
+        else:
+            x_expr = "iw/2-(iw/zoom/2)"
+            y_expr = f"{travel_y}*(1-{pan_pct:.4f}*{ease_expr})"
+        return (
+            f"scale={UPSCALE_WIDTH}:-2,"
+            f"zoompan=z='{zoom_expr}':x='{x_expr}':y='{y_expr}':"
+            f"d={frame_count}:fps={OUTPUT_FPS}:s={OUTPUT_WIDTH}x{OUTPUT_HEIGHT},"
+            "format=yuv420p"
+        )
+    if effect_type == "zoom_in_top_left":
+        pan_direction = "left"
+    elif effect_type == "zoom_in_bottom_right":
+        pan_direction = "right"
     max_zoom = 1.0 + zoom_pct
     if zoom_mode == "out":
         zoom_expr = f"max({max_zoom:.4f}-{zoom_pct:.4f}*{progress},1.0)"
