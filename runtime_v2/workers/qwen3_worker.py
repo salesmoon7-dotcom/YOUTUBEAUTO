@@ -104,6 +104,29 @@ def _normalize_output_format(config: dict[str, object]) -> str:
     return "flac"
 
 
+def _legacy_qwen3_runtime(config: dict[str, object]) -> dict[str, object]:
+    generation = config.get("generation", {})
+    typed_generation = generation if isinstance(generation, dict) else {}
+    return {
+        "python_path": str(config.get("python_path", "")).strip(),
+        "model_id": str(config.get("model_id", "")).strip(),
+        "device": str(config.get("device", "")).strip(),
+        "dtype": str(config.get("dtype", "")).strip(),
+        "attn_implementation": str(config.get("attn_implementation", "")).strip(),
+        "generation": {
+            "x_vector_only_mode": bool(
+                typed_generation.get("x_vector_only_mode", True)
+            ),
+            "language": str(typed_generation.get("language", "")).strip(),
+            "max_new_tokens": typed_generation.get("max_new_tokens"),
+            "temperature": typed_generation.get("temperature"),
+            "top_k": typed_generation.get("top_k"),
+            "top_p": typed_generation.get("top_p"),
+            "repetition_penalty": typed_generation.get("repetition_penalty"),
+        },
+    }
+
+
 def _build_rvc_next_job(
     job: JobContract, verified_output: Path
 ) -> dict[str, object] | None:
@@ -146,6 +169,7 @@ def run_qwen3_job(
         return {"worker": "qwen3_tts", "status": "failed", "error_code": "missing_job"}
     workspace = prepare_workspace(job, artifact_root=artifact_root)
     legacy_config = _load_legacy_qwen3_config()
+    legacy_runtime = _legacy_qwen3_runtime(legacy_config)
     voice_texts = _voice_texts_payload(job.payload)
     if not voice_texts:
         return finalize_worker_result(
@@ -179,6 +203,7 @@ def run_qwen3_job(
         "channel": _int_value(job.payload.get("channel", 0), 0),
         "reference_audio": reference_audio,
         "output_format": output_format,
+        **legacy_runtime,
         "rows": [
             {
                 "row_index": 0,
@@ -189,6 +214,7 @@ def run_qwen3_job(
                 "voice_texts": voice_texts,
                 "ref_audio_used": reference_audio,
                 "output_format": output_format,
+                **legacy_runtime,
             }
         ],
     }
@@ -245,6 +271,7 @@ def run_qwen3_job(
                     "reference_audio": reference_audio,
                     "ref_audio_used": reference_audio,
                     "output_format": output_format,
+                    **legacy_runtime,
                 },
                 completion={"state": "failed", "final_output": False},
             )
@@ -277,6 +304,7 @@ def run_qwen3_job(
                 "reference_audio": reference_audio,
                 "ref_audio_used": reference_audio,
                 "output_format": output_format,
+                **legacy_runtime,
             },
             next_jobs=next_jobs,
             completion={
@@ -301,5 +329,6 @@ def run_qwen3_job(
             "reference_audio": reference_audio,
             "ref_audio_used": reference_audio,
             "output_format": output_format,
+            **legacy_runtime,
         },
     )

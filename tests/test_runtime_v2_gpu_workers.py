@@ -208,6 +208,84 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(str(details["ref_audio_used"]), str(ref_audio.resolve()))
         self.assertEqual(str(details["output_format"]), "flac")
 
+    def test_qwen3_worker_records_legacy_model_and_generation_defaults(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            image_path = root / "image.png"
+            output_path = artifact_root / "speech.wav"
+            ref_audio = root / "ref.mp3"
+            _ = image_path.write_bytes(b"png")
+            _ = ref_audio.write_bytes(b"mp3")
+            stdout_path = root / "artifacts" / "stdout.log"
+            stderr_path = root / "artifacts" / "stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+            job = JobContract(
+                job_id="qwen-job-runtime-details",
+                workload="qwen3_tts",
+                payload={
+                    "channel": 4,
+                    "voice_texts": [
+                        {"col": "#01", "text": "hello world", "original_voices": [1]}
+                    ],
+                    "image_path": str(image_path.resolve()),
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                },
+            )
+
+            with (
+                patch(
+                    "runtime_v2.workers.qwen3_worker.LEGACY_QWEN3_CONFIG",
+                    root / "qwen3_tts_config.json",
+                ),
+                patch(
+                    "runtime_v2.workers.qwen3_worker.run_verified_adapter_command",
+                    return_value={
+                        "ok": True,
+                        "stdout_path": stdout_path,
+                        "stderr_path": stderr_path,
+                        "output_path": output_path,
+                        "reused": False,
+                    },
+                ),
+            ):
+                _ = (root / "qwen3_tts_config.json").write_text(
+                    json.dumps(
+                        {
+                            "python_path": "D:/qwen3_tts_env/Scripts/python.exe",
+                            "model_id": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+                            "device": "cuda:0",
+                            "dtype": "float32",
+                            "attn_implementation": "eager",
+                            "reference_audio_default": str(ref_audio.resolve()),
+                            "reference_audio_by_channel": {
+                                "4": str(ref_audio.resolve())
+                            },
+                            "output_format": "mp3",
+                            "generation": {
+                                "x_vector_only_mode": True,
+                                "language": "Auto",
+                            },
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                result = run_qwen3_job(job, artifact_root=artifact_root)
+
+        details = cast(dict[object, object], result["details"])
+        generation = cast(dict[object, object], details["generation"])
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(details["model_id"], "Qwen/Qwen3-TTS-12Hz-1.7B-Base")
+        self.assertEqual(details["device"], "cuda:0")
+        self.assertEqual(details["dtype"], "float32")
+        self.assertEqual(details["attn_implementation"], "eager")
+        self.assertTrue(bool(generation["x_vector_only_mode"]))
+        self.assertEqual(generation["language"], "Auto")
+
     def test_qwen3_worker_fails_when_reference_audio_is_missing(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
