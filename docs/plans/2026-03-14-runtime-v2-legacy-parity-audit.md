@@ -118,7 +118,7 @@ Checklist:
 | Initial URL | `geminigen_automation.py:253-257` defines `generate_page_url=https://geminigen.ai/app/video-gen`, plus `/generate` and `/` alternatives | `SERVICE_TARGETS['geminigen'].start_url=https://geminigen.ai/app/video-gen` | MATCHED | main runtime_v2 start URL matches the primary legacy generate page |
 | Browser family / port/profile | `geminigen_automation.py:149-152` uses UC Chrome userdata `geminigen_chrome_userdata` | `runtime_v2/browser/manager.py:483-507` maps `geminigen -> geminigen_uc/geminigen_chrome_userdata`, browser family `uc` | DIFFERS-B | browser family/session-root intent aligned, but exact configured port/profile path still needs one-to-one path equality confirmation |
 | First-frame handling | legacy image-to-video flow | `geminigen_worker.py` uses `first_frame_path` | MATCHED | contract exists in both |
-| Provider/model/control semantics | `geminigen_automation.py:261-331` defines explicit provider cards, tabs, model dropdown, generation mode, orientation/resolution/duration radios, and generate button selectors | runtime_v2 `geminigen_worker.py` currently guarantees prompt + first_frame + truthful artifact capture only, and still does not surface provider/model/orientation/resolution/duration selector semantics as explicit runtime_v2 contracts | DIFFERS-A | explicit browser control semantics are not yet mirrored in runtime_v2 contracts |
+| Provider/model/control semantics | `geminigen_automation.py:261-331` defines explicit provider cards, tabs, model dropdown, generation mode, orientation/resolution/duration radios, and generate button selectors | runtime_v2 now surfaces `provider/model/generation_mode/orientation/resolution/duration` through `native_geminigen.json` and worker `details`, but does not yet drive the full UI selector sequence explicitly | DIFFERS-B | control semantics are now preserved in the contract, but not yet reproduced as direct browser-step guarantees |
 | Video capture/export | legacy download/export semantics plus explicit retry/cooldown/session rules in `geminigen_automation.py:153-208` | runtime_v2 truthful video capture in CDP path | DIFFERS-B | runtime_v2 is stricter about truthful artifact gate and simpler than legacy retry/session policy |
 
 ---
@@ -192,6 +192,5 @@ Checklist:
 
 ## 4. Immediate Next Audit Actions
 
-1. Extract the exact legacy Canva and GeminiGen browser scripts/configs and clear the `UNKNOWN-PATH` / `UNKNOWN-EVIDENCE` rows.
-2. Split all remaining browser/service diffs into `DIFFERS-A` vs `DIFFERS-B` and resolve classification ambiguity.
-3. Decide whether the current restored `effect_type` + fixed-zoom pan model is sufficient, or whether the full legacy preset system beyond the current 8-step sequence also needs to be ported.
+1. Finish the remaining browser-side `DIFFERS-A` by deciding whether Canva’s full edit/generate/download sequence must be surfaced explicitly.
+2. Decide whether the current restored `effect_type` + fixed-zoom pan model is sufficient, or whether the full legacy preset system beyond the current 8-step sequence also needs to be ported.
