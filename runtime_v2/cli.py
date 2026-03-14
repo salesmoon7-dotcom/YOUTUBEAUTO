@@ -1173,6 +1173,58 @@ def _parse_stage2_agent_browser_services(raw: str) -> list[str]:
     return services
 
 
+def _load_optional_json_dict(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    try:
+        raw_payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(raw_payload, dict):
+        return {}
+    return {str(key): value for key, value in raw_payload.items()}
+
+
+def _stage2_transcript_items(result: dict[str, object]) -> list[dict[str, object]]:
+    transcript_items = result.get("transcript", [])
+    if isinstance(transcript_items, list):
+        normalized = [item for item in transcript_items if isinstance(item, dict)]
+        if normalized:
+            return cast(list[dict[str, object]], normalized)
+    details_raw = result.get("details", {})
+    details = details_raw if isinstance(details_raw, dict) else {}
+    transcript_path = Path(str(details.get("transcript_path", "")).strip())
+    if not transcript_path.exists():
+        return []
+    transcript_payload = _load_optional_json_dict(transcript_path)
+    steps = transcript_payload.get("steps", [])
+    if not isinstance(steps, list):
+        return []
+    normalized_steps = [item for item in steps if isinstance(item, dict)]
+    return cast(list[dict[str, object]], normalized_steps)
+
+
+def _stage2_result_by_step(result: dict[str, object]) -> dict[str, dict[str, object]]:
+    mapped: dict[str, dict[str, object]] = {}
+    for item in _stage2_transcript_items(result):
+        raw_output = item.get("result", item.get("output", ""))
+        try:
+            parsed = json.loads(str(raw_output))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if isinstance(parsed, str):
+            try:
+                parsed = json.loads(parsed)
+            except json.JSONDecodeError:
+                continue
+        if not isinstance(parsed, dict):
+            continue
+        step = str(parsed.get("step", "")).strip()
+        if step:
+            mapped[step] = {str(key): value for key, value in parsed.items()}
+    return mapped
+
+
 def _stage2_runner_for_service(service: str):
     mapping = {
         "genspark": run_genspark_job,
@@ -1632,9 +1684,14 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
     prompt = ""
     ref_img_1 = ""
     ref_img_2 = ""
+    ref_img = ""
     ref_images_requested: list[str] = []
     ref_images_resolved: list[str] = []
     request_payload_obj: dict[str, object] = {}
+    bg_prompt = ""
+    line1 = ""
+    line2 = ""
+    thumb_data = _load_optional_json_dict(workspace / "thumb_data.json")
     if request_path.exists():
         try:
             request_payload = json.loads(request_path.read_text(encoding="utf-8"))
@@ -1655,6 +1712,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         prompt = str(request_payload_obj.get("prompt", "")).strip()
         ref_img_1 = str(request_payload_obj.get("ref_img_1", "")).strip()
         ref_img_2 = str(request_payload_obj.get("ref_img_2", "")).strip()
+        ref_img = str(request_payload_obj.get("ref_img", "")).strip()
         try:
             ref_images_requested, ref_images_resolved = _resolve_stage2_ref_image_paths(
                 request_payload_obj
@@ -1674,6 +1732,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 ref_upload_error_code="REF_IMAGE_UPLOAD_FAILED",
             )
             return exit_codes.BROWSER_UNHEALTHY
+    canva_extra_details: dict[str, object] | None = None
     if prompt and service == "genspark":
         effective_prompt = (
             f"{prompt}\n"
@@ -1728,7 +1787,11 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
         ]
     elif service == "canva":
-        pre_actions = [
+        bg_prompt = str(thumb_data.get("bg_prompt", prompt)).strip()
+        line1 = str(thumb_data.get("line1", "")).strip()
+        line2 = str(thumb_data.get("line2", "")).strip()
+        pre_actions = []
+        actions = [
             {
                 "type": "eval",
                 "script": "(() => { const count = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; return JSON.stringify({ok:true, step:'page_count_before', count}); })()",
@@ -1753,7 +1816,107 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 "type": "eval",
                 "script": "(() => { const count = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; return JSON.stringify({ok:true, step:'page_count_after', count}); })()",
             },
+            {
+                "type": "eval",
+                "script": "(() => { const targets = Array.from(document.querySelectorAll('div.fbzKiw')).filter(node => node instanceof HTMLElement && node.offsetWidth > 0 && node.offsetHeight > 0); const target = targets.length ? targets[targets.length - 1] : document.body; if (target instanceof HTMLElement) { target.click(); return JSON.stringify({ok:true, step:'focused_background_canvas'}); } return JSON.stringify({ok:false,error:'NO_BACKGROUND_CANVAS'}); })()",
+            },
+            {
+                "type": "eval",
+                "script": "(() => { const labels = ['배경 생성', 'Create background', 'Background generator']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:false,error:'NO_BACKGROUND_GENERATE_BUTTON'}); btn.click(); return JSON.stringify({ok:true, step:'opened_background_generate_panel'}); })()",
+            },
+            {
+                "type": "eval",
+                "script": '(() => { const selectors = [\'textarea[placeholder*="예시"]\',\'textarea[placeholder*="Describe"]\',\'textarea[placeholder*="prompt"]\',\'textarea[aria-label*="프롬프트"]\',\'textarea[aria-label*="Prompt"]\',\'div[role="dialog"] textarea\',\'div[contenteditable="true"][role="textbox"]\',\'div[contenteditable="true"][data-lexical-editor="true"]\',\'[role="textbox"][contenteditable="true"]\',\'textarea\']; const promptText = '
+                + json.dumps(bg_prompt, ensure_ascii=True)
+                + "; for (const selector of selectors) { const input = document.querySelector(selector); if (!(input instanceof HTMLElement)) continue; input.focus(); if ('value' in input) { const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set; if (setter && input instanceof HTMLTextAreaElement) { setter.call(input, promptText); } else { input.value = promptText; } input.dispatchEvent(new Event('input', {bubbles:true})); input.dispatchEvent(new Event('change', {bubbles:true})); return JSON.stringify({ok:true, step:'filled_background_prompt'}); } if (input.isContentEditable) { input.textContent = promptText; input.dispatchEvent(new InputEvent('input', {bubbles:true, data: promptText, inputType:'insertText'})); return JSON.stringify({ok:true, step:'filled_background_prompt'}); } } return JSON.stringify({ok:false,error:'NO_BACKGROUND_PROMPT_INPUT'}); })()",
+            },
+            {
+                "type": "eval",
+                "script": "(() => { const labels = ['생성', 'Generate']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); if (!labels.some(label => text.includes(label))) return false; return !text.includes('배경 생성') && !text.includes('Create background') && !text.includes('Background generator'); }); if (!btn) return JSON.stringify({ok:false,error:'NO_BACKGROUND_EXECUTE_BUTTON'}); btn.click(); return JSON.stringify({ok:true, step:'submitted_background_generate'}); })()",
+            },
+            {
+                "type": "eval",
+                "script": "(() => { const labels = ['업로드 항목', '업로드', 'Uploads']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:false,error:'NO_UPLOAD_TAB'}); btn.click(); return JSON.stringify({ok:true, step:'opened_upload_tab'}); })()",
+            },
         ]
+        if ref_img:
+            actions.extend(
+                [
+                    {
+                        "type": "eval",
+                        "script": "(() => { const before = []; const candidates = Array.from(document.querySelectorAll('img,[role=img]')); for (const node of candidates) { if (!(node instanceof HTMLElement)) continue; if (node.offsetWidth < 30 || node.offsetHeight < 30) continue; const style = window.getComputedStyle(node); const backgroundImage = style.backgroundImage || ''; const src = node instanceof HTMLImageElement ? (node.currentSrc || node.src || '') : ''; const key = src || backgroundImage; if (key) before.push(key); } window.__runtime_v2_canva_before_upload = before; const fileInputs = Array.from(document.querySelectorAll('input[type=file]')); const preferred = fileInputs.find(node => { if (!(node instanceof HTMLInputElement)) return false; const accept = (node.getAttribute('accept') || '').toLowerCase(); return accept.includes('image') || accept.includes('.png') || accept.includes('.jpg') || accept.includes('.jpeg'); }) || fileInputs[0]; if (!(preferred instanceof HTMLInputElement)) return JSON.stringify({ok:false,error:'NO_UPLOAD_FILE_INPUT'}); preferred.setAttribute('data-runtime-v2-canva-upload', 'ready'); return JSON.stringify({ok:true, step:'prepared_upload_input', beforeCount: before.length}); })()",
+                    },
+                    {
+                        "type": "upload",
+                        "selector": "input[data-runtime-v2-canva-upload='ready']",
+                        "files": [ref_img],
+                    },
+                    {
+                        "type": "eval",
+                        "script": "(async () => { const before = new Set(Array.isArray(window.__runtime_v2_canva_before_upload) ? window.__runtime_v2_canva_before_upload : []); const deadline = Date.now() + 15000; const candidateKey = (node) => { if (!(node instanceof HTMLElement)) return ''; if (node.offsetWidth < 30 || node.offsetHeight < 30) return ''; const style = window.getComputedStyle(node); const backgroundImage = style.backgroundImage || ''; const src = node instanceof HTMLImageElement ? (node.currentSrc || node.src || '') : ''; return src || backgroundImage; }; while (Date.now() < deadline) { const candidates = Array.from(document.querySelectorAll('img,[role=img]')); for (const node of candidates) { const key = candidateKey(node); if (!key || before.has(key)) continue; node.click(); await new Promise(resolve => setTimeout(resolve, 3000)); return JSON.stringify({ok:true, step:'placed_uploaded_image', key}); } await new Promise(resolve => setTimeout(resolve, 1000)); } return JSON.stringify({ok:false,error:'NO_UPLOADED_IMAGE_THUMB'}); })()",
+                    },
+                    {
+                        "type": "eval",
+                        "script": "(() => { const labels = ['배경 제거', 'Remove background']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:false,error:'NO_REMOVE_BACKGROUND_BUTTON'}); btn.click(); return JSON.stringify({ok:true, step:'clicked_remove_background'}); })()",
+                    },
+                    {
+                        "type": "eval",
+                        "script": "(() => { const labels = ['위치', 'Position']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:false,error:'NO_POSITION_BUTTON'}); btn.click(); return JSON.stringify({ok:true, step:'opened_position_panel'}); })()",
+                    },
+                    {
+                        "type": "eval",
+                        "script": "(() => { const labels = ['정렬', 'Arrange']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:true, step:'position_inputs_already_visible'}); btn.click(); return JSON.stringify({ok:true, step:'opened_arrange_tab'}); })()",
+                    },
+                    {
+                        "type": "eval",
+                        "script": "(() => { const values = ['1045','720','235','0']; const inputs = Array.from(document.querySelectorAll('input[inputmode=\"decimal\"]')).filter(node => node instanceof HTMLInputElement && node.offsetWidth > 0 && node.offsetHeight > 0); if (inputs.length < 4) return JSON.stringify({ok:false,error:'POSITION_INPUTS_MISSING', count: inputs.length}); for (let index = 0; index < 4; index += 1) { const input = inputs[index]; input.focus(); input.value = values[index]; input.dispatchEvent(new Event('input', {bubbles:true})); input.dispatchEvent(new Event('change', {bubbles:true})); } return JSON.stringify({ok:true, step:'set_image_position', values}); })()",
+                    },
+                ]
+            )
+        if line1 or line2:
+            actions.append(
+                {
+                    "type": "eval",
+                    "script": "(() => { const replacements = ["
+                    + json.dumps(
+                        {"color": "rgb(255, 215, 0)", "text": line1}, ensure_ascii=True
+                    )
+                    + ","
+                    + json.dumps(
+                        {"color": "rgb(255, 255, 255)", "text": line2},
+                        ensure_ascii=True,
+                    )
+                    + "]; const applied = []; for (const item of replacements) { if (!item.text) continue; const spans = Array.from(document.querySelectorAll('span[style*=\"color\"]')).filter(node => (node instanceof HTMLElement) && (node.offsetWidth > 0 || node.offsetHeight > 0)); const match = spans.find(node => String(node.getAttribute('style') || '').includes(item.color)); if (!match) continue; match.textContent = item.text; applied.push(item.color); } return JSON.stringify({ok:true, step:'edited_thumbnail_text', applied}); })()",
+                }
+            )
+        actions.extend(
+            [
+                {
+                    "type": "eval",
+                    "script": "(() => { const labels = ['파일', 'File']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text === label || text.includes(label)); }); if (!btn) return JSON.stringify({ok:false,error:'NO_FILE_MENU'}); btn.click(); return JSON.stringify({ok:true, step:'opened_file_menu'}); })()",
+                },
+                {
+                    "type": "eval",
+                    "script": "(() => { const items = Array.from(document.querySelectorAll('button,[role=menuitem]')); const btn = items.find(item => { if (!(item instanceof HTMLElement)) return false; const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text.includes('다운로드') || text.includes('Download'); }); if (!(btn instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_DOWNLOAD_MENU'}); btn.click(); return JSON.stringify({ok:true, step:'opened_download_panel'}); })()",
+                },
+                {
+                    "type": "eval",
+                    "script": "(() => { const input = document.querySelector('input[placeholder*=\"페이지\"], input[placeholder*=\"page\"]'); if (!(input instanceof HTMLElement)) return JSON.stringify({ok:true, step:'page_picker_unavailable'}); input.click(); const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text.includes('현재 페이지') || text.includes('Current page'); }); if (!(btn instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_CURRENT_PAGE_OPTION'}); btn.click(); return JSON.stringify({ok:true, step:'selected_current_page'}); })()",
+                },
+                {
+                    "type": "eval",
+                    "script": "(() => { const labels = ['완료', 'Done']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text === label || text.includes(label)); }); if (!btn) return JSON.stringify({ok:true, step:'done_button_optional'}); btn.click(); return JSON.stringify({ok:true, step:'confirmed_download_options'}); })()",
+                },
+                {
+                    "type": "eval",
+                    "script": "(() => { const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); const role = item.getAttribute('role') || ''; return (text.includes('다운로드') || text.includes('Download')) && role !== 'menuitem'; }); if (!btn) return JSON.stringify({ok:false,error:'NO_DOWNLOAD_EXECUTE_BUTTON'}); btn.click(); return JSON.stringify({ok:true, step:'clicked_download_execute'}); })()",
+                },
+                {
+                    "type": "eval",
+                    "script": "(() => { const buttons = Array.from(document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]')); if (buttons.length < 2) return JSON.stringify({ok:true, step:'cleanup_skipped_single_page'}); const btn = buttons[buttons.length - 1]; btn.click(); return JSON.stringify({ok:true, step:'cleanup_deleted_created_page'}); })()",
+                },
+            ]
+        )
     job = JobContract(
         job_id=f"agent-browser-stage2-{service}",
         workload="agent_browser_verify",
@@ -1884,39 +2047,63 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         ref_images_attach_attempted=bool(ref_images_requested),
     )
     if service == "canva":
-        transcript_items = result.get("transcript", [])
-        before_count = 0
-        after_count = 0
-        if isinstance(transcript_items, list):
-            for item in transcript_items:
-                if not isinstance(item, dict):
-                    continue
-                step = str(item.get("step", ""))
-                result_text = str(item.get("result", ""))
-                try:
-                    parsed = json.loads(result_text)
-                except (TypeError, ValueError, json.JSONDecodeError):
-                    continue
-                if not isinstance(parsed, dict):
-                    continue
-                if step == "page_count_before":
-                    before_count = int(parsed.get("count", 0) or 0)
-                elif step == "page_count_after":
-                    after_count = int(parsed.get("count", 0) or 0)
-        write_stage2_attach_evidence(
-            workspace=workspace,
-            service=service,
-            port=args.port,
-            result=result,
-            probe_debug_only=True,
-            recovery_attempted=False,
-            placeholder_artifact=False,
-            extra_details={
-                "page_count_before": before_count,
-                "page_count_after": after_count,
-                "clone_ok": after_count > before_count,
-            },
+        step_results = _stage2_result_by_step(result)
+        before_count = _int_value(
+            step_results.get("page_count_before", {}).get("count", 0), default=0
         )
+        after_count = _int_value(
+            step_results.get("page_count_after", {}).get("count", 0), default=0
+        )
+        clone_ok = after_count > before_count
+        canva_extra_details = {
+            "page_count_before": before_count,
+            "page_count_after": after_count,
+            "clone_ok": clone_ok,
+            "background_generate_ok": bool(
+                step_results.get("submitted_background_generate", {}).get("ok", False)
+            ),
+            "upload_tab_ok": bool(
+                step_results.get("opened_upload_tab", {}).get("ok", False)
+            ),
+            "ref_image_requested": ref_img,
+            "ref_image_upload_ok": bool(ref_img)
+            and bool(step_results.get("placed_uploaded_image", {}).get("ok", False)),
+            "remove_background_ok": bool(ref_img)
+            and bool(
+                step_results.get("clicked_remove_background", {}).get("ok", False)
+            ),
+            "position_ok": bool(ref_img)
+            and bool(step_results.get("set_image_position", {}).get("ok", False)),
+            "text_edit_ok": bool(
+                step_results.get("edited_thumbnail_text", {}).get("ok", False)
+            )
+            or not (line1 or line2),
+            "current_page_selection_ok": bool(
+                step_results.get("selected_current_page", {}).get("ok", False)
+            )
+            or bool(step_results.get("page_picker_unavailable", {}).get("ok", False)),
+            "download_options_ok": bool(
+                step_results.get("confirmed_download_options", {}).get("ok", False)
+            )
+            or bool(step_results.get("done_button_optional", {}).get("ok", False)),
+            "download_sequence_ok": bool(
+                step_results.get("clicked_download_execute", {}).get("ok", False)
+            ),
+            "cleanup_ok": bool(
+                step_results.get("cleanup_deleted_created_page", {}).get("ok", False)
+            )
+            or bool(
+                step_results.get("cleanup_skipped_single_page", {}).get("ok", False)
+            ),
+            "bg_prompt": bg_prompt,
+            "line1": line1,
+            "line2": line2,
+            "transcript_path": str(
+                cast(dict[str, object], result.get("details", {})).get(
+                    "transcript_path", ""
+                )
+            ),
+        }
     if service in {"seaart", "genspark", "canva", "geminigen"}:
         debug_state_path: Path | None = None
         retry_trace_path: Path | None = None
@@ -2154,6 +2341,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         ref_images_requested=ref_images_requested,
         ref_images_resolved=ref_images_resolved,
         ref_images_attach_attempted=bool(ref_images_requested),
+        extra_details=canva_extra_details if service == "canva" else None,
     )
     return exit_codes.SUCCESS
 

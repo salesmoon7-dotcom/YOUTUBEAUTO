@@ -97,8 +97,8 @@ Checklist:
 
 | Item | Legacy evidence | Runtime_v2 evidence | Status | Notes |
 |---|---|---|---|---|
-| Browser family/profile/port | `canva_automation.py:96-116` uses Chrome + `canva_chrome` session (`CANVA_CHROME_PORT`, `CANVA_SESSION_DIR`) | `runtime_v2/browser/manager.py:482-507` maps `canva -> canva_chrome`, browser family `chrome` | DIFFERS-B | browser family/session key match, but exact configured port/profile path still needs one-to-one path equality confirmation |
-| Template/input/button sequence | `canva_automation.py:318-400` clones the template by `Ctrl+A/C/V` + `button[aria-label="페이지 추가"]`; `generate_ai_background()` then uses explicit Canva editor selectors (`배경 생성`, page panel/canvas, etc.) | runtime_v2 `canva_worker.py` now surfaces clone evidence (`page_count_before/after`, `clone_ok`) from the adapter child, but the full legacy edit/generate/download selector sequence is not yet modeled as explicit runtime_v2 contracts | DIFFERS-A | first-step clone semantics are now exposed, but the rest of the legacy browser sequence still differs |
+| Browser family/profile/port | `canva_automation.py:96-116` uses Chrome + `canva_chrome` session (`CANVA_CHROME_PORT`, `CANVA_SESSION_DIR`) | `runtime_v2/browser/manager.py:471-491` maps `canva -> canva_chrome`, port `9666`; same-session readiness evidence confirmed active `canva` session on `9666` with profile `C:\chrome_canva` and browser family `chrome` | MATCHED | legacy fallback path and current runtime session both resolve to Chrome / `canva_chrome` / `C:\chrome_canva` |
+| Template/input/button sequence | `canva_automation.py:318-1423` defines the end-to-end browser sequence: `Ctrl+A/C/V` clone, `배경 생성`, prompt fill, `생성`, uploads tab, remove background, position fields, text edit, file/download/current-page selection, final download, page cleanup | runtime_v2 `cli.py:_run_agent_browser_stage2_adapter_child()` now surfaces the same sequence as explicit `canva` stage2 actions and records `clone_ok`, `background_generate_ok`, `ref_image_upload_ok`, `remove_background_ok`, `position_ok`, `text_edit_ok`, `current_page_selection_ok`, `download_options_ok`, `download_sequence_ok`, `cleanup_ok`; same-session live run in `tmp_canva_live_validate/attach_evidence.json` produced all-true evidence plus real `tmp_canva_live_validate/exports/THUMB.png` | MATCHED | upload placement semantics were tightened to legacy-style `before upload snapshot + correct input selection + wait/retry for new thumbnail`, and the real Canva session completed the full sequence |
 | Thumbnail artifact semantics | legacy THUMB export path | runtime_v2 `canva_worker` `service_artifact_path` contract | MATCHED | output contract aligns at high level |
 
 ### 1.5 GeminiGen
@@ -178,7 +178,7 @@ Checklist:
 | Output resolution | legacy default `1920x1080` | runtime_v2 `OUTPUT_WIDTH/HEIGHT = 1920x1080` | MATCHED | aligned |
 | FPS | `ken_burns_effect.py` default `fps=60` | runtime_v2 `OUTPUT_FPS = 60` | MATCHED | verified with current runtime output via `ffprobe` (`60/1`) |
 | Default duration | legacy default/docstring `12s` | runtime_v2 defaults to `12s` via payload fallback | MATCHED | verified with current runtime output via `ffprobe` (`12.000000`) |
-| Zoom/pan defaults | legacy `zoom_ratio=1.13`, `PAN_TRAVEL_RATIO=0.40`, richer preset/effect sequence model | runtime_v2 now restores legacy `effect_type` sequence and fixed-zoom pan preset semantics (`z='1.1'` + smoothstep easing), but still uses a thinner model than the full legacy preset system | DIFFERS-B | core numeric defaults + first richer effect-model restore are complete; remaining gap is whether the full preset system itself must also be ported |
+| Zoom/pan defaults | legacy `zoom_ratio=1.13`, `PAN_TRAVEL_RATIO=0.40`, `static`, 8-step `EFFECT_SEQUENCE`, and `get_effect_for_index()`-driven default rotation; `EFFECT_PATTERNS` exists as an optional preset selector | runtime_v2 now restores legacy `static`, the same 8-step effect sequence, fixed-zoom pan semantics (`z='1.1'` + smoothstep easing), and explicit center/corner zoom anchors | MATCHED | the remaining legacy preset map is an optional selection layer, not the canonical default motion contract used by runtime_v2 |
 | Upscale width | legacy default `8000` | runtime_v2 `UPSCALE_WIDTH = 8000` | MATCHED | verified in current ffmpeg filter chain |
 
 ---
@@ -192,5 +192,4 @@ Checklist:
 
 ## 4. Immediate Next Audit Actions
 
-1. Finish the remaining browser-side `DIFFERS-A` by deciding whether Canva’s full edit/generate/download sequence must be surfaced explicitly.
-2. Decide whether the current restored `effect_type` + fixed-zoom pan model is sufficient, or whether the full legacy preset system beyond the current 8-step sequence also needs to be ported.
+1. No additional parity-only action remains in the current cycle. The next active item is the separately deferred Stage 6/7 `24h soak` verification gap.

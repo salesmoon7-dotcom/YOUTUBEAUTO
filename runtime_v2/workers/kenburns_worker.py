@@ -21,6 +21,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PanDirection = Literal["left", "right", "up", "down"]
 ZoomMode = Literal["in", "out"]
 EffectType = Literal[
+    "static",
     "zoom_in_center",
     "zoom_out_center",
     "pan_left_to_right",
@@ -542,7 +543,8 @@ def _resolve_motion_settings(
 
 def _normalize_effect_type(value: object, *, fallback: EffectType) -> EffectType:
     normalized = str(value).strip().lower()
-    if normalized in set(EFFECT_SEQUENCE):
+    valid_effects = set(EFFECT_SEQUENCE) | {"static"}
+    if normalized in valid_effects:
         return cast(EffectType, normalized)
     return fallback
 
@@ -607,10 +609,17 @@ def _silent_kenburns_command(
 def _build_kenburns_filter(*, frame_count: int, motion: dict[str, object]) -> str:
     progress = "if(eq(duration,1),0,on/(duration-1))"
     effect_type = cast(EffectType, motion["effect_type"])
+    if effect_type == "static":
+        return (
+            f"scale={OUTPUT_WIDTH}:{OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,"
+            f"pad={OUTPUT_WIDTH}:{OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2,"
+            f"fps={OUTPUT_FPS},format=yuv420p"
+        )
     pan_direction = cast(PanDirection, motion["pan_direction"])
     zoom_mode = cast(ZoomMode, motion["zoom_mode"])
     pan_pct = cast(float, motion["pan_pct"])
     zoom_pct = cast(float, motion["zoom_pct"])
+    zoom_speed = zoom_pct / max(frame_count, 1)
     if effect_type in {
         "pan_left_to_right",
         "pan_right_to_left",
@@ -639,10 +648,46 @@ def _build_kenburns_filter(*, frame_count: int, motion: dict[str, object]) -> st
             f"d={frame_count}:fps={OUTPUT_FPS}:s={OUTPUT_WIDTH}x{OUTPUT_HEIGHT},"
             "format=yuv420p"
         )
+    if effect_type == "zoom_in_center":
+        zoom_expr = f"zoom+{zoom_speed:.10f}"
+        x_expr = "iw/2-(iw/zoom/2)"
+        y_expr = "ih/2-(ih/zoom/2)"
+        return (
+            f"scale={UPSCALE_WIDTH}:-2,"
+            f"zoompan=z='{zoom_expr}':x='{x_expr}':y='{y_expr}':"
+            f"d={frame_count}:fps={OUTPUT_FPS}:s={OUTPUT_WIDTH}x{OUTPUT_HEIGHT},"
+            "format=yuv420p"
+        )
+    if effect_type == "zoom_out_center":
+        zoom_expr = f"if(eq(on,1),{1.0 + zoom_pct:.4f},zoom-{zoom_speed:.10f})"
+        x_expr = "iw/2-(iw/zoom/2)"
+        y_expr = "ih/2-(ih/zoom/2)"
+        return (
+            f"scale={UPSCALE_WIDTH}:-2,"
+            f"zoompan=z='{zoom_expr}':x='{x_expr}':y='{y_expr}':"
+            f"d={frame_count}:fps={OUTPUT_FPS}:s={OUTPUT_WIDTH}x{OUTPUT_HEIGHT},"
+            "format=yuv420p"
+        )
     if effect_type == "zoom_in_top_left":
-        pan_direction = "left"
-    elif effect_type == "zoom_in_bottom_right":
-        pan_direction = "right"
+        zoom_expr = f"zoom+{zoom_speed:.10f}"
+        x_expr = "0"
+        y_expr = "0"
+        return (
+            f"scale={UPSCALE_WIDTH}:-2,"
+            f"zoompan=z='{zoom_expr}':x='{x_expr}':y='{y_expr}':"
+            f"d={frame_count}:fps={OUTPUT_FPS}:s={OUTPUT_WIDTH}x{OUTPUT_HEIGHT},"
+            "format=yuv420p"
+        )
+    if effect_type == "zoom_in_bottom_right":
+        zoom_expr = f"zoom+{zoom_speed:.10f}"
+        x_expr = "iw/zoom-ow"
+        y_expr = "ih/zoom-oh"
+        return (
+            f"scale={UPSCALE_WIDTH}:-2,"
+            f"zoompan=z='{zoom_expr}':x='{x_expr}':y='{y_expr}':"
+            f"d={frame_count}:fps={OUTPUT_FPS}:s={OUTPUT_WIDTH}x{OUTPUT_HEIGHT},"
+            "format=yuv420p"
+        )
     max_zoom = 1.0 + zoom_pct
     if zoom_mode == "out":
         zoom_expr = f"max({max_zoom:.4f}-{zoom_pct:.4f}*{progress},1.0)"

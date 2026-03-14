@@ -1275,6 +1275,125 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
             ],
         )
 
+    def test_kenburns_static_effect_uses_static_filter_path(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            image = root / "scene.png"
+            _ = image.write_bytes(b"png")
+            job = JobContract(
+                job_id="ken-static",
+                workload="kenburns",
+                payload={
+                    "source_path": str(image.resolve()),
+                    "effect_type": "static",
+                },
+            )
+
+            captured: list[list[str]] = []
+
+            def fake_process(
+                command: list[str],
+                *,
+                cwd: Path,
+                extra_env: dict[str, str] | None = None,
+                timeout_sec: int = 3600,
+            ) -> dict[str, object]:
+                _ = cwd
+                _ = extra_env
+                _ = timeout_sec
+                captured.append(command)
+                output_path = Path(str(command[-1]))
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"mp4")
+                return {
+                    "command": command,
+                    "cwd": str(cwd),
+                    "exit_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "timed_out": False,
+                    "timeout_sec": 3600,
+                    "duration_sec": 0.01,
+                }
+
+            with patch(
+                "runtime_v2.workers.kenburns_worker.run_external_process",
+                side_effect=fake_process,
+            ):
+                result = run_kenburns_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        filter_arg = captured[0][captured[0].index("-vf") + 1]
+        self.assertNotIn("zoompan=", filter_arg)
+        self.assertIn("pad=1920:1080", filter_arg)
+        self.assertIn("fps=60", filter_arg)
+
+    def test_kenburns_zoom_effects_keep_legacy_center_and_corner_anchors(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            image = root / "scene.png"
+            _ = image.write_bytes(b"png")
+            filters: dict[str, str] = {}
+
+            def run_once(effect_type: str) -> None:
+                job = JobContract(
+                    job_id=f"ken-{effect_type}",
+                    workload="kenburns",
+                    payload={
+                        "source_path": str(image.resolve()),
+                        "effect_type": effect_type,
+                    },
+                )
+                captured: list[list[str]] = []
+
+                def fake_process(
+                    command: list[str],
+                    *,
+                    cwd: Path,
+                    extra_env: dict[str, str] | None = None,
+                    timeout_sec: int = 3600,
+                ) -> dict[str, object]:
+                    _ = cwd
+                    _ = extra_env
+                    _ = timeout_sec
+                    captured.append(command)
+                    output_path = Path(str(command[-1]))
+                    output_path.write_bytes(b"mp4")
+                    return {
+                        "command": command,
+                        "cwd": str(cwd),
+                        "exit_code": 0,
+                        "stdout": "",
+                        "stderr": "",
+                        "timed_out": False,
+                        "timeout_sec": 3600,
+                        "duration_sec": 0.01,
+                    }
+
+                with patch(
+                    "runtime_v2.workers.kenburns_worker.run_external_process",
+                    side_effect=fake_process,
+                ):
+                    result = run_kenburns_job(job, artifact_root=artifact_root)
+                self.assertEqual(result["status"], "ok")
+                filters[effect_type] = captured[0][captured[0].index("-vf") + 1]
+
+            run_once("zoom_in_center")
+            run_once("zoom_out_center")
+            run_once("zoom_in_top_left")
+            run_once("zoom_in_bottom_right")
+
+        self.assertIn("x='iw/2-(iw/zoom/2)'", filters["zoom_in_center"])
+        self.assertIn("y='ih/2-(ih/zoom/2)'", filters["zoom_in_center"])
+        self.assertIn("x='iw/2-(iw/zoom/2)'", filters["zoom_out_center"])
+        self.assertIn("y='ih/2-(ih/zoom/2)'", filters["zoom_out_center"])
+        self.assertIn("x='0'", filters["zoom_in_top_left"])
+        self.assertIn("y='0'", filters["zoom_in_top_left"])
+        self.assertIn("x='iw/zoom-ow'", filters["zoom_in_bottom_right"])
+        self.assertIn("y='ih/zoom-oh'", filters["zoom_in_bottom_right"])
+
     def test_kenburns_bundle_job_respects_output_path_overrides(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

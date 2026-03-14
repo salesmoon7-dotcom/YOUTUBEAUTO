@@ -148,6 +148,91 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             )
             self.assertEqual(evidence["status"], "ok")
 
+    def test_stage2_adapter_child_reads_canva_step_results_from_transcript_file(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "thumb.png"
+            workspace = root
+            transcript_path = workspace / "agent_browser_transcript.json"
+            transcript_path.write_text(
+                json.dumps(
+                    {
+                        "steps": [
+                            {
+                                "output": '{"ok":true,"step":"page_count_before","count":1}'
+                            },
+                            {
+                                "output": '{"ok":true,"step":"page_count_after","count":2}'
+                            },
+                            {
+                                "output": '{"ok":true,"step":"submitted_background_generate"}'
+                            },
+                            {"output": '{"ok":true,"step":"selected_current_page"}'},
+                            {
+                                "output": '{"ok":true,"step":"confirmed_download_options"}'
+                            },
+                            {"output": '{"ok":true,"step":"clicked_download_execute"}'},
+                            {
+                                "output": '{"ok":true,"step":"cleanup_deleted_created_page"}'
+                            },
+                        ]
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            (workspace / "thumb_data.json").write_text(
+                json.dumps(
+                    {
+                        "bg_prompt": "legacy background",
+                        "line1": "Legacy",
+                        "line2": "Thumb",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={
+                        "status": "ok",
+                        "details": {"transcript_path": str(transcript_path.resolve())},
+                    },
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+            self.assertEqual(exit_code, exit_codes.SUCCESS)
+            evidence = json.loads(
+                (root / "attach_evidence.json").read_text(encoding="utf-8")
+            )
+            details = cast(dict[object, object], evidence["details"])
+            self.assertEqual(details["page_count_before"], 1)
+            self.assertEqual(details["page_count_after"], 2)
+            self.assertTrue(bool(details["clone_ok"]))
+            self.assertTrue(bool(details["background_generate_ok"]))
+            self.assertTrue(bool(details["current_page_selection_ok"]))
+            self.assertTrue(bool(details["download_options_ok"]))
+            self.assertTrue(bool(details["download_sequence_ok"]))
+            self.assertTrue(bool(details["cleanup_ok"]))
+            self.assertEqual(details["bg_prompt"], "legacy background")
+            self.assertEqual(details["transcript_path"], str(transcript_path.resolve()))
+
     def test_stage2_adapter_child_uses_native_setter_and_enter_for_genspark_prompt(
         self,
     ) -> None:
@@ -688,6 +773,86 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertEqual(evidence["service"], "canva")
         self.assertEqual(evidence["status"], "ok")
         self.assertFalse(bool(evidence["placeholder_artifact"]))
+
+    def test_stage2_adapter_child_builds_full_canva_legacy_sequence_actions(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            (root / "thumb_data.json").write_text(
+                json.dumps(
+                    {
+                        "bg_prompt": "legacy background",
+                        "line1": "Legacy",
+                        "line2": "Thumb",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            request_payload = {
+                "payload": {"prompt": "scene one", "ref_img": "D:/ref.png"}
+            }
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+            captured_actions: list[dict[str, object]] = []
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                _ = artifact_root
+                payload = cast(dict[str, object], job.payload)
+                captured_actions.extend(
+                    cast(list[dict[str, object]], payload.get("actions", []))
+                )
+                return {"status": "ok"}
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        scripts = [str(action.get("script", "")) for action in captured_actions]
+        uploads = [
+            action for action in captured_actions if action.get("type") == "upload"
+        ]
+        self.assertTrue(
+            any("submitted_background_generate" in script for script in scripts)
+        )
+        self.assertTrue(
+            any("clicked_remove_background" in script for script in scripts)
+        )
+        self.assertTrue(any("set_image_position" in script for script in scripts))
+        self.assertTrue(any("edited_thumbnail_text" in script for script in scripts))
+        self.assertTrue(any("clicked_download_execute" in script for script in scripts))
+        self.assertTrue(
+            any("cleanup_deleted_created_page" in script for script in scripts)
+        )
+        self.assertTrue(any("prepared_upload_input" in script for script in scripts))
+        self.assertTrue(any("placed_uploaded_image" in script for script in scripts))
+        self.assertTrue(
+            any("__runtime_v2_canva_before_upload" in script for script in scripts)
+        )
+        self.assertEqual(len(uploads), 1)
+        self.assertEqual(
+            uploads[0]["selector"], "input[data-runtime-v2-canva-upload='ready']"
+        )
+        self.assertEqual(uploads[0]["files"], ["D:/ref.png"])
 
     def test_stage2_adapter_child_fail_closes_when_functional_capture_fails(
         self,

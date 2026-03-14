@@ -22,14 +22,16 @@ Completed broad parity batches already pushed to `main`:
 - `Render` row-level current-session closeout, Stage5/5B probes, Stage6 readiness, Stage7 soak report, promotion gate evaluation, GUI/runtime orchestration parity
 
 Remaining active work is now:
-1. legacy parity audit for browser and local subprogram settings/behavior
-2. Stage 6/7 operational `24h soak` verification gap (final stage)
+1. Stage 6/7 operational `24h soak` verification gap (final stage, deferred by user instruction)
 
-Current verification snapshot (canonical runtime root, 2026-03-13):
+Current verification snapshot (canonical runtime root, 2026-03-14):
 - manual Stage 5 (`1-row`) smoke passed with current-session render final output and readiness green
 - manual Stage 5B (`5-row`) batch smoke passed with `probe_success=true`, five successful row reports, and final artifacts for all rows
 - latest canonical runtime evidence is aligned on current-session render success (`run_id=898057c2-e52b-4bd4-ab5f-e9432813b60c-row05` at the time of Stage 5B completion)
 - `--readiness-check` returns `ready=true`, blockers empty, promotion gates `A/B/C/D` all passed
+- multiple parity restores are already landed on `main`: KenBurns numeric defaults + effect sequence 1차, qwen3_tts reference audio/output/runtime defaults, RVC active model/applio/runtime format + mode semantics, Genspark initial URL, Canva clone semantics, GeminiGen control semantics surfacing
+- `Canva` now surfaces the full legacy sequence intent in the stage2 child/worker contract: clone counts, background generation, upload/remove-background, position, text edit, export/download, cleanup evidence fields are recorded in `attach_evidence.json` and worker details
+- same-session live Canva validation completed on the real `canva` browser session (`port 9666`), and the surfaced sequence closed with all success fields true plus a real `THUMB.png` output in `tmp_canva_live_validate/exports/`
 - Stage 5/5B completion does not waive the parity requirement: browser click/submit behavior and local subprogram settings must still be compared against legacy before architecture is considered settled
 - user explicitly asked not to run 24h tests in the current cycle, so Stage 6/7 remains deferred even after Stage 5/5B completion
 
@@ -429,7 +431,7 @@ Completion status:
 - `probe_success=true`, `selected_rows=[38,39,40,41,42]`, `row_reports_count=5`
 - all five row reports completed with `status=ok`, `code=OK`, and non-empty `final_artifact_path`
 
-### Task 3: Legacy parity audit for settings and browser behavior (Pending)
+### Task 3: Legacy parity audit for settings and browser behavior (Completed)
 
 **Why this remains required:**
 - user explicitly identified this as the highest-priority completion criterion
@@ -555,6 +557,9 @@ Completion status:
 
 Current audit artifact:
 - `docs/plans/2026-03-14-runtime-v2-legacy-parity-audit.md`
+
+Parity closeout note from the audit artifact:
+- `KenBurns` richer preset system was reviewed against legacy `scripts/ken_burns_effect.py` and explicitly accepted as non-blocking for the current runtime contract. Legacy observable default motion is driven by `EFFECT_SEQUENCE` + `get_effect_for_index()`, and runtime_v2 now matches the 8-step sequence, `static`, and center/corner anchor semantics used by that default path.
 
 ### Task 4: Stage 6/7 operational soak verification gap (Pending by user instruction, final stage)
 

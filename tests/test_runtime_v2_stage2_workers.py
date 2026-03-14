@@ -777,6 +777,82 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         self.assertIn("--agent-browser-stage2-adapter-child", adapter_command)
         self.assertIn("canva", adapter_command)
 
+    def test_canva_worker_surfaces_full_legacy_sequence_details(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "canva-agent-browser.png"
+            attach_evidence = (
+                root / "artifacts" / "canva" / "canva-job-1" / "attach_evidence.json"
+            )
+            attach_evidence.parent.mkdir(parents=True, exist_ok=True)
+            _ = attach_evidence.write_text(
+                json.dumps(
+                    {
+                        "status": "ok",
+                        "details": {
+                            "page_count_before": 1,
+                            "page_count_after": 2,
+                            "clone_ok": True,
+                            "background_generate_ok": True,
+                            "upload_tab_ok": True,
+                            "ref_image_requested": "D:/ref.png",
+                            "ref_image_upload_ok": True,
+                            "remove_background_ok": True,
+                            "position_ok": True,
+                            "text_edit_ok": True,
+                            "current_page_selection_ok": True,
+                            "download_options_ok": True,
+                            "download_sequence_ok": True,
+                            "cleanup_ok": True,
+                            "bg_prompt": "legacy background",
+                            "line1": "Legacy",
+                            "line2": "Thumb",
+                            "transcript_path": "D:/trace/agent_browser_transcript.json",
+                        },
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = output_path.write_bytes(b"png")
+            job = _stage2_job("canva")
+            job.payload["service_artifact_path"] = str(output_path)
+            job.payload["use_agent_browser"] = True
+            stdout_path = root / "artifacts" / "stdout.log"
+            stderr_path = root / "artifacts" / "stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+
+            with patch(
+                "runtime_v2.stage2.canva_worker.run_verified_adapter_command",
+                return_value={
+                    "ok": True,
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "output_path": output_path,
+                },
+            ):
+                result = run_canva_job(job, root / "artifacts")
+
+        self.assertEqual(result["status"], "ok")
+        details = cast(dict[str, object], result["details"])
+        self.assertTrue(bool(details["clone_ok"]))
+        self.assertTrue(bool(details["background_generate_ok"]))
+        self.assertTrue(bool(details["ref_image_upload_ok"]))
+        self.assertTrue(bool(details["remove_background_ok"]))
+        self.assertTrue(bool(details["position_ok"]))
+        self.assertTrue(bool(details["text_edit_ok"]))
+        self.assertTrue(bool(details["current_page_selection_ok"]))
+        self.assertTrue(bool(details["download_options_ok"]))
+        self.assertTrue(bool(details["download_sequence_ok"]))
+        self.assertTrue(bool(details["cleanup_ok"]))
+        self.assertEqual(str(details["bg_prompt"]), "legacy background")
+        self.assertEqual(
+            str(details["transcript_path"]), "D:/trace/agent_browser_transcript.json"
+        )
+
     def test_stage2_worker_uses_json_input_only_and_returns_runner_result(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

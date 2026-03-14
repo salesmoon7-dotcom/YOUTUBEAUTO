@@ -150,6 +150,35 @@ def run_canva_job(
                 "page_count_before": _int_detail(attach_details, "page_count_before"),
                 "page_count_after": _int_detail(attach_details, "page_count_after"),
                 "clone_ok": bool(attach_details.get("clone_ok", False)),
+                "background_generate_ok": bool(
+                    attach_details.get("background_generate_ok", False)
+                ),
+                "upload_tab_ok": bool(attach_details.get("upload_tab_ok", False)),
+                "ref_image_requested": str(
+                    attach_details.get("ref_image_requested", "")
+                ),
+                "ref_image_upload_ok": bool(
+                    attach_details.get("ref_image_upload_ok", False)
+                ),
+                "remove_background_ok": bool(
+                    attach_details.get("remove_background_ok", False)
+                ),
+                "position_ok": bool(attach_details.get("position_ok", False)),
+                "text_edit_ok": bool(attach_details.get("text_edit_ok", False)),
+                "current_page_selection_ok": bool(
+                    attach_details.get("current_page_selection_ok", False)
+                ),
+                "download_options_ok": bool(
+                    attach_details.get("download_options_ok", False)
+                ),
+                "download_sequence_ok": bool(
+                    attach_details.get("download_sequence_ok", False)
+                ),
+                "cleanup_ok": bool(attach_details.get("cleanup_ok", False)),
+                "bg_prompt": str(attach_details.get("bg_prompt", "")),
+                "line1": str(attach_details.get("line1", "")),
+                "line2": str(attach_details.get("line2", "")),
+                "transcript_path": str(attach_details.get("transcript_path", "")),
             },
             completion={
                 "state": "succeeded",
