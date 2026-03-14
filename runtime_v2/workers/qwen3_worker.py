@@ -104,6 +104,10 @@ def _normalize_output_format(config: dict[str, object]) -> str:
     return "flac"
 
 
+def _rvc_extension(output_format: str) -> str:
+    return ".flac" if output_format.strip().lower() == "flac" else ".wav"
+
+
 def _legacy_qwen3_runtime(config: dict[str, object]) -> dict[str, object]:
     generation = config.get("generation", {})
     typed_generation = generation if isinstance(generation, dict) else {}
@@ -133,11 +137,16 @@ def _build_rvc_next_job(
     model_name = str(job.payload.get("model_name", "")).strip()
     if not model_name:
         return None
-    rvc_output_path = verified_output.with_name(f"{verified_output.stem}_rvc.wav")
+    legacy_config = _load_legacy_qwen3_config()
+    output_format = _normalize_output_format(legacy_config)
+    rvc_output_path = verified_output.with_name(
+        f"{verified_output.stem}_rvc{_rvc_extension(output_format)}"
+    )
     payload: dict[str, object] = {
         "source_path": str(verified_output.resolve()),
         "model_name": model_name,
         "service_artifact_path": str(rvc_output_path.resolve()),
+        "export_format": output_format.upper(),
         "chain_depth": _int_value(job.payload.get("chain_depth", 0), 0) + 1,
     }
     image_path = str(job.payload.get("image_path", "")).strip()

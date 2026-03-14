@@ -286,6 +286,78 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertTrue(bool(generation["x_vector_only_mode"]))
         self.assertEqual(generation["language"], "Auto")
 
+    def test_qwen3_worker_emits_rvc_next_job_with_flac_extension_when_legacy_export_format_is_flac(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            image_path = root / "image.png"
+            output_path = artifact_root / "speech.wav"
+            ref_audio = root / "ref.mp3"
+            _ = image_path.write_bytes(b"png")
+            _ = ref_audio.write_bytes(b"mp3")
+            stdout_path = root / "artifacts" / "stdout.log"
+            stderr_path = root / "artifacts" / "stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+            job = JobContract(
+                job_id="qwen-job-rvc-flac",
+                workload="qwen3_tts",
+                payload={
+                    "channel": 4,
+                    "voice_texts": [
+                        {"col": "#01", "text": "hello world", "original_voices": [1]}
+                    ],
+                    "image_path": str(image_path.resolve()),
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                },
+            )
+
+            with (
+                patch(
+                    "runtime_v2.workers.qwen3_worker.LEGACY_QWEN3_CONFIG",
+                    root / "qwen3_tts_config.json",
+                ),
+                patch(
+                    "runtime_v2.workers.qwen3_worker.run_verified_adapter_command",
+                    return_value={
+                        "ok": True,
+                        "stdout_path": stdout_path,
+                        "stderr_path": stderr_path,
+                        "output_path": output_path,
+                        "reused": False,
+                    },
+                ),
+            ):
+                _ = (root / "qwen3_tts_config.json").write_text(
+                    json.dumps(
+                        {
+                            "reference_audio_default": str(ref_audio.resolve()),
+                            "reference_audio_by_channel": {
+                                "4": str(ref_audio.resolve())
+                            },
+                            "output_format": "FLAC",
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                result = run_qwen3_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        next_jobs = cast(list[object], result.get("next_jobs", []))
+        self.assertEqual(len(next_jobs), 1)
+        next_job_contract = cast(dict[str, object], next_jobs[0])
+        next_job = cast(dict[str, object], next_job_contract["job"])
+        next_payload = cast(dict[str, object], next_job["payload"])
+        self.assertTrue(
+            str(next_payload["service_artifact_path"]).endswith("speech_rvc.flac")
+        )
+        self.assertEqual(str(next_payload["export_format"]), "FLAC")
+
     def test_qwen3_worker_fails_when_reference_audio_is_missing(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
