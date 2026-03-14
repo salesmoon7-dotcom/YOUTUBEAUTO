@@ -51,7 +51,10 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             _start_url_for_service("chatgpt"),
             "https://chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom",
         )
-        self.assertEqual(_start_url_for_service("genspark"), "https://www.genspark.ai/")
+        self.assertEqual(
+            _start_url_for_service("genspark"),
+            "https://www.genspark.ai/agents?type=image_generation_agent",
+        )
         self.assertEqual(
             _start_url_for_service("seaart"),
             "https://www.seaart.ai/ko/create/image?id=d4kssode878c7387fae0&model_ver_no=ef24b47a8d618127c9342fd0635aedb9",

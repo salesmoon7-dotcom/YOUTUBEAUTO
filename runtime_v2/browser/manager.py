@@ -20,7 +20,7 @@ SERVICE_TARGETS: dict[str, dict[str, str]] = {
         "expected_title_substring": "ChatGPT",
     },
     "genspark": {
-        "start_url": "https://www.genspark.ai/",
+        "start_url": "https://www.genspark.ai/agents?type=image_generation_agent",
         "expected_url_substring": "genspark.ai/agents?type=image_generation_agent",
         "expected_title_substring": "Genspark",
     },
