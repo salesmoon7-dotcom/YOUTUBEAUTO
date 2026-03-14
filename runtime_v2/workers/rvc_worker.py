@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -22,6 +23,7 @@ from runtime_v2.workers.native_only import native_not_implemented_result
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 VIDEO_SOURCE_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
+LEGACY_RVC_CONFIG = Path(r"D:/YOUTUBE_AUTO/system/config/rvc_config.json")
 
 
 def _canonical_adapter_env() -> dict[str, str]:
@@ -31,12 +33,27 @@ def _canonical_adapter_env() -> dict[str, str]:
     return {"PYTHONPATH": pythonpath}
 
 
+def _load_legacy_rvc_config() -> dict[str, object]:
+    if not LEGACY_RVC_CONFIG.exists():
+        return {}
+    try:
+        raw_payload = json.loads(LEGACY_RVC_CONFIG.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return cast(dict[str, object], raw_payload) if isinstance(raw_payload, dict) else {}
+
+
+def _legacy_active_model(config: dict[str, object], payload_model_name: str) -> str:
+    return payload_model_name or str(config.get("active_model", "")).strip()
+
+
 def run_rvc_job(
     job: JobContract | None = None, artifact_root: Path | None = None
 ) -> dict[str, object]:
     if job is None:
         return {"worker": "rvc", "status": "failed", "error_code": "missing_job"}
     workspace = prepare_workspace(job, artifact_root=artifact_root)
+    legacy_config = _load_legacy_rvc_config()
     raw_source = job.payload.get("source_path", "")
     raw_audio = job.payload.get("audio_path", "")
     source = (
@@ -61,7 +78,9 @@ def run_rvc_job(
             retryable=False,
             completion={"state": "failed", "final_output": False},
         )
-    model_name = str(job.payload.get("model_name", "")).strip()
+    model_name = _legacy_active_model(
+        legacy_config, str(job.payload.get("model_name", "")).strip()
+    )
     if not model_name:
         return finalize_worker_result(
             workspace,
