@@ -91,12 +91,34 @@ def _collect_preflight_warnings(
                 {"kind": "missing_path", "source": label, "path": str(path)}
             )
     qwen_python = Path(r"D:/qwen3_tts_env/Scripts/python.exe")
-    applio_python = Path(r"D:/Applio/env/python.exe")
+    rvc_config_payload: dict[str, object] = {}
+    if rvc_config_path.exists():
+        try:
+            raw_payload = json.loads(rvc_config_path.read_text(encoding="utf-8"))
+            if isinstance(raw_payload, dict):
+                rvc_config_payload = raw_payload
+        except (OSError, json.JSONDecodeError):
+            warnings.append(
+                {
+                    "kind": "invalid_config",
+                    "source": "rvc_config",
+                    "path": str(rvc_config_path),
+                }
+            )
+    applio_python_value = str(rvc_config_payload.get("applio_python", "")).strip()
+    applio_core_value = str(rvc_config_payload.get("applio_core", "")).strip()
+    if not applio_python_value:
+        warnings.append({"kind": "missing_config_key", "source": "rvc.applio_python"})
+    if not applio_core_value:
+        warnings.append({"kind": "missing_config_key", "source": "rvc.applio_core"})
+    applio_python = Path(applio_python_value) if applio_python_value else Path()
+    applio_core = Path(applio_core_value) if applio_core_value else Path()
     for label, path in {
         "qwen3_python": qwen_python,
         "rvc_python": applio_python,
+        "rvc_core": applio_core,
     }.items():
-        if not path.exists():
+        if not path or not path.exists():
             warnings.append(
                 {"kind": "missing_runtime", "source": label, "path": str(path)}
             )

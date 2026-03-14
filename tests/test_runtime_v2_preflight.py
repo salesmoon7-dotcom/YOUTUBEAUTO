@@ -53,6 +53,42 @@ class RuntimeV2PreflightTests(unittest.TestCase):
             sources["runtime_app_config"], str(RUNTIME_APP_CONFIG.resolve())
         )
 
+    def test_build_preflight_report_includes_rvc_applio_core_and_python_warnings(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig.from_root(root)
+            fake_rvc_config = root / "rvc_config.json"
+            fake_rvc_config.write_text(
+                json.dumps(
+                    {
+                        "applio_python": str((root / "missing_python.exe").resolve()),
+                        "applio_core": str((root / "missing_core.py").resolve()),
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            original_path = Path
+
+            def fake_path(value: str | Path = ".") -> Path:
+                if str(value) == r"D:/YOUTUBE_AUTO/system/config/rvc_config.json":
+                    return fake_rvc_config
+                return original_path(value)
+
+            with patch("runtime_v2.preflight.Path", side_effect=fake_path):
+                report = build_preflight_report(config)
+
+        warnings = cast(list[object], report["warnings"])
+        warning_sources = {
+            str(cast(dict[object, object], item).get("source", ""))
+            for item in warnings
+            if isinstance(item, dict)
+        }
+        self.assertIn("rvc_python", warning_sources)
+        self.assertIn("rvc_core", warning_sources)
+
     def test_main_keeps_running_when_preflight_report_write_fails(self) -> None:
         stderr = io.StringIO()
         with (

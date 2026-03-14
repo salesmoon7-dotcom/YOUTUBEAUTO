@@ -608,6 +608,74 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertEqual(request_payload["model_name"], "jp_narrator_v1")
 
+    def test_rvc_worker_records_legacy_applio_runtime_in_request_and_details(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            source_path = root / "source.flac"
+            output_path = artifact_root / "converted.wav"
+            stdout_path = root / "artifacts" / "stdout.log"
+            stderr_path = root / "artifacts" / "stderr.log"
+            _ = source_path.write_bytes(b"flac")
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+            cfg = root / "rvc_config.json"
+            _ = cfg.write_text(
+                json.dumps(
+                    {
+                        "active_model": "jp_narrator_v1",
+                        "applio_python": "D:/Applio/env/python.exe",
+                        "applio_core": "D:/Applio/core.py",
+                        "inference": {"export_format": "FLAC"},
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            job = JobContract(
+                job_id="rvc-job-runtime-details",
+                workload="rvc",
+                payload={
+                    "source_path": str(source_path.resolve()),
+                    "service_artifact_path": str(output_path.resolve()),
+                },
+            )
+
+            with (
+                patch("runtime_v2.workers.rvc_worker.LEGACY_RVC_CONFIG", cfg),
+                patch(
+                    "runtime_v2.workers.rvc_worker.run_verified_adapter_command",
+                    return_value={
+                        "ok": True,
+                        "stdout_path": stdout_path,
+                        "stderr_path": stderr_path,
+                        "output_path": output_path,
+                        "reused": False,
+                    },
+                ),
+            ):
+                result = run_rvc_job(job, artifact_root=artifact_root)
+                request_payload = json.loads(
+                    (
+                        artifact_root
+                        / "rvc"
+                        / "rvc-job-runtime-details"
+                        / "rvc_request.json"
+                    ).read_text(encoding="utf-8")
+                )
+
+        details = cast(dict[object, object], result["details"])
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(request_payload["applio_python"], "D:/Applio/env/python.exe")
+        self.assertEqual(request_payload["applio_core"], "D:/Applio/core.py")
+        self.assertEqual(request_payload["export_format"], "FLAC")
+        self.assertEqual(details["applio_python"], "D:/Applio/env/python.exe")
+        self.assertEqual(details["applio_core"], "D:/Applio/core.py")
+        self.assertEqual(details["export_format"], "FLAC")
+
     def test_rvc_worker_requires_source_or_audio_path(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

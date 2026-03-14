@@ -47,6 +47,18 @@ def _legacy_active_model(config: dict[str, object], payload_model_name: str) -> 
     return payload_model_name or str(config.get("active_model", "")).strip()
 
 
+def _legacy_applio_runtime(config: dict[str, object]) -> dict[str, str]:
+    return {
+        "applio_python": str(config.get("applio_python", "")).strip(),
+        "applio_core": str(config.get("applio_core", "")).strip(),
+        "export_format": str(
+            cast(dict[str, object], config.get("inference", {})).get(
+                "export_format", ""
+            )
+        ).strip(),
+    }
+
+
 def run_rvc_job(
     job: JobContract | None = None, artifact_root: Path | None = None
 ) -> dict[str, object]:
@@ -54,6 +66,7 @@ def run_rvc_job(
         return {"worker": "rvc", "status": "failed", "error_code": "missing_job"}
     workspace = prepare_workspace(job, artifact_root=artifact_root)
     legacy_config = _load_legacy_rvc_config()
+    legacy_runtime = _legacy_applio_runtime(legacy_config)
     raw_source = job.payload.get("source_path", "")
     raw_audio = job.payload.get("audio_path", "")
     source = (
@@ -153,6 +166,9 @@ def run_rvc_job(
             "video_folder": str(video_folder.resolve()),
             "model_name": model_name,
             "source_mode": source_mode,
+            "applio_python": legacy_runtime["applio_python"],
+            "applio_core": legacy_runtime["applio_core"],
+            "export_format": legacy_runtime["export_format"],
         },
     )
     adapter_command_raw = job.payload.get("adapter_command")
@@ -194,6 +210,7 @@ def run_rvc_job(
                     **cast(dict[str, object], adapter_result.get("details", {})),
                     "model_name": model_name,
                     "source_mode": source_mode,
+                    **legacy_runtime,
                 },
                 completion={"state": "failed", "final_output": False},
             )
@@ -220,6 +237,7 @@ def run_rvc_job(
                 "service_artifact_path": str(verified_output.resolve()),
                 "reused": bool(adapter_result.get("reused", False)),
                 "adapter_mode": "command",
+                **legacy_runtime,
             },
             completion={
                 "state": "succeeded",
@@ -241,5 +259,6 @@ def run_rvc_job(
             "audio_path": str(job.payload.get("audio_path", "")).strip(),
             "duration_sec": job.payload.get("duration_sec", 8),
             "source_mode": source_mode,
+            **legacy_runtime,
         },
     )
