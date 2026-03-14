@@ -142,6 +142,14 @@ def run_geminigen_job(
             details={
                 "provider": str(job.payload.get("provider", "google")),
                 "model": str(job.payload.get("model", "veo3")),
+                "generation_mode": str(
+                    job.payload.get("generation_mode", "create_new")
+                ),
+                "orientation": str(job.payload.get("orientation", "landscape")),
+                "resolution": str(job.payload.get("resolution", "720p")),
+                "duration": str(
+                    job.payload.get("duration", job.payload.get("duration_sec", 6))
+                ),
                 "first_frame_path": str(
                     job.payload.get("first_frame_path", "")
                 ).strip(),
@@ -174,6 +182,12 @@ def run_geminigen_job(
         details={
             "provider": str(job.payload.get("provider", "google")),
             "model": str(job.payload.get("model", "veo3")),
+            "generation_mode": str(job.payload.get("generation_mode", "create_new")),
+            "orientation": str(job.payload.get("orientation", "landscape")),
+            "resolution": str(job.payload.get("resolution", "720p")),
+            "duration": str(
+                job.payload.get("duration", job.payload.get("duration_sec", 6))
+            ),
             "first_frame_path": str(job.payload.get("first_frame_path", "")).strip(),
             "service_artifact_path": str(job.payload.get("service_artifact_path", "")),
         },

@@ -90,6 +90,12 @@ def build_geminigen_prompt_file(workspace: Path, payload: dict[str, object]) -> 
                 "output_file": f"scene_{scene_index:02d}.mp4",
                 "provider": str(payload.get("provider", "google")),
                 "model": str(payload.get("model", "veo3")),
+                "generation_mode": str(payload.get("generation_mode", "create_new")),
+                "orientation": str(payload.get("orientation", "landscape")),
+                "resolution": str(payload.get("resolution", "720p")),
+                "duration": str(
+                    payload.get("duration", payload.get("duration_sec", 6))
+                ),
                 "first_frame_path": first_frame_path,
             }
         ],

@@ -155,11 +155,18 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                 dict[str, object], cast(list[object], native_payload["video_tasks"])[0]
             )
             completion = cast(dict[str, object], result["completion"])
+            details = cast(dict[str, object], result["details"])
             self.assertEqual(completion["state"], "succeeded")
             self.assertTrue(bool(completion["final_output"]))
             self.assertEqual(
                 str(video_task["first_frame_path"]), str(first_frame_path.resolve())
             )
+            self.assertEqual(str(video_task["orientation"]), "landscape")
+            self.assertEqual(str(video_task["resolution"]), "720p")
+            self.assertEqual(str(video_task["duration"]), "6")
+            self.assertEqual(str(details["orientation"]), "landscape")
+            self.assertEqual(str(details["resolution"]), "720p")
+            self.assertEqual(str(details["duration"]), "6")
 
     def test_geminigen_row_processing_handles_all_items_for_one_row_via_adapter_command(
         self,
