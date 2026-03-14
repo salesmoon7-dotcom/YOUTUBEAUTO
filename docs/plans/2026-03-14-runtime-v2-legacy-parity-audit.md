@@ -139,7 +139,7 @@ Checklist:
 | Item | Legacy evidence | Runtime_v2 evidence | Status | Notes |
 |---|---|---|---|---|
 | Python path | default `D:/qwen3_tts_env/Scripts/python.exe` | `preflight.py` checks same runtime path | MATCHED | path expectation aligned |
-| Model id / generation defaults | `qwen3_tts_config.json` sets `model_id=Qwen/Qwen3-TTS-12Hz-1.7B-Base`, `device=cuda:0`, `dtype=float32`, `attn_implementation=eager`, `x_vector_only_mode=true` | runtime_v2 `qwen3_worker.py` delegates to adapter/payload contract and does not mirror these config keys directly | DIFFERS-A | explicit config-value parity gap |
+| Model id / generation defaults | `qwen3_tts_config.json` sets `model_id=Qwen/Qwen3-TTS-12Hz-1.7B-Base`, `device=cuda:0`, `dtype=float32`, `attn_implementation=eager`, `x_vector_only_mode=true` | runtime_v2 now loads and exposes the same legacy config/runtime values in worker prompt/details while invoking the same legacy script path | MATCHED | unit test + manual QA confirmed legacy runtime values are loaded and surfaced |
 | Reference audio loading | legacy config uses `reference_audio_default=D:/qwen3_tts_data/raw_audio/male_extra/ref.MP3` and per-channel overrides (`4 -> same MP3`) | runtime_v2 now resolves `reference_audio_default/by_channel` and records `ref_audio_used` in worker details / adapter input | MATCHED | channel-based ref audio selection restored and manually verified on channel 4 |
 | Output format | legacy config default `output_format=mp3`, but legacy script normalizes unsupported formats to `flac` (`qwen3_tts_automation.py:317-320`) | runtime_v2 now normalizes output format with the same rule and passes it through worker prompt/details | MATCHED | manual QA confirmed `mp3` config normalizes to `flac` |
 
@@ -193,6 +193,5 @@ Checklist:
 
 1. Extract the exact legacy Canva and GeminiGen browser scripts/configs and clear the `UNKNOWN-PATH` / `UNKNOWN-EVIDENCE` rows.
 2. Split all remaining browser/service diffs into `DIFFERS-A` vs `DIFFERS-B` and resolve classification ambiguity.
-3. Restore or explicitly accept the remaining `qwen3_tts` config-driven model/generation settings (`model_id`, `device`, `dtype`, generation knobs).
-4. Restore or explicitly accept the remaining `rvc` config-driven behavior (`input mode semantics`, `output naming/format`).
-5. Decide whether `kenburns` should be aligned back toward the remaining legacy richer preset/effect-sequence model, or explicitly accept the current simplified motion model after numeric defaults (`60fps`, `12s`, `8000px`, `zoom_ratio=1.13`, `PAN_TRAVEL_RATIO=0.40`) were restored.
+3. Restore or explicitly accept the remaining `rvc` config-driven behavior (`input mode semantics`, `output naming/format`).
+4. Decide whether `kenburns` should be aligned back toward the remaining legacy richer preset/effect-sequence model, or explicitly accept the current simplified motion model after numeric defaults (`60fps`, `12s`, `8000px`, `zoom_ratio=1.13`, `PAN_TRAVEL_RATIO=0.40`) were restored.
