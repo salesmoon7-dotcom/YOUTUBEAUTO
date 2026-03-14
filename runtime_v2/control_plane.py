@@ -61,7 +61,7 @@ MAX_CHAIN_DEPTH = 4
 MAX_NEXT_JOBS = 4
 MAX_STAGE1_DECLARED_NEXT_JOBS = 12
 PROMOTION_GATE_ORDER = {"": 0, "A": 1, "B": 2, "C": 3, "D": 4}
-RVC_SOURCE_MODE_PRIORITY = {"tts-source": 2, "gemi-video-source": 1}
+RVC_SOURCE_MODE_PRIORITY = {"tts-source": 1, "gemi-video-source": 2}
 
 
 def _row_closeout_context(

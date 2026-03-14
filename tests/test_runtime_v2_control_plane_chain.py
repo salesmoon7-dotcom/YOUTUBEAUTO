@@ -810,8 +810,8 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             ]
             job_ids = {str(item["job_id"]) for item in queue_items}
 
-        self.assertIn("rvc-qwen3-stage2-run-1", job_ids)
-        self.assertNotIn("rvc-geminigen-stage2-run-1", job_ids)
+        self.assertIn("rvc-geminigen-stage2-run-1", job_ids)
+        self.assertNotIn("rvc-qwen3-stage2-run-1", job_ids)
 
     def test_control_plane_rejects_geminigen_rvc_lane_when_qwen3_lane_already_exists(
         self,
@@ -922,8 +922,8 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             ]
             job_ids = {str(item["job_id"]) for item in queue_items}
 
-        self.assertIn("rvc-qwen3-stage2-run-1", job_ids)
-        self.assertNotIn("rvc-geminigen-stage2-run-1", job_ids)
+        self.assertIn("rvc-geminigen-stage2-run-1", job_ids)
+        self.assertNotIn("rvc-qwen3-stage2-run-1", job_ids)
 
     def test_control_plane_keeps_stage1_declared_qwen_job_when_scene_count_is_three(
         self,
