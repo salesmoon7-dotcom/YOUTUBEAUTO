@@ -159,7 +159,7 @@ Checklist:
 |---|---|---|---|---|
 | Active model selection | `rvc_config.json` sets `active_model=jp_narrator_v1` with explicit `models` table | runtime_v2 now falls back to legacy `active_model` when `model_name` is omitted | MATCHED | unit test + manual QA confirmed `rvc_request.json.model_name = jp_narrator_v1` |
 | Applio python/core path | legacy config pins `applio_python=D:/Applio/env/python.exe`, `applio_core=D:/Applio/core.py` | runtime_v2 now exposes `applio_python/applio_core` in worker request/details and preflight warnings | MATCHED | unit test + manual preflight report confirmed both paths are checked and surfaced |
-| Input mode | legacy script is centered on source audio / extracted video audio flow, not explicit `tts-source` / `gemi-video-source` naming | runtime_v2 explicitly splits `tts-source` and `gemi-video-source` | DIFFERS-A | architectural and behavior difference |
+| Input mode | legacy `find_tts_files()` excludes clips with `_GEMI.mp4`, so GEMI-derived audio wins when both source families exist | runtime_v2 now prefers `gemi-video-source` over `tts-source` for the same run in control-plane RVC lane selection | MATCHED | unit test + manual queue evidence confirmed GEMI lane now wins when both exist |
 | Output naming | legacy config `export_format=FLAC`, script-managed naming/trim | runtime_v2 now emits canonical `speech_rvc.flac` when legacy export format is FLAC, with `.wav` left only as compatibility fallback in downstream lookup | MATCHED | unit test + manual QA confirmed canonical RVC next-job path now uses `.flac` |
 
 ### 2.3 KenBurns
@@ -193,5 +193,4 @@ Checklist:
 
 1. Extract the exact legacy Canva and GeminiGen browser scripts/configs and clear the `UNKNOWN-PATH` / `UNKNOWN-EVIDENCE` rows.
 2. Split all remaining browser/service diffs into `DIFFERS-A` vs `DIFFERS-B` and resolve classification ambiguity.
-3. Restore or explicitly accept the remaining `rvc` config-driven behavior (`input mode semantics`).
-4. Decide whether `kenburns` should be aligned back toward the remaining legacy richer preset/effect-sequence model, or explicitly accept the current simplified motion model after numeric defaults (`60fps`, `12s`, `8000px`, `zoom_ratio=1.13`, `PAN_TRAVEL_RATIO=0.40`) were restored.
+3. Decide whether `kenburns` should be aligned back toward the remaining legacy richer preset/effect-sequence model, or explicitly accept the current simplified motion model after numeric defaults (`60fps`, `12s`, `8000px`, `zoom_ratio=1.13`, `PAN_TRAVEL_RATIO=0.40`) were restored.
