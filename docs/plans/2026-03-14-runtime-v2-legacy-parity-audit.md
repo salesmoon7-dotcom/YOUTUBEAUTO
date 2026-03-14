@@ -177,7 +177,7 @@ Checklist:
 | Output resolution | legacy default `1920x1080` | runtime_v2 `OUTPUT_WIDTH/HEIGHT = 1920x1080` | MATCHED | aligned |
 | FPS | `ken_burns_effect.py` default `fps=60` | runtime_v2 `OUTPUT_FPS = 60` | MATCHED | verified with current runtime output via `ffprobe` (`60/1`) |
 | Default duration | legacy default/docstring `12s` | runtime_v2 defaults to `12s` via payload fallback | MATCHED | verified with current runtime output via `ffprobe` (`12.000000`) |
-| Zoom/pan defaults | legacy `zoom_ratio=1.13`, `PAN_TRAVEL_RATIO=0.40`, richer preset/effect sequence model | runtime_v2 `DEFAULT_PAN_PCT=0.40`, `DEFAULT_ZOOM_PCT=0.13`, still simplified direction/zoom model | DIFFERS-A | core numeric defaults restored and verified in ffmpeg filter, but richer preset/effect sequence model still differs |
+| Zoom/pan defaults | legacy `zoom_ratio=1.13`, `PAN_TRAVEL_RATIO=0.40`, richer preset/effect sequence model | runtime_v2 now restores legacy `effect_type` sequence and fixed-zoom pan preset semantics (`z='1.1'` + smoothstep easing), but still uses a thinner model than the full legacy preset system | DIFFERS-B | core numeric defaults + first richer effect-model restore are complete; remaining gap is whether the full preset system itself must also be ported |
 | Upscale width | legacy default `8000` | runtime_v2 `UPSCALE_WIDTH = 8000` | MATCHED | verified in current ffmpeg filter chain |
 
 ---
@@ -193,4 +193,4 @@ Checklist:
 
 1. Extract the exact legacy Canva and GeminiGen browser scripts/configs and clear the `UNKNOWN-PATH` / `UNKNOWN-EVIDENCE` rows.
 2. Split all remaining browser/service diffs into `DIFFERS-A` vs `DIFFERS-B` and resolve classification ambiguity.
-3. Decide whether `kenburns` should be aligned back toward the remaining legacy richer preset/effect-sequence model, or explicitly accept the current simplified motion model after numeric defaults (`60fps`, `12s`, `8000px`, `zoom_ratio=1.13`, `PAN_TRAVEL_RATIO=0.40`) were restored.
+3. Decide whether the current restored `effect_type` + fixed-zoom pan model is sufficient, or whether the full legacy preset system beyond the current 8-step sequence also needs to be ported.
