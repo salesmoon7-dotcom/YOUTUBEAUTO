@@ -2200,11 +2200,15 @@ def _run_qwen3_adapter_child(args: CliArgs) -> int:
     command = [
         r"D:/qwen3_tts_env/Scripts/python.exe",
         r"D:/YOUTUBE_AUTO/scripts/qwen3_tts_automation.py",
-        "--folder",
-        str(project_root.resolve()),
+        "--prompt-file",
+        str(prompt_path.resolve()),
+        "--row-index",
+        "0",
         "--result-json",
         str(result_path.resolve()),
     ]
+    if args.ref_audio.strip():
+        command.extend(["--ref-audio", args.ref_audio.strip()])
     completed = subprocess.run(
         command, capture_output=True, text=True, encoding="utf-8", errors="replace"
     )

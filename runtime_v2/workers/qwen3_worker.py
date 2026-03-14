@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -20,6 +21,7 @@ from runtime_v2.workers.native_only import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+LEGACY_QWEN3_CONFIG = Path(r"D:/YOUTUBE_AUTO/system/config/qwen3_tts_config.json")
 
 
 def _int_value(raw_value: object, default: int) -> int:
@@ -73,6 +75,35 @@ def _canonical_adapter_env() -> dict[str, str]:
     return {"PYTHONPATH": pythonpath}
 
 
+def _load_legacy_qwen3_config() -> dict[str, object]:
+    if not LEGACY_QWEN3_CONFIG.exists():
+        return {}
+    try:
+        raw_payload = json.loads(LEGACY_QWEN3_CONFIG.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return cast(dict[str, object], raw_payload) if isinstance(raw_payload, dict) else {}
+
+
+def _resolve_reference_audio(job: JobContract, config: dict[str, object]) -> str:
+    by_channel = config.get("reference_audio_by_channel", {})
+    if isinstance(by_channel, dict):
+        channel_value = job.payload.get("channel")
+        channel_key = str(channel_value).strip() if channel_value is not None else ""
+        if channel_key:
+            ref = str(by_channel.get(channel_key, "")).strip()
+            if ref:
+                return ref
+    return str(config.get("reference_audio_default", "")).strip()
+
+
+def _normalize_output_format(config: dict[str, object]) -> str:
+    raw_format = str(config.get("output_format", "")).strip().lower()
+    if raw_format in {"wav", "flac"}:
+        return raw_format
+    return "flac"
+
+
 def _build_rvc_next_job(
     job: JobContract, verified_output: Path
 ) -> dict[str, object] | None:
@@ -114,6 +145,7 @@ def run_qwen3_job(
     if job is None:
         return {"worker": "qwen3_tts", "status": "failed", "error_code": "missing_job"}
     workspace = prepare_workspace(job, artifact_root=artifact_root)
+    legacy_config = _load_legacy_qwen3_config()
     voice_texts = _voice_texts_payload(job.payload)
     if not voice_texts:
         return finalize_worker_result(
@@ -128,8 +160,25 @@ def run_qwen3_job(
 
     project_root = workspace / "project"
     project_root.mkdir(parents=True, exist_ok=True)
+    reference_audio = _resolve_reference_audio(job, legacy_config)
+    output_format = _normalize_output_format(legacy_config)
+    if reference_audio:
+        ref_audio_path = Path(reference_audio)
+        if not ref_audio_path.exists() or not ref_audio_path.is_file():
+            return finalize_worker_result(
+                workspace,
+                status="failed",
+                stage="validate_input",
+                artifacts=[],
+                error_code="missing_reference_audio",
+                retryable=False,
+                details={"reference_audio": reference_audio},
+                completion={"state": "failed", "final_output": False},
+            )
     prompt_payload = {
         "channel": _int_value(job.payload.get("channel", 0), 0),
+        "reference_audio": reference_audio,
+        "output_format": output_format,
         "rows": [
             {
                 "row_index": 0,
@@ -138,11 +187,20 @@ def run_qwen3_job(
                 "no": str(job.payload.get("episode_no", "1")),
                 "folder_path": str(project_root.resolve()),
                 "voice_texts": voice_texts,
+                "ref_audio_used": reference_audio,
+                "output_format": output_format,
             }
         ],
     }
     request_file = write_native_request(workspace, job.payload)
     prompt_file = write_json_atomic(workspace / "qwen_prompt.json", prompt_payload)
+    if reference_audio:
+        request_payload = cast(
+            dict[str, object], json.loads(request_file.read_text(encoding="utf-8"))
+        )
+        request_payload["reference_audio"] = reference_audio
+        request_file = write_json_atomic(request_file, request_payload)
+
     adapter_command_raw = job.payload.get("adapter_command")
     adapter_extra_env: dict[str, str] | None = None
     if (not isinstance(adapter_command_raw, list) or not adapter_command_raw) and str(
@@ -156,6 +214,8 @@ def run_qwen3_job(
             "--service-artifact-path",
             str(job.payload.get("service_artifact_path", "")),
         ]
+        if reference_audio:
+            adapter_command_raw.extend(["--ref-audio", reference_audio])
         adapter_extra_env = _canonical_adapter_env()
     if isinstance(adapter_command_raw, list) and adapter_command_raw:
         adapter_command_items = cast(list[object], adapter_command_raw)
@@ -180,7 +240,12 @@ def run_qwen3_job(
                     adapter_result.get("error_code", "qwen3_tts_adapter_failed")
                 ),
                 retryable=False,
-                details=cast(dict[str, object], adapter_result.get("details", {})),
+                details={
+                    **cast(dict[str, object], adapter_result.get("details", {})),
+                    "reference_audio": reference_audio,
+                    "ref_audio_used": reference_audio,
+                    "output_format": output_format,
+                },
                 completion={"state": "failed", "final_output": False},
             )
         verified_output = Path(str(adapter_result["output_path"]))
@@ -209,6 +274,9 @@ def run_qwen3_job(
                 "service_artifact_path": str(verified_output.resolve()),
                 "reused": bool(adapter_result.get("reused", False)),
                 "adapter_mode": "command",
+                "reference_audio": reference_audio,
+                "ref_audio_used": reference_audio,
+                "output_format": output_format,
             },
             next_jobs=next_jobs,
             completion={
@@ -230,5 +298,8 @@ def run_qwen3_job(
             "voice_text_count": len(voice_texts),
             "image_path": str(job.payload.get("image_path", "")).strip(),
             "model_name": str(job.payload.get("model_name", "")).strip(),
+            "reference_audio": reference_audio,
+            "ref_audio_used": reference_audio,
+            "output_format": output_format,
         },
     )
