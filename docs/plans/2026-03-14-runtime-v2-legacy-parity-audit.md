@@ -57,7 +57,7 @@ Checklist:
 
 | Item | Legacy evidence | Runtime_v2 evidence | Status | Notes |
 |---|---|---|---|---|
-| Initial URL | `GENSPARK_URL = https://www.genspark.ai/agents?type=image_generation_agent` | `SERVICE_TARGETS['genspark'].start_url = https://www.genspark.ai/` | DIFFERS-A | runtime_v2 starts broader and then narrows by expected URL contract |
+| Initial URL | `GENSPARK_URL = https://www.genspark.ai/agents?type=image_generation_agent` | `SERVICE_TARGETS['genspark'].start_url = https://www.genspark.ai/agents?type=image_generation_agent` | MATCHED | unit test + manual start_url evidence confirmed parity |
 | Browser family / port | Selenium Edge, `EDGE_DEBUG_PORT = get_port('genspark_edge')` | runtime_v2 browser plane + `genspark` session in manager/preflight | UNKNOWN-EVIDENCE | port intent is similar, but browser family/profile mapping still needs direct confirmation |
 | Prompt input field | `textarea.j-search-input` in legacy | same selector via `cli.py` / agent-browser actions | MATCHED | selector aligned |
 | Generate/submit semantics | legacy Selenium click flow on `.enter-icon-wrapper` | runtime_v2 eval/native setter + Enter + CTA retry | DIFFERS-A | runtime_v2 is currently more defensive/contract-heavy than legacy |
@@ -98,7 +98,7 @@ Checklist:
 | Item | Legacy evidence | Runtime_v2 evidence | Status | Notes |
 |---|---|---|---|---|
 | Browser family/profile/port | `canva_automation.py:96-116` uses Chrome + `canva_chrome` session (`CANVA_CHROME_PORT`, `CANVA_SESSION_DIR`) | `runtime_v2/browser/manager.py:482-507` maps `canva -> canva_chrome`, browser family `chrome` | DIFFERS-B | browser family/session key match, but exact configured port/profile path still needs one-to-one path equality confirmation |
-| Template/input/button sequence | `canva_automation.py` clones template, edits AI background/text, downloads current page PNG | runtime_v2 adapter-backed child in `runtime_v2/stage2/canva_worker.py` | UNKNOWN-EVIDENCE | legacy source path is pinned, but direct selector/button-by-button comparison still needs to be filled |
+| Template/input/button sequence | `canva_automation.py:318-400` clones the template by `Ctrl+A/C/V` + `button[aria-label="페이지 추가"]`; `generate_ai_background()` then uses explicit Canva editor selectors (`배경 생성`, page panel/canvas, etc.) | runtime_v2 `canva_worker.py` now surfaces clone evidence (`page_count_before/after`, `clone_ok`) from the adapter child, but the full legacy edit/generate/download selector sequence is not yet modeled as explicit runtime_v2 contracts | DIFFERS-A | first-step clone semantics are now exposed, but the rest of the legacy browser sequence still differs |
 | Thumbnail artifact semantics | legacy THUMB export path | runtime_v2 `canva_worker` `service_artifact_path` contract | MATCHED | output contract aligns at high level |
 
 ### 1.5 GeminiGen
@@ -118,6 +118,7 @@ Checklist:
 | Initial URL | `geminigen_automation.py:253-257` defines `generate_page_url=https://geminigen.ai/app/video-gen`, plus `/generate` and `/` alternatives | `SERVICE_TARGETS['geminigen'].start_url=https://geminigen.ai/app/video-gen` | MATCHED | main runtime_v2 start URL matches the primary legacy generate page |
 | Browser family / port/profile | `geminigen_automation.py:149-152` uses UC Chrome userdata `geminigen_chrome_userdata` | `runtime_v2/browser/manager.py:483-507` maps `geminigen -> geminigen_uc/geminigen_chrome_userdata`, browser family `uc` | DIFFERS-B | browser family/session-root intent aligned, but exact configured port/profile path still needs one-to-one path equality confirmation |
 | First-frame handling | legacy image-to-video flow | `geminigen_worker.py` uses `first_frame_path` | MATCHED | contract exists in both |
+| Provider/model/control semantics | `geminigen_automation.py:261-331` defines explicit provider cards, tabs, model dropdown, generation mode, orientation/resolution/duration radios, and generate button selectors | runtime_v2 `geminigen_worker.py` currently guarantees prompt + first_frame + truthful artifact capture only, and still does not surface provider/model/orientation/resolution/duration selector semantics as explicit runtime_v2 contracts | DIFFERS-A | explicit browser control semantics are not yet mirrored in runtime_v2 contracts |
 | Video capture/export | legacy download/export semantics plus explicit retry/cooldown/session rules in `geminigen_automation.py:153-208` | runtime_v2 truthful video capture in CDP path | DIFFERS-B | runtime_v2 is stricter about truthful artifact gate and simpler than legacy retry/session policy |
 
 ---
