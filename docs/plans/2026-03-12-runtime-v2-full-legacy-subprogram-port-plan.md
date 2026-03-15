@@ -402,7 +402,7 @@ Evidence bundle per service:
 
 ## Remaining verification tasks
 
-### Task 1: Stage 5 manual 1-row smoke (Completed)
+### Task 1: Stage 5 manual 1-row smoke (Completed for generic gate, pending for user-designated semantic row)
 
 **Files:**
 - `docs/plans/2026-03-07-runtime-v2-staged-test-plan.md`
@@ -415,6 +415,27 @@ Evidence bundle per service:
 Completion status:
 - completed on canonical runtime root with current-session `render final.mp4`
 - readiness green and promotion gates `A/B/C/D` all passed after the final row closeout/Gate B fixes
+- fresh detached rerun reaffirmed completion at `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row1-rerun-03\probe_result.json` with `status=ok`, `code=OK`, `probe_success=true`
+- follow-up required: rerun the same Stage 5 minimum flow on the user-designated semantic target row `요양 시설 비용 현실과 준비해야 할 금액` (`Sheet1` row 16 / CLI `--row-index 14`) before treating the row-specific ask as closed
+- addressed in this session:
+  - fail-closed gate for missing real GPT output (no more `topic_spec_fallback` success leakage)
+  - stage1 Excel writeback stale-snapshot bug
+  - stage1 declared next-job fan-out limit (`12 -> 128`)
+  - ChatGPT same-tab lifecycle reset via `Page.navigate(CHATGPT_LONGFORM_URL)` + `Page.reload(ignoreCache=true)`
+  - detached probe/process launch updated to include `CREATE_NO_WINDOW`
+  - legacy voice grouping contract restored so `Voice 13-16(4)` is preserved as one grouped mapping with `original_voices=[13,14,15,16]`
+  - live ChatGPT prompt no longer includes the extra line `"[Ref Img 1], [Ref Img 2], [Video1], [Video2] ... 블록도 함께 채우세요."`
+  - qwen terminal artifact contract updated from `speech.wav` assumption toward legacy-aligned `speech.flac` / `voice/#NN.flac`
+- current blocker update: semantic row verification is still open because the current session was interrupted before any final rerun completed with closing evidence.
+- current evidence: grouped `voice_texts.json` correctness and FLAC-aligned qwen contract were both reflected in runtime_v2 code/tests, but no final `probe_result.json`, `failure_summary.json`, or `render/` artifact was produced before user-requested stop.
+- current session stop condition: runtime-related Python processes were force-stopped on user request, so this session ends with `verification interrupted`, not `verification complete`.
+- next remediation target: resume from a clean semantic-row rerun only when explicit re-run is desired, using the now-updated prompt/tabs/voice-grouping/qwen-FLAC contracts.
+- oracle-reviewed shortest-time closeout strategy:
+  - run only one clean semantic-row detached verification cycle (`Sheet1` row 16 / CLI `--row-index 14`) with a fresh `probe_root`
+  - before that run, execute only `python -m runtime_v2.cli --readiness-check`; if readiness fails, stop and fix only that blocker
+  - do **not** rerun generic Stage 5, Stage 5B, 24h soak, or broad pytest suites during closeout
+  - accept closeout only when the single semantic-row run leaves closed evidence: `probe_result.json` + (`render_final.mp4` or `failure_summary.json`)
+  - if that one semantic-row run fails for a deterministic contract/logic reason, stop rerunning and switch to single-blocker debugging only
 
 ### Task 2: Stage 5B manual 5-row smoke (Completed)
 
