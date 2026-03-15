@@ -41,9 +41,14 @@ def seed_excel_row(
     excel_path: str | Path,
     sheet_name: str,
     row_index: int,
+    accepted_statuses: set[str] | None = None,
 ) -> dict[str, object]:
     topic_spec = select_topic_spec(
-        excel_path, sheet_name=sheet_name, row_index=row_index, run_id=run_id
+        excel_path,
+        sheet_name=sheet_name,
+        row_index=row_index,
+        run_id=run_id,
+        accepted_statuses=accepted_statuses,
     )
     if topic_spec is None:
         return {
@@ -54,6 +59,7 @@ def seed_excel_row(
         }
     row_ref = str(topic_spec["row_ref"])
     snapshot_hash = str(topic_spec.get("excel_snapshot_hash", "")).strip()
+    current_status = str(topic_spec.get("status_snapshot", "")).strip().lower()
     safe_sheet = _safe_sheet_token(sheet_name)
     job_id = f"chatgpt-{safe_sheet}-{row_index + 1}"
     contract = build_explicit_job_contract(
@@ -71,6 +77,17 @@ def seed_excel_row(
     )
     contract_path = config.input_root / "chatgpt" / f"{job_id}.job.json"
     _ = write_json_atomic(contract_path, contract)
+    if accepted_statuses is not None and current_status in {"ok", "seeded"}:
+        return {
+            "status": "seeded",
+            "code": "SEEDED_JOB",
+            "reason_code": "seeded",
+            "worker_launched": False,
+            "job_id": job_id,
+            "topic_spec": topic_spec,
+            "contract": contract,
+            "contract_path": str(contract_path.resolve()),
+        }
     status_updated = update_excel_status(
         excel_path,
         sheet_name=sheet_name,

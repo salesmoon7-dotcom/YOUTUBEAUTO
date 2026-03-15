@@ -9,6 +9,11 @@ from runtime_v2.excel.source import read_excel_row, read_excel_rows
 PENDING_STATUSES = {"", "partial", "failed", "nan"}
 
 
+def _normalized_statuses(accepted_statuses: set[str] | None = None) -> set[str]:
+    statuses = PENDING_STATUSES if accepted_statuses is None else accepted_statuses
+    return {status.strip().lower() for status in statuses}
+
+
 def row_ref(sheet_name: str, row_index: int) -> str:
     return f"{sheet_name}!row{row_index + 1}"
 
@@ -41,6 +46,7 @@ def select_topic_spec(
     sheet_name: str,
     row_index: int,
     run_id: str,
+    accepted_statuses: set[str] | None = None,
 ) -> dict[str, object] | None:
     row_map = read_excel_row(excel_path, sheet_name=sheet_name, row_index=row_index)
     raw_topic = _lookup_value(row_map, "Topic")
@@ -49,7 +55,7 @@ def select_topic_spec(
     status = "" if raw_status is None else str(raw_status).strip()
     if not topic:
         return None
-    if status.lower() not in PENDING_STATUSES:
+    if status.lower() not in _normalized_statuses(accepted_statuses):
         return None
     snapshot = f"{topic}|{status}|{sheet_name}|{row_index}"
     return build_topic_spec(

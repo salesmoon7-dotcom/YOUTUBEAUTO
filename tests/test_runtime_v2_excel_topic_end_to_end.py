@@ -158,6 +158,83 @@ class RuntimeV2ExcelTopicEndToEndTests(unittest.TestCase):
         self.assertTrue(synced)
         self.assertEqual(status_value, "Done")
 
+    def test_seed_excel_row_keeps_ok_status_blocked_by_default(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            excel_path = _write_excel_fixture(root / "topic.xlsx")
+            workbook = load_workbook(excel_path)
+            try:
+                sheet = cast(Worksheet, workbook["Sheet1"])
+                status_cell = cast(Cell, sheet["B2"])
+                status_cell.value = "OK"
+                workbook.save(excel_path)
+            finally:
+                workbook.close()
+            config = RuntimeConfig.from_root(root)
+
+            seeded = seed_excel_row(
+                config=config,
+                run_id="ok-status-default-blocked",
+                excel_path=excel_path,
+                sheet_name="Sheet1",
+                row_index=0,
+            )
+
+        self.assertEqual(seeded["status"], "no_work")
+        self.assertEqual(seeded["code"], "NO_WORK")
+
+    def test_seed_excel_row_can_opt_in_ok_status_for_closeout(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            excel_path = _write_excel_fixture(root / "topic.xlsx")
+            workbook = load_workbook(excel_path)
+            try:
+                sheet = cast(Worksheet, workbook["Sheet1"])
+                status_cell = cast(Cell, sheet["B2"])
+                status_cell.value = "OK"
+                workbook.save(excel_path)
+            finally:
+                workbook.close()
+            config = RuntimeConfig.from_root(root)
+
+            seeded = seed_excel_row(
+                config=config,
+                run_id="ok-status-closeout",
+                excel_path=excel_path,
+                sheet_name="Sheet1",
+                row_index=0,
+                accepted_statuses={"", "partial", "failed", "nan", "ok"},
+            )
+
+        self.assertEqual(seeded["status"], "seeded")
+        self.assertEqual(seeded["code"], "SEEDED_JOB")
+
+    def test_seed_excel_row_can_resume_seeded_status_idempotently(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            excel_path = _write_excel_fixture(root / "topic.xlsx")
+            workbook = load_workbook(excel_path)
+            try:
+                sheet = cast(Worksheet, workbook["Sheet1"])
+                status_cell = cast(Cell, sheet["B2"])
+                status_cell.value = "Seeded"
+                workbook.save(excel_path)
+            finally:
+                workbook.close()
+            config = RuntimeConfig.from_root(root)
+
+            seeded = seed_excel_row(
+                config=config,
+                run_id="seeded-status-closeout",
+                excel_path=excel_path,
+                sheet_name="Sheet1",
+                row_index=0,
+                accepted_statuses={"", "partial", "failed", "nan", "ok", "seeded"},
+            )
+
+        self.assertEqual(seeded["status"], "seeded")
+        self.assertEqual(seeded["code"], "SEEDED_JOB")
+
     def test_control_plane_keeps_same_run_id_across_excel_stage1_stage2_final(
         self,
     ) -> None:
