@@ -49,6 +49,8 @@
 
 ## Current Runtime_v2 Canonical References
 - `sop/SOP_runtime_v2_development_guardrails.md`
+- `plans/2026-03-15-runtime-v2-closeout-postmortem-report-v2.md`
+- `plans/2026-03-15-runtime-v2-closeout-retest-plan-v2.md`
 - `reference/error-code-semantics.md`
 - `plans/2026-03-09-runtime-v2-guardrail-drift-remediation-plan.md`
 - `plans/2026-03-08-browser-session-stability-plan.md`
@@ -60,6 +62,7 @@
 - `system/runtime_v2/health/gui_status.json` - control-loop latest-run GUI snapshot (운영 스냅샷 확인용, broad search 기본 범위 아님)
 - `system/runtime_v2/evidence/result.json` - latest-run result snapshot (운영 스냅샷 확인용, broad search 기본 범위 아님)
 - `system/runtime_v2/evidence/control_plane_events.jsonl` - control-plane transition evidence (운영 스냅샷 확인용, broad search 기본 범위 아님)
+- 운영 스냅샷의 `OK`/green은 attach 가능, 로그인 확인, 서비스 생성 성공, final closeout 성공과 동일한 증거등급이 아닙니다.
 
 ## Session-Start Rule
 - `runtime_v2` 관련 작업은 사용자 재지시가 없어도 먼저 `sop/SOP_runtime_v2_development_guardrails.md`를 기준으로 읽고 진행합니다.
