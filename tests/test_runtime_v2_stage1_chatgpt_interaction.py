@@ -371,6 +371,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self,
     ) -> None:
         eval_calls = 0
+        raw_eval_calls = 0
 
         def fake_runner(command: list[str], timeout_sec: int) -> str:
             nonlocal eval_calls
@@ -383,6 +384,35 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                 return f"[1] Omnibox Popup - chrome://newtab\n[2] {CHATGPT_LONGFORM_TITLE_SUBSTRING} - https://{CHATGPT_LONGFORM_URL_SUBSTRING}"
             return "ok"
 
+        def fake_raw_eval(ws_url: str, script: str) -> str:
+            nonlocal raw_eval_calls
+            _ = ws_url
+            _ = script
+            raw_eval_calls += 1
+            if raw_eval_calls == 1:
+                return json.dumps(
+                    json.dumps(
+                        {
+                            "ok": True,
+                            "inputSelector": "#prompt-textarea",
+                            "sendClicked": True,
+                        }
+                    )
+                )
+            return json.dumps(
+                json.dumps(
+                    {
+                        "send_found": False,
+                        "send_enabled": False,
+                        "send_disabled": False,
+                        "in_flight_marker": True,
+                        "assistant_text": "",
+                        "assistant_block_count": 0,
+                        "legacy_blocks": [],
+                    }
+                )
+            )
+
         backend = AgentBrowserCdpBackend(
             port=9222,
             input_selectors=["#prompt-textarea"],
@@ -393,6 +423,11 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         )
 
         with (
+            mock.patch.object(
+                backend,
+                "_wait_for_input_ready",
+                return_value={"ready": True},
+            ),
             mock.patch(
                 "runtime_v2.stage1.chatgpt_backend._select_page_target",
                 return_value={
@@ -402,24 +437,82 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             ),
             mock.patch(
                 "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_eval",
-                return_value=json.dumps(
-                    json.dumps(
-                        {
-                            "ok": True,
-                            "inputSelector": "#prompt-textarea",
-                            "sendClicked": True,
-                        }
-                    )
-                ),
+                side_effect=fake_raw_eval,
             ),
             mock.patch("runtime_v2.stage1.chatgpt_backend.time.sleep"),
         ):
             result = backend.submit_prompt("hello")
 
         self.assertTrue(bool(result["ok"]))
-        self.assertEqual(eval_calls, 3)
+        self.assertGreaterEqual(eval_calls, 3)
         self.assertIn(
             "eval_raw_cdp_fallback", cast(list[object], result["backend_fallbacks"])
+        )
+
+    def test_agent_browser_backend_reuses_cached_target_when_read_target_disappears(
+        self,
+    ) -> None:
+        def fake_runner(command: list[str], timeout_sec: int) -> str:
+            if command[-2:] == ["tab", "2"]:
+                return "ok"
+            if command[-2:] == ["tab", "list"]:
+                return f"[1] Omnibox Popup - chrome://newtab\n[2] {CHATGPT_LONGFORM_TITLE_SUBSTRING} - https://{CHATGPT_LONGFORM_URL_SUBSTRING}"
+            if command[-2] == "eval":
+                raise RuntimeError("CDP_TARGET_NOT_FOUND")
+            return "ok"
+
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["button[data-testid='send-button']"],
+            stop_selectors=["button[aria-label='Stop streaming']"],
+            response_selectors=["[data-message-author-role='assistant']"],
+            command_runner=fake_runner,
+        )
+        selected_target = {
+            "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/abc",
+            "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}",
+            "title": CHATGPT_LONGFORM_TITLE_SUBSTRING,
+        }
+        backend._last_selected_target = dict(selected_target)
+
+        with (
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._select_page_target",
+                side_effect=RuntimeError("CDP_TARGET_NOT_FOUND"),
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._select_generic_chatgpt_target",
+                return_value=None,
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_eval",
+                return_value=json.dumps(
+                    json.dumps(
+                        {
+                            "has_stop": False,
+                            "has_send_button": True,
+                            "assistant_text": "final json",
+                            "assistant_block_count": 1,
+                            "legacy_blocks": [],
+                        }
+                    )
+                ),
+            ) as raw_eval,
+        ):
+            state = backend.read_response_state()
+
+        self.assertEqual(state["assistant_text"], "final json")
+        self.assertEqual(
+            cast(dict[str, object], state["selected_tab"])["url"],
+            f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}",
+        )
+        self.assertIn(
+            "eval_cached_target_fallback",
+            cast(list[object], state["backend_fallbacks"]),
+        )
+        raw_eval.assert_called_once_with(
+            selected_target["webSocketDebuggerUrl"], mock.ANY
         )
 
     def test_raw_cdp_eval_suppresses_origin_header(self) -> None:

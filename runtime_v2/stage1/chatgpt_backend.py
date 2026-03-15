@@ -52,6 +52,12 @@ class AgentBrowserCdpBackend:
         self._runner = _default_runner if command_runner is None else command_runner
         self._max_retries = 2
         self._fallback_events: list[str] = []
+        self._last_selected_target: dict[str, str] = {}
+
+    def _remember_target(self, target: dict[str, str] | None) -> dict[str, str]:
+        if target:
+            self._last_selected_target = dict(target)
+        return dict(self._last_selected_target)
 
     def submit_prompt(self, prompt: str) -> dict[str, object]:
         payload = json.dumps(
@@ -97,6 +103,7 @@ class AgentBrowserCdpBackend:
                 raw_target = _select_page_target(
                     self._port, self._expected_url_substring
                 )
+                self._remember_target(raw_target)
                 parsed = _decode_backend_json(
                     _run_raw_cdp_eval(
                         raw_target["webSocketDebuggerUrl"],
@@ -283,7 +290,15 @@ class AgentBrowserCdpBackend:
                 ):
                     break
                 time.sleep(1.0)
-        raw_target = _select_page_target(self._port, self._expected_url_substring)
+        try:
+            raw_target = _select_page_target(self._port, self._expected_url_substring)
+            self._remember_target(raw_target)
+        except RuntimeError:
+            cached_target = dict(self._last_selected_target)
+            if not cached_target:
+                raise
+            raw_target = cached_target
+            self._record_fallback("eval_cached_target_fallback")
         self._record_fallback("eval_raw_cdp_fallback")
         return _run_raw_cdp_eval(raw_target["webSocketDebuggerUrl"], script)
 
@@ -305,13 +320,15 @@ class AgentBrowserCdpBackend:
 
     def _ensure_custom_gpt_page(self) -> None:
         try:
-            _select_page_target(self._port, self._expected_url_substring)
+            target = _select_page_target(self._port, self._expected_url_substring)
+            self._remember_target(target)
             return
         except RuntimeError:
             self._record_fallback("custom_page_select_fallback")
         generic = _select_generic_chatgpt_target(self._port)
         if generic is None:
             return
+        self._remember_target(generic)
         _run_raw_cdp_method(
             generic["webSocketDebuggerUrl"],
             "Page.navigate",
@@ -343,11 +360,14 @@ class AgentBrowserCdpBackend:
 
     def _current_selected_tab(self) -> dict[str, str]:
         try:
-            return _select_page_target(self._port, self._expected_url_substring)
+            target = _select_page_target(self._port, self._expected_url_substring)
+            return self._remember_target(target)
         except RuntimeError:
             self._record_fallback("current_tab_http_fallback")
             generic = _select_generic_chatgpt_target(self._port)
-            return {} if generic is None else generic
+            if generic is not None:
+                return self._remember_target(generic)
+            return dict(self._last_selected_target)
 
     def _record_fallback(self, event: str) -> None:
         normalized = str(event).strip()
