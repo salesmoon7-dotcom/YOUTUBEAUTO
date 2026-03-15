@@ -11,6 +11,7 @@ from unittest.mock import patch
 from runtime_v2 import exit_codes
 from runtime_v2.cli import (
     CliArgs,
+    _run_agent_browser_eval,
     _run_agent_browser_stage2_adapter_child,
     _run_qwen3_adapter_child,
     _run_rvc_adapter_child,
@@ -22,6 +23,36 @@ from runtime_v2.contracts.job_contract import JobContract
 
 
 class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
+    def test_run_agent_browser_eval_resolves_agent_browser_binary(self) -> None:
+        completed = cast(object, type("Completed", (), {})())
+        setattr(completed, "stdout", '{"ok":true}')
+        setattr(completed, "stderr", "")
+        setattr(completed, "returncode", 0)
+
+        with (
+            patch(
+                "runtime_v2.cli._resolve_agent_browser_command",
+                return_value=[
+                    r"C:\resolved\agent-browser.cmd",
+                    "--cdp",
+                    "9333",
+                    "eval",
+                    "script",
+                ],
+            ) as resolve_mock,
+            patch("runtime_v2.cli.subprocess.run", return_value=completed) as run_mock,
+        ):
+            result = _run_agent_browser_eval(9333, "script", timeout=7)
+
+        resolve_mock.assert_called_once_with(
+            ["agent-browser", "--cdp", "9333", "eval", "script"]
+        )
+        run_mock.assert_called_once()
+        self.assertEqual(
+            run_mock.call_args.args[0][0], r"C:\resolved\agent-browser.cmd"
+        )
+        self.assertEqual(getattr(result, "stdout", ""), '{"ok":true}')
+
     def test_main_dispatches_qwen3_adapter_child_mode(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             output_path = Path(tmp_dir) / "exports" / "speech.flac"
@@ -283,7 +314,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         )
         self.assertTrue(any("KeyboardEvent" in script for script in scripts))
 
-    def test_stage2_adapter_child_sends_single_genspark_followup_when_questions_appear(
+    def test_stage2_adapter_child_sends_legacy_yes_confirmation_when_questions_appear(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -303,9 +334,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             responses: list[object] = []
             for payload in [
                 '{"ok":false,"error":"GENSPARK_IMAGE_NOT_READY"}',
-                '{"ok":true,"body":"스타일이 필요합니다"}',
-                '{"ok":false,"error":"GENSPARK_IMAGE_NOT_READY"}',
-                '{"ok":false,"reason":"FOLLOWUP_ALREADY_SENT"}',
+                '{"ok":true,"question_marks":2}',
                 '{"ok":true,"src":"https://www.genspark.ai/api/files/example.png"}',
                 '{"ok":true}',
             ]:
@@ -345,15 +374,11 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         eval_scripts = [
             cmd[-1] for cmd in commands if len(cmd) >= 5 and cmd[3] == "eval"
         ]
-        self.assertTrue(
-            any(
-                "FOLLOWUP_ALREADY_SENT" in script and "스타일" in script
-                for script in eval_scripts
-            )
-        )
-        self.assertTrue(any("followup_submitted" in script for script in eval_scripts))
+        self.assertTrue(any("question_marks" in script for script in eval_scripts))
+        self.assertTrue(any("confirm_submitted" in script for script in eval_scripts))
+        self.assertFalse(any("followup_submitted" in script for script in eval_scripts))
 
-    def test_stage2_adapter_child_clicks_genspark_regenerate_once_when_interrupted(
+    def test_stage2_adapter_child_does_not_click_genspark_regenerate_when_interrupted(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -373,8 +398,6 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             responses: list[object] = []
             for payload in [
                 '{"ok":false,"error":"GENSPARK_IMAGE_NOT_READY"}',
-                '{"ok":false,"reason":"FOLLOWUP_ALREADY_SENT"}',
-                '{"ok":true,"step":"clicked_regenerate"}',
                 '{"ok":true,"src":"https://www.genspark.ai/api/files/example.png"}',
                 '{"ok":true}',
             ]:
@@ -415,14 +438,9 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         eval_scripts = [
             cmd[-1] for cmd in commands if len(cmd) >= 5 and cmd[3] == "eval"
         ]
-        self.assertTrue(
-            any(
-                "clicked_regenerate" in script and "Continue" in script
-                for script in eval_scripts
-            )
-        )
+        self.assertFalse(any("clicked_regenerate" in script for script in eval_scripts))
 
-    def test_stage2_adapter_child_strengthens_genspark_prompt_for_direct_generation(
+    def test_stage2_adapter_child_keeps_original_genspark_prompt_text(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -467,8 +485,9 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
 
         self.assertEqual(exit_code, exit_codes.SUCCESS)
         scripts = [str(action.get("script", "")) for action in captured_actions]
-        self.assertTrue(
-            any("scene one" in script and "16:9" in script for script in scripts)
+        self.assertTrue(any("scene one" in script for script in scripts))
+        self.assertFalse(
+            any("추가 질문 없이" in script or "16:9" in script for script in scripts)
         )
 
     def test_stage2_adapter_child_resolves_relative_ref_images_against_asset_root(
@@ -574,6 +593,70 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 (root / "attach_evidence.json").read_text(encoding="utf-8")
             )
             self.assertEqual(evidence["error_code"], "REF_IMAGE_UPLOAD_FAILED")
+            self.assertEqual(
+                evidence["ref_upload_error_code"], "REF_IMAGE_UPLOAD_FAILED"
+            )
+            self.assertTrue(bool(evidence["ref_images_attach_attempted"]))
+
+    def test_stage2_adapter_child_fails_closed_when_genspark_ref_upload_fails(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            asset_root = root / "assets"
+            asset_root.mkdir(parents=True, exist_ok=True)
+            ref1 = asset_root / "images" / "ref1.png"
+            ref2 = asset_root / "images" / "ref2.png"
+            ref1.parent.mkdir(parents=True, exist_ok=True)
+            _ = ref1.write_bytes(b"png")
+            _ = ref2.write_bytes(b"png")
+            output_path = root / "exports" / "scene-01.png"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = output_path.write_bytes(b"png")
+            request_payload = {
+                "payload": {
+                    "prompt": "scene one",
+                    "asset_root": str(asset_root.resolve()),
+                    "ref_img_1": "images/ref1.png",
+                    "ref_img_2": "images/ref2.png",
+                }
+            }
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            completed = cast(object, type("Completed", (), {})())
+            setattr(completed, "stdout", '{"ok":true}')
+            setattr(completed, "stderr", "")
+            args = CliArgs()
+            args.service = "genspark"
+            args.port = 9333
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "genspark.ai"
+            args.expected_title_substring = "Genspark"
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli._attach_stage2_ref_images",
+                    side_effect=RuntimeError("NO_FILE_INPUT"),
+                ),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok"},
+                ),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "genspark", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", return_value=completed),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+            evidence = json.loads(
+                (root / "attach_evidence.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(evidence["status"], "failed")
             self.assertEqual(
                 evidence["ref_upload_error_code"], "REF_IMAGE_UPLOAD_FAILED"
             )

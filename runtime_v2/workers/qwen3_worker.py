@@ -134,6 +134,8 @@ def _legacy_qwen3_runtime(config: dict[str, object]) -> dict[str, object]:
 def _build_rvc_next_job(
     job: JobContract, verified_output: Path
 ) -> dict[str, object] | None:
+    if not bool(job.payload.get("emit_rvc_next_job", False)):
+        return None
     model_name = str(job.payload.get("model_name", "")).strip()
     if not model_name:
         return None

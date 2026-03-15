@@ -1740,12 +1740,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             return exit_codes.BROWSER_UNHEALTHY
     canva_extra_details: dict[str, object] | None = None
     if prompt and service == "genspark":
-        effective_prompt = (
-            f"{prompt}\n"
-            "추가 질문 없이 지금 바로 한 장의 이미지를 생성하세요. "
-            "사진풍, 16:9, 유튜브 썸네일, 텍스트 없음. "
-            "누락된 세부사항은 합리적으로 가정하고 바로 최종 결과 이미지를 생성하세요."
-        )
+        effective_prompt = prompt
         pre_actions = [
             {
                 "type": "eval",
@@ -1982,6 +1977,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 ref_images_resolved=ref_images_resolved,
             )
             return exit_codes.BROWSER_UNHEALTHY
+    ref_upload_error_code = ""
     if service in {"genspark", "seaart"} and (ref_img_1 or ref_img_2):
         try:
             _attach_stage2_ref_images(
@@ -1990,18 +1986,22 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 file_paths=ref_images_resolved,
             )
         except Exception:
+            ref_upload_error_code = "REF_IMAGE_UPLOAD_FAILED"
             write_stage2_attach_evidence(
                 workspace=workspace,
                 service=service,
                 port=args.port,
-                result={"status": "failed", "error_code": "REF_IMAGE_UPLOAD_FAILED"},
+                result={
+                    "status": "failed",
+                    "error_code": "REF_IMAGE_UPLOAD_FAILED",
+                },
                 probe_debug_only=True,
                 recovery_attempted=False,
                 placeholder_artifact=False,
                 ref_images_requested=ref_images_requested,
                 ref_images_resolved=ref_images_resolved,
                 ref_images_attach_attempted=True,
-                ref_upload_error_code="REF_IMAGE_UPLOAD_FAILED",
+                ref_upload_error_code=ref_upload_error_code,
             )
             return exit_codes.BROWSER_UNHEALTHY
     try:
@@ -2051,6 +2051,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         ref_images_requested=ref_images_requested,
         ref_images_resolved=ref_images_resolved,
         ref_images_attach_attempted=bool(ref_images_requested),
+        ref_upload_error_code=ref_upload_error_code,
     )
     if service == "canva":
         step_results = _stage2_result_by_step(result)
@@ -2149,9 +2150,8 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         try:
             if service == "genspark":
                 image_ready_script = "(() => { const valid = (src) => !!src && (/^https?:/i.test(src) || /^blob:/i.test(src) || /^data:/i.test(src) || src.startsWith('/api/files/')); const sels = ['img[src*=\"/api/files/\"]', '.image-generated img', '.image-grid img', '.generated-images .image-container .image-grid > img:first-child']; for (const sel of sels) { const found = document.querySelector(sel); const src = found ? (found.currentSrc || found.src || '') : ''; const width = found ? (found.naturalWidth || 0) : 0; if (valid(src) && width >= 256 && !src.includes('/manual/icons/')) return JSON.stringify({ok:true, src}); } const fallback = Array.from(document.images).map(img => ({src: img.currentSrc || img.src || '', width: img.naturalWidth || 0})).find(item => valid(item.src) && item.width >= 256 && !item.src.includes('/manual/icons/')); if (fallback) return JSON.stringify({ok:true, src: fallback.src}); return JSON.stringify({ok:false,error:'GENSPARK_IMAGE_NOT_READY'}); })()"
-                needs_followup_script = "(() => { const body = (document.body.innerText || ''); const needs = ['스타일', '용도', '비주얼', '이미지 스타일', 'Use case', 'Style', 'Visual']; if (window.__stage2_followup_sent) return JSON.stringify({ok:false, reason:'FOLLOWUP_ALREADY_SENT'}); const matched = needs.some(item => body.includes(item)); return JSON.stringify({ok: matched, body: body.slice(0, 400)}); })()"
-                followup_submit_script = "(() => { const textarea = document.querySelector('textarea.j-search-input'); const btn = document.querySelector('.enter-icon-wrapper'); if (!textarea) return JSON.stringify({ok:false,error:'NO_INPUT'}); const reply = '사진풍, 16:9, 유튜브 썸네일, 텍스트 없음, 질문 없이 지금 바로 1장만 생성하세요.'; const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set; textarea.focus(); if (setter) { setter.call(textarea, reply); } else { textarea.value = reply; } textarea.dispatchEvent(new Event('input',{bubbles:true})); textarea.dispatchEvent(new Event('change',{bubbles:true})); for (const type of ['keydown','keypress','keyup']) { textarea.dispatchEvent(new KeyboardEvent(type, {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); } if (btn) { btn.click(); } window.__stage2_followup_sent = true; return JSON.stringify({ok:true, step:'followup_submitted'}); })()"
-                interrupted_regenerate_script = "(() => { if (window.__stage2_regenerate_clicked) return JSON.stringify({ok:false, reason:'REGENERATE_ALREADY_CLICKED'}); const labels = ['재생성','재시도','다시시도','다시 시도','계속','Retry','Continue']; const buttons = Array.from(document.querySelectorAll('button')).filter(btn => { const text = ((btn.innerText || btn.textContent || '') + ' ' + (btn.getAttribute('aria-label') || '')).replace(/\\s+/g,'').trim(); return labels.some(label => text.includes(label.replace(/\\s+/g,''))); }); if (!buttons.length) return JSON.stringify({ok:false, reason:'NO_REGENERATE_BUTTON'}); buttons[0].click(); window.__stage2_regenerate_clicked = true; return JSON.stringify({ok:true, step:'clicked_regenerate'}); })()"
+                confirm_probe_script = "(() => { const body = (document.body.innerText || ''); const recent = body.slice(-600); const questionMarks = (recent.match(/[?]/g) || []).length; if (window.__stage2_confirm_sent) return JSON.stringify({ok:false, reason:'CONFIRM_ALREADY_SENT'}); return JSON.stringify({ok: questionMarks >= 2, question_marks: questionMarks}); })()"
+                confirm_submit_script = "(() => { const textarea = document.querySelector('textarea.j-search-input'); const btn = document.querySelector('.enter-icon-wrapper'); if (!textarea) return JSON.stringify({ok:false,error:'NO_INPUT'}); const reply = '예'; const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set; textarea.focus(); if (setter) { setter.call(textarea, reply); } else { textarea.value = reply; } textarea.dispatchEvent(new Event('input',{bubbles:true})); textarea.dispatchEvent(new Event('change',{bubbles:true})); for (const type of ['keydown','keypress','keyup']) { textarea.dispatchEvent(new KeyboardEvent(type, {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); } if (btn) { btn.click(); } window.__stage2_confirm_sent = true; return JSON.stringify({ok:true, step:'confirm_submitted'}); })()"
                 action_delay_script = (
                     "(() => JSON.stringify({ok:true, step:'pre_capture_wait'}))()"
                 )
@@ -2175,97 +2175,32 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                         )
                         sleep(15)
                         break
-                    followup_probe = _trace_eval(
-                        "followup_probe",
+                    confirm_probe = _trace_eval(
+                        "confirm_probe",
                         _attempt + 1,
-                        needs_followup_script,
+                        confirm_probe_script,
                         timeout=10,
                     )
-                    if followup_probe is None:
-                        sleep(2)
-                        continue
-                    if '"ok":true' in (followup_probe.stdout or ""):
+                    if confirm_probe is not None and '"ok":true' in (
+                        confirm_probe.stdout or ""
+                    ):
                         _ = _trace_eval(
-                            "followup_submit",
+                            "confirm_submit",
                             _attempt + 1,
-                            followup_submit_script,
+                            confirm_submit_script,
                             timeout=10,
                         )
                         sleep(5)
-                    regenerate_probe = _trace_eval(
-                        "regenerate_probe",
-                        _attempt + 1,
-                        interrupted_regenerate_script,
-                        timeout=10,
-                    )
-                    if regenerate_probe is None:
-                        sleep(2)
-                        continue
-                    if '"ok":true' in (regenerate_probe.stdout or ""):
-                        sleep(8)
                     sleep(2)
             if service == "genspark":
-                capture_error: Exception | None = None
-                for _capture_attempt in range(12):
-                    try:
-                        _ = write_functional_evidence_bundle(
-                            workspace=workspace,
-                            service=service,
-                            port=args.port,
-                            expected_url_substring=args.expected_url_substring.strip(),
-                            service_artifact_path=target_path,
-                            image_url_override=ready_image_url,
-                        )
-                        capture_error = None
-                        break
-                    except Exception as exc:
-                        capture_error = exc
-                        followup_probe = _trace_eval(
-                            "capture_followup_probe",
-                            _capture_attempt + 1,
-                            needs_followup_script,
-                            timeout=10,
-                        )
-                        if followup_probe is None:
-                            sleep(5)
-                            continue
-                        if '"ok":true' in (followup_probe.stdout or ""):
-                            _ = _trace_eval(
-                                "capture_followup_submit",
-                                _capture_attempt + 1,
-                                followup_submit_script,
-                                timeout=10,
-                            )
-                            sleep(5)
-                        regenerate_probe = _trace_eval(
-                            "capture_regenerate_probe",
-                            _capture_attempt + 1,
-                            interrupted_regenerate_script,
-                            timeout=10,
-                        )
-                        if regenerate_probe is None:
-                            sleep(5)
-                            continue
-                        if '"ok":true' in (regenerate_probe.stdout or ""):
-                            sleep(8)
-                        poll = _trace_eval(
-                            "capture_image_ready_poll",
-                            _capture_attempt + 1,
-                            image_ready_script,
-                            timeout=10,
-                        )
-                        if poll is None:
-                            sleep(5)
-                            continue
-                        try:
-                            poll_payload = json.loads((poll.stdout or "").strip())
-                        except json.JSONDecodeError:
-                            poll_payload = {}
-                        if isinstance(poll_payload, dict):
-                            ready_image_url = str(poll_payload.get("src", "")).strip()
-                        sleep(10)
-                if capture_error is not None:
-                    raise capture_error
+                _ = write_functional_evidence_bundle(
+                    workspace=workspace,
+                    service=service,
+                    port=args.port,
+                    expected_url_substring=args.expected_url_substring.strip(),
+                    service_artifact_path=target_path,
+                    image_url_override=ready_image_url,
+                )
             else:
                 _ = write_functional_evidence_bundle(
                     workspace=workspace,
@@ -2347,6 +2282,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         ref_images_requested=ref_images_requested,
         ref_images_resolved=ref_images_resolved,
         ref_images_attach_attempted=bool(ref_images_requested),
+        ref_upload_error_code=ref_upload_error_code,
         extra_details=canva_extra_details if service == "canva" else None,
     )
     return exit_codes.SUCCESS
@@ -2771,12 +2707,36 @@ def _write_stage2_adapter_retry_trace(
     return retry_trace_path
 
 
+def _resolve_agent_browser_command(command: list[str]) -> list[str]:
+    if not command or command[0] != "agent-browser":
+        return command
+    resolved = shutil.which("agent-browser")
+    if resolved:
+        return [resolved, *command[1:]]
+    appdata = os.environ.get("APPDATA", "").strip()
+    if appdata:
+        npm_root = Path(appdata) / "npm"
+        candidates = [
+            npm_root / "agent-browser.cmd",
+            npm_root
+            / "node_modules"
+            / "agent-browser"
+            / "bin"
+            / "agent-browser-win32-x64.exe",
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return [str(candidate), *command[1:]]
+    return command
+
+
 def _run_agent_browser_eval(
     port: int, script: str, *, timeout: int = 5
 ) -> subprocess.CompletedProcess[str]:
     command = ["agent-browser", "--cdp", str(port), "eval", script]
+    resolved_command = _resolve_agent_browser_command(command)
     return subprocess.run(
-        command,
+        resolved_command,
         capture_output=True,
         text=True,
         encoding="utf-8",

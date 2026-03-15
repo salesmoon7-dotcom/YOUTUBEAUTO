@@ -448,7 +448,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         )
         self.assertIsNone(run_adapter.call_args.kwargs["extra_env"])
 
-    def test_qwen3_worker_emits_rvc_next_job_contract(self) -> None:
+    def test_qwen3_worker_does_not_emit_rvc_next_job_by_default(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
@@ -465,6 +465,38 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
                     "image_path": str(image_path.resolve()),
                     "model_name": "voice-model-a",
                     "service_artifact_path": str(output_path),
+                    "adapter_command": [sys.executable, "-c", "pass"],
+                },
+            )
+            result = run_qwen3_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        next_jobs = cast(list[object], result.get("next_jobs", []))
+        self.assertEqual(len(next_jobs), 0)
+        completion = cast(dict[object, object], result["completion"])
+        self.assertEqual(completion["state"], "succeeded")
+        self.assertTrue(bool(completion["final_output"]))
+        details = cast(dict[object, object], result["details"])
+        self.assertEqual(details["model_name"], "voice-model-a")
+
+    def test_qwen3_worker_emits_rvc_next_job_contract_when_opted_in(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            image_path = root / "image.png"
+            output_path = artifact_root / "speech.flac"
+            _ = image_path.write_bytes(b"png")
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = output_path.write_bytes(b"stale")
+            job = JobContract(
+                job_id="qwen-job",
+                workload="qwen3_tts",
+                payload={
+                    "script_text": "hello world",
+                    "image_path": str(image_path.resolve()),
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "emit_rvc_next_job": True,
                     "adapter_command": [sys.executable, "-c", "pass"],
                 },
             )
@@ -540,8 +572,8 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         details = cast(dict[object, object], result["details"])
         self.assertEqual(result["status"], "ok")
         next_jobs = cast(list[object], result.get("next_jobs", []))
-        self.assertEqual(len(next_jobs), 1)
-        self.assertEqual(completion["state"], "routed")
+        self.assertEqual(len(next_jobs), 0)
+        self.assertEqual(completion["state"], "succeeded")
         self.assertTrue(bool(completion["final_output"]))
         self.assertTrue(bool(completion["reused"]))
         self.assertTrue(bool(details["reused"]))
