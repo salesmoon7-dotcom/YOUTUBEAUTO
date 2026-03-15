@@ -169,6 +169,21 @@ https://chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom/c/69aabf29-fa9c
             typed["voice_lines"], ["첫 장면 설명입니다.", "두 번째 장면 설명입니다."]
         )
         self.assertEqual(
+            typed["voice_groups"],
+            [
+                {
+                    "scene_index": 1,
+                    "voice": "첫 장면 설명입니다.",
+                    "original_voices": [1],
+                },
+                {
+                    "scene_index": 2,
+                    "voice": "두 번째 장면 설명입니다.",
+                    "original_voices": [2],
+                },
+            ],
+        )
+        self.assertEqual(
             typed["scene_prompts"], ["첫 장면 설명입니다.", "두 번째 장면 설명입니다."]
         )
         self.assertEqual(typed["videos"], ["첫 번째 비디오 프롬프트"])
@@ -208,6 +223,10 @@ Voice: 1. 첫 장면 설명\n2. 두 번째 장면 설명
 [Title]
 머니 제목
 
+[Voice]
+1. 보이스 하나
+2. 보이스 둘
+
 [#01 intro Character] - Voice 1(1) *BGM35
 장면 프롬프트 one
 
@@ -222,6 +241,49 @@ Voice: 1. 첫 장면 설명\n2. 두 번째 장면 설명
         typed = cast(dict[str, object], parsed)
         self.assertEqual(
             typed["scene_prompts"], ["장면 프롬프트 one", "장면 프롬프트 two"]
+        )
+        self.assertEqual(
+            typed["voice_groups"],
+            [
+                {"scene_index": 1, "voice": "보이스 하나", "original_voices": [1]},
+                {"scene_index": 2, "voice": "보이스 둘", "original_voices": [2]},
+            ],
+        )
+
+    def test_parser_maps_voice_range_suffixes_to_scene_groups(self) -> None:
+        topic_spec: dict[str, object] = {
+            "topic": "Money flow",
+            "row_ref": "Sheet1!row1",
+            "run_id": "run-1",
+        }
+        response_text = """
+[Voice]
+1. 보이스 하나
+2. 보이스 둘
+3. 보이스 셋
+
+[#01 intro Character] - Voice 1-2(2)
+장면 프롬프트 one
+
+[#02 body Slides] - Voice 3(1)
+장면 프롬프트 two
+"""
+
+        parsed, errors = parse_gpt_response_text(topic_spec, response_text)
+
+        self.assertEqual(errors, [])
+        self.assertIsNotNone(parsed)
+        typed = cast(dict[str, object], parsed)
+        self.assertEqual(
+            typed["voice_groups"],
+            [
+                {
+                    "scene_index": 1,
+                    "voice": "보이스 하나\n보이스 둘",
+                    "original_voices": [1, 2],
+                },
+                {"scene_index": 2, "voice": "보이스 셋", "original_voices": [3]},
+            ],
         )
 
 

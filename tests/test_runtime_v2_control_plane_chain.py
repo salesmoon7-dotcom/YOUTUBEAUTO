@@ -334,7 +334,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertTrue(
             str(qwen_payload["service_artifact_path"])
             .replace("\\", "/")
-            .endswith("/speech.wav")
+            .endswith("/speech.flac")
         )
         self.assertEqual(len(render_jobs), 1)
 
@@ -582,7 +582,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                             workload="rvc",
                             checkpoint_key="derived:rvc:qwen-job",
                             payload={
-                                "source_path": "system/runtime_v2/artifacts/qwen3_tts/qwen-job/speech.wav",
+                                "source_path": "system/runtime_v2/artifacts/qwen3_tts/qwen-job/speech.flac",
                                 "model_name": "voice-model-a",
                                 "service_artifact_path": "system/runtime_v2/artifacts/rvc/qwen-job/speech_rvc.wav",
                                 "chain_depth": 1,
@@ -704,9 +704,9 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             root = Path(tmp_dir)
             config = _runtime_config(root)
             gemi_video = root / "gemi.mp4"
-            qwen_audio = root / "speech.wav"
+            qwen_audio = root / "speech.flac"
             _ = gemi_video.write_bytes(b"mp4")
-            _ = qwen_audio.write_bytes(b"wav")
+            _ = qwen_audio.write_bytes(b"flac")
             seed_control_job(
                 JobContract(
                     job_id="geminigen-job",
@@ -819,9 +819,9 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             config = _runtime_config(root)
-            qwen_audio = root / "speech.wav"
+            qwen_audio = root / "speech.flac"
             gemi_video = root / "gemi.mp4"
-            _ = qwen_audio.write_bytes(b"wav")
+            _ = qwen_audio.write_bytes(b"flac")
             _ = gemi_video.write_bytes(b"mp4")
 
             qwen_job = JobContract(
@@ -1380,7 +1380,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                             workload="rvc",
                             checkpoint_key="derived:rvc:qwen-job",
                             payload={
-                                "source_path": "system/runtime_v2/artifacts/qwen3_tts/qwen-job/speech.wav",
+                                "source_path": "system/runtime_v2/artifacts/qwen3_tts/qwen-job/speech.flac",
                                 "chain_depth": 1,
                             },
                             chain_step=1,
@@ -1445,8 +1445,8 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                     "completion": {
                         "state": "succeeded",
                         "final_output": True,
-                        "final_artifact": "speech.wav",
-                        "final_artifact_path": "system/runtime_v2/artifacts/qwen3_tts/qwen-job/speech.wav",
+                        "final_artifact": "speech.flac",
+                        "final_artifact_path": "system/runtime_v2/artifacts/qwen3_tts/qwen-job/speech.flac",
                     },
                 },
             }

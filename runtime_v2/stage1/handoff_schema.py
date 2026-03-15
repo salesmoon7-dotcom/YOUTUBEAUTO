@@ -85,9 +85,35 @@ def _voice_lines_from_voice_groups(payload: dict[str, object]) -> list[str]:
 def _voice_texts_from_voice_groups(
     payload: dict[str, object],
 ) -> list[dict[str, object]]:
-    voice_lines = _voice_lines_from_voice_groups(payload)
-    return [
-        {"col": f"#{index + 1:02d}", "text": voice, "original_voices": [index + 1]}
-        for index, voice in enumerate(voice_lines)
-        if voice
-    ]
+    voice_groups = payload.get("voice_groups", [])
+    if not isinstance(voice_groups, list):
+        return []
+    normalized_entries: list[tuple[int, dict[str, object]]] = []
+    for entry in cast(list[object], voice_groups):
+        if not isinstance(entry, dict):
+            continue
+        typed_entry = cast(dict[str, object], entry)
+        scene_index = typed_entry.get("scene_index")
+        voice = str(typed_entry.get("voice", "")).strip()
+        if not isinstance(scene_index, int) or scene_index <= 0 or not voice:
+            continue
+        raw_original_voices = typed_entry.get("original_voices", [])
+        original_voices = [
+            int(item)
+            for item in cast(list[object], raw_original_voices)
+            if isinstance(item, int) and item > 0
+        ]
+        if not original_voices:
+            original_voices = [scene_index]
+        normalized_entries.append(
+            (
+                scene_index,
+                {
+                    "col": f"#{scene_index:02d}",
+                    "text": voice,
+                    "original_voices": original_voices,
+                },
+            )
+        )
+    normalized_entries.sort(key=lambda item: item[0])
+    return [entry for _, entry in normalized_entries]

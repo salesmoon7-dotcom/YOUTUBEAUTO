@@ -546,7 +546,7 @@ def _canonical_audio_candidates(run_id: str, artifact_root: Path) -> list[Path]:
     return [
         (artifact_root / "rvc" / f"rvc-qwen3-{run_id}" / "speech_rvc.flac").resolve(),
         (artifact_root / "rvc" / f"rvc-qwen3-{run_id}" / "speech_rvc.wav").resolve(),
-        (artifact_root / "qwen3_tts" / f"qwen3-{run_id}" / "speech.wav").resolve(),
+        (artifact_root / "qwen3_tts" / f"qwen3-{run_id}" / "speech.flac").resolve(),
     ]
 
 

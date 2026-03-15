@@ -22,6 +22,9 @@ from runtime_v2.result_router import attach_failure_summary
 from runtime_v2.workers.job_runtime import write_json_atomic
 
 
+_STAGE1_WRITEBACK_TRANSITION_STATUSES = {"seeded", "running"}
+
+
 def _safe_sheet_token(sheet_name: str) -> str:
     lowered = sheet_name.strip().lower()
     token = "".join(
@@ -141,7 +144,14 @@ def merge_stage1_result(
                 f"{current_topic}|{current_status}|{sheet_name}|{row_index}"
             )
             if current_snapshot_hash != expected_snapshot_hash:
-                return False
+                current_status_normalized = current_status.strip().lower()
+                expected_topic = str(video_plan.get("topic", "")).strip()
+                if (
+                    current_status_normalized
+                    not in _STAGE1_WRITEBACK_TRANSITION_STATUSES
+                    or current_topic != expected_topic
+                ):
+                    return False
     summary = json.dumps(
         {
             "topic": video_plan.get("topic", ""),

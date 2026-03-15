@@ -18,6 +18,7 @@ from runtime_v2.stage1.parsed_payload import (
     validate_stage1_parsed_payload,
 )
 from runtime_v2.stage1.chatgpt_interaction import generate_gpt_response_text
+from runtime_v2.stage1.chatgpt_backend import reset_chatgpt_context
 from runtime_v2.stage1.result_contract import stage1_result_payload
 from runtime_v2.workers.job_runtime import finalize_worker_result, write_json_atomic
 
@@ -112,7 +113,6 @@ def build_live_chatgpt_prompt(topic_spec: dict[str, object]) -> str:
             "영상 제작 모드로 진행하세요.",
             "질문형 설명/근거 요약이 아니라, 가이드 최종 출력 포맷 결과만 생성하세요.",
             "출력은 [Voice] 블록부터 시작하세요.",
-            "가능하면 [Ref Img 1], [Ref Img 2], [Video1], [Video2] ... 블록도 함께 채우세요.",
             "Research Locale: JP",
             "자료 조사/출처는 일본어 기준으로만 구성하세요.",
             f"Topic: {topic}",
@@ -478,11 +478,31 @@ def run_stage1_chatgpt_job(
     topic_spec: dict[str, object], workspace: Path, *, debug_log: str
 ) -> dict[str, object]:
     browser_evidence_obj = topic_spec.get("browser_evidence", {})
-    browser_evidence = (
-        cast(dict[str, object], browser_evidence_obj)
-        if isinstance(browser_evidence_obj, dict)
-        else {}
+    browser_evidence = cast(
+        dict[str, object],
+        browser_evidence_obj if isinstance(browser_evidence_obj, dict) else {},
     )
+    if (
+        not browser_evidence
+        and not str(topic_spec.get("gpt_response_text", "")).strip()
+    ):
+        browser_evidence = cast(dict[str, object], {"service": "chatgpt", "port": 9222})
+        topic_spec = {**topic_spec, "browser_evidence": browser_evidence}
+    if _requires_live_chatgpt_capture(browser_evidence):
+        raw_port = browser_evidence.get("port")
+        port = raw_port if isinstance(raw_port, int) and raw_port > 0 else 9222
+        try:
+            _ = reset_chatgpt_context(port)
+        except RuntimeError as exc:
+            return _stage1_failed(
+                workspace,
+                debug_log=debug_log,
+                run_id=str(topic_spec.get("run_id", "")).strip(),
+                row_ref=str(topic_spec.get("row_ref", "")).strip(),
+                error_code="CHATGPT_CONTEXT_RESET_FAILED",
+                reason_code="CHATGPT_CONTEXT_RESET_FAILED",
+                evidence={"reset_error": str(exc)},
+            )
     topic_spec = attach_gpt_response_text_from_browser_evidence(
         topic_spec, browser_evidence
     )
@@ -597,6 +617,28 @@ def run_stage1_chatgpt_job(
         parsed_payload_path=str(parsed_payload_path.resolve()),
         handoff_path=str(handoff_path.resolve()),
     )
+    stage1_reset: dict[str, object] = {}
+    if _requires_live_chatgpt_capture(browser_evidence):
+        raw_port = browser_evidence.get("port")
+        port = raw_port if isinstance(raw_port, int) and raw_port > 0 else 9222
+        try:
+            stage1_reset = reset_chatgpt_context(port)
+        except RuntimeError as exc:
+            return _stage1_failed(
+                workspace,
+                debug_log=debug_log,
+                run_id=run_id,
+                row_ref=row_ref,
+                error_code="CHATGPT_CONTEXT_RESET_FAILED",
+                reason_code="CHATGPT_CONTEXT_RESET_FAILED",
+                evidence={
+                    "reset_error": str(exc),
+                    "raw_output_path": str(raw_output_path.resolve()),
+                    "parsed_payload_path": str(parsed_payload_path.resolve()),
+                    "handoff_path": str(handoff_path.resolve()),
+                },
+                raw_output_path=str(raw_output_path.resolve()),
+            )
     return finalize_worker_result(
         workspace,
         status="ok",
@@ -607,6 +649,7 @@ def run_stage1_chatgpt_job(
             "video_plan": video_plan,
             "stage1_result": stage1_result,
             "stage1_handoff": handoff,
+            "stage1_reset": stage1_reset,
         },
         next_jobs=[],
         completion={"state": "planned", "final_output": False},

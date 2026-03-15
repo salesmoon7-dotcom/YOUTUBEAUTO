@@ -388,13 +388,13 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
                     "completion": {
                         "state": "completed",
                         "final_output": True,
-                        "final_artifact": "speech.wav",
+                        "final_artifact": "speech.flac",
                         "final_artifact_path": str(
                             root
                             / "artifacts"
                             / "qwen3_tts"
                             / "single-writer-job"
-                            / "speech.wav"
+                            / "speech.flac"
                         ),
                     },
                 },

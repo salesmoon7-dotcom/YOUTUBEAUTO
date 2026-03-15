@@ -8,6 +8,7 @@ from typing import cast
 from openpyxl import Workbook, load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
+from runtime_v2.contracts.topic_spec import snapshot_hash_for_excel_snapshot
 from runtime_v2.manager import merge_stage1_result
 
 
@@ -115,6 +116,35 @@ class RuntimeV2Stage1ExcelMergeTests(unittest.TestCase):
         self.assertEqual(values["Status"], "partial")
         self.assertIn(values["Video Plan"], {"", None})
 
+    def test_stage1_merge_allows_seeded_transition_snapshot_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            excel_path = _write_merge_fixture(
+                Path(tmp_dir) / "topic.xlsx",
+                headers=["Topic", "Status", "Video Plan", "Reason Code"],
+                row=["Bridge topic", "Seeded", "", ""],
+            )
+
+            merged = merge_stage1_result(
+                excel_path=excel_path,
+                sheet_name="Sheet1",
+                row_index=0,
+                video_plan={
+                    "topic": "Bridge topic",
+                    "story_outline": ["a", "b"],
+                    "reason_code": "ok",
+                    "evidence": {
+                        "excel_snapshot_hash": snapshot_hash_for_excel_snapshot(
+                            "Bridge topic||Sheet1|0"
+                        )
+                    },
+                },
+            )
+
+            values = _row_values(excel_path)
+
+        self.assertTrue(merged)
+        self.assertEqual(values["Status"], "OK")
+
     def test_stage1_merge_returns_false_when_sheet_is_missing(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             excel_path = _write_merge_fixture(
@@ -164,6 +194,9 @@ class RuntimeV2Stage1ExcelMergeTests(unittest.TestCase):
                     "reason_code": "ok",
                     "stage1_handoff": {
                         "contract": {
+                            "run_id": "run-1",
+                            "row_ref": "Sheet1!row1",
+                            "topic": "Bridge topic",
                             "title": "Bridge title",
                             "title_for_thumb": "Bridge thumb",
                             "description": "Bridge description",
@@ -171,6 +204,7 @@ class RuntimeV2Stage1ExcelMergeTests(unittest.TestCase):
                             "bgm": "calm piano",
                             "scene_prompts": ["scene one", "scene two"],
                             "voice_groups": [{"scene_index": 1, "voice": "narration"}],
+                            "reason_code": "ok",
                         }
                     },
                 },
@@ -210,6 +244,9 @@ class RuntimeV2Stage1ExcelMergeTests(unittest.TestCase):
                     "reason_code": "ok",
                     "stage1_handoff": {
                         "contract": {
+                            "run_id": "run-1",
+                            "row_ref": "Sheet1!row1",
+                            "topic": "Bridge topic",
                             "title": "Bridge title",
                             "title_for_thumb": "Bridge thumb",
                             "description": "Bridge description",
@@ -220,6 +257,7 @@ class RuntimeV2Stage1ExcelMergeTests(unittest.TestCase):
                                 {"scene_index": 1, "voice": "narration"},
                                 {"scene_index": 2, "voice": "narration"},
                             ],
+                            "reason_code": "ok",
                         }
                     },
                 },

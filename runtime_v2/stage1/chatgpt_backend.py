@@ -358,6 +358,37 @@ class AgentBrowserCdpBackend:
         return list(self._fallback_events)
 
 
+def reset_chatgpt_context(
+    port: int,
+    *,
+    expected_url_substring: str = CHATGPT_LONGFORM_URL_SUBSTRING,
+) -> dict[str, object]:
+    try:
+        target = _select_page_target(port, expected_url_substring)
+    except RuntimeError:
+        target = _select_generic_chatgpt_target(port)
+        if target is None:
+            raise RuntimeError("chatgpt_context_target_missing")
+    _run_raw_cdp_method(
+        target["webSocketDebuggerUrl"],
+        "Page.navigate",
+        {"url": CHATGPT_LONGFORM_URL},
+    )
+    time.sleep(2.0)
+    _run_raw_cdp_method(
+        target["webSocketDebuggerUrl"],
+        "Page.reload",
+        {"ignoreCache": True},
+    )
+    time.sleep(1.0)
+    return {
+        "status": "ok",
+        "port": port,
+        "target_url": CHATGPT_LONGFORM_URL,
+        "target": target,
+    }
+
+
 def _prepare_input_script(payload: str) -> str:
     return (
         "(() => {"

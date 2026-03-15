@@ -24,7 +24,7 @@ from runtime_v2.contracts.job_contract import JobContract
 class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
     def test_main_dispatches_qwen3_adapter_child_mode(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
-            output_path = Path(tmp_dir) / "exports" / "speech.wav"
+            output_path = Path(tmp_dir) / "exports" / "speech.flac"
             with (
                 patch(
                     "sys.argv",
@@ -1079,7 +1079,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
     def test_qwen3_adapter_child_writes_first_generated_voice_artifact(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
-            output_path = root / "exports" / "speech.wav"
+            output_path = root / "exports" / "speech.flac"
             args = CliArgs()
             args.service_artifact_path = str(output_path)
             workspace = output_path.parent.parent
@@ -1132,7 +1132,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             root = Path(tmp_dir)
             workspace = root / "worker"
             workspace.mkdir(parents=True, exist_ok=True)
-            output_path = root / "exports" / "speech.wav"
+            output_path = root / "exports" / "speech.flac"
             args = CliArgs()
             args.service_artifact_path = str(output_path)
             prompt_path = workspace / "qwen_prompt.json"
@@ -1182,7 +1182,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             args = CliArgs()
-            args.service_artifact_path = str(root / "exports" / "speech.wav")
+            args.service_artifact_path = str(root / "exports" / "speech.flac")
 
             exit_code = _run_qwen3_adapter_child(args)
 
@@ -1193,7 +1193,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
-            output_path = root / "exports" / "speech.wav"
+            output_path = root / "exports" / "speech.flac"
             args = CliArgs()
             args.service_artifact_path = str(output_path)
             workspace = output_path.parent.parent

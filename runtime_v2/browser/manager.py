@@ -1157,6 +1157,7 @@ def _launch_debug_browser(session: BrowserSession) -> bool:
     creationflags = int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)) | int(
         getattr(subprocess, "DETACHED_PROCESS", 0)
     )
+    creationflags |= int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
     try:
         child = subprocess.Popen(
             command,

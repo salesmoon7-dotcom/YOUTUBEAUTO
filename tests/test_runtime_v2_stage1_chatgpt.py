@@ -109,9 +109,11 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
 
         self.assertIn("영상 제작 모드로 진행하세요.", prompt)
         self.assertIn("출력은 [Voice] 블록부터 시작하세요.", prompt)
-        self.assertIn("[Ref Img 1]", prompt)
-        self.assertIn("[Video1]", prompt)
         self.assertIn("Research Locale: JP", prompt)
+        self.assertNotIn(
+            "[Ref Img 1], [Ref Img 2], [Video1], [Video2] ... 블록도 함께 채우세요.",
+            prompt,
+        )
         self.assertIn("Topic: 국민연금 수령 시기를 앞당기면 손해인가 이득인가", prompt)
 
     def test_stage1_runner_only_plans_from_existing_topic_spec(self) -> None:
@@ -379,6 +381,95 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             str(stage1_result["raw_output_path"]).endswith("raw_output.json")
         )
 
+    def test_stage1_runner_fails_closed_without_gpt_response_text(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            workspace = Path(tmp_dir)
+            topic_spec = _topic_spec(topic="Money flow")
+
+            with patch(
+                "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                return_value={
+                    "status": "failed",
+                    "error_code": "CHATGPT_BACKEND_UNAVAILABLE",
+                    "failure_stage": "submit",
+                    "details": {"backend_error": "missing_output"},
+                    "submit_info": {},
+                    "final_state": {},
+                    "timeline": [],
+                },
+            ) as generate_mock:
+                result = run_stage1_chatgpt_job(
+                    topic_spec,
+                    workspace,
+                    debug_log="logs/stage1-run-1.jsonl",
+                )
+
+            raw_output = cast(
+                dict[str, object],
+                json.loads((workspace / "raw_output.json").read_text(encoding="utf-8")),
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_BACKEND_UNAVAILABLE")
+        self.assertEqual(raw_output["source"], "gpt_capture_only")
+        self.assertEqual(raw_output["response_text"], "")
+        generate_mock.assert_called_once()
+
+    def test_stage1_runner_attempts_live_capture_without_explicit_browser_evidence(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            topic_spec = _topic_spec(topic="Money flow")
+
+            with (
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                    return_value={
+                        "status": "ok",
+                        "response_text": _gpt_response_text(),
+                        "submit_info": {"sendClicked": True},
+                        "final_state": {"assistant_block_count": 1},
+                        "timeline": [
+                            {
+                                "ts": "2026-03-10T00:00:00Z",
+                                "seq": 1,
+                                "event": "submit_start",
+                            },
+                            {
+                                "ts": "2026-03-10T00:00:01Z",
+                                "seq": 2,
+                                "event": "final_state",
+                            },
+                        ],
+                    },
+                ) as generate_mock,
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.reset_chatgpt_context",
+                    return_value={"status": "ok", "port": 9222},
+                ) as reset_mock,
+            ):
+                result = run_stage1_chatgpt_job(
+                    topic_spec,
+                    root / "workspace",
+                    debug_log="logs/stage1-run-1.jsonl",
+                )
+
+            raw_output = cast(
+                dict[str, object],
+                json.loads(
+                    (root / "workspace" / "raw_output.json").read_text(encoding="utf-8")
+                ),
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(raw_output["source"], "gpt_response_text")
+        browser_evidence = cast(dict[str, object], raw_output["browser_evidence"])
+        self.assertEqual(browser_evidence["service"], "chatgpt")
+        self.assertEqual(browser_evidence["port"], 9222)
+        reset_mock.assert_called_once_with(9222)
+        generate_mock.assert_called_once()
+
     def test_stage1_runner_uses_real_gpt_response_text_when_present(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             workspace = Path(tmp_dir)
@@ -477,6 +568,56 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertEqual(parsed_payload["parse_mode"], "block_fallback")
         self.assertEqual(parsed_payload["parse_warnings"], ["structured_parse_failed"])
 
+    def test_stage1_runner_prefers_voice_lines_over_duplicated_voice_groups(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            workspace = Path(tmp_dir)
+            topic_spec = _topic_spec(topic="Money flow")
+            topic_spec["gpt_response_text"] = "structured-json-present"
+
+            with patch(
+                "runtime_v2.stage1.parsed_payload.parse_gpt_response_text",
+                return_value=(
+                    {
+                        "title": "Money title",
+                        "title_for_thumb": "Money thumb",
+                        "description": "Money description",
+                        "keywords": ["money"],
+                        "bgm": "serious piano",
+                        "scene_prompts": ["scene one", "scene two"],
+                        "voice_groups": [
+                            {"scene_index": 1, "voice": "same long body"},
+                            {"scene_index": 2, "voice": "same long body"},
+                        ],
+                        "voice_lines": ["voice one", "voice two"],
+                        "videos": ["video one", "video two"],
+                    },
+                    [],
+                ),
+            ):
+                result = run_stage1_chatgpt_job(
+                    topic_spec,
+                    workspace,
+                    debug_log="logs/stage1-run-1.jsonl",
+                )
+
+            parsed_payload = cast(
+                dict[str, object],
+                json.loads(
+                    (workspace / "parsed_payload.json").read_text(encoding="utf-8")
+                ),
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(
+            parsed_payload["voice_groups"],
+            [
+                {"scene_index": 1, "voice": "voice one"},
+                {"scene_index": 2, "voice": "voice two"},
+            ],
+        )
+
     def test_stage1_can_attach_gpt_response_text_from_browser_snapshot(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -529,28 +670,38 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             topic_spec = _topic_spec(topic="Money flow")
             topic_spec["browser_evidence"] = {"service": "chatgpt", "port": 9222}
 
-            with patch(
-                "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
-                return_value={
-                    "status": "ok",
-                    "response_text": _gpt_response_text(),
-                    "submit_info": {"sendClicked": True},
-                    "final_state": {"assistant_block_count": 1},
-                    "timeline": [
-                        {
-                            "ts": "2026-03-10T00:00:00Z",
-                            "seq": 1,
-                            "event": "submit_start",
-                        },
-                        {"ts": "2026-03-10T00:00:01Z", "seq": 2, "event": "submit_ok"},
-                        {
-                            "ts": "2026-03-10T00:00:02Z",
-                            "seq": 3,
-                            "event": "final_state",
-                        },
-                    ],
-                },
-            ) as generate_mock:
+            with (
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                    return_value={
+                        "status": "ok",
+                        "response_text": _gpt_response_text(),
+                        "submit_info": {"sendClicked": True},
+                        "final_state": {"assistant_block_count": 1},
+                        "timeline": [
+                            {
+                                "ts": "2026-03-10T00:00:00Z",
+                                "seq": 1,
+                                "event": "submit_start",
+                            },
+                            {
+                                "ts": "2026-03-10T00:00:01Z",
+                                "seq": 2,
+                                "event": "submit_ok",
+                            },
+                            {
+                                "ts": "2026-03-10T00:00:02Z",
+                                "seq": 3,
+                                "event": "final_state",
+                            },
+                        ],
+                    },
+                ) as generate_mock,
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.reset_chatgpt_context",
+                    return_value={"status": "ok", "port": 9222},
+                ) as reset_mock,
+            ):
                 result = run_stage1_chatgpt_job(
                     topic_spec,
                     root / "workspace",
@@ -612,6 +763,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertEqual(timeline_lines[-1]["event"], "final_state")
         self.assertEqual(browser_evidence["service"], "chatgpt")
         self.assertEqual(browser_evidence["port"], 9222)
+        self.assertEqual(reset_mock.call_count, 2)
 
     def test_stage1_runner_retries_live_chatgpt_after_relaunch(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -651,6 +803,10 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                     },
                 ) as generate_mock,
                 patch(
+                    "runtime_v2.stage1.chatgpt_runner.reset_chatgpt_context",
+                    return_value={"status": "ok", "port": 9222},
+                ) as reset_mock,
+                patch(
                     "runtime_v2.stage1.chatgpt_runner.open_browser_for_login"
                 ) as relaunch_mock,
                 patch("runtime_v2.stage1.chatgpt_runner.sleep") as sleep_mock,
@@ -663,8 +819,77 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(generate_mock.call_count, 1)
+        self.assertEqual(reset_mock.call_count, 2)
         relaunch_mock.assert_not_called()
         sleep_mock.assert_not_called()
+
+    def test_stage1_runner_fails_when_chatgpt_context_reset_fails(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            topic_spec = _topic_spec(topic="Money flow")
+            topic_spec["browser_evidence"] = {"service": "chatgpt", "port": 9222}
+
+            with (
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                    return_value={
+                        "status": "ok",
+                        "response_text": _gpt_response_text(),
+                        "submit_info": {"sendClicked": True},
+                        "final_state": {"assistant_block_count": 1},
+                        "timeline": [
+                            {
+                                "ts": "2026-03-10T00:00:00Z",
+                                "seq": 1,
+                                "event": "submit_start",
+                            },
+                            {
+                                "ts": "2026-03-10T00:00:01Z",
+                                "seq": 2,
+                                "event": "submit_ok",
+                            },
+                            {
+                                "ts": "2026-03-10T00:00:02Z",
+                                "seq": 3,
+                                "event": "final_state",
+                            },
+                        ],
+                    },
+                ),
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.reset_chatgpt_context",
+                    side_effect=RuntimeError("chatgpt_context_target_missing"),
+                ),
+            ):
+                result = run_stage1_chatgpt_job(
+                    topic_spec,
+                    root / "workspace",
+                    debug_log="logs/stage1-run-1.jsonl",
+                )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_CONTEXT_RESET_FAILED")
+
+    def test_stage1_runner_fails_when_pre_submit_chatgpt_context_reset_fails(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            topic_spec = _topic_spec(topic="Money flow")
+            topic_spec["browser_evidence"] = {"service": "chatgpt", "port": 9222}
+
+            with patch(
+                "runtime_v2.stage1.chatgpt_runner.reset_chatgpt_context",
+                side_effect=RuntimeError("chatgpt_context_target_missing"),
+            ):
+                result = run_stage1_chatgpt_job(
+                    topic_spec,
+                    root / "workspace",
+                    debug_log="logs/stage1-run-1.jsonl",
+                )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_CONTEXT_RESET_FAILED")
 
     def test_stage1_runner_fails_closed_when_live_chatgpt_capture_stays_failed(
         self,

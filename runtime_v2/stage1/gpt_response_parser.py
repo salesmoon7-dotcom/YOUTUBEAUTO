@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from typing import cast
 
@@ -19,6 +18,7 @@ _INLINE_LABEL_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _NUMBERED_LINE_PATTERN = re.compile(r"^\d+\.\s*(.+)$")
+_VOICE_RANGE_PATTERN = re.compile(r"voice\s+(\d+)(?:\s*-\s*(\d+))?", re.IGNORECASE)
 
 
 def parse_gpt_response_text(
@@ -75,6 +75,7 @@ def _parse_block_response(
 ) -> dict[str, object]:
     topic = str(topic_spec.get("topic", "")).strip()
     labels: dict[str, list[str]] = {}
+    label_voice_ranges: dict[str, tuple[int, int]] = {}
     current_label = ""
     for raw_line in response_text.splitlines():
         line = raw_line.strip()
@@ -90,20 +91,43 @@ def _parse_block_response(
         )
         if label_match:
             current_label = label_match.group(1).strip().lower()
-            labels.setdefault(current_label, [])
+            _ = labels.setdefault(current_label, [])
+            voice_range = _parse_voice_range(line)
+            if voice_range is not None:
+                label_voice_ranges[current_label] = voice_range
             continue
         if current_label:
             labels.setdefault(current_label, []).append(line)
     scene_map = _collect_scene_map(labels)
-    scene_prompts = [scene_map[index] for index in sorted(scene_map)]
+    ordered_scene_indexes = sorted(scene_map)
+    scene_prompts = [scene_map[index] for index in ordered_scene_indexes]
     if not scene_prompts:
         scene_prompts = _collect_voice_numbered_lines(labels)
     voice_lines = _collect_voice_numbered_lines(labels)
-    voice_text = "\n".join(voice_lines or labels.get("voice", []))
-    voice_groups = [
-        {"scene_index": index + 1, "voice": voice_text or "narration"}
-        for index in range(len(scene_prompts))
-    ]
+    ranged_voice_groups = _voice_groups_from_label_ranges(
+        ordered_scene_indexes, label_voice_ranges, voice_lines
+    )
+    if ranged_voice_groups:
+        voice_groups = ranged_voice_groups
+    elif voice_lines and len(voice_lines) == len(scene_prompts):
+        voice_groups = [
+            {
+                "scene_index": index + 1,
+                "voice": voice_lines[index],
+                "original_voices": [index + 1],
+            }
+            for index in range(len(scene_prompts))
+        ]
+    else:
+        voice_text = "\n".join(voice_lines or labels.get("voice", []))
+        voice_groups = [
+            {
+                "scene_index": index + 1,
+                "voice": voice_text or "narration",
+                "original_voices": [index + 1],
+            }
+            for index in range(len(scene_prompts))
+        ]
     return {
         "title": _join_label(labels, "title") or topic,
         "title_for_thumb": _join_label(labels, "title for thumb")
@@ -173,6 +197,47 @@ def _collect_videos(labels: dict[str, list[str]]) -> list[str]:
     return [content for _, content in video_entries]
 
 
+def _parse_voice_range(line: str) -> tuple[int, int] | None:
+    match = _VOICE_RANGE_PATTERN.search(line)
+    if match is None:
+        return None
+    start = int(match.group(1))
+    end = int(match.group(2) or match.group(1))
+    if start <= 0 or end < start:
+        return None
+    return start, end
+
+
+def _voice_groups_from_label_ranges(
+    ordered_scene_indexes: list[int],
+    label_voice_ranges: dict[str, tuple[int, int]],
+    voice_lines: list[str],
+) -> list[dict[str, object]]:
+    if not ordered_scene_indexes or not voice_lines:
+        return []
+    voice_groups: list[dict[str, object]] = []
+    for scene_index in ordered_scene_indexes:
+        voice_range = label_voice_ranges.get(f"#{scene_index:02d}")
+        if voice_range is None:
+            voice_range = label_voice_ranges.get(f"#{scene_index}")
+        if voice_range is None:
+            return []
+        start, end = voice_range
+        selected = [
+            line.strip() for line in voice_lines[start - 1 : end] if line.strip()
+        ]
+        if not selected:
+            return []
+        voice_groups.append(
+            {
+                "scene_index": scene_index,
+                "voice": "\n".join(selected),
+                "original_voices": list(range(start, end + 1)),
+            }
+        )
+    return voice_groups
+
+
 def _join_label(labels: dict[str, list[str]], key: str) -> str:
     return "\n".join(labels.get(key.lower(), [])).strip()
 
@@ -193,10 +258,20 @@ def _keywords(topic: str) -> list[str]:
 def _validate_parsed_result(payload: dict[str, object]) -> list[str]:
     if not str(payload.get("title", "")).strip():
         return ["missing_title"]
-    scene_prompts = payload.get("scene_prompts")
-    if not isinstance(scene_prompts, list) or not scene_prompts:
+    scene_prompts_obj = payload.get("scene_prompts")
+    scene_prompts = (
+        cast(list[object], scene_prompts_obj)
+        if isinstance(scene_prompts_obj, list)
+        else None
+    )
+    if scene_prompts is None or not scene_prompts:
         return ["missing_scene_prompts"]
-    voice_groups = payload.get("voice_groups")
-    if not isinstance(voice_groups, list) or len(voice_groups) != len(scene_prompts):
+    voice_groups_obj = payload.get("voice_groups")
+    voice_groups = (
+        cast(list[object], voice_groups_obj)
+        if isinstance(voice_groups_obj, list)
+        else None
+    )
+    if voice_groups is None or len(voice_groups) != len(scene_prompts):
         return ["invalid_voice_groups"]
     return []

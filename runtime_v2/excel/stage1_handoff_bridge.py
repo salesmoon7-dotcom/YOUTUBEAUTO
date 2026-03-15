@@ -18,7 +18,6 @@ def export_stage1_handoff_to_excel_row(payload: dict[str, object]) -> dict[str, 
         raise ValueError(errors[0])
     scene_prompts = cast(list[object], normalized.get("scene_prompts", []))
     scene_map = cast(dict[object, object], normalized.get("scene_map", {}))
-    voice_json = json.dumps(normalized.get("voice_groups", []), ensure_ascii=False)
     voice_lines = cast(list[object], normalized.get("voice_lines", []))
     videos = cast(list[object], normalized.get("videos", []))
     row = {
@@ -108,7 +107,7 @@ def import_stage1_handoff_from_excel_row(
             "voice_texts"
         ]
     raw_voice = _cell_text(row.get("Voice", ""))
-    if raw_voice and raw_voice.lower() != "n":
+    if raw_voice and raw_voice.lower() != "n" and not raw_voice_texts:
         voice_lines = [line.strip() for line in raw_voice.splitlines() if line.strip()]
         payload["voice_lines"] = voice_lines
         payload["voice_texts"] = [
@@ -118,6 +117,27 @@ def import_stage1_handoff_from_excel_row(
         payload["voice_groups"] = [
             {"scene_index": index + 1, "voice": line}
             for index, line in enumerate(voice_lines)
+        ]
+    elif raw_voice_texts:
+        parsed_voice_texts = [
+            cast(dict[str, object], item)
+            for item in cast(list[object], payload["voice_texts"])
+            if isinstance(item, dict)
+        ]
+        payload["voice_lines"] = [
+            str(item.get("text", "")).strip()
+            for item in parsed_voice_texts
+            if str(item.get("text", "")).strip()
+        ]
+        payload["voice_groups"] = [
+            {
+                "scene_index": _scene_index_from_col(str(item.get("col", ""))),
+                "voice": str(item.get("text", "")).strip(),
+                "original_voices": item.get("original_voices", []),
+            }
+            for item in parsed_voice_texts
+            if _scene_index_from_col(str(item.get("col", ""))) > 0
+            and str(item.get("text", "")).strip()
         ]
     payload["shorts_description"] = _cell_text(
         row.get("Shorts Description", payload.get("shorts_description", ""))
@@ -165,3 +185,13 @@ def _cell_text(value: object) -> str:
         return ""
     text = str(value).strip()
     return "" if text == "None" else text
+
+
+def _scene_index_from_col(value: str) -> int:
+    text = value.strip()
+    if not text.startswith("#"):
+        return 0
+    try:
+        return int(text[1:])
+    except ValueError:
+        return 0

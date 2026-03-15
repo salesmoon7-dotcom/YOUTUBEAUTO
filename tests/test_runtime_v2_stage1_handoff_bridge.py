@@ -80,6 +80,30 @@ class RuntimeV2Stage1HandoffBridgeTests(unittest.TestCase):
             ],
         )
 
+    def test_handoff_normalization_preserves_grouped_original_voices(self) -> None:
+        payload = _handoff()
+        payload.pop("voice_texts")
+        payload["voice_groups"] = [
+            {
+                "scene_index": 13,
+                "voice": "voice thirteen\nvoice fourteen\nvoice fifteen\nvoice sixteen",
+                "original_voices": [13, 14, 15, 16],
+            }
+        ]
+
+        normalized = normalize_stage1_handoff_contract(payload)
+
+        self.assertEqual(
+            normalized["voice_texts"],
+            [
+                {
+                    "col": "#13",
+                    "text": "voice thirteen\nvoice fourteen\nvoice fifteen\nvoice sixteen",
+                    "original_voices": [13, 14, 15, 16],
+                }
+            ],
+        )
+
     def test_export_stage1_handoff_to_excel_row_includes_downstream_fields(
         self,
     ) -> None:
@@ -163,6 +187,44 @@ class RuntimeV2Stage1HandoffBridgeTests(unittest.TestCase):
         self.assertEqual(exported["Video1"], "video prompt 1")
         self.assertEqual(exported["Video2"], "video prompt 2")
         self.assertEqual(exported["Video3"], "")
+
+    def test_stage1_handoff_roundtrip_preserves_grouped_voice_texts(self) -> None:
+        payload = _handoff()
+        payload["voice_groups"] = [
+            {
+                "scene_index": 13,
+                "voice": "voice thirteen\nvoice fourteen\nvoice fifteen\nvoice sixteen",
+                "original_voices": [13, 14, 15, 16],
+            }
+        ]
+        payload["voice_texts"] = [
+            {
+                "col": "#13",
+                "text": "voice thirteen\nvoice fourteen\nvoice fifteen\nvoice sixteen",
+                "original_voices": [13, 14, 15, 16],
+            }
+        ]
+        payload["voice_lines"] = [
+            "voice thirteen",
+            "voice fourteen",
+            "voice fifteen",
+            "voice sixteen",
+        ]
+
+        exported = export_stage1_handoff_to_excel_row(payload)
+        row: dict[str, object] = {key: value for key, value in exported.items()}
+        restored = import_stage1_handoff_from_excel_row(base_payload=payload, row=row)
+
+        self.assertEqual(
+            restored["voice_texts"],
+            [
+                {
+                    "col": "#13",
+                    "text": "voice thirteen\nvoice fourteen\nvoice fifteen\nvoice sixteen",
+                    "original_voices": [13, 14, 15, 16],
+                }
+            ],
+        )
 
 
 if __name__ == "__main__":

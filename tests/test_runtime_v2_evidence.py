@@ -1917,7 +1917,7 @@ class RuntimeV2EvidenceTests(unittest.TestCase):
             _write_ready_gpu_and_worker_state(config, checked_at=fresh_checked_at)
             asset_root = root / "artifacts" / "render" / "render-run-1"
             qwen_audio = (
-                config.artifact_root / "qwen3_tts" / "qwen3-run-1" / "speech.wav"
+                config.artifact_root / "qwen3_tts" / "qwen3-run-1" / "speech.flac"
             )
             qwen_audio.parent.mkdir(parents=True, exist_ok=True)
             qwen_audio.write_bytes(b"wav")
@@ -2079,7 +2079,7 @@ class RuntimeV2EvidenceTests(unittest.TestCase):
             final_artifact = output_dir / "render_final.mp4"
             final_artifact.write_bytes(b"mp4")
             qwen_audio = (
-                config.artifact_root / "qwen3_tts" / "qwen3-run-1" / "speech.wav"
+                config.artifact_root / "qwen3_tts" / "qwen3-run-1" / "speech.flac"
             )
             qwen_audio.parent.mkdir(parents=True, exist_ok=True)
             qwen_audio.write_bytes(b"wav")
@@ -2239,7 +2239,7 @@ class RuntimeV2EvidenceTests(unittest.TestCase):
             final_artifact = output_dir / "render_final.mp4"
             final_artifact.write_bytes(b"mp4")
             qwen_audio = (
-                config.artifact_root / "qwen3_tts" / "qwen3-run-1" / "speech.wav"
+                config.artifact_root / "qwen3_tts" / "qwen3-run-1" / "speech.flac"
             )
             qwen_audio.parent.mkdir(parents=True, exist_ok=True)
             qwen_audio.write_bytes(b"wav")

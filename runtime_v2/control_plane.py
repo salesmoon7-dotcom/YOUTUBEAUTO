@@ -59,7 +59,7 @@ from runtime_v2.supervisor import run_gated
 
 MAX_CHAIN_DEPTH = 4
 MAX_NEXT_JOBS = 4
-MAX_STAGE1_DECLARED_NEXT_JOBS = 12
+MAX_STAGE1_DECLARED_NEXT_JOBS = 128
 PROMOTION_GATE_ORDER = {"": 0, "A": 1, "B": 2, "C": 3, "D": 4}
 RVC_SOURCE_MODE_PRIORITY = {"tts-source": 1, "gemi-video-source": 2}
 
@@ -372,6 +372,7 @@ def run_control_loop_once(
     completion = _mapping_from_obj(worker_contract.get("completion", {}))
     accepted_count, invalid_count = archived_contract_counts(runtime_config.input_root)
     seeded_downstream: list[JobContract] = []
+    stage1_excel_merged = False
     success = result.get("status") == "ok" and worker_ok
     if result.get("status") == "ok" and worker_ok:
         if job.workload == "chatgpt":
@@ -385,7 +386,7 @@ def run_control_loop_once(
             sheet_name = str(job.payload.get("sheet_name", "")).strip()
             row_index = _to_int(job.payload.get("row_index", -1))
             if video_plan is not None and excel_path and sheet_name and row_index >= 0:
-                _ = merge_stage1_result(
+                stage1_excel_merged = merge_stage1_result(
                     excel_path=excel_path,
                     sheet_name=sheet_name,
                     row_index=row_index,
@@ -617,6 +618,7 @@ def run_control_loop_once(
             if completion is None
             else str(completion.get("final_artifact_path", "")),
             "excel_sync_updated": excel_sync_updated,
+            "stage1_excel_merged": stage1_excel_merged,
             "excel_path": excel_path,
             "sheet_name": sheet_name,
             "row_index": row_index,
@@ -1730,7 +1732,7 @@ def _declared_stage1_qwen_job(
     model_name = str(parent_job.payload.get("model_name", "voice-model-a")).strip()
     job_id = f"qwen3-{run_id or parent_job.job_id}"
     service_artifact_path = (
-        artifact_root / "qwen3_tts" / job_id / "speech.wav"
+        artifact_root / "qwen3_tts" / job_id / "speech.flac"
     ).resolve()
     return build_explicit_job_contract(
         job_id=job_id,

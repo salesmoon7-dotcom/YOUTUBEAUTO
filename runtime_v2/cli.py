@@ -113,6 +113,7 @@ class CliArgs(argparse.Namespace):
     soak_report: bool
     soak_24h: bool
     runtime_root: str
+    ref_audio: str
     service: str
     port: int
     service_artifact_path: str
@@ -162,6 +163,7 @@ class CliArgs(argparse.Namespace):
         self.soak_report = False
         self.soak_24h = False
         self.runtime_root = ""
+        self.ref_audio = ""
         self.service = ""
         self.port = 0
         self.service_artifact_path = ""
@@ -388,6 +390,7 @@ def main() -> int:
     _ = parser.add_argument("--soak-report", action="store_true")
     _ = parser.add_argument("--soak-24h", action="store_true")
     _ = parser.add_argument("--runtime-root", default="")
+    _ = parser.add_argument("--ref-audio", default="", help=argparse.SUPPRESS)
     _ = parser.add_argument("--service", default="")
     _ = parser.add_argument("--port", type=int, default=0)
     _ = parser.add_argument("--service-artifact-path", default="")
@@ -1025,6 +1028,7 @@ def _spawn_detached_probe(args: CliArgs, *, mode: str) -> int:
     creationflags = 0
     creationflags |= int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
     creationflags |= int(getattr(subprocess, "DETACHED_PROCESS", 0))
+    creationflags |= int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
     with (
         stdout_path.open("w", encoding="utf-8") as stdout_handle,
         stderr_path.open("w", encoding="utf-8") as stderr_handle,
@@ -2475,7 +2479,43 @@ def _run_qwen3_adapter_child(args: CliArgs) -> int:
     if not candidates:
         return exit_codes.ADAPTER_FAIL
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    target_path.write_bytes(candidates[0].read_bytes())
+    if len(candidates) == 1:
+        target_path.write_bytes(candidates[0].read_bytes())
+        return exit_codes.SUCCESS
+    concat_list = workspace / "qwen3_concat.txt"
+    concat_list.write_text(
+        "".join(
+            f"file '{str(path.resolve()).replace("'", "''")}'\n" for path in candidates
+        ),
+        encoding="utf-8",
+    )
+    ffmpeg_completed = subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_list.resolve()),
+            "-c:a",
+            "flac",
+            str(target_path.resolve()),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    (workspace / "qwen3_concat_stdout.log").write_text(
+        ffmpeg_completed.stdout, encoding="utf-8"
+    )
+    (workspace / "qwen3_concat_stderr.log").write_text(
+        ffmpeg_completed.stderr, encoding="utf-8"
+    )
+    if ffmpeg_completed.returncode != 0 or not target_path.exists():
+        return exit_codes.ADAPTER_FAIL
     return exit_codes.SUCCESS
 
 
