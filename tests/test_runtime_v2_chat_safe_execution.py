@@ -5,13 +5,18 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock, patch
+
+from openpyxl import Workbook
+from openpyxl.worksheet.worksheet import Worksheet
 
 from runtime_v2 import exit_codes
 from runtime_v2.browser import manager as browser_manager
 from runtime_v2.cli import (
     _build_runtime_config,
     _copy_legacy_sessions,
+    _run_stage5_row1_probe,
     exit_code_from_readiness,
     exit_code_from_status,
     main,
@@ -206,6 +211,69 @@ class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
         self.assertEqual(
             config.result_router_file, probe_root / "evidence" / "result.json"
         )
+
+    def test_stage5_probe_can_seed_ok_status_row_for_closeout(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            excel_path = root / "topic.xlsx"
+            workbook = Workbook()
+            sheet = cast(Worksheet, workbook.active)
+            sheet.title = "Sheet1"
+            sheet.append(["Topic", "Status"])
+            sheet.append(["Semantic row", "OK"])
+            workbook.save(excel_path)
+            workbook.close()
+
+            config = RuntimeConfig.from_root(root / "runtime")
+            probe_root = root / "probe"
+            final_artifact = root / "render_final.mp4"
+            final_artifact.write_bytes(b"mp4")
+
+            def fake_control_loop_once(
+                *, owner: str, config: RuntimeConfig, run_id: str
+            ) -> dict[str, object]:
+                _ = owner
+                self.assertEqual(config.stable_file_age_sec, 0)
+                config.result_router_file.parent.mkdir(parents=True, exist_ok=True)
+                config.result_router_file.write_text(
+                    json.dumps(
+                        {
+                            "metadata": {
+                                "run_id": run_id,
+                                "workload": "render",
+                                "final_output": True,
+                                "final_artifact_path": str(final_artifact.resolve()),
+                            }
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                return {"status": "ok", "code": "OK"}
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_control_loop_once",
+                    side_effect=fake_control_loop_once,
+                ),
+                patch(
+                    "runtime_v2.cli.load_runtime_readiness",
+                    return_value={"ready": True, "code": "OK", "blockers": []},
+                ),
+            ):
+                report = _run_stage5_row1_probe(
+                    owner="runtime_v2",
+                    config=config,
+                    probe_root=probe_root,
+                    run_id="stage5-ok-closeout",
+                    excel_path=str(excel_path),
+                    sheet_name="Sheet1",
+                    row_index=0,
+                    max_control_ticks=2,
+                )
+
+        self.assertTrue(bool(report["probe_success"]))
+        self.assertEqual(report["code"], "OK")
 
     def test_spawn_detached_probe_for_stage5b_forwards_batch_arguments(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

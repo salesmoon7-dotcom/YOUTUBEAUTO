@@ -1391,12 +1391,14 @@ def _run_stage5_row1_probe(
     row_index: int,
     max_control_ticks: int,
 ) -> dict[str, object]:
+    probe_config = config.replace(stable_file_age_sec=0)
     seed_result = seed_excel_row(
-        config=config,
+        config=probe_config,
         run_id=run_id,
         excel_path=excel_path,
         sheet_name=sheet_name,
         row_index=row_index,
+        accepted_statuses={"", "partial", "failed", "nan", "ok", "seeded"},
     )
     if str(seed_result.get("status", "")) != "seeded":
         report: dict[str, object] = {
@@ -1419,9 +1421,9 @@ def _run_stage5_row1_probe(
     final_metadata: dict[str, object] = {}
     readiness_snapshot: dict[str, object] = {}
     for _ in range(max_control_ticks):
-        result = run_control_loop_once(owner=owner, config=config, run_id=run_id)
+        result = run_control_loop_once(owner=owner, config=probe_config, run_id=run_id)
         control_results.append(result)
-        latest_payload_path = config.result_router_file
+        latest_payload_path = probe_config.result_router_file
         if latest_payload_path.exists():
             latest_payload = json.loads(latest_payload_path.read_text(encoding="utf-8"))
             if isinstance(latest_payload, dict):
