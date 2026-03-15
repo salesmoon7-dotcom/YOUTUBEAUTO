@@ -96,6 +96,7 @@ Findings:
 Current workspace status:
 - This fail-open branch has been removed in the current workspace revision.
 - `genspark` now fails closed on ref upload failure, matching `seaart`.
+- `genspark` default browser path keeps only the legacy-style minimal `예` confirmation and does not use arbitrary follow-up/regenerate heuristics.
 
 Action:
 - Keep this item on the immediate review/remove list unless legacy evidence proves Genspark should proceed without successful attach.
@@ -167,7 +168,8 @@ Current direct findings:
 | Area | Legacy expectation | Current runtime_v2 state | Status |
 |---|---|---|---|
 | Genspark prompt text | Original prompt only | extra browser-side prompt strengthening existed and was removed now | `CORRECTED` |
-| Genspark ref attach | Drag-and-drop / actual UI-specific attach path must work before generation | runtime_v2 currently attempts a generic file-input-style attach path in adapter flow; live failure details come from probe evidence rather than code alone | `CONFIRMED` |
+| Genspark ref attach | Drag-and-drop / actual UI-specific attach path must work before generation | runtime_v2 still does not have a pinned service-specific attach implementation; current default is fail-closed on attach failure | `CONFIRMED` |
+| GeminiGen first/last frame attach | slot-based image-reference upload before generation | current workspace adds explicit `First Image` / `Last Image` upload actions in the browser adapter path | `CORRECTED` |
 | 11-category assignment table | `genspark`: 인물/식품/글자/도표/도표-슬라이드, `seaart`: 개념/장소/사물/손/생활/풍경 | current code matches this mapping table | `CONFIRMED` |
 | Ref job execution behavior | assignment table should be honored consistently in actual runs | runtime_v2 closeout/debug runs still drifted into wrong practical routing/attach behavior despite correct mapping table | `CONFIRMED` |
 | RVC timing/order | later-stage consumer after required upstream voice/video artifacts are actually ready | current workspace now disables qwen3->rvc immediate emission by default and treats worker-side emission as explicit opt-in only | `CORRECTED` |
@@ -211,6 +213,10 @@ These are the highest-priority items to remove or explicitly re-justify.
 ### C7. Placeholder/probe-oriented stage2 browser success scaffolding
 - File: `runtime_v2/cli.py`
 - Why target: plan already said placeholder/attach-only success cannot count as completion evidence
+
+### Current attach batch evidence
+- `geminigen` attach path now emits explicit `upload` actions for `First Image` and `Last Image` using the same `first_frame_path`.
+- `genspark` attach path remains fail-closed until a pinned service-specific attach contract is implemented.
 
 ### C7. Evidence-grade confusion that must be removed from reports
 - `probe_result.json code=OK` is not the same as generation success

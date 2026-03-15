@@ -1691,6 +1691,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
     ref_img_1 = ""
     ref_img_2 = ""
     ref_img = ""
+    first_frame_path = ""
     ref_images_requested: list[str] = []
     ref_images_resolved: list[str] = []
     request_payload_obj: dict[str, object] = {}
@@ -1719,6 +1720,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         ref_img_1 = str(request_payload_obj.get("ref_img_1", "")).strip()
         ref_img_2 = str(request_payload_obj.get("ref_img_2", "")).strip()
         ref_img = str(request_payload_obj.get("ref_img", "")).strip()
+        first_frame_path = str(request_payload_obj.get("first_frame_path", "")).strip()
         try:
             ref_images_requested, ref_images_resolved = _resolve_stage2_ref_image_paths(
                 request_payload_obj
@@ -1915,6 +1917,53 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 {
                     "type": "eval",
                     "script": "(() => { const buttons = Array.from(document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]')); if (buttons.length < 2) return JSON.stringify({ok:true, step:'cleanup_skipped_single_page'}); const btn = buttons[buttons.length - 1]; btn.click(); return JSON.stringify({ok:true, step:'cleanup_deleted_created_page'}); })()",
+                },
+            ]
+        )
+    elif prompt and service == "geminigen":
+        pre_actions = [
+            {
+                "type": "wait",
+                "target": "textarea[placeholder*='Describe the video']",
+            },
+            {
+                "type": "eval",
+                "script": "(() => { const createTabs = Array.from(document.querySelectorAll('[id*=\"trigger-create-new\"], button, [role=tab]')); const tab = createTabs.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute && (item.getAttribute('aria-label') || ''))).trim(); return text.includes('Create New'); }); if (tab instanceof HTMLElement) { tab.click(); return JSON.stringify({ok:true, step:'selected_create_new'}); } return JSON.stringify({ok:true, step:'create_new_already_selected'}); })()",
+            },
+        ]
+        actions = []
+        if first_frame_path:
+            actions.extend(
+                [
+                    {
+                        "type": "eval",
+                        "script": "(() => { const labels = ['First Image', 'Last Image']; const prepared = []; for (const labelText of labels) { const blocks = Array.from(document.querySelectorAll('div.border-dashed.cursor-pointer, div.cursor-pointer, label, div')); const target = blocks.find(node => ((node.textContent || '').trim() || '').includes(labelText)); if (!(target instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_IMAGE_SLOT', label: labelText}); target.click(); const container = target.closest('div, section, article') || target.parentElement || document.body; let cur = container; let input = null; for (let i = 0; i < 6 && cur; i += 1) { input = cur.querySelector('input[type=file]'); if (input) break; cur = cur.parentElement; } if (!(input instanceof HTMLInputElement)) { input = document.querySelector('input[type=file]'); } if (!(input instanceof HTMLInputElement)) return JSON.stringify({ok:false,error:'NO_FILE_INPUT', label: labelText}); input.setAttribute('data-runtime-v2-geminigen-upload', labelText === 'First Image' ? 'first' : 'last'); prepared.push(labelText); } return JSON.stringify({ok:true, step:'prepared_geminigen_upload_inputs', prepared}); })()",
+                    },
+                    {
+                        "type": "upload",
+                        "selector": "input[data-runtime-v2-geminigen-upload='first']",
+                        "files": [first_frame_path],
+                    },
+                    {
+                        "type": "upload",
+                        "selector": "input[data-runtime-v2-geminigen-upload='last']",
+                        "files": [first_frame_path],
+                    },
+                ]
+            )
+        actions.extend(
+            [
+                {
+                    "type": "eval",
+                    "script": "(() => { const selectors = ['textarea[placeholder*=\"Describe the video\"]', '.base-prompt-input textarea']; for (const selector of selectors) { const textarea = document.querySelector(selector); if (!(textarea instanceof HTMLTextAreaElement)) continue; const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set; textarea.focus(); if (setter) { setter.call(textarea, ''); setter.call(textarea, "
+                    + json.dumps(prompt, ensure_ascii=True)
+                    + "); } else { textarea.value = "
+                    + json.dumps(prompt, ensure_ascii=True)
+                    + "; } textarea.dispatchEvent(new Event('input',{bubbles:true})); textarea.dispatchEvent(new Event('change',{bubbles:true})); return JSON.stringify({ok:true, step:'prompt_filled'}); } return JSON.stringify({ok:false,error:'NO_INPUT'}); })()",
+                },
+                {
+                    "type": "eval",
+                    "script": "(() => { const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute && (item.getAttribute('aria-label') || ''))).trim(); return text.includes('Generate Video') || text.includes('Generate with'); }); if (!(btn instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_BUTTON'}); btn.click(); return JSON.stringify({ok:true, step:'clicked_generate'}); })()",
                 },
             ]
         )

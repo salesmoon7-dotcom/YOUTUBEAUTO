@@ -168,6 +168,7 @@ If the next action is a broad rerun while any earlier gate is unresolved, the se
 - confirm exact legacy target page semantics
 - confirm actual legacy ref attach method (user correction: drag-and-drop path must be rechecked and pinned)
 - confirm exact result-tab/result-card capture contract
+- current workspace note: fail-close is enforced, but service-specific attach restoration is still incomplete
 
 ### SeaArt
 - confirm legacy prompt input target and generate sequence
@@ -176,6 +177,7 @@ If the next action is a broad rerun while any earlier gate is unresolved, the se
 ### GeminiGen
 - confirm legacy login/session contract before claiming tested state
 - confirm browser-step equivalence before any pass claim
+- current workspace note: explicit `First Image` / `Last Image` upload actions are now generated in the browser adapter path, but live login/session proof is still required before final pass claims
 
 ### Acceptance criteria
 - each browser service has a pinned legacy interaction checklist before another long closeout rerun
@@ -186,6 +188,7 @@ If the next action is a broad rerun while any earlier gate is unresolved, the se
 - one runtime artifact proving actual attach/input action path
 - one runtime artifact proving capture/result target
 - explicit fail-close rule if any of the above is unavailable
+- current workspace proof point for `geminigen`: adapter child emits explicit `First Image` / `Last Image` upload actions from `first_frame_path`
 
 ---
 

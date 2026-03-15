@@ -1043,6 +1043,79 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 self.assertFalse(bool(evidence["placeholder_artifact"]))
                 self.assertTrue(output_path.exists())
 
+    def test_stage2_adapter_child_builds_geminigen_legacy_upload_actions(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "geminigen-scene-01.mp4"
+            first_frame = root / "assets" / "frame.png"
+            first_frame.parent.mkdir(parents=True, exist_ok=True)
+            _ = first_frame.write_bytes(b"png")
+            request_payload = {
+                "payload": {
+                    "prompt": "video prompt one",
+                    "first_frame_path": str(first_frame.resolve()),
+                }
+            }
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "geminigen"
+            args.port = 9555
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "geminigen.ai"
+            args.expected_title_substring = "Gemini"
+            captured_actions: list[dict[str, object]] = []
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                _ = artifact_root
+                payload = cast(dict[str, object], job.payload)
+                captured_actions.extend(
+                    cast(list[dict[str, object]], payload.get("actions", []))
+                )
+                return {"status": "ok"}
+
+            def fake_bundle(**kwargs: object) -> dict[str, object]:
+                target = Path(str(kwargs["service_artifact_path"]))
+                target.parent.mkdir(parents=True, exist_ok=True)
+                _ = target.write_bytes(b"mp4")
+                return {"service": "geminigen", "sha256": "ok"}
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    side_effect=fake_bundle,
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        uploads = [
+            action for action in captured_actions if action.get("type") == "upload"
+        ]
+        scripts = [str(action.get("script", "")) for action in captured_actions]
+        self.assertEqual(len(uploads), 2)
+        self.assertEqual(
+            uploads[0]["selector"], "input[data-runtime-v2-geminigen-upload='first']"
+        )
+        self.assertEqual(
+            uploads[1]["selector"], "input[data-runtime-v2-geminigen-upload='last']"
+        )
+        self.assertEqual(uploads[0]["files"], [str(first_frame.resolve())])
+        self.assertEqual(uploads[1]["files"], [str(first_frame.resolve())])
+        self.assertTrue(
+            any("prepared_geminigen_upload_inputs" in script for script in scripts)
+        )
+        self.assertTrue(any("selected_create_new" in script for script in scripts))
+        self.assertTrue(any("clicked_generate" in script for script in scripts))
+
     def test_stage2_row1_probe_records_all_browser_results(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
