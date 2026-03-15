@@ -554,7 +554,9 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             root.resolve() / "latest_completed_run.json",
         )
 
-    def test_control_plane_routes_declared_next_jobs_from_worker_result(self) -> None:
+    def test_control_plane_routes_explicit_rvc_next_jobs_from_worker_result(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             config = _runtime_config(root)
@@ -697,7 +699,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             .endswith("rvc-geminigen-stage2-run-1/speech_rvc.wav")
         )
 
-    def test_control_plane_prefers_qwen3_rvc_lane_over_geminigen_lane_for_same_run(
+    def test_control_plane_prefers_geminigen_rvc_lane_over_qwen3_lane_for_same_run(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -813,7 +815,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertIn("rvc-geminigen-stage2-run-1", job_ids)
         self.assertNotIn("rvc-qwen3-stage2-run-1", job_ids)
 
-    def test_control_plane_rejects_geminigen_rvc_lane_when_qwen3_lane_already_exists(
+    def test_control_plane_replaces_existing_qwen3_rvc_lane_when_geminigen_lane_arrives(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
