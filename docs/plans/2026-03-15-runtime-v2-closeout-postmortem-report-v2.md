@@ -201,9 +201,18 @@ These are the highest-priority items to remove or explicitly re-justify.
 - Files: `runtime_v2/stage1/chatgpt_backend.py`, `runtime_v2/stage1/chatgpt_interaction.py`
 - Why target: still fallback-driven stabilization rather than demonstrated legacy-equivalent browser contract
 
+Current workspace status:
+- `response_not_started` retry remains.
+- separate `empty-after-streaming` retry is no longer present in the current workspace revision.
+- operational risk remains that some empty-after-streaming failures may now surface as longer timeout-style failures instead of immediate retry.
+
 ### C5. Genspark broad fresh-tab preference logic
 - File: `runtime_v2/agent_browser/cdp_capture.py`
 - Why target: service-specific capture heuristics were added while the actual legacy result-tab semantics remain under-specified
+
+Current workspace status:
+- this logic remains in place.
+- oracle review concluded it should not be removed without a replacement caller/service contract, because current tests still depend on selecting the newest `agents?id=` result tab.
 
 ### C6. Qwen3 immediate RVC emission as default behavior
 - File: `runtime_v2/workers/qwen3_worker.py`

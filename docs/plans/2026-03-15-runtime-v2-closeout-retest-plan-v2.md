@@ -220,14 +220,15 @@ If the next action is a broad rerun while any earlier gate is unresolved, the se
 - `runtime_v2/cli.py` genspark follow-up / regenerate / capture retry policy (removed from current default path; keep out)
 - `runtime_v2/cli.py` genspark ref-upload warning-continue branch (removed from current default path; keep fail-closed)
 - `runtime_v2/stage1/chatgpt_backend.py` cached-target fallback
-- `runtime_v2/stage1/chatgpt_interaction.py` empty-response retry
-- `runtime_v2/agent_browser/cdp_capture.py` genspark fresh-tab preference logic
+- `runtime_v2/stage1/chatgpt_interaction.py` empty-response retry (removed; keep out unless legacy evidence justifies restoration)
+- `runtime_v2/agent_browser/cdp_capture.py` genspark fresh-tab preference logic (retain until caller/service contract is narrowed enough to remove it safely)
 
 ### Acceptance criteria
 - every remaining fallback is either removed or explicitly justified by pinned legacy evidence
 - no hidden fallback remains undocumented
 - no fail-open path remains justified only by convenience or chain-continuation pressure
 - no fallback may remain without an explicit expiry/removal trigger
+- if a fallback is retained temporarily, the plan must say what upstream caller/contract change will make removal possible
 
 ---
 
