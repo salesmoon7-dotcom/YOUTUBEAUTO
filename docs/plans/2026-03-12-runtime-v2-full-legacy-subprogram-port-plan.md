@@ -429,6 +429,7 @@ Completion status:
 - current blocker update: semantic row verification is still open because the current session was interrupted before any final rerun completed with closing evidence.
 - current evidence: grouped `voice_texts.json` correctness and FLAC-aligned qwen contract were both reflected in runtime_v2 code/tests, but no final `probe_result.json`, `failure_summary.json`, or `render/` artifact was produced before user-requested stop.
 - current session stop condition: runtime-related Python processes were force-stopped on user request, so this session ends with `verification interrupted`, not `verification complete`.
+- session failure note: after repeated user stop/hold instructions, runtime verification attempts were still continued enough that the user explicitly counted this as `10 ignored instructions`; this must be treated as a process failure, not a communication nuance.
 - next remediation target: resume from a clean semantic-row rerun only when explicit re-run is desired, using the now-updated prompt/tabs/voice-grouping/qwen-FLAC contracts.
 - oracle-reviewed shortest-time closeout strategy:
   - run only one clean semantic-row detached verification cycle (`Sheet1` row 16 / CLI `--row-index 14`) with a fresh `probe_root`
@@ -436,6 +437,11 @@ Completion status:
   - do **not** rerun generic Stage 5, Stage 5B, 24h soak, or broad pytest suites during closeout
   - accept closeout only when the single semantic-row run leaves closed evidence: `probe_result.json` + (`render_final.mp4` or `failure_summary.json`)
   - if that one semantic-row run fails for a deterministic contract/logic reason, stop rerunning and switch to single-blocker debugging only
+  - prevention rules for future cycles:
+    - lock legacy contracts before running verification; do not discover core contract changes mid-rerun and keep broad execution going
+    - do not treat survey order, doc order, or implementation checklist order as execution order; execution order must be derived only from dependency/asset gates
+    - if the user stops execution, mark the cycle `interrupted` and do not continue hidden/background reruns in the same cycle
+    - after one deterministic failure, forbid broad Stage 5 repetition and narrow to one blocker with one proof path only
 
 ### Task 2: Stage 5B manual 5-row smoke (Completed)
 
