@@ -39,6 +39,7 @@ runtime_v2/sessions/
 
 # Backups and archives
 backup/
+backups/
 system/backup/
 pre_edit_backups/
 *.backup-*.py
