@@ -85,6 +85,7 @@ class CliArgs(argparse.Namespace):
     excel_path: str
     sheet_name: str
     row_index: int
+    accepted_statuses: str
     batch_count: int
     max_control_ticks: int
     selftest: bool
@@ -135,6 +136,7 @@ class CliArgs(argparse.Namespace):
         self.excel_path = ""
         self.sheet_name = "Sheet1"
         self.row_index = 0
+        self.accepted_statuses = ""
         self.batch_count = 5
         self.max_control_ticks = 50
         self.selftest = False
@@ -242,6 +244,11 @@ def _int_value(value: object, default: int) -> int:
     return default
 
 
+def _parse_accepted_statuses(raw: str) -> set[str] | None:
+    tokens = [token.strip().lower() for token in raw.split(",") if token.strip()]
+    return set(tokens) if tokens else None
+
+
 def _run_excel_batch_mode(
     *,
     owner: str,
@@ -344,6 +351,7 @@ def main() -> int:
     _ = parser.add_argument("--excel-path", default="")
     _ = parser.add_argument("--sheet-name", default="Sheet1")
     _ = parser.add_argument("--row-index", type=int, default=0)
+    _ = parser.add_argument("--accepted-statuses", default="")
     _ = parser.add_argument("--batch-count", type=int, default=5)
     _ = parser.add_argument("--max-control-ticks", type=int, default=50)
     _ = parser.add_argument("--selftest", action="store_true")
@@ -602,6 +610,7 @@ def main() -> int:
             excel_path=args.excel_path,
             sheet_name=args.sheet_name,
             row_index=args.row_index,
+            accepted_statuses=_parse_accepted_statuses(args.accepted_statuses),
         )
     if args.excel_batch:
         batch_result = _run_excel_batch_mode(

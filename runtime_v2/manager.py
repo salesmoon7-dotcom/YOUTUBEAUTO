@@ -62,10 +62,13 @@ def seed_excel_row(
     current_status = str(topic_spec.get("status_snapshot", "")).strip().lower()
     safe_sheet = _safe_sheet_token(sheet_name)
     job_id = f"chatgpt-{safe_sheet}-{row_index + 1}"
+    checkpoint_key = f"topic_spec:{row_ref}:{snapshot_hash}"
+    if accepted_statuses is not None and current_status in {"ok", "seeded"}:
+        checkpoint_key = f"topic_spec:{row_ref}:{run_id}"
     contract = build_explicit_job_contract(
         job_id=job_id,
         workload="chatgpt",
-        checkpoint_key=f"topic_spec:{row_ref}:{snapshot_hash}",
+        checkpoint_key=checkpoint_key,
         payload={
             "run_id": run_id,
             "row_ref": row_ref,

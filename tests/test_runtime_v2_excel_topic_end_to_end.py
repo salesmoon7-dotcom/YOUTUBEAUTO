@@ -209,6 +209,38 @@ class RuntimeV2ExcelTopicEndToEndTests(unittest.TestCase):
         self.assertEqual(seeded["status"], "seeded")
         self.assertEqual(seeded["code"], "SEEDED_JOB")
 
+    def test_seed_excel_row_uses_unique_checkpoint_for_ok_status_rerun(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            excel_path = _write_excel_fixture(root / "topic.xlsx")
+            workbook = load_workbook(excel_path)
+            try:
+                sheet = cast(Worksheet, workbook["Sheet1"])
+                status_cell = cast(Cell, sheet["B2"])
+                status_cell.value = "OK"
+                workbook.save(excel_path)
+            finally:
+                workbook.close()
+            config = RuntimeConfig.from_root(root)
+
+            seeded = seed_excel_row(
+                config=config,
+                run_id="ok-status-closeout-rerun",
+                excel_path=excel_path,
+                sheet_name="Sheet1",
+                row_index=0,
+                accepted_statuses={"", "partial", "failed", "nan", "ok"},
+            )
+
+        contract = cast(dict[str, object], seeded["contract"])
+        job_block = cast(dict[str, object], contract["job"])
+        self.assertEqual(seeded["status"], "seeded")
+        self.assertEqual(seeded["code"], "SEEDED_JOB")
+        self.assertEqual(
+            str(job_block["checkpoint_key"]),
+            "topic_spec:Sheet1!row1:ok-status-closeout-rerun",
+        )
+
     def test_seed_excel_row_can_resume_seeded_status_idempotently(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
