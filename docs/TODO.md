@@ -26,10 +26,12 @@
   - 레거시 voice 묶음 계약을 복원해 `voice_texts.json`이 `#13 -> original_voices [13..18]`, `#173 -> [173..176]` 같은 grouped mapping을 보존하도록 수정했습니다.
   - live ChatGPT prompt에서 `"[Ref Img 1], [Ref Img 2], [Video1], [Video2] ... 블록도 함께 채우세요."` 문구를 제거했습니다.
   - qwen output contract를 `speech.wav` 가정에서 `speech.flac`/`voice/#NN.flac` 기준으로 전환하는 코드/테스트 수정을 반영했습니다.
- - 현재 active blocker:
+- 현재 active blocker:
   - semantic row foreground rerun `D:\YOUTUBEAUTO_RUNTIME\probe\semantic-row-closeout-20260318-02\probe_result.json`은 `CHATGPT_RESPONSE_TIMEOUT`으로 닫혔고, `chatgpt` stop/send gate 수정 후 rerun `D:\YOUTUBEAUTO_RUNTIME\probe\semantic-row-closeout-20260318-03\probe_result.json`은 `ADAPTER_TIMEOUT`으로 닫혔습니다.
   - 즉 semantic row 최소 검증은 이제 `interrupted`가 아니라 `closed failure with single blocker`까지는 확보됐습니다.
-  - 현재 single blocker는 `qwen3_tts_adapter`의 `ADAPTER_TIMEOUT`입니다 (`D:\YOUTUBEAUTO_RUNTIME\probe\semantic-row-closeout-20260318-03\evidence\result.json`).
+  - 최신 정규 rerun `run_id=08c27f45-883a-4d86-81ff-f171c631efed`는 `D:\YOUTUBEAUTO_RUNTIME\runtime_state\evidence\failure_summary.json`을 남기며 fail-close로 종료됐습니다.
+  - 최신 fail-close reason은 `WORKER_STALL_DETECTED`이며, summary는 `Sheet1!row15 fail-closed after qwen3_tts WORKER_STALL_DETECTED`입니다.
+  - 즉 현재 single blocker는 `qwen3_tts`의 repeated stale-running / no-artifact stall 분류이며, 기존 `ADAPTER_TIMEOUT` 경계보다 더 정확한 현재 failure contract는 `WORKER_STALL_DETECTED`입니다.
   - 다만 `docs/plans/2026-03-15-runtime-v2-closeout-retest-plan-v2.md`의 엄격 기준대로는 실패 시 `failure_summary.json`까지 있어야 closeout 완료로 보므로, 현재 상태는 `closed failure evidence 확보 / final closeout success 아님`으로 기록합니다.
   - 새 창 문제는 코드상 `CREATE_NO_WINDOW`를 넣어 완화했지만, 사용자 체감 기준으로 완전 해결을 증명하는 최종 실행 증거는 아직 확보하지 못했습니다.
   - 마지막 hidden rerun `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row1-target-16-18`은 `voice/#01..#04.flac` 일부만 남기고 `probe_result.json`, `qwen3_result.json`, `failure_summary.json`, `render/` 없이 종료돼 closeout 증거로 사용할 수 없습니다.
