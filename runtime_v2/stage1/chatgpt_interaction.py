@@ -206,8 +206,14 @@ def generate_gpt_response_text(
                         reason="streaming_active",
                     )
                 saw_streaming = True
-                last_activity_ts = time.time()
-            if response_text and not has_stop and saw_streaming:
+                if not has_send_button:
+                    last_activity_ts = time.time()
+            response_ready = (
+                bool(response_text)
+                and saw_streaming
+                and ((not has_stop) or has_send_button)
+            )
+            if response_ready:
                 if response_text == last_text:
                     stable_count += 1
                 else:

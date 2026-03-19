@@ -1187,6 +1187,47 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertIn("response_not_started", event_names)
         self.assertIn("retry_decision", event_names)
 
+    def test_generate_gpt_response_text_accepts_response_when_send_button_returns(
+        self,
+    ) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def __init__(self) -> None:
+                self.read_calls = 0
+
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                return {
+                    "ok": True,
+                    "inputSelector": "#prompt-textarea",
+                    "sendClicked": True,
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                self.read_calls += 1
+                if self.read_calls == 1:
+                    return {
+                        "has_stop": True,
+                        "has_send_button": False,
+                        "assistant_block_count": 0,
+                        "assistant_text": "",
+                    }
+                return {
+                    "has_stop": True,
+                    "has_send_button": True,
+                    "assistant_block_count": 1,
+                    "assistant_text": "final json",
+                }
+
+        result = generate_gpt_response_text(
+            prompt="test prompt",
+            port=9222,
+            poll_interval_sec=0.01,
+            completion_idle_sec=0.01,
+            backend=FakeBackend(),
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["response_text"], "final json")
+
 
 if __name__ == "__main__":
     _ = unittest.main()

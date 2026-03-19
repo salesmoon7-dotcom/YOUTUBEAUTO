@@ -16,7 +16,7 @@
   - fresh Stage 5 rerun `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row1-rerun-03\probe_result.json`이 `status=ok`, `code=OK`, `probe_success=true`로 종료됐습니다.
   - 같은 rerun의 최종 산출물은 `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row1-rerun-03\artifacts\chatgpt\chatgpt-sheet1-45\assets\output\render_final.mp4`입니다.
   - 현재 상태 해석은 `docs/plans/2026-03-07-runtime-v2-staged-test-plan.md` 기준으로 `generic Stage 5 minimum rerun complete`, `Stage 5B complete`, `24h soak deferred`입니다.
-- 단, 사용자 지정 semantic target row는 아직 미완료입니다. 대상은 `요양 시설 비용 현실과 준비해야 할 금액` 주제가 있는 `Sheet1` row 16이며, runtime_v2 reader 기준 CLI 매핑은 `--row-index 14`입니다.
+- 단, 사용자 지정 semantic target row는 성공 closeout 기준으로는 아직 미완료입니다. 대상은 `요양 시설 비용 현실과 준비해야 할 금액` 주제가 있는 `Sheet1!row15`(엑셀 UI 기준 16행)이며, runtime_v2 reader 기준 CLI 매핑은 `--row-index 14`입니다.
 - 오늘 세션에서 해결된 항목:
   - `topic_spec_fallback` 거짓 성공 누수를 차단해, 실GPT 출력 완료 없이 stage1이 성공처럼 통과하지 못하게 했습니다.
   - stage1 writeback의 stale snapshot bug를 수정해, `stage1_handoff`가 있을 때 엑셀 writeback이 실제 반영되도록 했습니다.
@@ -26,9 +26,11 @@
   - 레거시 voice 묶음 계약을 복원해 `voice_texts.json`이 `#13 -> original_voices [13..18]`, `#173 -> [173..176]` 같은 grouped mapping을 보존하도록 수정했습니다.
   - live ChatGPT prompt에서 `"[Ref Img 1], [Ref Img 2], [Video1], [Video2] ... 블록도 함께 채우세요."` 문구를 제거했습니다.
   - qwen output contract를 `speech.wav` 가정에서 `speech.flac`/`voice/#NN.flac` 기준으로 전환하는 코드/테스트 수정을 반영했습니다.
-- 현재 active blocker:
-  - semantic row final verification은 사용자 중단 지시로 끝까지 닫지 못했습니다. 마지막 hidden rerun들(`stage5-row1-target-16-17`, `...-18`, `...-19`)은 최종 `probe_result.json`/`render/`/`failure_summary.json`을 남기기 전에 중단 또는 미완료 상태였습니다.
-  - 따라서 현재 세션 기준 최종 `1행 테스트 완료`는 증거 부족으로 확정하지 않습니다. 검증 상태는 `interrupted / not closed`입니다.
+ - 현재 active blocker:
+  - semantic row foreground rerun `D:\YOUTUBEAUTO_RUNTIME\probe\semantic-row-closeout-20260318-02\probe_result.json`은 `CHATGPT_RESPONSE_TIMEOUT`으로 닫혔고, `chatgpt` stop/send gate 수정 후 rerun `D:\YOUTUBEAUTO_RUNTIME\probe\semantic-row-closeout-20260318-03\probe_result.json`은 `ADAPTER_TIMEOUT`으로 닫혔습니다.
+  - 즉 semantic row 최소 검증은 이제 `interrupted`가 아니라 `closed failure with single blocker`까지는 확보됐습니다.
+  - 현재 single blocker는 `qwen3_tts_adapter`의 `ADAPTER_TIMEOUT`입니다 (`D:\YOUTUBEAUTO_RUNTIME\probe\semantic-row-closeout-20260318-03\evidence\result.json`).
+  - 다만 `docs/plans/2026-03-15-runtime-v2-closeout-retest-plan-v2.md`의 엄격 기준대로는 실패 시 `failure_summary.json`까지 있어야 closeout 완료로 보므로, 현재 상태는 `closed failure evidence 확보 / final closeout success 아님`으로 기록합니다.
   - 새 창 문제는 코드상 `CREATE_NO_WINDOW`를 넣어 완화했지만, 사용자 체감 기준으로 완전 해결을 증명하는 최종 실행 증거는 아직 확보하지 못했습니다.
   - 마지막 hidden rerun `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row1-target-16-18`은 `voice/#01..#04.flac` 일부만 남기고 `probe_result.json`, `qwen3_result.json`, `failure_summary.json`, `render/` 없이 종료돼 closeout 증거로 사용할 수 없습니다.
   - 추가 세션 실패 기록: 사용자 중단/실행 금지 지시 후에도 같은 성격의 runtime 검증/실행을 반복했고, 사용자는 이를 `10번 동안 지시를 무시한 것`으로 인지했습니다. 다음 사이클에서는 이 상태를 재현하지 않도록 `사용자 중단 후 재검증 금지` 규칙을 강제합니다.

@@ -32,9 +32,10 @@
 
 ## What Is NOT Closed Yet
 
-- semantic target row (`Sheet1` row 16 / CLI `--row-index 14`)의 final closeout evidence는 아직 없습니다.
-- 이번 세션의 hidden rerun들은 `probe_result.json`, `failure_summary.json`, `render/` final artifact를 남기지 못한 채 중단/미완료 상태로 끝났습니다.
-- 따라서 **semantic target row(Sheet1 row 16 / CLI `--row-index 14`) closeout 완료를 주장하면 안 됩니다.**
+- semantic target row (`Sheet1!row15`, 엑셀 UI 기준 16행 / CLI `--row-index 14`)의 success closeout evidence는 아직 없습니다.
+- foreground semantic-row rerun `D:\YOUTUBEAUTO_RUNTIME\probe\semantic-row-closeout-20260318-02\probe_result.json`은 `CHATGPT_RESPONSE_TIMEOUT`으로 닫혔고, 후속 fix 뒤 rerun `D:\YOUTUBEAUTO_RUNTIME\probe\semantic-row-closeout-20260318-03\probe_result.json`은 `ADAPTER_TIMEOUT`으로 닫혔습니다.
+- 현재 single blocker는 `qwen3_tts_adapter ADAPTER_TIMEOUT`입니다.
+- 따라서 **semantic target row(`Sheet1!row15`, 엑셀 UI 기준 16행 / CLI `--row-index 14`) success closeout 완료를 주장하면 안 되지만, single blocker가 무엇인지 모르는 상태는 아닙니다.**
 
 ## Most Important Lessons / Hard Rules For Next Session
 
