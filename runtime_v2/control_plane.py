@@ -25,7 +25,11 @@ from runtime_v2.latest_run import (
 from runtime_v2.agent_browser.evidence import build_agent_browser_evidence
 from runtime_v2.gpt_autospawn import apply_autospawn_decision
 from runtime_v2.gpt_pool_monitor import tick_gpt_status
-from runtime_v2.manager import merge_stage1_result, sync_final_video_result
+from runtime_v2.manager import (
+    merge_stage1_result,
+    sync_failure_result,
+    sync_final_video_result,
+)
 from runtime_v2 import recovery_policy
 from runtime_v2.queue_store import QueueStore, QueueStoreError
 from runtime_v2.state_machine import (
@@ -59,7 +63,7 @@ from runtime_v2.supervisor import run_gated
 
 MAX_CHAIN_DEPTH = 4
 MAX_NEXT_JOBS = 4
-MAX_STAGE1_DECLARED_NEXT_JOBS = 128
+MAX_STAGE1_DECLARED_NEXT_JOBS = 256
 PROMOTION_GATE_ORDER = {"": 0, "A": 1, "B": 2, "C": 3, "D": 4}
 RVC_SOURCE_MODE_PRIORITY = {"tts-source": 1, "gemi-video-source": 2}
 
@@ -233,6 +237,52 @@ def run_control_loop_once(
                     "code": "SEEDED_JOB",
                     "seeded_jobs": [seeded_job.to_dict() for seeded_job in seeded_jobs],
                 }
+        terminal_failed_job = _latest_terminal_failed_row(jobs)
+        if terminal_failed_job is not None:
+            failure_code = normalize_error_code(
+                _terminal_failure_code(terminal_failed_job)
+            )
+            row_ref = str(terminal_failed_job.payload.get("row_ref", "")).strip()
+            worker_stage = str(
+                terminal_failed_job.payload.get(
+                    "last_worker_stage", terminal_failed_job.workload
+                )
+            ).strip()
+            failure_summary = (
+                f"{row_ref or terminal_failed_job.job_id} fail-closed after "
+                f"{worker_stage or terminal_failed_job.workload} {failure_code}"
+            )
+            sync_failure_result(
+                config=runtime_config,
+                run_id=str(terminal_failed_job.payload.get("run_id", run_id)).strip()
+                or run_id,
+                reason_code=failure_code,
+                summary=failure_summary,
+                evidence_refs=[
+                    str(events_file),
+                    str(debug_log_path(runtime_config.debug_log_root, run_id)),
+                ],
+                debug_log=str(debug_log_path(runtime_config.debug_log_root, run_id)),
+                artifact_root=artifact_root,
+            )
+            _ = append_debug_event(
+                debug_log_path(runtime_config.debug_log_root, run_id),
+                event="control_loop_terminal_failure",
+                payload={
+                    "run_id": run_id,
+                    "job_id": terminal_failed_job.job_id,
+                    "row_ref": row_ref,
+                    "reason_code": failure_code,
+                    "worker_stage": worker_stage,
+                },
+            )
+            return {
+                "status": "failed",
+                "code": failure_code,
+                "job_id": terminal_failed_job.job_id,
+                "row_ref": row_ref,
+                "failure_summary_path": str(runtime_config.failure_summary_file),
+            }
         gui_payload = _build_control_gui_status(
             run_id=run_id,
             stage="idle",
@@ -478,6 +528,11 @@ def run_control_loop_once(
         and canonical_worker_error_code not in {"", "OK", "FAILED"}
     ):
         runtime_error_code = canonical_worker_error_code
+    if canonical_worker_error_code not in {"", "OK"}:
+        job.payload["last_error_code"] = canonical_worker_error_code
+    job.payload["last_worker_stage"] = str(
+        worker_contract.get("stage", result.get("status", "unknown"))
+    )
 
     if can_transition(job.status, next_status):
         previous_status = job.status
@@ -804,26 +859,66 @@ def _row_ref(job: JobContract) -> str:
     return str(job.payload.get("row_ref", "")).strip()
 
 
+def _row_scope(job: JobContract) -> tuple[str, str]:
+    return (_row_ref(job), str(job.payload.get("run_id", "")).strip())
+
+
+def _latest_terminal_failed_row(jobs: list[JobContract]) -> JobContract | None:
+    active_scopes = {
+        _row_scope(job)
+        for job in jobs
+        if job.status in {"queued", "retry", "running"} and _row_ref(job)
+    }
+    terminal_failed = [
+        job
+        for job in jobs
+        if job.status == "failed"
+        and _row_ref(job)
+        and _row_scope(job) not in active_scopes
+    ]
+    if not terminal_failed:
+        return None
+    return max(
+        terminal_failed,
+        key=lambda item: (
+            _terminal_failure_code(item) not in {"", "FAILED"},
+            -_gate_rank(item),
+            _to_float(item.updated_at, 0.0),
+        ),
+    )
+
+
+def _terminal_failure_code(job: JobContract) -> str:
+    raw_code = str(job.payload.get("last_error_code", "")).strip()
+    if raw_code:
+        return raw_code
+    if job.workload == "qwen3_tts" and _to_int(job.attempts) > 0:
+        return "WORKER_STALL_DETECTED"
+    return "FAILED"
+
+
 def _gate_rank(job: JobContract) -> int:
     return PROMOTION_GATE_ORDER.get(_promotion_gate(job), 0)
 
 
 def _next_runnable_job(jobs: list[JobContract], now: float) -> JobContract | None:
-    row_pending_gate: dict[str, int] = {}
+    row_pending_gate: dict[tuple[str, str], int] = {}
     for entry in jobs:
         if entry.status not in {"queued", "retry", "running"}:
             continue
-        row_ref = _row_ref(entry)
+        row_scope = _row_scope(entry)
+        row_ref = row_scope[0]
         if not row_ref:
             continue
         gate_rank = _gate_rank(entry)
-        current = row_pending_gate.get(row_ref)
+        current = row_pending_gate.get(row_scope)
         if current is None or gate_rank < current:
-            row_pending_gate[row_ref] = gate_rank
+            row_pending_gate[row_scope] = gate_rank
     for entry in jobs:
-        row_ref = _row_ref(entry)
+        row_scope = _row_scope(entry)
+        row_ref = row_scope[0]
         if row_ref and _gate_rank(entry) > row_pending_gate.get(
-            row_ref, _gate_rank(entry)
+            row_scope, _gate_rank(entry)
         ):
             continue
         if entry.status == "queued":
@@ -842,26 +937,28 @@ def _fail_closed_blocked_rows(
     *,
     run_id: str,
 ) -> None:
-    failed_rows: dict[str, int] = {}
+    failed_rows: dict[tuple[str, str], int] = {}
     for entry in jobs:
         if entry.status != "failed":
             continue
-        row_ref = _row_ref(entry)
+        row_scope = _row_scope(entry)
+        row_ref = row_scope[0]
         if not row_ref:
             continue
         gate_rank = _gate_rank(entry)
-        current = failed_rows.get(row_ref)
+        current = failed_rows.get(row_scope)
         if current is None or gate_rank < current:
-            failed_rows[row_ref] = gate_rank
+            failed_rows[row_scope] = gate_rank
     if not failed_rows:
         return
     for job in jobs:
-        row_ref = _row_ref(job)
-        if not row_ref or row_ref not in failed_rows:
+        row_scope = _row_scope(job)
+        row_ref = row_scope[0]
+        if not row_ref or row_scope not in failed_rows:
             continue
         if job.status not in {"queued", "retry"}:
             continue
-        if _gate_rank(job) < failed_rows[row_ref]:
+        if _gate_rank(job) < failed_rows[row_scope]:
             continue
         previous_status = job.status
         if not can_transition(previous_status, "failed"):
@@ -885,6 +982,7 @@ def _recover_stale_running_jobs(
     run_id: str = "",
 ) -> None:
     stale_sec = max(1, int(config.running_stale_sec))
+    stale_retry_limit = max(0, int(getattr(config, "max_stale_recovery_attempts", 1)))
     changed = False
     for job in jobs:
         if job.status != "running":
@@ -894,9 +992,7 @@ def _recover_stale_running_jobs(
             continue
         recovery_action = (
             "retry"
-            if recovery_policy.within_retry_budget(
-                job.attempts, config.max_retry_attempts
-            )
+            if recovery_policy.within_retry_budget(job.attempts, stale_retry_limit)
             else "failed"
         )
         previous_status = job.status
@@ -908,6 +1004,8 @@ def _recover_stale_running_jobs(
             )
         else:
             _ = job.payload.pop("next_attempt_at", None)
+            job.payload["last_error_code"] = "WORKER_STALL_DETECTED"
+            job.payload["last_worker_stage"] = str(job.workload)
         changed = True
         _ = _append_control_event(
             {

@@ -135,6 +135,7 @@ class RuntimeConfig:
     gpt_spawn_cooldown_sec: int = 300
     gpt_spawn_hourly_limit: int = 6
     max_retry_attempts: int = 3
+    max_stale_recovery_attempts: int = 1
     circuit_breaker_threshold: int = 5
     running_stale_sec: int = 300
     lease_file: Path = field(

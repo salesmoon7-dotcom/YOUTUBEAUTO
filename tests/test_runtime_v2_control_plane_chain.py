@@ -180,6 +180,175 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertEqual(str(by_job_id["canva-row1-blocked"]["status"]), "failed")
         self.assertEqual(str(by_job_id["genspark-row2-open"]["status"]), "completed")
 
+    def test_control_plane_does_not_fail_close_new_run_for_same_row_ref(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            queue_store = QueueStore(config.queue_store_file)
+            failed_old_run = JobContract(
+                job_id="genspark-row1-old-run-failed",
+                workload="genspark",
+                status="failed",
+                checkpoint_key="stage2:genspark:Sheet1!row1:1:old",
+                payload={
+                    "run_id": "row-run-old",
+                    "row_ref": "Sheet1!row1",
+                    "promotion_gate": "A",
+                    "scene_index": 1,
+                },
+            )
+            queued_new_run = JobContract(
+                job_id="canva-row1-new-run-open",
+                workload="canva",
+                checkpoint_key="stage2:canva:Sheet1!row1:4:new",
+                payload={
+                    "run_id": "row-run-new",
+                    "row_ref": "Sheet1!row1",
+                    "promotion_gate": "B",
+                    "scene_index": 4,
+                },
+            )
+            queue_store.save([failed_old_run, queued_new_run])
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={
+                    "status": "ok",
+                    "code": "OK",
+                    "worker_result": {
+                        "status": "ok",
+                        "stage": "canva",
+                        "error_code": "",
+                        "retryable": False,
+                        "next_jobs": [],
+                        "details": {},
+                        "completion": {"state": "succeeded", "final_output": False},
+                    },
+                },
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-new-row-rerun",
+                )
+
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            by_job_id = {str(item["job_id"]): item for item in queue_items}
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(
+            str(by_job_id["genspark-row1-old-run-failed"]["status"]), "failed"
+        )
+        self.assertEqual(
+            str(by_job_id["canva-row1-new-run-open"]["status"]), "completed"
+        )
+
+    def test_control_plane_accepts_large_stage1_declared_fanout(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            asset_root = config.artifact_root / "stage1-large-fanout"
+            asset_root.mkdir(parents=True, exist_ok=True)
+            parent_job = JobContract(
+                job_id="chatgpt-row1-large-fanout",
+                workload="chatgpt",
+                checkpoint_key="topic_spec:Sheet1!row1:run-large-fanout",
+                payload={
+                    "run_id": "run-large-fanout",
+                    "row_ref": "Sheet1!row1",
+                    "excel_path": str(root / "topic.xlsx"),
+                    "sheet_name": "Sheet1",
+                    "row_index": 0,
+                },
+            )
+            jobs = [parent_job]
+            story_outline = [f"Story {index}" for index in range(1, 131)]
+            scene_plan = [
+                {"scene_index": index, "prompt": f"Scene {index}"}
+                for index in range(1, 131)
+            ]
+            voice_texts = [
+                {
+                    "col": f"#{index:02d}",
+                    "text": f"Voice {index}",
+                    "original_voices": [index],
+                }
+                for index in range(1, 131)
+            ]
+            handoff_contract = {
+                "run_id": "run-large-fanout",
+                "row_ref": "Sheet1!row1",
+                "topic": "Large fanout topic",
+                "voice_texts": voice_texts,
+            }
+            video_plan = build_video_plan(
+                run_id="run-large-fanout",
+                row_ref="Sheet1!row1",
+                topic="Large fanout topic",
+                story_outline=story_outline,
+                scene_plan=cast(list[dict[str, object]], scene_plan),
+                asset_plan={
+                    "asset_root": str(asset_root.resolve()),
+                    "common_asset_folder": str(asset_root.resolve()),
+                },
+                voice_plan={
+                    "mapping_source": "stage1_parsed",
+                    "scene_count": len(scene_plan),
+                    "groups": [],
+                },
+                reason_code="ok",
+                evidence={"source": "test"},
+            )
+            worker_result = cast(
+                dict[str, object],
+                {
+                    "status": "ok",
+                    "stage": "chatgpt",
+                    "error_code": "",
+                    "retryable": False,
+                    "details": {
+                        "video_plan": video_plan,
+                        "stage1_handoff": {"contract": handoff_contract},
+                    },
+                },
+            )
+
+            seeded = _seed_declared_next_jobs(
+                config.queue_store_file,
+                jobs,
+                worker_result,
+                parent_job,
+                config.control_plane_events_file,
+                run_id="control-run-large-fanout",
+                artifact_root=config.artifact_root,
+            )
+
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+
+        self.assertGreater(len(seeded), 128)
+        self.assertTrue(
+            any(
+                str(item.get("job_id", "")).startswith("qwen3-run-large-fanout")
+                for item in queue_items
+            )
+        )
+
     def test_run_worker_rejects_unsupported_workload_explicitly(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             job = JobContract(
@@ -1994,6 +2163,143 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertEqual(str(latest_metadata["status"]), "blocked")
         self.assertEqual(str(latest_metadata["worker_error_code"]), "GPU_LEASE_BUSY")
         self.assertEqual(str(latest_metadata["completion_state"]), "blocked")
+
+    def test_control_plane_fail_closes_second_stale_running_recovery(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            object.__setattr__(config, "running_stale_sec", 1)
+            stale_job = JobContract(
+                job_id="qwen-stale-running-job",
+                workload="qwen3_tts",
+                status="running",
+                attempts=1,
+                checkpoint_key="seed:qwen-stale-running-job",
+                payload={
+                    "run_id": "qwen-stale-run",
+                    "row_ref": "Sheet1!row1",
+                    "chain_depth": 0,
+                },
+            )
+            stale_job.updated_at = 0.0
+            QueueStore(config.queue_store_file).save([stale_job])
+
+            result = run_control_loop_once(
+                owner="runtime_v2",
+                config=config,
+                run_id="control-run-stale-fail-close",
+                allow_runtime_side_effects=False,
+            )
+
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            job_payload = next(
+                item
+                for item in queue_items
+                if str(item["job_id"]) == "qwen-stale-running-job"
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "WORKER_STALL_DETECTED")
+        self.assertEqual(str(job_payload["status"]), "failed")
+        self.assertEqual(int(cast(int, job_payload["attempts"])), 2)
+
+    def test_control_plane_writes_failure_summary_for_terminal_failed_row(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            failed_job = JobContract(
+                job_id="qwen-terminal-failed-job",
+                workload="qwen3_tts",
+                status="failed",
+                attempts=2,
+                checkpoint_key="seed:qwen-terminal-failed-job",
+                payload={
+                    "run_id": "qwen-terminal-run",
+                    "row_ref": "Sheet1!row1",
+                    "chain_depth": 1,
+                    "last_error_code": "WORKER_STALL_DETECTED",
+                    "last_worker_stage": "qwen3_tts_adapter",
+                },
+            )
+            failed_job.updated_at = 100.0
+            completed_job = JobContract(
+                job_id="chatgpt-terminal-completed-job",
+                workload="chatgpt",
+                status="completed",
+                checkpoint_key="seed:chatgpt-terminal-completed-job",
+                payload={
+                    "run_id": "qwen-terminal-run",
+                    "row_ref": "Sheet1!row1",
+                    "chain_depth": 0,
+                },
+            )
+            completed_job.updated_at = 90.0
+            blocked_render_job = JobContract(
+                job_id="render-terminal-blocked-job",
+                workload="render",
+                status="failed",
+                checkpoint_key="seed:render-terminal-blocked-job",
+                payload={
+                    "run_id": "qwen-terminal-run",
+                    "row_ref": "Sheet1!row1",
+                    "chain_depth": 1,
+                },
+            )
+            blocked_render_job.updated_at = 110.0
+            QueueStore(config.queue_store_file).save(
+                [completed_job, failed_job, blocked_render_job]
+            )
+
+            result = run_control_loop_once(
+                owner="runtime_v2",
+                config=config,
+                run_id="control-run-terminal-failure-summary",
+                allow_runtime_side_effects=False,
+            )
+            failure_summary_exists = config.failure_summary_file.exists()
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "WORKER_STALL_DETECTED")
+        self.assertTrue(failure_summary_exists)
+
+    def test_control_plane_inferrs_stall_code_for_terminal_qwen_failure_without_payload_error(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            failed_qwen_job = JobContract(
+                job_id="qwen-terminal-inferred-stall-job",
+                workload="qwen3_tts",
+                status="failed",
+                attempts=2,
+                checkpoint_key="seed:qwen-terminal-inferred-stall-job",
+                payload={
+                    "run_id": "qwen-inferred-stall-run",
+                    "row_ref": "Sheet1!row1",
+                    "chain_depth": 1,
+                },
+            )
+            failed_qwen_job.updated_at = 100.0
+            QueueStore(config.queue_store_file).save([failed_qwen_job])
+
+            result = run_control_loop_once(
+                owner="runtime_v2",
+                config=config,
+                run_id="control-run-inferred-stall-summary",
+                allow_runtime_side_effects=False,
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "WORKER_STALL_DETECTED")
 
     def test_control_plane_uses_retryable_not_completion_state_for_retry_decision(
         self,
