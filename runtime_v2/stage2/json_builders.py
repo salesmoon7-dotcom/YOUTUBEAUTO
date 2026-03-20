@@ -375,6 +375,7 @@ def _build_geminigen_jobs(
     reason_code: str,
     videos: list[str],
     scene_index_start: int,
+    agent_browser_services: set[str],
 ) -> tuple[list[dict[str, object]], list[str], list[dict[str, object]]]:
     if not videos:
         return [], [], []
@@ -399,6 +400,8 @@ def _build_geminigen_jobs(
         payload["promotion_gate"] = _promotion_gate_for_workload("geminigen")
         if ref_img:
             payload["first_frame_path"] = ref_img
+        if "geminigen" in agent_browser_services:
+            payload["use_agent_browser"] = True
         if isinstance(stage1_handoff, dict):
             payload["stage1_handoff"] = stage1_handoff
         geminigen_jobs.append(
@@ -567,6 +570,7 @@ def build_stage2_jobs(
         reason_code=str(video_plan.get("reason_code", "ok")),
         videos=stage1_videos,
         scene_index_start=max([0, *_timeline_scene_indices(timeline)]),
+        agent_browser_services=agent_browser_services,
     )
     jobs.extend(geminigen_jobs)
     asset_refs.extend(geminigen_asset_refs)

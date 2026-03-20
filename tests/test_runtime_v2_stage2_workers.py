@@ -150,6 +150,31 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         self.assertEqual(result["error_code"], "BROWSER_BLOCKED")
         self.assertTrue(bool(result["retryable"]))
 
+    def test_canva_worker_marks_browser_failures_retryable(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = root / "exports" / "scene-01.png"
+            job = _stage2_job("canva")
+            job.payload["use_agent_browser"] = True
+            job.payload["service_artifact_path"] = str(output_path)
+
+            with patch(
+                "runtime_v2.stage2.canva_worker.run_verified_adapter_command",
+                return_value={
+                    "ok": False,
+                    "error_code": "BROWSER_UNHEALTHY",
+                    "stdout_path": root / "stdout.log",
+                    "stderr_path": root / "stderr.log",
+                    "details": {},
+                },
+            ):
+                result = run_canva_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "BROWSER_UNHEALTHY")
+        self.assertTrue(bool(result["retryable"]))
+
     def test_agent_browser_stage2_adapter_command_uses_hidden_cli_child(self) -> None:
         command = build_stage2_agent_browser_adapter_command(
             service="genspark",
