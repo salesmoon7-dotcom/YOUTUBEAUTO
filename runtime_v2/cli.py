@@ -15,6 +15,11 @@ from uuid import uuid4
 
 from runtime_v2 import exit_codes
 from runtime_v2.bootstrap import ensure_runtime_bootstrap
+from runtime_v2.boundary_jobs import (
+    build_qwen_boundary_contract,
+    build_stage2_boundary_contract,
+    write_boundary_contract,
+)
 from runtime_v2.browser.manager import (
     BrowserManager,
     expected_url_substring_for_service,
@@ -96,6 +101,12 @@ class CliArgs(argparse.Namespace):
     row_index: int
     accepted_statuses: str
     job_contract_path: str
+    emit_boundary_contract_path: str
+    stage1_handoff_path: str
+    video_plan_path: str
+    boundary_workload: str
+    boundary_scene_index: int
+    boundary_ref_id: str
     batch_count: int
     max_control_ticks: int
     selftest: bool
@@ -148,6 +159,12 @@ class CliArgs(argparse.Namespace):
         self.row_index = 0
         self.accepted_statuses = ""
         self.job_contract_path = ""
+        self.emit_boundary_contract_path = ""
+        self.stage1_handoff_path = ""
+        self.video_plan_path = ""
+        self.boundary_workload = ""
+        self.boundary_scene_index = 0
+        self.boundary_ref_id = ""
         self.batch_count = 5
         self.max_control_ticks = 50
         self.selftest = False
@@ -273,6 +290,31 @@ def _load_job_contract(path: str) -> JobContract:
         error_code = str((invalid or {}).get("code", "invalid_job_contract"))
         raise ValueError(error_code or "invalid_job_contract")
     return parsed_job
+
+
+def _emit_boundary_contract(args: CliArgs) -> Path:
+    workload = args.boundary_workload.strip()
+    if not workload:
+        raise ValueError("missing_boundary_workload")
+    if workload == "qwen3_tts":
+        if not args.stage1_handoff_path.strip():
+            raise ValueError("missing_stage1_handoff_path")
+        contract = build_qwen_boundary_contract(
+            stage1_handoff_path=args.stage1_handoff_path,
+        )
+    else:
+        if not args.video_plan_path.strip():
+            raise ValueError("missing_video_plan_path")
+        scene_index = (
+            args.boundary_scene_index if args.boundary_scene_index > 0 else None
+        )
+        contract = build_stage2_boundary_contract(
+            video_plan_path=args.video_plan_path,
+            workload=workload,
+            scene_index=scene_index,
+            ref_id=args.boundary_ref_id,
+        )
+    return write_boundary_contract(contract, args.emit_boundary_contract_path)
 
 
 def _job_contract_artifacts(result: dict[str, object]) -> list[Path]:
@@ -428,6 +470,12 @@ def main() -> int:
     _ = parser.add_argument("--row-index", type=int, default=0)
     _ = parser.add_argument("--accepted-statuses", default="")
     _ = parser.add_argument("--job-contract-path", default="")
+    _ = parser.add_argument("--emit-boundary-contract-path", default="")
+    _ = parser.add_argument("--stage1-handoff-path", default="")
+    _ = parser.add_argument("--video-plan-path", default="")
+    _ = parser.add_argument("--boundary-workload", default="")
+    _ = parser.add_argument("--boundary-scene-index", type=int, default=0)
+    _ = parser.add_argument("--boundary-ref-id", default="")
     _ = parser.add_argument("--batch-count", type=int, default=5)
     _ = parser.add_argument("--max-control-ticks", type=int, default=50)
     _ = parser.add_argument("--selftest", action="store_true")
@@ -500,6 +548,7 @@ def main() -> int:
             args.excel_once,
             args.excel_batch,
             bool(args.job_contract_path.strip()),
+            bool(args.emit_boundary_contract_path.strip()),
             args.selftest,
             args.selftest_detached,
             args.selftest_probe_child,
@@ -602,11 +651,38 @@ def main() -> int:
         mode = "excel_batch"
     elif args.job_contract_path.strip():
         mode = "job_contract"
+    elif args.emit_boundary_contract_path.strip():
+        mode = "emit_boundary_contract"
     elif args.soak_24h:
         mode = "soak_24h"
     else:
         mode = "once"
     explicit_job: JobContract | None = None
+    if args.emit_boundary_contract_path.strip():
+        try:
+            output_path = _emit_boundary_contract(args)
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            print(
+                final_report(
+                    {
+                        "run_id": "",
+                        "status": "failed",
+                        "code": str(exc) or "boundary_contract_failed",
+                    }
+                )
+            )
+            return exit_codes.CLI_USAGE
+        print(
+            final_report(
+                {
+                    "run_id": "",
+                    "status": "ok",
+                    "code": "OK",
+                    "boundary_contract_path": str(output_path.resolve()),
+                }
+            )
+        )
+        return exit_codes.SUCCESS
     if args.job_contract_path.strip():
         try:
             explicit_job = _load_job_contract(args.job_contract_path)
