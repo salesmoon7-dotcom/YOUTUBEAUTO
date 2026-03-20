@@ -73,6 +73,12 @@ Fallback documentation must also include:
 
 No fallback is allowed to become de facto permanent by omission.
 
+### Gate 2A. No test-only logic in the production path
+
+- Do not add probe/debug/test-only logic that changes the normal runtime decision path.
+- If a change affects actual runtime behavior, treat it as production logic and require legacy justification.
+- Debug helpers may collect evidence, but they must not become hidden prerequisites for success.
+
 ### Gate 3. Strict execution order
 
 The implementation and validation order must be fixed as:
@@ -84,6 +90,10 @@ The implementation and validation order must be fixed as:
 5. one full closeout run
 
 No later step may be validated while an earlier step is still drifting.
+
+Additional rule:
+- production path correction comes before any test convenience logic.
+- tests may verify the production path, but they must not redefine it.
 
 ### Gate 4. Evidence grade separation
 
@@ -112,6 +122,13 @@ Clarification:
 - implementation may be batched,
 - but validation and rerun decisions must still be boundary-specific,
 - meaning one failing boundary at a time for execution evidence.
+
+### Gate 5A. Minimum-unit-test preservation
+
+- `minimum-unit-test` means: prove at least one truthful artifact per subprogram before treating the semantic row as the validation unit.
+- do not let `semantic row full closeout` become the first practical test surface for `qwen3_tts`, `genspark`, `seaart`, `canva`, or `geminigen`.
+- if a worker currently materializes as a large batch-style job (for example `qwen3_tts` consuming the full `voice_texts` bundle), that worker must be treated as an unresolved service-boundary blocker before another semantic-row rerun is allowed.
+- if gate A (`genspark` / `seaart`) still fails before one truthful scene artifact is proven, stop there; do not spend more hours inside later semantic-row reruns waiting for downstream gates.
 
 ### Gate 6. New-session continuation guard
 
@@ -238,19 +255,43 @@ If the next action is a broad rerun while any earlier gate is unresolved, the se
 2. one service-boundary retest for the corrected failing contract
 3. only after service contracts are pinned, one semantic-row closeout run
 
+### Phase 5A. Corrected minimum-unit execution order
+
+The previous week drifted because this order was not followed in practice.
+
+The corrected order is:
+
+1. readiness only
+2. one service-boundary retest for the current failing service contract
+3. prove one truthful artifact for each required subprogram boundary in this order:
+   - `chatgpt`
+   - `qwen3_tts`
+   - `genspark`
+   - `seaart`
+   - `canva`
+   - `geminigen`
+4. only after the above proofs exist, one semantic-row closeout run
+
+Clarifications:
+- `qwen3_tts` must not be re-used as a multi-hour “whole row voice batch” during minimum-unit verification. If the current contract still does that, that contract itself is the blocker and must be fixed before more semantic-row reruns.
+- gate A failure during minimum-unit verification must not be interpreted as proof that semantic-row closeout was meaningfully exercised.
+- if one subprogram cannot produce a first truthful artifact in the documented time slice, stop and debug that service only.
+
 ### Time limits and stop conditions
 
 These limits exist to prevent another uncontrolled multi-hour rerun.
 
 - readiness check: stop if not resolved within 10 minutes
-- single service-boundary retest: stop if no decisive evidence within 30 minutes
-- semantic-row full closeout run: hard stop and reassess if no decisive success/failure artifact within 90 minutes
+- single service-boundary retest: stop if no decisive evidence within 10 minutes
+- semantic-row full closeout run: do not start until service-boundary blockers are closed; once started, each monitored boundary must still be judged in 10-minute slices rather than left to run unattended for hours
+- if a worker keeps consuming hours before producing its first truthful artifact, that worker is not “in progress”; it is the unresolved service-boundary blocker.
 
 Immediate reassessment triggers:
 - attach path unavailable
 - login state unproven
 - probe/result evidence missing or contradictory
 - fallback pressure appears before legacy contract is pinned
+- any boundary execution exceeding 10 minutes without a decisive artifact or blocker classification
 
 ### semantic-row execution rule
 - `python -m runtime_v2.cli --readiness-check`
@@ -266,8 +307,10 @@ Immediate reassessment triggers:
 - no user-stop override, hidden rerun, or background continuation after explicit stop
 - no plan drift by local judgment when the plan already explains the failure pattern
 - no full closeout run while any earlier gate in `prompt -> attach -> routing -> order` is unresolved
+- no semantic-row rerun may be used as a substitute for the missing “one artifact per subprogram” proof
 - no claim that "mapping is correct" may stand in for proof that actual runtime routing/execution is correct
 - no resumed session may skip the session-start checklist
+- no test-only or probe-only helper may be used to "make the test pass" in place of fixing the real service/runtime contract
 
 ---
 

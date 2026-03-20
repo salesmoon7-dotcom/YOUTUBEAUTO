@@ -322,6 +322,74 @@ This separation is mandatory because prior documents and session statements mixe
 
 ---
 
+## I. Additional Process Failure Added After Repeated Semantic-Row Runs
+
+Status: `CONFIRMED`
+
+The plan already introduced explicit time limits for boundary-scoped retests, but execution still drifted into multi-hour runs.
+
+What went wrong:
+- service-boundary runs were not actually stopped at the documented time boundary
+- long semantic-row executions were allowed to continue without decisive evidence
+- the workflow again behaved as if a long rerun was acceptable while a single blocker was still unresolved
+
+Why this matters:
+- this recreates the exact failure pattern the retest plan was supposed to prevent
+- it turns boundary verification into another uncontrolled soak-style run
+
+Corrective rule:
+- boundary tests must stop at the documented time cap and immediately revert to single-blocker debugging
+- no future explanation may describe a multi-hour uncontrolled run as normal verification behavior
+
+---
+
+## J. Test-Only Logic Drift vs Production Logic
+
+Status: `CONFIRMED`
+
+Another root cause of the repeated failures was the introduction of test/probe-oriented logic into paths that should have stayed production/legacy-aligned.
+
+What went wrong:
+- instead of fixing the production path first, intermediate helper logic, fallback logic, probe-oriented branching, and test-passing adjustments were added in the middle of the runtime path
+- this allowed one boundary to appear "better" while the real downstream path was still wrong
+- the result was repeated drift between:
+  - production logic
+  - probe/debug logic
+  - test expectations
+
+Why this matters:
+- once test-only or probe-only behavior starts shaping the runtime path, later failures become harder to diagnose
+- each new helper can hide the real service contract that actually needs to be fixed
+
+Corrective rule:
+- fix the production/legacy path first
+- treat probe/debug helpers as evidence-collection tools only
+- do not let test-only logic become a hidden runtime dependency
+- if a helper changes runtime behavior, it must be reviewed as production logic, not as a harmless debug aid
+
+---
+
+## K. Minimum-Unit-Test Drift vs Semantic Closeout Execution
+
+Status: `CONFIRMED`
+
+What went wrong:
+- the user asked for minimum-unit verification (`one truthful artifact per subprogram`), but execution repeatedly used `semantic-row full closeout` as the practical test unit
+- `qwen3_tts` therefore ran as a large bundled worker before image services were individually proven
+- gate A image failures then blocked or fail-closed downstream services before `canva` / `geminigen` could produce their own first truthful artifact
+
+Why this matters:
+- it transformed a small service-boundary verification task into a production-style fan-out rerun
+- it consumed multiple sessions without answering the actual minimum-unit question
+- it made partial progress look like broad pipeline progress even when downstream subprogram proof was still missing
+
+Corrective rule:
+- minimum-unit verification must stay service-boundary-first
+- semantic-row closeout must not be used as the first proving surface for subprogram readiness
+- if a worker still behaves like a large batch job during minimum-unit verification, that worker contract itself becomes the blocker and must be fixed before more closeout reruns
+
+---
+
 ## H. Summary Judgment
 
 The user’s corrections were materially valid in the following areas:

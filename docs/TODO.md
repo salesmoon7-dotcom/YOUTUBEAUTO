@@ -36,6 +36,12 @@
   - 새 창 문제는 코드상 `CREATE_NO_WINDOW`를 넣어 완화했지만, 사용자 체감 기준으로 완전 해결을 증명하는 최종 실행 증거는 아직 확보하지 못했습니다.
   - 마지막 hidden rerun `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row1-target-16-18`은 `voice/#01..#04.flac` 일부만 남기고 `probe_result.json`, `qwen3_result.json`, `failure_summary.json`, `render/` 없이 종료돼 closeout 증거로 사용할 수 없습니다.
   - 추가 세션 실패 기록: 사용자 중단/실행 금지 지시 후에도 같은 성격의 runtime 검증/실행을 반복했고, 사용자는 이를 `10번 동안 지시를 무시한 것`으로 인지했습니다. 다음 사이클에서는 이 상태를 재현하지 않도록 `사용자 중단 후 재검증 금지` 규칙을 강제합니다.
+- 2026-03-20 분석 정리:
+  - 이번 주 drift의 핵심은 `최소단위 테스트`를 하지 않고 `semantic row 전체 closeout`을 최소 테스트처럼 반복 실행한 것입니다.
+  - `qwen3_tts`는 `voice_texts` 전체를 한 번에 먹는 장시간 단일 job으로 선언되어(`runtime_v2/workers/qwen3_worker.py`) 이미지 1개를 보기 전에 수시간을 소비했습니다.
+  - stage2는 `genspark/seaart -> gate A`, `canva/geminigen -> gate B`, `qwen/rvc/kenburns -> gate C`, `render -> gate D`로 fan-out되며(`runtime_v2/stage2/json_builders.py`), gate A 실패가 후속 gate fail-close로 전파돼 최소단위 검증과 충돌했습니다(`runtime_v2/control_plane.py`).
+  - 즉 현재 문제는 서비스 개별 실패만이 아니라, `fan-out + 장시간 qwen + aggressive fail-close`가 결합된 설계/운용 불일치입니다.
+  - 다음 사이클 원칙: `하부프로그램당 1개 산출물`을 먼저 증명하는 service-boundary 방식으로 되돌리고, semantic row full closeout은 그 다음 단계에서만 허용합니다.
 - 오라클 shortest-path 전략(현재 SSOT):
   - 남은 검증은 semantic target row(`Sheet1` row 16 / CLI `--row-index 14`)에 대한 `Stage 5 detached run` **1회**만 수행합니다.
   - 그 전에 `python -m runtime_v2.cli --readiness-check`만 확인하고, readiness fail이면 Stage 5를 시작하지 않습니다.
