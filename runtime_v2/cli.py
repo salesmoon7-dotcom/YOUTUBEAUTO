@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.request
 from pathlib import Path
 from time import sleep, time
 from typing import cast
@@ -14,9 +15,14 @@ from uuid import uuid4
 
 from runtime_v2 import exit_codes
 from runtime_v2.bootstrap import ensure_runtime_bootstrap
-from runtime_v2.browser.manager import BrowserManager, open_browser_for_login
+from runtime_v2.browser.manager import (
+    BrowserManager,
+    expected_url_substring_for_service,
+    open_browser_for_login,
+)
 from runtime_v2.browser.supervisor import BrowserSupervisor
 from runtime_v2.config import (
+    GpuWorkload,
     RuntimeConfig,
     WorkloadName,
     browser_session_root,
@@ -25,6 +31,7 @@ from runtime_v2.config import (
 )
 from runtime_v2.contracts.job_contract import JobContract, build_explicit_job_contract
 from runtime_v2.control_plane import run_control_loop_once
+from runtime_v2.control_plane import run_worker
 from runtime_v2.contracts.json_contract import (
     emit_event,
     final_report,
@@ -45,6 +52,7 @@ from runtime_v2.latest_run import write_cli_runtime_snapshot
 from runtime_v2.manager import mark_excel_row_running, seed_excel_row
 from runtime_v2.excel.selector import select_pending_row_indexes
 from runtime_v2.excel.source import read_excel_row
+from runtime_v2.control_plane_feeder import job_from_explicit_payload
 from runtime_v2.n8n_adapter import (
     build_n8n_webhook_response,
     post_callback,
@@ -71,6 +79,7 @@ from runtime_v2.stage2.genspark_worker import run_genspark_job
 from runtime_v2.stage2.json_builders import build_stage2_jobs
 from runtime_v2.stage2.seaart_worker import run_seaart_job
 from runtime_v2.supervisor import run_once, run_selftest
+from runtime_v2.supervisor import run_gated
 from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
 
 
@@ -86,6 +95,7 @@ class CliArgs(argparse.Namespace):
     sheet_name: str
     row_index: int
     accepted_statuses: str
+    job_contract_path: str
     batch_count: int
     max_control_ticks: int
     selftest: bool
@@ -137,6 +147,7 @@ class CliArgs(argparse.Namespace):
         self.sheet_name = "Sheet1"
         self.row_index = 0
         self.accepted_statuses = ""
+        self.job_contract_path = ""
         self.batch_count = 5
         self.max_control_ticks = 50
         self.selftest = False
@@ -249,6 +260,70 @@ def _parse_accepted_statuses(raw: str) -> set[str] | None:
     return set(tokens) if tokens else None
 
 
+def _load_job_contract(path: str) -> JobContract:
+    contract_path = Path(path)
+    raw_payload = json.loads(contract_path.read_text(encoding="utf-8"))
+    if not isinstance(raw_payload, dict):
+        raise ValueError("invalid_job_contract_json")
+    payload = cast(dict[str, object], raw_payload)
+    parsed_job, invalid = job_from_explicit_payload(
+        payload, source_hint=str(contract_path.resolve())
+    )
+    if parsed_job is None:
+        error_code = str((invalid or {}).get("code", "invalid_job_contract"))
+        raise ValueError(error_code or "invalid_job_contract")
+    return parsed_job
+
+
+def _job_contract_artifacts(result: dict[str, object]) -> list[Path]:
+    worker_result = cast(
+        dict[str, object],
+        result.get("worker_result", {})
+        if isinstance(result.get("worker_result", {}), dict)
+        else {},
+    )
+    artifacts: list[Path] = []
+    for raw_path in cast(list[object], worker_result.get("artifacts", [])):
+        path_text = str(raw_path).strip()
+        if path_text:
+            artifacts.append(Path(path_text))
+    completion = cast(
+        dict[str, object],
+        worker_result.get("completion", {})
+        if isinstance(worker_result.get("completion", {}), dict)
+        else {},
+    )
+    final_artifact_path = str(completion.get("final_artifact_path", "")).strip()
+    if final_artifact_path:
+        final_path = Path(final_artifact_path)
+        if all(
+            str(existing.resolve()) != str(final_path.resolve())
+            for existing in artifacts
+        ):
+            artifacts.append(final_path)
+    return artifacts
+
+
+def _run_explicit_job_contract(
+    *, owner: str, config: RuntimeConfig, run_id: str, job: JobContract
+) -> dict[str, object]:
+    result = run_gated(
+        owner=owner,
+        execute=lambda: run_worker(
+            job,
+            config.artifact_root,
+            registry_file=config.worker_registry_file,
+        ),
+        workload=job.workload,
+        config=config,
+        run_id=run_id,
+        require_browser_healthy=True,
+        allow_runtime_side_effects=True,
+    )
+    result["job"] = job.to_dict()
+    return result
+
+
 def _run_excel_batch_mode(
     *,
     owner: str,
@@ -352,6 +427,7 @@ def main() -> int:
     _ = parser.add_argument("--sheet-name", default="Sheet1")
     _ = parser.add_argument("--row-index", type=int, default=0)
     _ = parser.add_argument("--accepted-statuses", default="")
+    _ = parser.add_argument("--job-contract-path", default="")
     _ = parser.add_argument("--batch-count", type=int, default=5)
     _ = parser.add_argument("--max-control-ticks", type=int, default=50)
     _ = parser.add_argument("--selftest", action="store_true")
@@ -423,6 +499,7 @@ def main() -> int:
             args.control_once_probe_child,
             args.excel_once,
             args.excel_batch,
+            bool(args.job_contract_path.strip()),
             args.selftest,
             args.selftest_detached,
             args.selftest_probe_child,
@@ -523,11 +600,32 @@ def main() -> int:
         mode = "control_once"
     elif args.excel_batch:
         mode = "excel_batch"
+    elif args.job_contract_path.strip():
+        mode = "job_contract"
     elif args.soak_24h:
         mode = "soak_24h"
     else:
         mode = "once"
-    run_id = str(uuid4())
+    explicit_job: JobContract | None = None
+    if args.job_contract_path.strip():
+        try:
+            explicit_job = _load_job_contract(args.job_contract_path)
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            print(
+                final_report(
+                    {
+                        "run_id": "",
+                        "status": "failed",
+                        "code": str(exc) or "invalid_job_contract",
+                    }
+                )
+            )
+            return exit_codes.CLI_USAGE
+    run_id = (
+        str(explicit_job.payload.get("run_id", explicit_job.job_id)).strip()
+        if explicit_job is not None
+        else str(uuid4())
+    )
     if args.browser_recover_probe_child:
         report = _run_browser_recovery_probe(
             config=config,
@@ -601,7 +699,19 @@ def main() -> int:
         )
         print(final_report(report))
         return exit_code_from_status(str(report.get("code", "CLI_USAGE")))
-    ensure_runtime_bootstrap(config, workload="qwen3_tts", run_id=run_id, mode=mode)
+    bootstrap_workload: str = "qwen3_tts"
+    if explicit_job is not None and explicit_job.workload in {
+        "qwen3_tts",
+        "rvc",
+        "kenburns",
+    }:
+        bootstrap_workload = explicit_job.workload
+    ensure_runtime_bootstrap(
+        config,
+        workload=cast(GpuWorkload, bootstrap_workload),
+        run_id=run_id,
+        mode=mode,
+    )
     seed_result: dict[str, object] | None = None
     if args.excel_once:
         seed_result = seed_excel_row(
@@ -661,6 +771,13 @@ def main() -> int:
                 inject_browser_fail=args.selftest_force_browser_fail,
                 inject_gpt_fail=args.selftest_force_gpt_fail,
             )
+        elif explicit_job is not None:
+            result = _run_explicit_job_contract(
+                owner=args.owner,
+                config=config,
+                run_id=run_id,
+                job=explicit_job,
+            )
         elif (
             args.excel_once
             and seed_result is not None
@@ -702,6 +819,11 @@ def main() -> int:
         return exit_codes.CLI_USAGE
     summary = summarize_runtime_result(result)
     code = str(summary.get("code", result.get("code", "CLI_USAGE")))
+    if (
+        not code.strip()
+        and str(summary.get("status", result.get("status", ""))).strip() == "ok"
+    ):
+        code = "OK"
     exit_code = exit_code_from_status(code)
     callback_result: dict[str, object] | None = None
     _ = append_debug_event(
@@ -776,6 +898,7 @@ def main() -> int:
         gui_status_input = dict(result)
         gui_status_input.update(summary)
         gui_status_input["debug_log"] = str(debug_log)
+        snapshot_artifacts = _job_contract_artifacts(result)
         gui_payload = build_gui_status_payload(
             gui_status_input,
             run_id=run_id,
@@ -821,6 +944,9 @@ def main() -> int:
                 "status": str(summary.get("status", result.get("status", "failed"))),
                 "code": code,
                 "exit_code": exit_code,
+                "job_id": str(summary.get("job_id", "")),
+                "workload": str(summary.get("workload", "")),
+                "queue_status": str(summary.get("queue_status", "")),
                 "stage": str(summary.get("stage", "")),
                 "error_code": str(summary.get("error_code", "")),
                 "manifest_path": str(summary.get("manifest_path", "")),
@@ -832,6 +958,7 @@ def main() -> int:
                 "debug_log": str(debug_log),
                 "ts": now_ts(),
             },
+            artifacts=snapshot_artifacts,
         )
 
     report = {
@@ -1751,11 +1878,16 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             return exit_codes.BROWSER_UNHEALTHY
     canva_extra_details: dict[str, object] | None = None
     if prompt and service == "genspark":
+        _close_genspark_result_tabs(args.port)
         effective_prompt = prompt
         pre_actions = [
             {
                 "type": "eval",
                 "script": "(() => { if (location.href !== 'https://www.genspark.ai/agents?type=image_generation_agent') { location.href = 'https://www.genspark.ai/agents?type=image_generation_agent'; return JSON.stringify({ok:true, step:'navigated_image_agent'}); } return JSON.stringify({ok:true, step:'already_on_image_agent'}); })()",
+            },
+            {
+                "type": "eval",
+                "script": "(() => { const buttons = Array.from(document.querySelectorAll('button,[role=button],a')); const target = buttons.find(item => ((item.innerText || item.textContent || '').trim()).startsWith('New')); if (target instanceof HTMLElement) { target.click(); return JSON.stringify({ok:true, step:'selected_new_session'}); } return JSON.stringify({ok:true, step:'new_session_not_found'}); })()",
             },
             {
                 "type": "eval",
@@ -1976,6 +2108,9 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 },
             ]
         )
+    expected_url_substring = args.expected_url_substring.strip()
+    if service == "genspark":
+        expected_url_substring = expected_url_substring_for_service("genspark")
     job = JobContract(
         job_id=f"agent-browser-stage2-{service}",
         workload="agent_browser_verify",
@@ -1983,7 +2118,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         payload={
             "service": service,
             "port": args.port,
-            "expected_url_substring": args.expected_url_substring.strip(),
+            "expected_url_substring": expected_url_substring,
             "expected_title_substring": args.expected_title_substring.strip(),
             "actions": actions,
             "ref_img_1": ref_img_1,
@@ -1998,7 +2133,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             payload={
                 "service": service,
                 "port": args.port,
-                "expected_url_substring": args.expected_url_substring.strip(),
+                "expected_url_substring": expected_url_substring,
                 "expected_title_substring": args.expected_title_substring.strip(),
                 "actions": pre_actions,
                 "capture_snapshot": False,
@@ -2020,6 +2155,12 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 probe_debug_only=True,
                 recovery_attempted=False,
                 placeholder_artifact=False,
+                ref_images_requested=ref_images_requested,
+                ref_images_resolved=ref_images_resolved,
+                extra_details={
+                    "exception": str(exc),
+                    "exception_type": exc.__class__.__name__,
+                },
             )
             return exit_codes.BROWSER_UNHEALTHY
         if not stage2_attach_verify_succeeded(pre_result):
@@ -2040,7 +2181,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         try:
             _attach_stage2_ref_images(
                 port=args.port,
-                expected_url_substring=args.expected_url_substring.strip(),
+                expected_url_substring=expected_url_substring,
                 file_paths=ref_images_resolved,
             )
         except Exception:
@@ -2255,7 +2396,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                     workspace=workspace,
                     service=service,
                     port=args.port,
-                    expected_url_substring=args.expected_url_substring.strip(),
+                    expected_url_substring=expected_url_substring,
                     service_artifact_path=target_path,
                     image_url_override=ready_image_url,
                 )
@@ -2264,7 +2405,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                     workspace=workspace,
                     service=service,
                     port=args.port,
-                    expected_url_substring=args.expected_url_substring.strip(),
+                    expected_url_substring=expected_url_substring,
                     service_artifact_path=target_path,
                 )
             if service == "geminigen":
@@ -2351,6 +2492,12 @@ def _attach_stage2_ref_images(
 ) -> None:
     if not file_paths:
         return
+    if expected_url_substring == expected_url_substring_for_service("genspark"):
+        _attach_genspark_ref_images_via_filechooser(port=port, file_paths=file_paths)
+        return
+    if expected_url_substring == expected_url_substring_for_service("seaart"):
+        _attach_seaart_ref_images_via_playwright(port=port, file_paths=file_paths)
+        return
     target = _select_page_target(port, expected_url_substring)
     eval_result = _cdp_command(
         target["webSocketDebuggerUrl"],
@@ -2388,6 +2535,92 @@ def _attach_stage2_ref_images(
             "files": [str(Path(path).resolve()) for path in file_paths],
         },
     )
+
+
+def _attach_genspark_ref_images_via_filechooser(
+    *, port: int, file_paths: list[str]
+) -> None:
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
+        try:
+            page = None
+            for context in browser.contexts:
+                for candidate in context.pages:
+                    if candidate.url.startswith(
+                        "https://www.genspark.ai/agents?id="
+                    ) or candidate.url.startswith(
+                        "https://www.genspark.ai/agents?type=image_generation_agent"
+                    ):
+                        page = candidate
+            if page is None:
+                return
+            page.bring_to_front()
+            try:
+                with page.expect_file_chooser(timeout=5000) as chooser_info:
+                    page.locator("button.upload-button").first.click()
+                    page.get_by_text("로컬 파일 찾기", exact=False).first.click()
+            except (PlaywrightTimeoutError, RuntimeError):
+                return
+            chooser = chooser_info.value
+            chooser.set_files([str(Path(path).resolve()) for path in file_paths])
+        finally:
+            browser.close()
+
+
+def _attach_seaart_ref_images_via_playwright(
+    *, port: int, file_paths: list[str]
+) -> None:
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
+        try:
+            page = None
+            for context in browser.contexts:
+                for candidate in context.pages:
+                    if candidate.url.startswith("https://www.seaart.ai/"):
+                        page = candidate
+                        break
+                if page is not None:
+                    break
+            if page is None:
+                raise RuntimeError("NO_UPLOAD_TARGET")
+            page.bring_to_front()
+            locator = page.locator("input.el-upload__input").first
+            locator.set_input_files([str(Path(path).resolve()) for path in file_paths])
+        finally:
+            browser.close()
+
+
+def _close_genspark_result_tabs(port: int) -> None:
+    with urllib.request.urlopen(
+        f"http://127.0.0.1:{port}/json/list", timeout=10
+    ) as response:
+        payload = json.loads(response.read().decode("utf-8", "ignore"))
+    pages = [
+        cast(dict[str, object], item)
+        for item in cast(list[object], payload)
+        if isinstance(item, dict)
+    ]
+    for item in pages:
+        if str(item.get("type", "")) != "page":
+            continue
+        url = str(item.get("url", ""))
+        if not url.startswith("https://www.genspark.ai/agents?id="):
+            continue
+        target_id = str(item.get("id", "")).strip()
+        if not target_id:
+            continue
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/json/close/{target_id}", timeout=10
+            ):
+                pass
+        except Exception:
+            continue
 
 
 def _resolve_stage2_ref_image_paths(

@@ -135,11 +135,54 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         )
         self.assertIn("--qwen3-adapter-child", adapter_command)
         self.assertNotIn("--workspace-root", adapter_command)
+        self.assertEqual(run_adapter.call_args.kwargs["timeout_sec"], 3600)
         self.assertTrue(
             str(adapter_extra_env["PYTHONPATH"]).startswith(
                 str(Path("D:/YOUTUBEAUTO").resolve())
             )
         )
+
+    def test_qwen3_worker_scales_adapter_timeout_for_large_voice_batches(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            image_path = root / "image.png"
+            output_path = artifact_root / "speech.flac"
+            _ = image_path.write_bytes(b"png")
+            voice_texts = [
+                {"col": f"#{idx:02d}", "text": f"line {idx}", "original_voices": [idx]}
+                for idx in range(1, 61)
+            ]
+            job = JobContract(
+                job_id="qwen-job-timeout-scale",
+                workload="qwen3_tts",
+                payload={
+                    "voice_texts": voice_texts,
+                    "image_path": str(image_path.resolve()),
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                },
+            )
+            stdout_path = root / "artifacts" / "stdout.log"
+            stderr_path = root / "artifacts" / "stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+
+            with patch(
+                "runtime_v2.workers.qwen3_worker.run_verified_adapter_command",
+                return_value={
+                    "ok": True,
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "output_path": output_path,
+                    "reused": False,
+                },
+            ) as run_adapter:
+                result = run_qwen3_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(run_adapter.call_args.kwargs["timeout_sec"], 22200)
 
     def test_qwen3_worker_passes_channel_reference_audio_to_adapter(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

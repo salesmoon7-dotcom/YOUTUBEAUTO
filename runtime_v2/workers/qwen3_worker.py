@@ -68,6 +68,20 @@ def _voice_texts_payload(payload: dict[str, object]) -> list[dict[str, object]]:
     return [{"col": "#01", "text": script_text, "original_voices": [1]}]
 
 
+def _qwen_adapter_timeout_sec(
+    voice_texts: list[dict[str, object]], config: dict[str, object]
+) -> int:
+    raw_timeout = config.get("adapter_timeout_sec")
+    timeout_sec = _int_value(raw_timeout, 3600)
+    if timeout_sec <= 0:
+        timeout_sec = 3600
+    voice_count = len(voice_texts)
+    if voice_count <= 0:
+        return timeout_sec
+    scaled_timeout = 600 + (voice_count * 360)
+    return max(timeout_sec, scaled_timeout)
+
+
 def _canonical_adapter_env() -> dict[str, str]:
     repo_root = str(REPO_ROOT.resolve())
     current = os.environ.get("PYTHONPATH", "").strip()
@@ -257,6 +271,7 @@ def run_qwen3_job(
     if isinstance(adapter_command_raw, list) and adapter_command_raw:
         adapter_command_items = cast(list[object], adapter_command_raw)
         adapter_command = [str(item) for item in adapter_command_items]
+        adapter_timeout_sec = _qwen_adapter_timeout_sec(voice_texts, legacy_config)
         adapter_result = run_verified_adapter_command(
             workspace,
             approved_root=artifact_root or workspace.parent.parent,
@@ -264,6 +279,7 @@ def run_qwen3_job(
             service_artifact_path=str(job.payload.get("service_artifact_path", "")),
             adapter_error_code="qwen3_tts_adapter_failed",
             extra_env=adapter_extra_env,
+            timeout_sec=adapter_timeout_sec,
         )
         stdout_path = Path(str(adapter_result["stdout_path"]))
         stderr_path = Path(str(adapter_result["stderr_path"]))
@@ -282,6 +298,7 @@ def run_qwen3_job(
                     "reference_audio": reference_audio,
                     "ref_audio_used": reference_audio,
                     "output_format": output_format,
+                    "adapter_timeout_sec": adapter_timeout_sec,
                     **legacy_runtime,
                 },
                 completion={"state": "failed", "final_output": False},
@@ -315,6 +332,7 @@ def run_qwen3_job(
                 "reference_audio": reference_audio,
                 "ref_audio_used": reference_audio,
                 "output_format": output_format,
+                "adapter_timeout_sec": adapter_timeout_sec,
                 **legacy_runtime,
             },
             next_jobs=next_jobs,

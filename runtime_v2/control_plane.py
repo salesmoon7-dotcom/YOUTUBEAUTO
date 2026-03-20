@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import json
+import threading
 import tempfile
 from pathlib import Path
 from time import time
 from typing import Callable, cast
 
 from runtime_v2.bootstrap import ensure_runtime_bootstrap
-from runtime_v2.config import GpuWorkload, RuntimeConfig
+from runtime_v2.config import (
+    GpuWorkload,
+    RuntimeConfig,
+    required_browser_services,
+    workload_requires_browser_health,
+)
 from runtime_v2.control_plane_feeder import (
     archived_contract_counts,
     invalid_reason_summary,
@@ -45,6 +51,7 @@ from runtime_v2.stage2.genspark_worker import run_genspark_job
 from runtime_v2.stage2.seaart_worker import run_seaart_job
 from runtime_v2.stage3.render_worker import run_render_job
 from runtime_v2.worker_registry import update_worker_state
+from runtime_v2.worker_registry import load_worker_registry
 from runtime_v2.workers.agent_browser_worker import (
     run_agent_browser_verify_job,
     run_agent_browser_verify_safe_mode_job,
@@ -160,6 +167,7 @@ def run_control_loop_once(
     _recover_stale_running_jobs(
         queue_store, jobs, now, runtime_config, events_file, run_id=run_id
     )
+    _reconcile_worker_registry_with_queue(jobs, runtime_config)
     _fail_closed_blocked_rows(queue_store, jobs, events_file, run_id=run_id)
     job = _next_runnable_job(jobs, now)
     if job is None:
@@ -373,6 +381,16 @@ def run_control_loop_once(
             ),
         }
     else:
+        force_unhealthy_service = None
+        last_error_code = str(job.payload.get("last_error_code", "")).strip()
+        if (
+            previous_status == "retry"
+            and last_error_code in {"BROWSER_UNHEALTHY", "BROWSER_BLOCKED"}
+            and workload_requires_browser_health(job.workload)
+        ):
+            required_services = required_browser_services(job.workload)
+            if required_services:
+                force_unhealthy_service = required_services[0]
         result = run_gated(
             owner=owner,
             execute=lambda: _run_worker(
@@ -384,6 +402,7 @@ def run_control_loop_once(
             workload=job.workload,
             config=runtime_config,
             run_id=run_id,
+            force_unhealthy_service=force_unhealthy_service,
             require_browser_healthy=True,
             allow_runtime_side_effects=allow_runtime_side_effects,
         )
@@ -897,6 +916,52 @@ def _terminal_failure_code(job: JobContract) -> str:
     return "FAILED"
 
 
+_INFRA_GATE_ERROR_CODES = {
+    "BROWSER_UNHEALTHY",
+    "BROWSER_BLOCKED",
+    "WORKER_STALL_DETECTED",
+}
+
+
+def _should_fail_close_following_job(
+    failed_job: JobContract, candidate_job: JobContract
+) -> bool:
+    failed_gate = _gate_rank(failed_job)
+    candidate_gate = _gate_rank(candidate_job)
+    failed_code = _terminal_failure_code(failed_job)
+    if (
+        failed_gate == PROMOTION_GATE_ORDER["A"]
+        and candidate_gate >= PROMOTION_GATE_ORDER["B"]
+        and failed_code in _INFRA_GATE_ERROR_CODES
+    ):
+        return False
+    return True
+
+
+def _reconcile_worker_registry_with_queue(
+    jobs: list[JobContract], config: RuntimeConfig
+) -> None:
+    active_pairs = {
+        (job.workload, str(job.payload.get("run_id", job.job_id)).strip() or job.job_id)
+        for job in jobs
+        if job.status == "running"
+    }
+    registry = load_worker_registry(config.worker_registry_file)
+    for workload, entry in registry.items():
+        state = str(entry.get("state", "")).strip().lower()
+        run_id = str(entry.get("run_id", "")).strip()
+        if state != "busy":
+            continue
+        if (workload, run_id) in active_pairs:
+            continue
+        update_worker_state(
+            config.worker_registry_file,
+            workload=workload,
+            state="idle",
+            run_id=run_id or workload,
+        )
+
+
 def _gate_rank(job: JobContract) -> int:
     return PROMOTION_GATE_ORDER.get(_promotion_gate(job), 0)
 
@@ -937,7 +1002,7 @@ def _fail_closed_blocked_rows(
     *,
     run_id: str,
 ) -> None:
-    failed_rows: dict[tuple[str, str], int] = {}
+    failed_rows: dict[tuple[str, str], JobContract] = {}
     for entry in jobs:
         if entry.status != "failed":
             continue
@@ -947,8 +1012,8 @@ def _fail_closed_blocked_rows(
             continue
         gate_rank = _gate_rank(entry)
         current = failed_rows.get(row_scope)
-        if current is None or gate_rank < current:
-            failed_rows[row_scope] = gate_rank
+        if current is None or gate_rank < _gate_rank(current):
+            failed_rows[row_scope] = entry
     if not failed_rows:
         return
     for job in jobs:
@@ -958,7 +1023,10 @@ def _fail_closed_blocked_rows(
             continue
         if job.status not in {"queued", "retry"}:
             continue
-        if _gate_rank(job) < failed_rows[row_scope]:
+        failed_job = failed_rows[row_scope]
+        if _gate_rank(job) < _gate_rank(failed_job):
+            continue
+        if not _should_fail_close_following_job(failed_job, job):
             continue
         previous_status = job.status
         if not can_transition(previous_status, "failed"):
@@ -1007,6 +1075,12 @@ def _recover_stale_running_jobs(
             job.payload["last_error_code"] = "WORKER_STALL_DETECTED"
             job.payload["last_worker_stage"] = str(job.workload)
         changed = True
+        _ = update_worker_state(
+            config.worker_registry_file,
+            workload=job.workload,
+            state="idle",
+            run_id=str(job.payload.get("run_id", job.job_id)),
+        )
         _ = _append_control_event(
             {
                 "event": "stale_running_recovered",
@@ -1100,6 +1174,7 @@ def _run_worker(
     *,
     registry_file: Path | None = None,
     allow_mock_chain: bool = False,
+    heartbeat_interval_sec: float | None = None,
 ) -> dict[str, object]:
     default_config = RuntimeConfig()
     if _mock_chain_enabled(job, allow_mock_chain=allow_mock_chain):
@@ -1118,15 +1193,45 @@ def _run_worker(
     if handler is None:
         raise ValueError(f"unsupported_workload:{job.workload}")
     run_id = str(job.payload.get("run_id", job.job_id))
+    heartbeat_done = threading.Event()
+    heartbeat_interval = max(
+        0.05,
+        float(
+            heartbeat_interval_sec
+            if heartbeat_interval_sec is not None
+            else max(1.0, float(default_config.renew_interval_sec))
+        ),
+    )
+
+    def _heartbeat() -> None:
+        while not heartbeat_done.wait(timeout=heartbeat_interval):
+            try:
+                _ = update_worker_state(
+                    resolved_registry_file,
+                    workload=job.workload,
+                    state="busy",
+                    run_id=run_id,
+                )
+            except OSError:
+                continue
+
     _ = update_worker_state(
         resolved_registry_file,
         workload=job.workload,
         state="busy",
         run_id=run_id,
     )
+    heartbeat_thread = threading.Thread(
+        target=_heartbeat,
+        name=f"runtime_v2-worker-heartbeat-{job.workload}-{run_id}",
+        daemon=True,
+    )
+    heartbeat_thread.start()
     try:
         return handler(job)
     finally:
+        heartbeat_done.set()
+        heartbeat_thread.join(timeout=max(1.0, heartbeat_interval * 2))
         _ = update_worker_state(
             resolved_registry_file,
             workload=job.workload,

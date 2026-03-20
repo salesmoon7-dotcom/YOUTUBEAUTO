@@ -148,6 +148,14 @@ def _run_agent_browser_actions(
                 expected_url_substring="genspark.ai/agents?type=image_generation_agent",
                 expected_title_substring="Genspark",
             )
+            if service == "genspark":
+                compose_tab = _prefer_genspark_compose_tab(tabs)
+                if compose_tab is not None:
+                    selected_tab = compose_tab
+                elif selected_tab is None:
+                    selected_tab = _fallback_single_genspark_tab(
+                        tabs, expected_title_substring="Genspark"
+                    )
             selected_tab = _prefer_service_specific_tab(service, tabs, selected_tab)
             if selected_tab is not None:
                 select_tab_command = build_tab_select_command(
@@ -194,12 +202,6 @@ def _prefer_service_specific_tab(
 ) -> int | None:
     if selected_tab is None or not tabs:
         return selected_tab
-    if service != "genspark":
-        return selected_tab
-    for idx, item in enumerate(tabs):
-        url = str(item.get("url", ""))
-        if url.startswith("https://www.genspark.ai/agents?id="):
-            return idx
     return selected_tab
 
 
@@ -347,7 +349,10 @@ def run_agent_browser_verify_job(
         except RuntimeError as exc:
             if service == "chatgpt":
                 raise
-            tabs = _http_cdp_tab_list(port)
+            try:
+                tabs = _http_cdp_tab_list(port)
+            except Exception as fallback_exc:
+                raise RuntimeError(str(fallback_exc)) from fallback_exc
             used_http_fallback = True
             transcript.append(
                 {
@@ -467,6 +472,33 @@ def run_agent_browser_verify_job(
                 "port": port,
                 "transcript_path": str(transcript_path.resolve()),
                 "failure_reason": str(exc),
+            },
+            completion={"state": "blocked", "final_output": False},
+        )
+    except Exception as exc:
+        transcript_path = write_json_atomic(
+            workspace / "agent_browser_transcript.json",
+            {
+                "service": service,
+                "port": port,
+                "steps": transcript,
+                "error": str(exc),
+                "exception_type": exc.__class__.__name__,
+            },
+        )
+        return finalize_worker_result(
+            workspace,
+            status="failed",
+            stage="agent_browser_verify",
+            artifacts=[transcript_path],
+            error_code="AGENT_BROWSER_VERIFY_FAILED",
+            retryable=True,
+            details={
+                "service": service,
+                "port": port,
+                "transcript_path": str(transcript_path.resolve()),
+                "failure_reason": str(exc),
+                "exception_type": exc.__class__.__name__,
             },
             completion={"state": "blocked", "final_output": False},
         )

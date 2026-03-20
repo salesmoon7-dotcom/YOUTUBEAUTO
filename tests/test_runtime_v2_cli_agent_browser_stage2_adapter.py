@@ -11,6 +11,9 @@ from unittest.mock import patch
 from runtime_v2 import exit_codes
 from runtime_v2.cli import (
     CliArgs,
+    _attach_genspark_ref_images_via_filechooser,
+    _attach_seaart_ref_images_via_playwright,
+    _attach_stage2_ref_images,
     _run_agent_browser_eval,
     _run_agent_browser_stage2_adapter_child,
     _run_qwen3_adapter_child,
@@ -562,6 +565,196 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             )
             self.assertTrue(bool(evidence["ref_images_attach_attempted"]))
 
+    def test_stage2_adapter_child_normalizes_genspark_target_matcher(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "scene-01.png"
+            request_payload = {"payload": {"prompt": "scene one"}}
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "genspark"
+            args.port = 9333
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "genspark.ai"
+            args.expected_title_substring = "Genspark"
+            captured_expected: list[str] = []
+            responses: list[object] = []
+            for payload in [
+                '{"ok":true,"src":"https://www.genspark.ai/api/files/example.png"}',
+                '{"ok":true}',
+            ]:
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", payload)
+                setattr(completed, "stderr", "")
+                responses.append(completed)
+
+            def fake_run(*args_: object, **kwargs: object) -> object:
+                _ = args_
+                _ = kwargs
+                if responses:
+                    return responses.pop(0)
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", '{"ok":true}')
+                setattr(completed, "stderr", "")
+                return completed
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                _ = artifact_root
+                payload = cast(dict[str, object], job.payload)
+                captured_expected.append(str(payload.get("expected_url_substring", "")))
+                return {"status": "ok"}
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli.sleep"),
+                patch("runtime_v2.cli._close_genspark_result_tabs"),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "genspark", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        self.assertTrue(captured_expected)
+        self.assertTrue(
+            all(
+                value == "genspark.ai/agents?type=image_generation_agent"
+                for value in captured_expected
+            )
+        )
+
+    def test_stage2_adapter_child_closes_existing_genspark_result_tabs_first(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "scene-01.png"
+            request_payload = {"payload": {"prompt": "scene one"}}
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "genspark"
+            args.port = 9333
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "genspark.ai"
+            args.expected_title_substring = "Genspark"
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli.sleep"),
+                patch("runtime_v2.cli._close_genspark_result_tabs") as close_mock,
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok"},
+                ),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "genspark", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run") as run_mock,
+            ):
+                completed = cast(object, type("Completed", (), {})())
+                setattr(
+                    completed,
+                    "stdout",
+                    '{"ok":true,"src":"https://www.genspark.ai/api/files/example.png"}',
+                )
+                setattr(completed, "stderr", "")
+                run_mock.return_value = completed
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        close_mock.assert_called_once_with(9333)
+
+    def test_stage2_adapter_child_requests_new_genspark_session_before_prompt(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "scene-01.png"
+            request_payload = {"payload": {"prompt": "scene one"}}
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "genspark"
+            args.port = 9333
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "genspark.ai"
+            args.expected_title_substring = "Genspark"
+            captured_actions: list[dict[str, object]] = []
+            responses: list[object] = []
+            for payload in [
+                '{"ok":true,"src":"https://www.genspark.ai/api/files/example.png"}',
+                '{"ok":true}',
+            ]:
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", payload)
+                setattr(completed, "stderr", "")
+                responses.append(completed)
+
+            def fake_run(*args_: object, **kwargs: object) -> object:
+                _ = args_
+                _ = kwargs
+                if responses:
+                    return responses.pop(0)
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", '{"ok":true}')
+                setattr(completed, "stderr", "")
+                return completed
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                _ = artifact_root
+                payload = cast(dict[str, object], job.payload)
+                captured_actions.extend(
+                    cast(list[dict[str, object]], payload.get("actions", []))
+                )
+                return {"status": "ok"}
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli.sleep"),
+                patch("runtime_v2.cli._close_genspark_result_tabs"),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "genspark", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        scripts = [str(action.get("script", "")) for action in captured_actions]
+        self.assertTrue(any("selected_new_session" in script for script in scripts))
+
+    def test_attach_stage2_ref_images_uses_genspark_filechooser_helper(self) -> None:
+        with patch(
+            "runtime_v2.cli._attach_genspark_ref_images_via_filechooser"
+        ) as attach_mock:
+            _attach_stage2_ref_images(
+                port=9333,
+                expected_url_substring="genspark.ai/agents?type=image_generation_agent",
+                file_paths=[r"D:\tmp\ref1.png", r"D:\tmp\ref2.png"],
+            )
+
+        attach_mock.assert_called_once_with(
+            port=9333,
+            file_paths=[r"D:\tmp\ref1.png", r"D:\tmp\ref2.png"],
+        )
+
     def test_stage2_adapter_child_fails_closed_when_ref_image_is_missing(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -662,6 +855,261 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             )
             self.assertTrue(bool(evidence["ref_images_attach_attempted"]))
 
+    def test_attach_genspark_ref_images_supports_image_generation_agent_page(
+        self,
+    ) -> None:
+        class _Chooser:
+            def __init__(self) -> None:
+                self.files: list[str] = []
+
+            def set_files(self, files: list[str]) -> None:
+                self.files = files
+
+        class _ChooserContext:
+            def __init__(self, chooser: _Chooser) -> None:
+                self.value = chooser
+
+            def __enter__(self) -> "_ChooserContext":
+                return self
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+                _ = (exc_type, exc, tb)
+                return False
+
+        class _Locator:
+            @property
+            def first(self) -> "_Locator":
+                return self
+
+            def click(self) -> None:
+                return None
+
+        class _Page:
+            def __init__(self, chooser: _Chooser) -> None:
+                self.url = "https://www.genspark.ai/agents?type=image_generation_agent"
+                self._chooser = chooser
+
+            def bring_to_front(self) -> None:
+                return None
+
+            def expect_file_chooser(self, timeout: int = 5000) -> _ChooserContext:
+                _ = timeout
+                return _ChooserContext(self._chooser)
+
+            def locator(self, selector: str) -> _Locator:
+                _ = selector
+                return _Locator()
+
+            def get_by_text(self, text: str, exact: bool = False) -> _Locator:
+                _ = (text, exact)
+                return _Locator()
+
+        class _Context:
+            def __init__(self, page: _Page) -> None:
+                self.pages = [page]
+
+        class _Browser:
+            def __init__(self, context: _Context) -> None:
+                self.contexts = [context]
+
+            def close(self) -> None:
+                return None
+
+        class _Chromium:
+            def __init__(self, browser: _Browser) -> None:
+                self._browser = browser
+
+            def connect_over_cdp(self, endpoint: str) -> _Browser:
+                _ = endpoint
+                return self._browser
+
+        class _Playwright:
+            def __init__(self, chromium: _Chromium) -> None:
+                self.chromium = chromium
+
+        class _PlaywrightContext:
+            def __init__(self, playwright: _Playwright) -> None:
+                self._playwright = playwright
+
+            def __enter__(self) -> _Playwright:
+                return self._playwright
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+                _ = (exc_type, exc, tb)
+                return False
+
+        chooser = _Chooser()
+        page = _Page(chooser)
+        browser = _Browser(_Context(page))
+        playwright_context = _PlaywrightContext(_Playwright(_Chromium(browser)))
+
+        with patch(
+            "playwright.sync_api.sync_playwright", return_value=playwright_context
+        ):
+            _attach_genspark_ref_images_via_filechooser(
+                port=9333,
+                file_paths=[r"D:\tmp\ref1.png", r"D:\tmp\ref2.png"],
+            )
+
+        self.assertEqual(
+            chooser.files,
+            [
+                str(Path(r"D:\tmp\ref1.png").resolve()),
+                str(Path(r"D:\tmp\ref2.png").resolve()),
+            ],
+        )
+
+    def test_attach_genspark_ref_images_skips_when_upload_ui_missing(self) -> None:
+        class _Page:
+            url = "https://www.genspark.ai/agents?type=image_generation_agent"
+
+            def bring_to_front(self) -> None:
+                return None
+
+            def expect_file_chooser(self, timeout: int = 5000) -> object:
+                _ = timeout
+                raise RuntimeError("unexpected")
+
+            def locator(self, selector: str) -> object:
+                _ = selector
+
+                class _Locator:
+                    @property
+                    def first(self) -> "_Locator":
+                        return self
+
+                    def click(self) -> None:
+                        return None
+
+                return _Locator()
+
+            def get_by_text(self, text: str, exact: bool = False) -> object:
+                _ = (text, exact)
+
+                class _Locator:
+                    @property
+                    def first(self) -> "_Locator":
+                        return self
+
+                    def click(self) -> None:
+                        return None
+
+                return _Locator()
+
+        class _Context:
+            def __init__(self) -> None:
+                self.pages = [_Page()]
+
+        class _Browser:
+            def __init__(self) -> None:
+                self.contexts = [_Context()]
+
+            def close(self) -> None:
+                return None
+
+        class _Chromium:
+            def connect_over_cdp(self, endpoint: str) -> _Browser:
+                _ = endpoint
+                return _Browser()
+
+        class _Playwright:
+            chromium = _Chromium()
+
+        class _PlaywrightContext:
+            def __enter__(self) -> _Playwright:
+                return _Playwright()
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+                _ = (exc_type, exc, tb)
+                return False
+
+        with patch(
+            "playwright.sync_api.sync_playwright", return_value=_PlaywrightContext()
+        ):
+            _attach_genspark_ref_images_via_filechooser(
+                port=9333,
+                file_paths=[r"D:\tmp\ref1.png"],
+            )
+
+    def test_attach_seaart_ref_images_uses_playwright_input_files(self) -> None:
+        class _Locator:
+            def __init__(self) -> None:
+                self.files: list[str] = []
+
+            @property
+            def first(self) -> "_Locator":
+                return self
+
+            def set_input_files(self, files: list[str]) -> None:
+                self.files = files
+
+        class _Page:
+            def __init__(self, locator: _Locator) -> None:
+                self.url = "https://www.seaart.ai/ko/create/image?id=abc"
+                self._locator = locator
+
+            def bring_to_front(self) -> None:
+                return None
+
+            def locator(self, selector: str) -> _Locator:
+                _ = selector
+                return self._locator
+
+        class _Context:
+            def __init__(self, page: _Page) -> None:
+                self.pages = [page]
+
+        class _Browser:
+            def __init__(self, context: _Context) -> None:
+                self.contexts = [context]
+
+            def close(self) -> None:
+                return None
+
+        class _Chromium:
+            def __init__(self, browser: _Browser) -> None:
+                self._browser = browser
+
+            def connect_over_cdp(self, endpoint: str) -> _Browser:
+                _ = endpoint
+                return self._browser
+
+        class _Playwright:
+            def __init__(self, chromium: _Chromium) -> None:
+                self.chromium = chromium
+
+        class _PlaywrightContext:
+            def __init__(self, playwright: _Playwright) -> None:
+                self._playwright = playwright
+
+            def __enter__(self) -> _Playwright:
+                return self._playwright
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+                _ = (exc_type, exc, tb)
+                return False
+
+        locator = _Locator()
+        page = _Page(locator)
+        browser = _Browser(_Context(page))
+        playwright_context = _PlaywrightContext(_Playwright(_Chromium(browser)))
+
+        with patch(
+            "playwright.sync_api.sync_playwright", return_value=playwright_context
+        ):
+            _attach_seaart_ref_images_via_playwright(
+                port=9444,
+                file_paths=[r"D:\tmp\ref1.png", r"D:\tmp\ref2.png"],
+            )
+
+        self.assertEqual(
+            locator.files,
+            [
+                str(Path(r"D:\tmp\ref1.png").resolve()),
+                str(Path(r"D:\tmp\ref2.png").resolve()),
+            ],
+        )
+
     def test_stage2_adapter_child_fails_closed_without_internal_recovery(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -694,6 +1142,42 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             self.assertTrue(bool(evidence["probe_debug_only"]))
             self.assertFalse(bool(evidence["recovery_attempted"]))
             self.assertFalse(bool(evidence["placeholder_artifact"]))
+
+    def test_stage2_adapter_child_records_pre_action_exception_details(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "scene-01.png"
+            request_payload = {"payload": {"prompt": "scene one"}}
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "genspark"
+            args.port = 9333
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "genspark.ai"
+            args.expected_title_substring = "Genspark"
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._close_genspark_result_tabs"),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=TypeError("unexpected parser shape"),
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+            evidence = json.loads(
+                (root / "attach_evidence.json").read_text(encoding="utf-8")
+            )
+            details = cast(dict[object, object], evidence["details"])
+            self.assertEqual(
+                evidence["error_code"], "AGENT_BROWSER_PRE_ACTION_EXCEPTION"
+            )
+            self.assertEqual(str(details["exception_type"]), "TypeError")
+            self.assertIn("unexpected parser shape", str(details["exception"]))
 
     def test_stage2_adapter_child_records_debug_state_on_genspark_capture_failure(
         self,

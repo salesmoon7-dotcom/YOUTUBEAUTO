@@ -313,6 +313,71 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
             str(details["current_url"]), "https://www.seaart.ai/ko/create/image?id=abc"
         )
 
+    def test_agent_browser_verify_fail_closes_when_raw_cdp_http_fallback_errors(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "artifacts"
+            job = JobContract(
+                job_id="agent-browser-genspark-http-fallback-error",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-genspark-http-fallback-error",
+                payload={
+                    "service": "genspark",
+                    "port": 9333,
+                    "expected_url_substring": "genspark.ai/agents?type=image_generation_agent",
+                    "expected_title_substring": "Genspark",
+                },
+            )
+
+            with (
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                    side_effect=RuntimeError("Failed to read: os error 10060"),
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._http_cdp_tab_list",
+                    side_effect=TimeoutError("raw cdp timeout"),
+                ),
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["stage"], "agent_browser_verify")
+        self.assertEqual(result["error_code"], "AGENT_BROWSER_COMMAND_FAILED")
+
+    def test_agent_browser_verify_fail_closes_unexpected_exception_with_details(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "artifacts"
+            job = JobContract(
+                job_id="agent-browser-genspark-unexpected-exception",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-genspark-unexpected-exception",
+                payload={
+                    "service": "genspark",
+                    "port": 9333,
+                    "expected_url_substring": "genspark.ai/agents?type=image_generation_agent",
+                    "expected_title_substring": "Genspark",
+                },
+            )
+
+            with patch(
+                "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                side_effect=TypeError("unexpected parser shape"),
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "AGENT_BROWSER_VERIFY_FAILED")
+        self.assertEqual(str(details["exception_type"]), "TypeError")
+
     def test_agent_browser_verify_accepts_legacy_string_actions(self) -> None:
         from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
 

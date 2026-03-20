@@ -191,6 +191,10 @@ def run_verified_adapter_command(
         stderr_text = str(process_result.get("stderr", ""))
         if bool(process_result.get("timed_out", False)):
             base_payload["error_code"] = "ADAPTER_TIMEOUT"
+        elif exit_code_int == 20:
+            base_payload["error_code"] = "BROWSER_UNHEALTHY"
+        elif exit_code_int == 21:
+            base_payload["error_code"] = "BROWSER_BLOCKED"
         elif (
             "No such file" in stderr_text
             or "cannot find the file" in stderr_text.lower()

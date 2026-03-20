@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from typing import cast
@@ -251,6 +253,77 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             str(by_job_id["canva-row1-new-run-open"]["status"]), "completed"
         )
 
+    def test_control_plane_keeps_gate_b_open_for_browser_unhealthy_gate_a_failure(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            queue_store = QueueStore(config.queue_store_file)
+            failed_gate_a = JobContract(
+                job_id="genspark-row1-browser-unhealthy",
+                workload="genspark",
+                status="failed",
+                checkpoint_key="stage2:genspark:Sheet1!row1:1",
+                payload={
+                    "run_id": "row-run-1",
+                    "row_ref": "Sheet1!row1",
+                    "promotion_gate": "A",
+                    "scene_index": 1,
+                    "last_error_code": "BROWSER_UNHEALTHY",
+                },
+            )
+            blocked_gate_b = JobContract(
+                job_id="canva-row1-should-stay-open",
+                workload="canva",
+                checkpoint_key="stage2:canva:Sheet1!row1:4",
+                payload={
+                    "run_id": "row-run-1",
+                    "row_ref": "Sheet1!row1",
+                    "promotion_gate": "B",
+                    "scene_index": 4,
+                },
+            )
+            queue_store.save([failed_gate_a, blocked_gate_b])
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={
+                    "status": "ok",
+                    "code": "OK",
+                    "worker_result": {
+                        "status": "ok",
+                        "stage": "canva",
+                        "error_code": "",
+                        "retryable": False,
+                        "next_jobs": [],
+                        "details": {},
+                        "completion": {"state": "succeeded", "final_output": False},
+                    },
+                },
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-gate-b-open-on-browser-error",
+                )
+
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            by_job_id = {str(item["job_id"]): item for item in queue_items}
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(
+            str(by_job_id["canva-row1-should-stay-open"]["status"]), "completed"
+        )
+
     def test_control_plane_accepts_large_stage1_declared_fanout(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -390,6 +463,104 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         run_mock_worker.assert_called_once()
         self.assertFalse(registry_file.exists())
+
+    def test_run_worker_refreshes_progress_during_long_qwen_execution(self) -> None:
+        import runtime_v2.control_plane as control_plane_module
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            registry_file = root / "health" / "worker_registry.json"
+            job = JobContract(
+                job_id="long-qwen-job",
+                workload="qwen3_tts",
+                checkpoint_key="seed:long-qwen-job",
+                payload={"run_id": "long-qwen-run"},
+            )
+            finish_event = threading.Event()
+
+            def long_running_handler(_: JobContract) -> dict[str, object]:
+                finish_event.wait(timeout=5)
+                return {"status": "ok", "stage": "qwen3_tts"}
+
+            result_box: dict[str, dict[str, object]] = {}
+
+            def target() -> None:
+                result_box["result"] = control_plane_module._run_worker(
+                    job,
+                    artifact_root=artifact_root,
+                    registry_file=registry_file,
+                    heartbeat_interval_sec=0.05,
+                )
+
+            with patch(
+                "runtime_v2.control_plane._worker_dispatch_table",
+                return_value={"qwen3_tts": long_running_handler},
+            ):
+                worker_thread = threading.Thread(target=target)
+                worker_thread.start()
+                deadline = time.time() + 3
+                first_progress = None
+                while time.time() < deadline:
+                    if registry_file.exists():
+                        registry = json.loads(registry_file.read_text(encoding="utf-8"))
+                        qwen_entry = cast(
+                            dict[str, object], registry.get("qwen3_tts", {})
+                        )
+                        if qwen_entry:
+                            first_progress = float(
+                                cast(float, qwen_entry["progress_ts"])
+                            )
+                            break
+                    time.sleep(0.02)
+                self.assertIsNotNone(first_progress)
+
+                time.sleep(0.12)
+                registry = json.loads(registry_file.read_text(encoding="utf-8"))
+                qwen_entry = cast(dict[str, object], registry["qwen3_tts"])
+                refreshed_progress = float(cast(float, qwen_entry["progress_ts"]))
+
+                finish_event.set()
+                worker_thread.join(timeout=3)
+
+        self.assertGreater(refreshed_progress, cast(float, first_progress))
+        self.assertEqual(result_box["result"]["status"], "ok")
+
+    def test_control_plane_reconciles_orphan_busy_worker_registry(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            _ = config.worker_registry_file.parent.mkdir(parents=True, exist_ok=True)
+            _ = config.worker_registry_file.write_text(
+                json.dumps(
+                    {
+                        "qwen3_tts": {
+                            "workload": "qwen3_tts",
+                            "state": "busy",
+                            "run_id": "orphan-run",
+                            "last_seen": 10.0,
+                            "progress_ts": 10.0,
+                        }
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_control_loop_once(
+                owner="runtime_v2",
+                config=config,
+                run_id="control-run-reconcile-orphan-worker",
+                allow_runtime_side_effects=False,
+            )
+            worker_registry = json.loads(
+                config.worker_registry_file.read_text(encoding="utf-8")
+            )
+            qwen_registry = cast(dict[str, object], worker_registry["qwen3_tts"])
+
+        self.assertEqual(result["status"], "idle")
+        self.assertEqual(result["code"], "NO_JOB")
+        self.assertEqual(str(qwen_registry["state"]), "idle")
 
     def test_queue_store_load_fail_closes_on_corrupted_queue_file(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -2057,6 +2228,55 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertEqual(str(canonical_handoff["workload"]), "chatgpt")
         self.assertFalse(bool(latest_join["out_of_sync"]))
 
+    def test_control_plane_forces_browser_recovery_on_browser_unhealthy_retry(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            seed_control_job(
+                JobContract(
+                    job_id="genspark-browser-unhealthy-retry-job",
+                    workload="genspark",
+                    status="retry",
+                    attempts=1,
+                    checkpoint_key="seed:genspark-browser-unhealthy-retry-job",
+                    payload={
+                        "run_id": "genspark-browser-unhealthy-retry-run",
+                        "row_ref": "Sheet1!row1",
+                        "scene_index": 1,
+                        "promotion_gate": "A",
+                        "last_error_code": "BROWSER_UNHEALTHY",
+                    },
+                ),
+                config=config,
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={
+                    "status": "failed",
+                    "code": "BROWSER_UNHEALTHY",
+                    "worker_result": {
+                        "status": "failed",
+                        "stage": "genspark_adapter",
+                        "error_code": "BROWSER_UNHEALTHY",
+                        "retryable": True,
+                        "next_jobs": [],
+                        "completion": {"state": "failed", "final_output": False},
+                    },
+                },
+            ) as run_gated_mock:
+                _ = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-force-browser-recovery",
+                )
+
+        self.assertEqual(
+            run_gated_mock.call_args.kwargs["force_unhealthy_service"], "genspark"
+        )
+
     def test_control_plane_holds_gpt_floor_failure_with_fixed_backoff(
         self,
     ) -> None:
@@ -2183,6 +2403,22 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             )
             stale_job.updated_at = 0.0
             QueueStore(config.queue_store_file).save([stale_job])
+            _ = config.worker_registry_file.parent.mkdir(parents=True, exist_ok=True)
+            _ = config.worker_registry_file.write_text(
+                json.dumps(
+                    {
+                        "qwen3_tts": {
+                            "workload": "qwen3_tts",
+                            "state": "busy",
+                            "run_id": "qwen-stale-run",
+                            "last_seen": 0.0,
+                            "progress_ts": 0.0,
+                        }
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
 
             result = run_control_loop_once(
                 owner="runtime_v2",
@@ -2205,11 +2441,16 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 for item in queue_items
                 if str(item["job_id"]) == "qwen-stale-running-job"
             )
+            worker_registry = json.loads(
+                config.worker_registry_file.read_text(encoding="utf-8")
+            )
+            qwen_registry = cast(dict[str, object], worker_registry["qwen3_tts"])
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["code"], "WORKER_STALL_DETECTED")
         self.assertEqual(str(job_payload["status"]), "failed")
         self.assertEqual(int(cast(int, job_payload["attempts"])), 2)
+        self.assertEqual(str(qwen_registry["state"]), "idle")
 
     def test_control_plane_writes_failure_summary_for_terminal_failed_row(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

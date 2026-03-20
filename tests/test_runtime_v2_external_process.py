@@ -56,6 +56,29 @@ class RuntimeV2ExternalProcessTests(unittest.TestCase):
         self.assertFalse(bool(result["ok"]))
         self.assertEqual(result["error_code"], "ADAPTER_TIMEOUT")
 
+    def test_verified_adapter_command_maps_browser_exit_codes(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            workspace = Path(tmp_dir)
+            unhealthy = run_verified_adapter_command(
+                workspace,
+                approved_root=workspace,
+                adapter_command=[sys.executable, "-c", "raise SystemExit(20)"],
+                service_artifact_path=str(workspace / "out.png"),
+                adapter_error_code="ignored_adapter_failed",
+            )
+            blocked = run_verified_adapter_command(
+                workspace,
+                approved_root=workspace,
+                adapter_command=[sys.executable, "-c", "raise SystemExit(21)"],
+                service_artifact_path=str(workspace / "out.png"),
+                adapter_error_code="ignored_adapter_failed",
+            )
+
+        self.assertFalse(bool(unhealthy["ok"]))
+        self.assertEqual(unhealthy["error_code"], "BROWSER_UNHEALTHY")
+        self.assertFalse(bool(blocked["ok"]))
+        self.assertEqual(blocked["error_code"], "BROWSER_BLOCKED")
+
     def test_verified_adapter_command_reports_output_outside_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             workspace = Path(tmp_dir)

@@ -288,6 +288,23 @@ def _select_ref_images_from_stage1(
     return ref_img_1, ref_img_2
 
 
+def _sanitize_ref_job_prompt(prompt: str) -> str:
+    text = prompt.strip()
+    prefixes = [
+        "Refer to attached character image.",
+        "Refer to attached background image.",
+        "Use attached images as reference.",
+    ]
+    changed = True
+    while changed:
+        changed = False
+        for prefix in prefixes:
+            if text.startswith(prefix):
+                text = text[len(prefix) :].lstrip()
+                changed = True
+    return text
+
+
 def _build_ref_jobs(
     *,
     run_id: str,
@@ -321,7 +338,7 @@ def _build_ref_jobs(
             run_id=run_id,
             row_ref=row_ref,
             scene_index=scene_index,
-            prompt=ref_input,
+            prompt=_sanitize_ref_job_prompt(ref_input),
             asset_root=str(asset_root.resolve()),
             reason_code=reason_code,
         )

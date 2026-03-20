@@ -19,6 +19,15 @@ from runtime_v2.workers.native_only import (
 )
 
 
+_RETRYABLE_BROWSER_ERROR_CODES = {
+    "BROWSER_UNHEALTHY",
+    "BROWSER_BLOCKED",
+    "AGENT_BROWSER_COMMAND_FAILED",
+    "AGENT_BROWSER_VERIFY_FAILED",
+    "AGENT_BROWSER_TIMEOUT",
+}
+
+
 def run_genspark_job(
     job: JobContract, artifact_root: Path, registry_file: Path | None = None
 ) -> dict[str, object]:
@@ -65,6 +74,9 @@ def run_genspark_job(
         attach_evidence = attach_evidence_path(workspace)
         attach_evidence_payload = load_stage2_attach_evidence(workspace)
         if not bool(adapter_result.get("ok", False)):
+            adapter_error_code = str(
+                adapter_result.get("error_code", "genspark_adapter_failed")
+            )
             return finalize_worker_result(
                 workspace,
                 status="failed",
@@ -76,10 +88,8 @@ def run_genspark_job(
                     stderr_path,
                     *([attach_evidence] if attach_evidence.exists() else []),
                 ],
-                error_code=str(
-                    adapter_result.get("error_code", "genspark_adapter_failed")
-                ),
-                retryable=False,
+                error_code=adapter_error_code,
+                retryable=adapter_error_code in _RETRYABLE_BROWSER_ERROR_CODES,
                 details=cast(dict[str, object], adapter_result.get("details", {})),
                 completion={"state": "failed", "final_output": False},
             )
