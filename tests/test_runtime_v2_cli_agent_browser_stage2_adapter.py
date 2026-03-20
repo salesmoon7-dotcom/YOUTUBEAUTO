@@ -1034,14 +1034,17 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
     def test_attach_seaart_ref_images_uses_playwright_input_files(self) -> None:
         class _Locator:
             def __init__(self) -> None:
-                self.files: list[str] = []
+                self.calls: list[list[str]] = []
 
-            @property
-            def first(self) -> "_Locator":
+            def nth(self, index: int) -> "_Locator":
+                _ = index
                 return self
 
+            def count(self) -> int:
+                return 2
+
             def set_input_files(self, files: list[str]) -> None:
-                self.files = files
+                self.calls.append(files)
 
         class _Page:
             def __init__(self, locator: _Locator) -> None:
@@ -1103,10 +1106,10 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             )
 
         self.assertEqual(
-            locator.files,
+            locator.calls,
             [
-                str(Path(r"D:\tmp\ref1.png").resolve()),
-                str(Path(r"D:\tmp\ref2.png").resolve()),
+                [str(Path(r"D:\tmp\ref1.png").resolve())],
+                [str(Path(r"D:\tmp\ref2.png").resolve())],
             ],
         )
 
@@ -1340,6 +1343,84 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertEqual(evidence["service"], "canva")
         self.assertEqual(evidence["status"], "ok")
         self.assertFalse(bool(evidence["placeholder_artifact"]))
+
+    def test_stage2_adapter_child_treats_missing_canva_current_page_option_as_optional(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+
+            steps = [
+                {"ok": True, "step": "page_count_before", "count": 3},
+                {"ok": True, "step": "body_focused"},
+                {"ok": True, "step": "copied_template"},
+                {"ok": True, "step": "clicked_add_page"},
+                {"ok": True, "step": "pasted_template"},
+                {"ok": True, "step": "page_count_after", "count": 3},
+                {"ok": True, "step": "focused_background_canvas"},
+                {"ok": True, "step": "opened_background_generate_panel"},
+                {"ok": True, "step": "filled_background_prompt"},
+                {"ok": True, "step": "submitted_background_generate"},
+                {"ok": True, "step": "opened_upload_tab"},
+                {"ok": True, "step": "prepared_upload_input"},
+                {"ok": True, "step": "placed_uploaded_image"},
+                {"ok": True, "step": "clicked_remove_background"},
+                {"ok": True, "step": "opened_position_panel"},
+                {"ok": True, "step": "opened_arrange_tab"},
+                {"ok": True, "step": "set_image_position"},
+                {"ok": True, "step": "edited_thumbnail_text"},
+                {"ok": True, "step": "opened_file_menu"},
+                {"ok": True, "step": "opened_download_panel"},
+                {"ok": False, "error": "NO_CURRENT_PAGE_OPTION"},
+                {"ok": True, "step": "confirmed_download_options"},
+                {"ok": True, "step": "clicked_download_execute"},
+                {"ok": True, "step": "cleanup_deleted_created_page"},
+            ]
+
+            responses: list[object] = []
+            for payload in steps:
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", json.dumps(payload, ensure_ascii=True))
+                setattr(completed, "stderr", "")
+                responses.append(completed)
+
+            def fake_run(*args_: object, **kwargs: object) -> object:
+                _ = kwargs
+                command = cast(list[str], args_[0])
+                if len(command) >= 4 and command[3] == "download":
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    output_path.write_bytes(b"png")
+                if responses:
+                    return responses.pop(0)
+                completed = cast(object, type("Completed", (), {})())
+                setattr(
+                    completed, "stdout", json.dumps({"ok": True}, ensure_ascii=True)
+                )
+                setattr(completed, "stderr", "")
+                return completed
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok"},
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
 
     def test_stage2_adapter_child_builds_full_canva_legacy_sequence_actions(
         self,

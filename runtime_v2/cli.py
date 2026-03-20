@@ -2121,7 +2121,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 },
                 {
                     "type": "eval",
-                    "script": "(() => { const input = document.querySelector('input[placeholder*=\"페이지\"], input[placeholder*=\"page\"]'); if (!(input instanceof HTMLElement)) return JSON.stringify({ok:true, step:'page_picker_unavailable'}); input.click(); const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text.includes('현재 페이지') || text.includes('Current page'); }); if (!(btn instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_CURRENT_PAGE_OPTION'}); btn.click(); return JSON.stringify({ok:true, step:'selected_current_page'}); })()",
+                    "script": "(() => { const input = document.querySelector('input[placeholder*=\"페이지\"], input[placeholder*=\"page\"]'); if (!(input instanceof HTMLElement)) return JSON.stringify({ok:true, step:'page_picker_unavailable'}); input.click(); const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text.includes('현재 페이지') || text.includes('Current page'); }); if (!(btn instanceof HTMLElement)) return JSON.stringify({ok:true, step:'current_page_option_optional'}); btn.click(); return JSON.stringify({ok:true, step:'selected_current_page'}); })()",
                 },
                 {
                     "type": "eval",
@@ -2665,8 +2665,16 @@ def _attach_seaart_ref_images_via_playwright(
             if page is None:
                 raise RuntimeError("NO_UPLOAD_TARGET")
             page.bring_to_front()
-            locator = page.locator("input.el-upload__input").first
-            locator.set_input_files([str(Path(path).resolve()) for path in file_paths])
+            locator = page.locator("input.el-upload__input")
+            count = locator.count()
+            resolved_files = [str(Path(path).resolve()) for path in file_paths]
+            if count <= 0:
+                raise RuntimeError("NO_FILE_INPUT")
+            if count == 1:
+                locator.nth(0).set_input_files([resolved_files[0]])
+                return
+            for index, file_path in enumerate(resolved_files[:count]):
+                locator.nth(index).set_input_files([file_path])
         finally:
             browser.close()
 

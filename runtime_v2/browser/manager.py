@@ -32,7 +32,7 @@ SERVICE_TARGETS: dict[str, dict[str, str]] = {
     "geminigen": {
         "start_url": "https://geminigen.ai/app/video-gen",
         "expected_url_substring": "geminigen.ai",
-        "expected_title_substring": "Gemini",
+        "expected_title_substring": "Grok",
     },
     "canva": {
         "start_url": "https://www.canva.com/design/DAHAnm1uUBA/-FWB5gw_ir1U7Ls0ZHF9Ig/edit",
