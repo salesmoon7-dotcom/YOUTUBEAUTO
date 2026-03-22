@@ -2022,11 +2022,11 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
             {
                 "type": "eval",
-                "script": "(() => { document.dispatchEvent(new KeyboardEvent('keydown', {key:'a', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'a', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keydown', {key:'c', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'c', ctrlKey:true, bubbles:true})); return JSON.stringify({ok:true, step:'copied_template'}); })()",
+                "script": "(() => { const duplicateBtn = Array.from(document.querySelectorAll('button,[role=button]')).find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text.includes('페이지 복제') || text.includes('Duplicate page'); }); if (duplicateBtn instanceof HTMLElement) { duplicateBtn.click(); return JSON.stringify({ok:true, step:'duplicated_template_page'}); } document.dispatchEvent(new KeyboardEvent('keydown', {key:'a', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'a', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keydown', {key:'c', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'c', ctrlKey:true, bubbles:true})); return JSON.stringify({ok:true, step:'copied_template'}); })()",
             },
             {
                 "type": "eval",
-                "script": "(() => { const labels=['페이지 추가','Add a new page']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text=((item.innerText||item.textContent||'')+' '+(item.getAttribute('aria-label')||'')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:false,error:'NO_ADD_PAGE_BUTTON'}); btn.click(); return JSON.stringify({ok:true, step:'clicked_add_page'}); })()",
+                "script": "(() => { const labels=['페이지 추가','Add a new page']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text=((item.innerText||item.textContent||'')+' '+(item.getAttribute('aria-label')||'')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:true, step:'add_page_optional'}); btn.click(); return JSON.stringify({ok:true, step:'clicked_add_page'}); })()",
             },
             {
                 "type": "eval",
@@ -2112,7 +2112,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 },
                 {
                     "type": "eval",
-                    "script": "(() => { const input = document.querySelector('input[placeholder*=\"페이지\"], input[placeholder*=\"page\"]'); if (!(input instanceof HTMLElement)) return JSON.stringify({ok:true, step:'page_picker_unavailable'}); input.click(); const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text.includes('현재 페이지') || text.includes('Current page'); }); if (!(btn instanceof HTMLElement)) return JSON.stringify({ok:true, step:'current_page_option_optional'}); btn.click(); return JSON.stringify({ok:true, step:'selected_current_page'}); })()",
+                    "script": "(() => { const input = document.querySelector('input[placeholder*=\"페이지\"], input[placeholder*=\"page\"]'); if (!(input instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_PAGE_PICKER'}); input.click(); const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text.includes('현재 페이지') || text.includes('Current page'); }); if (!(btn instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_CURRENT_PAGE_OPTION'}); btn.click(); return JSON.stringify({ok:true, step:'selected_current_page'}); })()",
                 },
                 {
                     "type": "eval",

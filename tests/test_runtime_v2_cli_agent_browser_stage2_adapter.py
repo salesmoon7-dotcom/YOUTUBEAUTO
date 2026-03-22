@@ -1344,7 +1344,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertEqual(evidence["status"], "ok")
         self.assertFalse(bool(evidence["placeholder_artifact"]))
 
-    def test_stage2_adapter_child_treats_missing_canva_current_page_option_as_optional(
+    def test_stage2_adapter_child_fails_when_canva_current_page_selection_missing(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -1379,9 +1379,6 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "opened_file_menu"},
                 {"ok": True, "step": "opened_download_panel"},
                 {"ok": False, "error": "NO_CURRENT_PAGE_OPTION"},
-                {"ok": True, "step": "confirmed_download_options"},
-                {"ok": True, "step": "clicked_download_execute"},
-                {"ok": True, "step": "cleanup_deleted_created_page"},
             ]
 
             responses: list[object] = []
@@ -1394,9 +1391,6 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             def fake_run(*args_: object, **kwargs: object) -> object:
                 _ = kwargs
                 command = cast(list[str], args_[0])
-                if len(command) >= 4 and command[3] == "download":
-                    output_path.parent.mkdir(parents=True, exist_ok=True)
-                    output_path.write_bytes(b"png")
                 if responses:
                     return responses.pop(0)
                 completed = cast(object, type("Completed", (), {})())
@@ -1420,7 +1414,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             ):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
-        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
 
     def test_stage2_adapter_child_treats_missing_canva_remove_bg_as_optional(
         self,
@@ -1460,6 +1454,84 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "opened_file_menu"},
                 {"ok": True, "step": "opened_download_panel"},
                 {"ok": True, "step": "page_picker_unavailable"},
+                {"ok": True, "step": "done_button_optional"},
+                {"ok": True, "step": "clicked_download_execute"},
+                {"ok": True, "step": "cleanup_deleted_created_page"},
+            ]
+
+            responses: list[object] = []
+            for payload in steps:
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", json.dumps(payload, ensure_ascii=True))
+                setattr(completed, "stderr", "")
+                responses.append(completed)
+
+            def fake_run(*args_: object, **kwargs: object) -> object:
+                _ = kwargs
+                command = cast(list[str], args_[0])
+                if len(command) >= 4 and command[3] == "download":
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    output_path.write_bytes(b"png")
+                if responses:
+                    return responses.pop(0)
+                completed = cast(object, type("Completed", (), {})())
+                setattr(
+                    completed, "stdout", json.dumps({"ok": True}, ensure_ascii=True)
+                )
+                setattr(completed, "stderr", "")
+                return completed
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok"},
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+
+    def test_stage2_adapter_child_prefers_canva_duplicate_page_button(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+
+            steps = [
+                {"ok": True, "step": "page_count_before", "count": 8},
+                {"ok": True, "step": "body_focused"},
+                {"ok": True, "step": "duplicated_template_page"},
+                {"ok": True, "step": "page_count_after", "count": 9},
+                {"ok": True, "step": "focused_background_canvas"},
+                {"ok": True, "step": "opened_background_generate_panel"},
+                {"ok": True, "step": "filled_background_prompt"},
+                {"ok": True, "step": "submitted_background_generate"},
+                {"ok": True, "step": "opened_upload_tab"},
+                {"ok": True, "step": "placed_uploaded_image"},
+                {"ok": True, "step": "remove_background_optional"},
+                {"ok": True, "step": "opened_position_panel"},
+                {"ok": True, "step": "opened_arrange_tab"},
+                {"ok": True, "step": "set_image_position"},
+                {
+                    "ok": True,
+                    "step": "edited_thumbnail_text",
+                    "applied": ["fallback-0"],
+                },
+                {"ok": True, "step": "opened_file_menu"},
+                {"ok": True, "step": "opened_download_panel"},
+                {"ok": True, "step": "current_page_option_optional"},
                 {"ok": True, "step": "done_button_optional"},
                 {"ok": True, "step": "clicked_download_execute"},
                 {"ok": True, "step": "cleanup_deleted_created_page"},
