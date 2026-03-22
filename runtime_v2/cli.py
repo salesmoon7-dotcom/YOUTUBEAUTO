@@ -2018,7 +2018,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         actions = [
             {
                 "type": "eval",
-                "script": "(() => { const count = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; window.__runtime_v2_canva_page_count_before = count; return JSON.stringify({ok:true, step:'page_count_before', count}); })()",
+                "script": "(() => { const count = Array.from(document.querySelectorAll('div,button,[role=button],[aria-label*=\"페이지 설정\"],button[aria-label*=\"Delete page\"],button[aria-label*=\"페이지 삭제\"]')).filter(node => node instanceof HTMLElement && (node.offsetWidth > 0 || node.offsetHeight > 0)).map(node => (node.textContent || '').trim()).filter(text => text.includes('페이지') && text.includes('페이지 제목 추가')).length; window.__runtime_v2_canva_page_count_before = count; return JSON.stringify({ok:true, step:'page_count_before', count}); })()",
             },
             {
                 "type": "eval",
@@ -2038,7 +2038,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
             {
                 "type": "eval",
-                "script": "(() => { const before = Number(window.__runtime_v2_canva_page_count_before || 0); const count = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; if (window.__runtime_v2_canva_duplicated && before > 0 && count <= before) { const labels=['페이지 추가','Add a new page']; const buttons = Array.from(document.querySelectorAll('button')); const addBtn = buttons.find(item => { const text=((item.innerText||item.textContent||'')+' '+(item.getAttribute('aria-label')||'')).trim(); return labels.some(label => text.includes(label)); }); if (addBtn instanceof HTMLElement) { addBtn.click(); document.dispatchEvent(new KeyboardEvent('keydown', {key:'v', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'v', ctrlKey:true, bubbles:true})); const fallbackCount = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; return JSON.stringify({ok:true, step:'page_count_after', count:fallbackCount, fallback_clicked_add_page:true, fallback_pasted_template:true}); } } return JSON.stringify({ok:true, step:'page_count_after', count}); })()",
+                "script": "(() => { const before = Number(window.__runtime_v2_canva_page_count_before || 0); const countPages = () => Array.from(document.querySelectorAll('div,button,[role=button],[aria-label*=\"페이지 설정\"],button[aria-label*=\"Delete page\"],button[aria-label*=\"페이지 삭제\"]')).filter(node => node instanceof HTMLElement && (node.offsetWidth > 0 || node.offsetHeight > 0)).map(node => (node.textContent || '').trim()).filter(text => text.includes('페이지') && text.includes('페이지 제목 추가')).length; const count = countPages(); if (window.__runtime_v2_canva_duplicated && before > 0 && count <= before) { const labels=['페이지 추가','Add a new page']; const buttons = Array.from(document.querySelectorAll('button')); const addBtn = buttons.find(item => { const text=((item.innerText||item.textContent||'')+' '+(item.getAttribute('aria-label')||'')).trim(); return labels.some(label => text.includes(label)); }); if (addBtn instanceof HTMLElement) { addBtn.click(); document.dispatchEvent(new KeyboardEvent('keydown', {key:'v', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'v', ctrlKey:true, bubbles:true})); const fallbackCount = countPages(); return JSON.stringify({ok:true, step:'page_count_after', count:fallbackCount, fallback_clicked_add_page:true, fallback_pasted_template:true}); } } return JSON.stringify({ok:true, step:'page_count_after', count}); })()",
             },
             {
                 "type": "eval",
@@ -2100,16 +2100,11 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             actions.append(
                 {
                     "type": "eval",
-                    "script": "(() => { const replacements = ["
-                    + json.dumps(
-                        {"color": "rgb(255, 215, 0)", "text": line1}, ensure_ascii=True
-                    )
-                    + ","
-                    + json.dumps(
-                        {"color": "rgb(255, 255, 255)", "text": line2},
-                        ensure_ascii=True,
-                    )
-                    + "]; const applied = []; const spans = Array.from(document.querySelectorAll('span[style*=\"color\"]')).filter(node => (node instanceof HTMLElement) && (node.offsetWidth > 0 || node.offsetHeight > 0)); const fallbackNodes = Array.from(document.querySelectorAll('main div, main span, main p, main h1, main h2, main h3')).filter(node => { if (!(node instanceof HTMLElement)) return false; if (!(node.offsetWidth > 0 || node.offsetHeight > 0)) return false; const text = (node.textContent || '').trim(); if (text.length < 4 || text.length > 120) return false; if (text.includes('페이지') || text.includes('추가') || text.includes('삭제') || text.includes('다운로드') || text.includes('Canva')) return false; return true; }); let fallbackIndex = 0; for (const item of replacements) { if (!item.text) continue; const match = spans.find(node => String(node.getAttribute('style') || '').includes(item.color)); if (match) { match.textContent = item.text; applied.push(item.color); continue; } const fallback = fallbackNodes[fallbackIndex]; if (fallback instanceof HTMLElement) { fallback.textContent = item.text; applied.push('fallback-' + String(fallbackIndex)); fallbackIndex += 1; } } if (applied.length === 0) return JSON.stringify({ok:false,error:'NO_TEXT_TARGET'}); return JSON.stringify({ok:true, step:'edited_thumbnail_text', applied}); })()",
+                    "script": "(() => { const line1 = "
+                    + json.dumps(line1, ensure_ascii=True)
+                    + "; const line2 = "
+                    + json.dumps(line2, ensure_ascii=True)
+                    + "; const applied = []; const spans = Array.from(document.querySelectorAll('span[style*=\"color\"]')).filter(el => el instanceof HTMLElement && (el.offsetWidth > 0 || el.offsetHeight > 0)); const yellow = spans.find(el => String(el.getAttribute('style') || '').includes('rgb(255, 215, 0)')); const white = spans.find(el => String(el.getAttribute('style') || '').includes('rgb(255, 255, 255)')); if (yellow && line1) { yellow.textContent = line1; applied.push('rgb(255, 215, 0)'); } if (white && line2) { white.textContent = line2; applied.push('rgb(255, 255, 255)'); } if (applied.length === 0) { const nodes = Array.from(document.querySelectorAll('main div, main span, main p, main h1, main h2, main h3')).filter(el => el instanceof HTMLElement && (el.offsetWidth > 0 || el.offsetHeight > 0) && (el.textContent || '').trim().length >= 4 && (el.textContent || '').trim().length <= 120); const first = nodes[0]; const second = nodes[1]; if (first && line1 && line2 && !second) { first.textContent = line1 + ' / ' + line2; applied.push('fallback-combined'); } else { if (first && line1) { first.textContent = line1; applied.push('fallback-0'); } if (second && line2) { second.textContent = line2; applied.push('fallback-1'); } } } if (applied.length === 0) return JSON.stringify({ok:false,error:'NO_TEXT_TARGET'}); return JSON.stringify({ok:true, step:'edited_thumbnail_text', applied}); })()",
                 }
             )
         actions.extend(
