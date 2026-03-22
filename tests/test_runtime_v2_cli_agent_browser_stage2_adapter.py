@@ -1635,6 +1635,68 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
 
         self.assertEqual(exit_code, exit_codes.SUCCESS)
 
+    def test_stage2_adapter_child_selects_canva_created_page_card_not_delete_button(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+
+            steps = [
+                {"ok": True, "step": "page_count_before", "count": 8},
+                {"ok": True, "step": "body_focused"},
+                {"ok": True, "step": "duplicated_template_page"},
+                {"ok": True, "step": "page_count_after", "count": 9},
+                {"ok": True, "step": "selected_created_page"},
+                {"ok": True, "step": "focused_background_canvas"},
+            ]
+
+            responses: list[object] = []
+            for payload in steps:
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", json.dumps(payload, ensure_ascii=True))
+                setattr(completed, "stderr", "")
+                responses.append(completed)
+
+            captured_actions: list[dict[str, object]] = []
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                _ = artifact_root
+                payload = cast(dict[str, object], job.payload)
+                captured_actions.extend(
+                    cast(list[dict[str, object]], payload.get("actions", []))
+                )
+                return {"status": "ok"}
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        select_action = next(
+            action
+            for action in captured_actions
+            if action.get("type") == "eval"
+            and "selected_created_page" in str(action.get("script", ""))
+        )
+        self.assertIn("페이지 제목 추가", str(select_action["script"]))
+        self.assertNotIn('aria-label*="Delete page"', str(select_action["script"]))
+
     def test_stage2_adapter_child_canva_text_falls_back_without_color_spans(
         self,
     ) -> None:

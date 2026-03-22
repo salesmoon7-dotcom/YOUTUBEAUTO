@@ -2038,7 +2038,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
             {
                 "type": "eval",
-                "script": "(() => { const pageCards = Array.from(document.querySelectorAll('[aria-label*=\"페이지 설정\"], button[aria-label*=\"Delete page\"], button[aria-label*=\"페이지 삭제\"]')).filter(node => node instanceof HTMLElement && (node.offsetWidth > 0 || node.offsetHeight > 0)); const target = pageCards.length ? pageCards[pageCards.length - 1] : null; if (!(target instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_CREATED_PAGE_CARD'}); target.click(); return JSON.stringify({ok:true, step:'selected_created_page'}); })()",
+                "script": "(() => { const cardTexts = Array.from(document.querySelectorAll('div,button,[role=button]')).filter(node => node instanceof HTMLElement && (node.offsetWidth > 0 || node.offsetHeight > 0)).map(node => ({ node, text: (node.textContent || '').trim() })).filter(item => item.text.includes('페이지') && item.text.includes('페이지 제목 추가')); const target = cardTexts.length ? cardTexts[cardTexts.length - 1].node : null; if (!(target instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_CREATED_PAGE_CARD'}); target.click(); return JSON.stringify({ok:true, step:'selected_created_page'}); })()",
             },
             {
                 "type": "eval",
