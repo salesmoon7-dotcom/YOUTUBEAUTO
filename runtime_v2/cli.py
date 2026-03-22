@@ -1910,6 +1910,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
     bg_prompt = ""
     line1 = ""
     line2 = ""
+    canva_truth_gate_failed = False
     thumb_data = _load_optional_json_dict(workspace / "thumb_data.json")
     if request_path.exists():
         try:
@@ -2017,7 +2018,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         actions = [
             {
                 "type": "eval",
-                "script": "(() => { const count = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; return JSON.stringify({ok:true, step:'page_count_before', count}); })()",
+                "script": "(() => { const count = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; window.__runtime_v2_canva_page_count_before = count; return JSON.stringify({ok:true, step:'page_count_before', count}); })()",
             },
             {
                 "type": "eval",
@@ -2037,7 +2038,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
             {
                 "type": "eval",
-                "script": "(() => { const before = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; const count = before; if (window.__runtime_v2_canva_duplicated && count <= before) { const labels=['페이지 추가','Add a new page']; const buttons = Array.from(document.querySelectorAll('button')); const addBtn = buttons.find(item => { const text=((item.innerText||item.textContent||'')+' '+(item.getAttribute('aria-label')||'')).trim(); return labels.some(label => text.includes(label)); }); if (addBtn instanceof HTMLElement) { addBtn.click(); document.dispatchEvent(new KeyboardEvent('keydown', {key:'v', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'v', ctrlKey:true, bubbles:true})); const fallbackCount = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; return JSON.stringify({ok:true, step:'page_count_after', count:fallbackCount, fallback_clicked_add_page:true, fallback_pasted_template:true}); } } return JSON.stringify({ok:true, step:'page_count_after', count}); })()",
+                "script": "(() => { const before = Number(window.__runtime_v2_canva_page_count_before || 0); const count = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; if (window.__runtime_v2_canva_duplicated && before > 0 && count <= before) { const labels=['페이지 추가','Add a new page']; const buttons = Array.from(document.querySelectorAll('button')); const addBtn = buttons.find(item => { const text=((item.innerText||item.textContent||'')+' '+(item.getAttribute('aria-label')||'')).trim(); return labels.some(label => text.includes(label)); }); if (addBtn instanceof HTMLElement) { addBtn.click(); document.dispatchEvent(new KeyboardEvent('keydown', {key:'v', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'v', ctrlKey:true, bubbles:true})); const fallbackCount = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; return JSON.stringify({ok:true, step:'page_count_after', count:fallbackCount, fallback_clicked_add_page:true, fallback_pasted_template:true}); } } return JSON.stringify({ok:true, step:'page_count_after', count}); })()",
             },
             {
                 "type": "eval",
@@ -2059,7 +2060,11 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
             {
                 "type": "eval",
-                "script": "(() => { const labels = ['생성', 'Generate']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); if (!labels.some(label => text.includes(label))) return false; return !text.includes('배경 생성') && !text.includes('Create background') && !text.includes('Background generator'); }); if (!btn) return JSON.stringify({ok:false,error:'NO_BACKGROUND_EXECUTE_BUTTON'}); btn.click(); return JSON.stringify({ok:true, step:'submitted_background_generate'}); })()",
+                "script": "(() => { const beforeGenerated = Array.from(document.querySelectorAll('img,[role=img],div')).map(node => { if (!(node instanceof HTMLElement)) return ''; if (!(node.offsetWidth > 30 || node.offsetHeight > 30)) return ''; const style = window.getComputedStyle(node); const backgroundImage = style.backgroundImage || ''; const src = node instanceof HTMLImageElement ? (node.currentSrc || node.src || '') : ''; return src || backgroundImage; }).filter(Boolean); window.__runtime_v2_canva_generated_before = beforeGenerated; const labels = ['생성', 'Generate']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); if (!labels.some(label => text.includes(label))) return false; return !text.includes('배경 생성') && !text.includes('Create background') && !text.includes('Background generator'); }); if (!btn) return JSON.stringify({ok:false,error:'NO_BACKGROUND_EXECUTE_BUTTON'}); btn.click(); return JSON.stringify({ok:true, step:'submitted_background_generate'}); })()",
+            },
+            {
+                "type": "eval",
+                "script": "(async () => { const before = new Set(Array.isArray(window.__runtime_v2_canva_generated_before) ? window.__runtime_v2_canva_generated_before : []); const candidateKey = (node) => { if (!(node instanceof HTMLElement)) return ''; if (!(node.offsetWidth > 30 || node.offsetHeight > 30)) return ''; const style = window.getComputedStyle(node); const backgroundImage = style.backgroundImage || ''; const src = node instanceof HTMLImageElement ? (node.currentSrc || node.src || '') : ''; return src || backgroundImage; }; const deadline = Date.now() + 20000; while (Date.now() < deadline) { const candidates = Array.from(document.querySelectorAll('img,[role=img],div')); for (const node of candidates) { const key = candidateKey(node); if (!key || before.has(key)) continue; node.click(); await new Promise(resolve => setTimeout(resolve, 1500)); return JSON.stringify({ok:true, step:'selected_generated_background', key}); } await new Promise(resolve => setTimeout(resolve, 1000)); } return JSON.stringify({ok:true, step:'background_generate_result_optional'}); })()",
             },
             {
                 "type": "eval",
@@ -2104,7 +2109,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                         {"color": "rgb(255, 255, 255)", "text": line2},
                         ensure_ascii=True,
                     )
-                    + "]; const applied = []; const spans = Array.from(document.querySelectorAll('span[style*=\"color\"]')).filter(node => (node instanceof HTMLElement) && (node.offsetWidth > 0 || node.offsetHeight > 0)); const fallbackNodes = Array.from(document.querySelectorAll('main div, main span, main p, main h1, main h2, main h3')).filter(node => { if (!(node instanceof HTMLElement)) return false; if (!(node.offsetWidth > 0 || node.offsetHeight > 0)) return false; const text = (node.textContent || '').trim(); if (text.length < 6 || text.length > 80) return false; if (text.includes('페이지') || text.includes('추가') || text.includes('삭제') || text.includes('다운로드') || text.includes('Canva')) return false; return true; }); let fallbackIndex = 0; for (const item of replacements) { if (!item.text) continue; const match = spans.find(node => String(node.getAttribute('style') || '').includes(item.color)); if (match) { match.textContent = item.text; applied.push(item.color); continue; } const fallback = fallbackNodes[fallbackIndex]; if (fallback instanceof HTMLElement) { fallback.textContent = item.text; applied.push('fallback-' + String(fallbackIndex)); fallbackIndex += 1; } } return JSON.stringify({ok:true, step:'edited_thumbnail_text', applied}); })()",
+                    + "]; const applied = []; const spans = Array.from(document.querySelectorAll('span[style*=\"color\"]')).filter(node => (node instanceof HTMLElement) && (node.offsetWidth > 0 || node.offsetHeight > 0)); const fallbackNodes = Array.from(document.querySelectorAll('main div, main span, main p, main h1, main h2, main h3')).filter(node => { if (!(node instanceof HTMLElement)) return false; if (!(node.offsetWidth > 0 || node.offsetHeight > 0)) return false; const text = (node.textContent || '').trim(); if (text.length < 4 || text.length > 120) return false; if (text.includes('페이지') || text.includes('추가') || text.includes('삭제') || text.includes('다운로드') || text.includes('Canva')) return false; return true; }); let fallbackIndex = 0; for (const item of replacements) { if (!item.text) continue; const match = spans.find(node => String(node.getAttribute('style') || '').includes(item.color)); if (match) { match.textContent = item.text; applied.push(item.color); continue; } const fallback = fallbackNodes[fallbackIndex]; if (fallback instanceof HTMLElement) { fallback.textContent = item.text; applied.push('fallback-' + String(fallbackIndex)); fallbackIndex += 1; } } if (applied.length === 0) return JSON.stringify({ok:false,error:'NO_TEXT_TARGET'}); return JSON.stringify({ok:true, step:'edited_thumbnail_text', applied}); })()",
                 }
             )
         actions.extend(
@@ -2342,12 +2347,22 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             and bool(step_results.get("set_image_position", {}).get("ok", False)),
             "text_edit_ok": bool(
                 step_results.get("edited_thumbnail_text", {}).get("ok", False)
+                and len(
+                    cast(
+                        list[object],
+                        step_results.get("edited_thumbnail_text", {}).get(
+                            "applied", []
+                        ),
+                    )
+                )
+                > 0
             )
             or not (line1 or line2),
             "current_page_selection_ok": bool(
                 step_results.get("selected_current_page", {}).get("ok", False)
             )
             or bool(step_results.get("selected_created_page", {}).get("ok", False))
+            or bool(step_results.get("typed_current_page", {}).get("ok", False))
             or bool(step_results.get("page_picker_unavailable", {}).get("ok", False)),
             "download_options_ok": bool(
                 step_results.get("confirmed_download_options", {}).get("ok", False)
@@ -2371,6 +2386,13 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 )
             ),
         }
+        transcript_path = str(canva_extra_details["transcript_path"])
+        canva_truth_gate_failed = transcript_path and not (
+            canva_extra_details["clone_ok"]
+            and canva_extra_details["text_edit_ok"]
+            and canva_extra_details["current_page_selection_ok"]
+            and canva_extra_details["download_sequence_ok"]
+        )
     if service in {"seaart", "genspark", "canva", "geminigen"}:
         debug_state_path: Path | None = None
         retry_trace_path: Path | None = None
@@ -2484,6 +2506,8 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                     and target_path.stat().st_size > 0
                 ):
                     raise RuntimeError("GEMINIGEN_TRUTHFUL_ARTIFACT_MISSING")
+            if service == "canva" and canva_truth_gate_failed:
+                raise RuntimeError("CANVA_TRUTHFUL_ARTIFACT_GATE_FAILED")
             placeholder_artifact = False
         except Exception:
             if service == "genspark":

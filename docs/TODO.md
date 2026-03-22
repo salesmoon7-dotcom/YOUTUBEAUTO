@@ -42,6 +42,11 @@
   - stage2는 `genspark/seaart -> gate A`, `canva/geminigen -> gate B`, `qwen/rvc/kenburns -> gate C`, `render -> gate D`로 fan-out되며(`runtime_v2/stage2/json_builders.py`), gate A 실패가 후속 gate fail-close로 전파돼 최소단위 검증과 충돌했습니다(`runtime_v2/control_plane.py`).
   - 즉 현재 문제는 서비스 개별 실패만이 아니라, `fan-out + 장시간 qwen + aggressive fail-close`가 결합된 설계/운용 불일치입니다.
   - 다음 사이클 원칙: `하부프로그램당 1개 산출물`을 먼저 증명하는 service-boundary 방식으로 되돌리고, semantic row full closeout은 그 다음 단계에서만 허용합니다.
+- 2026-03-21 canva 상태 정리:
+  - `chatgpt`, `qwen3_tts`, `genspark`, `seaart`, `geminigen`은 service-boundary 기준에서 truthful artifact 또는 더 정직한 blocker로 정리되었습니다.
+  - `canva`는 helper/UI mismatch는 대부분 제거됐지만, latest real-source evidence에서 핵심 품질 문제는 `clone_ok=false`입니다.
+  - 즉 남은 next step은 broad rerun이 아니라 `canva template semantics` 단일 배치입니다.
+  - 다음 배치에서는 `page duplication actually creates the intended thumbnail page`만 다루고, 그 전까지 `semantic-row` closeout과 multi-service rerun은 금지합니다.
 - 오라클 shortest-path 전략(현재 SSOT):
   - 남은 검증은 semantic target row(`Sheet1` row 16 / CLI `--row-index 14`)에 대한 `Stage 5 detached run` **1회**만 수행합니다.
   - 그 전에 `python -m runtime_v2.cli --readiness-check`만 확인하고, readiness fail이면 Stage 5를 시작하지 않습니다.

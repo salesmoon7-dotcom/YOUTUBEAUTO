@@ -277,6 +277,21 @@ Clarifications:
 - gate A failure during minimum-unit verification must not be interpreted as proof that semantic-row closeout was meaningfully exercised.
 - if one subprogram cannot produce a first truthful artifact in the documented time slice, stop and debug that service only.
 
+### Phase 5B. Canva-only follow-up boundary
+
+Current boundary conclusion:
+- `canva` is no longer blocked primarily by upload/download button mismatches.
+- the remaining dominant blocker is `template semantics`, currently observed as `clone_ok=false` even when other helper steps proceed.
+
+Therefore the next batch is narrowed to one question only:
+- can the runtime reliably duplicate/select the intended Canva thumbnail page before editing/export?
+
+Rules for the next batch:
+- no semantic-row rerun
+- no multi-service rerun
+- no new browser-plane work unless Canva evidence directly proves the browser plane regressed again
+- stop once `clone_ok` is either proven true with a truthful thumbnail artifact or replaced by a more precise single blocker
+
 ### Time limits and stop conditions
 
 These limits exist to prevent another uncontrolled multi-hour rerun.

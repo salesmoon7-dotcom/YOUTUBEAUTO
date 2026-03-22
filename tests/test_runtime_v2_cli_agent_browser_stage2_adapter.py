@@ -206,6 +206,9 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                             },
                             {"output": '{"ok":true,"step":"selected_created_page"}'},
                             {
+                                "output": '{"ok":true,"step":"edited_thumbnail_text","applied":["fallback-0"]}'
+                            },
+                            {
                                 "output": '{"ok":true,"step":"confirmed_download_options"}'
                             },
                             {"output": '{"ok":true,"step":"clicked_download_execute"}'},
@@ -364,7 +367,10 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             with (
                 patch(
                     "runtime_v2.cli.run_agent_browser_verify_job",
-                    return_value={"status": "ok"},
+                    return_value={
+                        "status": "ok",
+                        "details": {"transcript_path": str(root / "transcript.json")},
+                    },
                 ),
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
                 patch(
@@ -427,7 +433,10 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             with (
                 patch(
                     "runtime_v2.cli.run_agent_browser_verify_job",
-                    return_value={"status": "ok"},
+                    return_value={
+                        "status": "ok",
+                        "details": {"transcript_path": str(root / "transcript.json")},
+                    },
                 ),
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
                 patch("runtime_v2.cli.sleep"),
@@ -1204,7 +1213,10 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             with (
                 patch(
                     "runtime_v2.cli.run_agent_browser_verify_job",
-                    return_value={"status": "ok"},
+                    return_value={
+                        "status": "ok",
+                        "details": {"transcript_path": str(root / "transcript.json")},
+                    },
                 ),
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
                 patch("runtime_v2.cli.subprocess.run", return_value=completed),
@@ -1283,7 +1295,10 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             with (
                 patch(
                     "runtime_v2.cli.run_agent_browser_verify_job",
-                    return_value={"status": "ok"},
+                    return_value={
+                        "status": "ok",
+                        "details": {"transcript_path": str(root / "transcript.json")},
+                    },
                 ),
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
                 patch("runtime_v2.cli.sleep"),
@@ -1476,7 +1491,18 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             with (
                 patch(
                     "runtime_v2.cli.run_agent_browser_verify_job",
-                    return_value={"status": "ok"},
+                    return_value={
+                        "status": "ok",
+                        "details": {"transcript_path": str(root / "transcript.json")},
+                    },
+                ),
+                patch(
+                    "runtime_v2.cli._stage2_result_by_step",
+                    return_value={
+                        payload["step"]: payload
+                        for payload in steps
+                        if "step" in payload
+                    },
                 ),
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
                 patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
@@ -1554,7 +1580,18 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             with (
                 patch(
                     "runtime_v2.cli.run_agent_browser_verify_job",
-                    return_value={"status": "ok"},
+                    return_value={
+                        "status": "ok",
+                        "details": {"transcript_path": str(root / "transcript.json")},
+                    },
+                ),
+                patch(
+                    "runtime_v2.cli._stage2_result_by_step",
+                    return_value={
+                        payload["step"]: payload
+                        for payload in steps
+                        if "step" in payload
+                    },
                 ),
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
                 patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
@@ -1737,7 +1774,18 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             with (
                 patch(
                     "runtime_v2.cli.run_agent_browser_verify_job",
-                    return_value={"status": "ok"},
+                    return_value={
+                        "status": "ok",
+                        "details": {"transcript_path": str(root / "transcript.json")},
+                    },
+                ),
+                patch(
+                    "runtime_v2.cli._stage2_result_by_step",
+                    return_value={
+                        payload["step"]: payload
+                        for payload in steps
+                        if "step" in payload
+                    },
                 ),
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
                 patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
@@ -1817,7 +1865,18 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             with (
                 patch(
                     "runtime_v2.cli.run_agent_browser_verify_job",
-                    return_value={"status": "ok"},
+                    return_value={
+                        "status": "ok",
+                        "details": {"transcript_path": str(root / "transcript.json")},
+                    },
+                ),
+                patch(
+                    "runtime_v2.cli._stage2_result_by_step",
+                    return_value={
+                        payload["step"]: payload
+                        for payload in steps
+                        if "step" in payload
+                    },
                 ),
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
                 patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
@@ -1897,7 +1956,18 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             with (
                 patch(
                     "runtime_v2.cli.run_agent_browser_verify_job",
-                    return_value={"status": "ok"},
+                    return_value={
+                        "status": "ok",
+                        "details": {"transcript_path": str(root / "transcript.json")},
+                    },
+                ),
+                patch(
+                    "runtime_v2.cli._stage2_result_by_step",
+                    return_value={
+                        payload["step"]: payload
+                        for payload in steps
+                        if "step" in payload
+                    },
                 ),
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
                 patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
@@ -1977,7 +2047,18 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             with (
                 patch(
                     "runtime_v2.cli.run_agent_browser_verify_job",
-                    return_value={"status": "ok"},
+                    return_value={
+                        "status": "ok",
+                        "details": {"transcript_path": str(root / "transcript.json")},
+                    },
+                ),
+                patch(
+                    "runtime_v2.cli._stage2_result_by_step",
+                    return_value={
+                        payload["step"]: payload
+                        for payload in steps
+                        if "step" in payload
+                    },
                 ),
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
                 patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
@@ -2057,7 +2138,18 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             with (
                 patch(
                     "runtime_v2.cli.run_agent_browser_verify_job",
-                    return_value={"status": "ok"},
+                    return_value={
+                        "status": "ok",
+                        "details": {"transcript_path": str(root / "transcript.json")},
+                    },
+                ),
+                patch(
+                    "runtime_v2.cli._stage2_result_by_step",
+                    return_value={
+                        payload["step"]: payload
+                        for payload in steps
+                        if "step" in payload
+                    },
                 ),
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
                 patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
@@ -2070,6 +2162,154 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
         self.assertEqual(exit_code, exit_codes.SUCCESS)
+
+    def test_stage2_adapter_child_fails_when_canva_text_apply_is_empty(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+
+            steps = [
+                {"ok": True, "step": "page_count_before", "count": 5},
+                {"ok": True, "step": "body_focused"},
+                {"ok": True, "step": "duplicated_template_page"},
+                {"ok": True, "step": "page_count_after", "count": 6},
+                {"ok": True, "step": "selected_created_page"},
+                {"ok": True, "step": "focused_background_canvas"},
+                {"ok": True, "step": "opened_background_generate_panel"},
+                {"ok": True, "step": "filled_background_prompt"},
+                {"ok": True, "step": "submitted_background_generate"},
+                {"ok": True, "step": "selected_generated_background"},
+                {"ok": True, "step": "opened_upload_tab"},
+                {"ok": True, "step": "placed_uploaded_image"},
+                {"ok": True, "step": "remove_background_optional"},
+                {"ok": True, "step": "position_panel_optional"},
+                {"ok": True, "step": "position_inputs_optional", "count": 0},
+                {"ok": True, "step": "edited_thumbnail_text", "applied": []},
+            ]
+
+            responses: list[object] = []
+            for payload in steps:
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", json.dumps(payload, ensure_ascii=True))
+                setattr(completed, "stderr", "")
+                responses.append(completed)
+
+            def fake_run(*args_: object, **kwargs: object) -> object:
+                _ = kwargs
+                if responses:
+                    return responses.pop(0)
+                completed = cast(object, type("Completed", (), {})())
+                setattr(
+                    completed, "stdout", json.dumps({"ok": True}, ensure_ascii=True)
+                )
+                setattr(completed, "stderr", "")
+                return completed
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={
+                        "status": "ok",
+                        "details": {"transcript_path": str(root / "transcript.json")},
+                    },
+                ),
+                patch(
+                    "runtime_v2.cli._stage2_result_by_step",
+                    return_value={
+                        payload["step"]: payload
+                        for payload in steps
+                        if "step" in payload
+                    },
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+
+    def test_stage2_adapter_child_fails_when_canva_clone_or_text_gate_false(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+
+            steps = [
+                {"ok": True, "step": "page_count_before", "count": 5},
+                {"ok": True, "step": "body_focused"},
+                {"ok": True, "step": "duplicated_template_page"},
+                {"ok": True, "step": "page_count_after", "count": 5},
+                {"ok": True, "step": "selected_created_page"},
+                {"ok": True, "step": "submitted_background_generate"},
+                {"ok": True, "step": "opened_upload_tab"},
+                {"ok": True, "step": "typed_current_page", "page": "5"},
+                {"ok": True, "step": "clicked_download_execute"},
+                {"ok": True, "step": "edited_thumbnail_text", "applied": []},
+            ]
+
+            responses: list[object] = []
+            for payload in steps:
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", json.dumps(payload, ensure_ascii=True))
+                setattr(completed, "stderr", "")
+                responses.append(completed)
+
+            def fake_run(*args_: object, **kwargs: object) -> object:
+                _ = kwargs
+                if responses:
+                    return responses.pop(0)
+                completed = cast(object, type("Completed", (), {})())
+                setattr(
+                    completed, "stdout", json.dumps({"ok": True}, ensure_ascii=True)
+                )
+                setattr(completed, "stderr", "")
+                return completed
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={
+                        "status": "ok",
+                        "details": {"transcript_path": str(root / "transcript.json")},
+                    },
+                ),
+                patch(
+                    "runtime_v2.cli._stage2_result_by_step",
+                    return_value={
+                        payload["step"]: payload
+                        for payload in steps
+                        if "step" in payload
+                    },
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
 
     def test_stage2_adapter_child_accepts_canva_share_wording_for_download_execute(
         self,
@@ -2172,6 +2412,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "opened_background_generate_panel"},
                 {"ok": True, "step": "filled_background_prompt"},
                 {"ok": True, "step": "submitted_background_generate"},
+                {"ok": True, "step": "selected_generated_background"},
                 {"ok": True, "step": "opened_upload_tab"},
                 {"ok": True, "step": "placed_uploaded_image"},
                 {"ok": True, "step": "remove_background_optional"},
@@ -2229,6 +2470,54 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
         self.assertEqual(exit_code, exit_codes.SUCCESS)
+
+    def test_stage2_adapter_child_selects_generated_canva_background_candidate(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+            captured_actions: list[dict[str, object]] = []
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                _ = artifact_root
+                payload = cast(dict[str, object], job.payload)
+                captured_actions.extend(
+                    cast(list[dict[str, object]], payload.get("actions", []))
+                )
+                return {"status": "ok"}
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        bg_select_script = next(
+            action
+            for action in captured_actions
+            if action.get("type") == "eval"
+            and "selected_generated_background" in str(action.get("script", ""))
+        )
+        self.assertIn(
+            "__runtime_v2_canva_generated_before", str(bg_select_script["script"])
+        )
+        self.assertIn("selected_generated_background", str(bg_select_script["script"]))
 
     def test_stage2_adapter_child_selects_canva_created_page_card_not_delete_button(
         self,

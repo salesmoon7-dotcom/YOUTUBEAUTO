@@ -388,6 +388,10 @@ Corrective rule:
 - semantic-row closeout must not be used as the first proving surface for subprogram readiness
 - if a worker still behaves like a large batch job during minimum-unit verification, that worker contract itself becomes the blocker and must be fixed before more closeout reruns
 
+Additional late-session lesson:
+- once helper/UI mismatches are reduced, the remaining blocker may be a narrower service contract (for Canva: `template semantics` / `clone_ok=false`) rather than a generic browser or routing problem
+- when that happens, the next batch must shrink again to that one service contract instead of continuing broad closeout pressure
+
 ---
 
 ## H. Summary Judgment
