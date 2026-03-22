@@ -262,6 +262,16 @@ def _select_page_target(port: int, expected_url_substring: str) -> dict[str, str
                     "webSocketDebuggerUrl": str(item.get("webSocketDebuggerUrl", "")),
                     "url": url,
                 }
+    if expected_url_substring == expected_url_substring_for_service("canva"):
+        for item in reversed(pages):
+            if str(item.get("type", "")) != "page":
+                continue
+            url = str(item.get("url", ""))
+            if "canva.com/design/" in url and url.endswith("/edit"):
+                return {
+                    "webSocketDebuggerUrl": str(item.get("webSocketDebuggerUrl", "")),
+                    "url": url,
+                }
     for item in pages:
         if str(item.get("type", "")) != "page":
             continue

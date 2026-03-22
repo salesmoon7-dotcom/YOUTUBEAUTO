@@ -302,6 +302,84 @@ class RuntimeV2CdpCaptureTests(unittest.TestCase):
                 self.assertTrue(asset_path.exists())
                 self.assertEqual(asset_path.read_bytes(), b"fresh-image")
 
+    def test_capture_primary_image_asset_prefers_newest_canva_edit_tab(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "canva-newest.png"
+
+            class FakeResponse:
+                def __init__(self, payload: object) -> None:
+                    self._payload = payload
+
+                def read(self) -> bytes:
+                    if isinstance(self._payload, bytes):
+                        return self._payload
+                    return json.dumps(self._payload, ensure_ascii=True).encode("utf-8")
+
+                def __enter__(self) -> "FakeResponse":
+                    return self
+
+                def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+                    _ = (exc_type, exc, tb)
+                    return None
+
+            def fake_urlopen(url: str, timeout: int = 30) -> FakeResponse:
+                _ = timeout
+                if url == "http://127.0.0.1:9666/json/list":
+                    return FakeResponse(
+                        [
+                            {
+                                "type": "page",
+                                "url": "https://www.canva.com/design/old/edit",
+                                "title": "Old Canva",
+                                "webSocketDebuggerUrl": "ws://old",
+                            },
+                            {
+                                "type": "page",
+                                "url": "https://www.canva.com/design/new/edit",
+                                "title": "New Canva",
+                                "webSocketDebuggerUrl": "ws://new",
+                            },
+                        ]
+                    )
+                if url == "https://example.com/new-image.png":
+                    return FakeResponse(b"new-canva-image")
+                raise AssertionError(url)
+
+            def fake_cdp(
+                ws_url: str, *, method: str, params: dict[str, object]
+            ) -> dict[str, object]:
+                _ = method
+                _ = params
+                if ws_url == "ws://new":
+                    return {
+                        "result": {
+                            "result": {"value": "https://example.com/new-image.png"}
+                        }
+                    }
+                return {
+                    "result": {"result": {"value": "https://example.com/old-image.png"}}
+                }
+
+            with (
+                patch(
+                    "runtime_v2.agent_browser.cdp_capture.urllib.request.urlopen",
+                    side_effect=fake_urlopen,
+                ),
+                patch(
+                    "runtime_v2.agent_browser.cdp_capture._cdp_command",
+                    side_effect=fake_cdp,
+                ),
+            ):
+                asset_path, _ = capture_primary_image_asset(
+                    9666,
+                    "canva.com",
+                    output_path,
+                    service="canva",
+                )
+                self.assertTrue(asset_path.exists())
+                self.assertEqual(asset_path.read_bytes(), b"new-canva-image")
+
     def test_write_functional_evidence_bundle_copies_downloaded_video_for_geminigen(
         self,
     ) -> None:
