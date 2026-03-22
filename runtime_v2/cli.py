@@ -2038,11 +2038,15 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
             {
                 "type": "eval",
+                "script": "(() => { const pageCards = Array.from(document.querySelectorAll('[aria-label*=\"페이지 설정\"], button[aria-label*=\"Delete page\"], button[aria-label*=\"페이지 삭제\"]')).filter(node => node instanceof HTMLElement && (node.offsetWidth > 0 || node.offsetHeight > 0)); const target = pageCards.length ? pageCards[pageCards.length - 1] : null; if (!(target instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_CREATED_PAGE_CARD'}); target.click(); return JSON.stringify({ok:true, step:'selected_created_page'}); })()",
+            },
+            {
+                "type": "eval",
                 "script": "(() => { const targets = Array.from(document.querySelectorAll('div.fbzKiw')).filter(node => node instanceof HTMLElement && node.offsetWidth > 0 && node.offsetHeight > 0); const target = targets.length ? targets[targets.length - 1] : document.body; if (target instanceof HTMLElement) { target.click(); return JSON.stringify({ok:true, step:'focused_background_canvas'}); } return JSON.stringify({ok:false,error:'NO_BACKGROUND_CANVAS'}); })()",
             },
             {
                 "type": "eval",
-                "script": "(() => { const labels = ['배경 생성', 'Create background', 'Background generator']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:false,error:'NO_BACKGROUND_GENERATE_BUTTON'}); btn.click(); return JSON.stringify({ok:true, step:'opened_background_generate_panel'}); })()",
+                "script": "(() => { const labels = ['배경 생성', 'Create background', 'Background generator', 'Magic Background', 'Product Background']; const buttons = Array.from(document.querySelectorAll('button,[role=button],div')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:false,error:'NO_BACKGROUND_GENERATE_BUTTON'}); if (btn instanceof HTMLElement) { btn.click(); return JSON.stringify({ok:true, step:'opened_background_generate_panel'}); } return JSON.stringify({ok:false,error:'NO_BACKGROUND_GENERATE_BUTTON'}); })()",
             },
             {
                 "type": "eval",
@@ -2112,7 +2116,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 },
                 {
                     "type": "eval",
-                    "script": "(() => { const input = document.querySelector('input[placeholder*=\"페이지\"], input[placeholder*=\"page\"]'); if (!(input instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_PAGE_PICKER'}); input.click(); const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text.includes('현재 페이지') || text.includes('Current page'); }); if (!(btn instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_CURRENT_PAGE_OPTION'}); btn.click(); return JSON.stringify({ok:true, step:'selected_current_page'}); })()",
+                    "script": "(() => { const input = document.querySelector('input[placeholder*=\"페이지\"], input[placeholder*=\"page\"]'); if (!(input instanceof HTMLElement)) return JSON.stringify({ok:true, step:'page_picker_unavailable'}); input.click(); const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text.includes('현재 페이지') || text.includes('Current page'); }); if (!(btn instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_CURRENT_PAGE_OPTION'}); btn.click(); return JSON.stringify({ok:true, step:'selected_current_page'}); })()",
                 },
                 {
                     "type": "eval",
@@ -2340,6 +2344,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             "current_page_selection_ok": bool(
                 step_results.get("selected_current_page", {}).get("ok", False)
             )
+            or bool(step_results.get("selected_created_page", {}).get("ok", False))
             or bool(step_results.get("page_picker_unavailable", {}).get("ok", False)),
             "download_options_ok": bool(
                 step_results.get("confirmed_download_options", {}).get("ok", False)
