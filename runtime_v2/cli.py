@@ -2064,20 +2064,11 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 [
                     {
                         "type": "eval",
-                        "script": "(() => { const before = []; const candidates = Array.from(document.querySelectorAll('img,[role=img]')); for (const node of candidates) { if (!(node instanceof HTMLElement)) continue; if (node.offsetWidth < 30 || node.offsetHeight < 30) continue; const style = window.getComputedStyle(node); const backgroundImage = style.backgroundImage || ''; const src = node instanceof HTMLImageElement ? (node.currentSrc || node.src || '') : ''; const key = src || backgroundImage; if (key) before.push(key); } window.__runtime_v2_canva_before_upload = before; const fileInputs = Array.from(document.querySelectorAll('input[type=file]')); const preferred = fileInputs.find(node => { if (!(node instanceof HTMLInputElement)) return false; const accept = (node.getAttribute('accept') || '').toLowerCase(); return accept.includes('image') || accept.includes('.png') || accept.includes('.jpg') || accept.includes('.jpeg'); }) || fileInputs[0]; if (!(preferred instanceof HTMLInputElement)) return JSON.stringify({ok:false,error:'NO_UPLOAD_FILE_INPUT'}); preferred.setAttribute('data-runtime-v2-canva-upload', 'ready'); return JSON.stringify({ok:true, step:'prepared_upload_input', beforeCount: before.length}); })()",
-                    },
-                    {
-                        "type": "upload",
-                        "selector": "input[data-runtime-v2-canva-upload='ready']",
-                        "files": [ref_img],
+                        "script": "(async () => { const before = new Set(Array.from(document.querySelectorAll('img,[role=img]')).map(node => { if (!(node instanceof HTMLElement)) return ''; if (node.offsetWidth < 30 || node.offsetHeight < 30) return ''; const style = window.getComputedStyle(node); const backgroundImage = style.backgroundImage || ''; const src = node instanceof HTMLImageElement ? (node.currentSrc || node.src || '') : ''; return src || backgroundImage; }).filter(Boolean)); const deadline = Date.now() + 15000; const candidateKey = (node) => { if (!(node instanceof HTMLElement)) return ''; if (node.offsetWidth < 30 || node.offsetHeight < 30) return ''; const style = window.getComputedStyle(node); const backgroundImage = style.backgroundImage || ''; const src = node instanceof HTMLImageElement ? (node.currentSrc || node.src || '') : ''; return src || backgroundImage; }; while (Date.now() < deadline) { const candidates = Array.from(document.querySelectorAll('img,[role=img]')); for (const node of candidates) { const key = candidateKey(node); if (!key || before.has(key)) continue; node.click(); await new Promise(resolve => setTimeout(resolve, 3000)); return JSON.stringify({ok:true, step:'placed_uploaded_image', key}); } await new Promise(resolve => setTimeout(resolve, 1000)); } return JSON.stringify({ok:false,error:'NO_UPLOADED_IMAGE_THUMB'}); })()",
                     },
                     {
                         "type": "eval",
-                        "script": "(async () => { const before = new Set(Array.isArray(window.__runtime_v2_canva_before_upload) ? window.__runtime_v2_canva_before_upload : []); const deadline = Date.now() + 15000; const candidateKey = (node) => { if (!(node instanceof HTMLElement)) return ''; if (node.offsetWidth < 30 || node.offsetHeight < 30) return ''; const style = window.getComputedStyle(node); const backgroundImage = style.backgroundImage || ''; const src = node instanceof HTMLImageElement ? (node.currentSrc || node.src || '') : ''; return src || backgroundImage; }; while (Date.now() < deadline) { const candidates = Array.from(document.querySelectorAll('img,[role=img]')); for (const node of candidates) { const key = candidateKey(node); if (!key || before.has(key)) continue; node.click(); await new Promise(resolve => setTimeout(resolve, 3000)); return JSON.stringify({ok:true, step:'placed_uploaded_image', key}); } await new Promise(resolve => setTimeout(resolve, 1000)); } return JSON.stringify({ok:false,error:'NO_UPLOADED_IMAGE_THUMB'}); })()",
-                    },
-                    {
-                        "type": "eval",
-                        "script": "(() => { const labels = ['배경 제거', 'Remove background']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:false,error:'NO_REMOVE_BACKGROUND_BUTTON'}); btn.click(); return JSON.stringify({ok:true, step:'clicked_remove_background'}); })()",
+                        "script": "(() => { const labels = ['배경 제거', 'Remove background']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:true, step:'remove_background_optional'}); btn.click(); return JSON.stringify({ok:true, step:'clicked_remove_background'}); })()",
                     },
                     {
                         "type": "eval",
@@ -2106,7 +2097,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                         {"color": "rgb(255, 255, 255)", "text": line2},
                         ensure_ascii=True,
                     )
-                    + "]; const applied = []; for (const item of replacements) { if (!item.text) continue; const spans = Array.from(document.querySelectorAll('span[style*=\"color\"]')).filter(node => (node instanceof HTMLElement) && (node.offsetWidth > 0 || node.offsetHeight > 0)); const match = spans.find(node => String(node.getAttribute('style') || '').includes(item.color)); if (!match) continue; match.textContent = item.text; applied.push(item.color); } return JSON.stringify({ok:true, step:'edited_thumbnail_text', applied}); })()",
+                    + "]; const applied = []; const spans = Array.from(document.querySelectorAll('span[style*=\"color\"]')).filter(node => (node instanceof HTMLElement) && (node.offsetWidth > 0 || node.offsetHeight > 0)); const fallbackNodes = Array.from(document.querySelectorAll('main div, main span, main p, main h1, main h2, main h3')).filter(node => { if (!(node instanceof HTMLElement)) return false; if (!(node.offsetWidth > 0 || node.offsetHeight > 0)) return false; const text = (node.textContent || '').trim(); if (text.length < 6 || text.length > 80) return false; if (text.includes('페이지') || text.includes('추가') || text.includes('삭제') || text.includes('다운로드') || text.includes('Canva')) return false; return true; }); let fallbackIndex = 0; for (const item of replacements) { if (!item.text) continue; const match = spans.find(node => String(node.getAttribute('style') || '').includes(item.color)); if (match) { match.textContent = item.text; applied.push(item.color); continue; } const fallback = fallbackNodes[fallbackIndex]; if (fallback instanceof HTMLElement) { fallback.textContent = item.text; applied.push('fallback-' + String(fallbackIndex)); fallbackIndex += 1; } } return JSON.stringify({ok:true, step:'edited_thumbnail_text', applied}); })()",
                 }
             )
         actions.extend(
@@ -2234,12 +2225,17 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             )
             return exit_codes.BROWSER_UNHEALTHY
     ref_upload_error_code = ""
-    if service in {"genspark", "seaart"} and (ref_img_1 or ref_img_2):
+    if service in {"genspark", "seaart", "canva"} and (
+        ref_img_1 or ref_img_2 or ref_img
+    ):
         try:
+            attach_paths = ref_images_resolved
+            if service == "canva" and ref_img:
+                attach_paths = [ref_img]
             _attach_stage2_ref_images(
                 port=args.port,
                 expected_url_substring=expected_url_substring,
-                file_paths=ref_images_resolved,
+                file_paths=attach_paths,
             )
         except Exception:
             ref_upload_error_code = "REF_IMAGE_UPLOAD_FAILED"
@@ -2555,6 +2551,9 @@ def _attach_stage2_ref_images(
     if expected_url_substring == expected_url_substring_for_service("seaart"):
         _attach_seaart_ref_images_via_playwright(port=port, file_paths=file_paths)
         return
+    if expected_url_substring == expected_url_substring_for_service("canva"):
+        _attach_canva_ref_images_via_playwright(port=port, file_paths=file_paths)
+        return
     if expected_url_substring == expected_url_substring_for_service("geminigen"):
         _attach_geminigen_ref_images_via_playwright(port=port, file_paths=file_paths)
         return
@@ -2690,6 +2689,33 @@ def _attach_geminigen_ref_images_via_playwright(
                 raise RuntimeError("NO_FILE_INPUT")
             chooser = chooser_info.value
             chooser.set_files([str(Path(file_paths[0]).resolve())])
+        finally:
+            browser.close()
+
+
+def _attach_canva_ref_images_via_playwright(
+    *, port: int, file_paths: list[str]
+) -> None:
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
+        try:
+            page = None
+            for context in browser.contexts:
+                for candidate in context.pages:
+                    if "canva.com" in candidate.url:
+                        page = candidate
+                        break
+                if page is not None:
+                    break
+            if page is None:
+                raise RuntimeError("NO_UPLOAD_TARGET")
+            page.bring_to_front()
+            locator = page.locator("input[type=file]")
+            if locator.count() <= 0:
+                raise RuntimeError("NO_FILE_INPUT")
+            locator.nth(0).set_input_files([str(Path(file_paths[0]).resolve())])
         finally:
             browser.close()
 
