@@ -2449,12 +2449,20 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                         )
                         sleep(5)
                     sleep(2)
+            capture_url = (
+                str(
+                    cast(dict[str, object], result.get("details", {})).get(
+                        "current_url", expected_url_substring
+                    )
+                ).strip()
+                or expected_url_substring
+            )
             if service == "genspark":
                 _ = write_functional_evidence_bundle(
                     workspace=workspace,
                     service=service,
                     port=args.port,
-                    expected_url_substring=expected_url_substring,
+                    expected_url_substring=capture_url,
                     service_artifact_path=target_path,
                     image_url_override=ready_image_url,
                 )
@@ -2463,7 +2471,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                     workspace=workspace,
                     service=service,
                     port=args.port,
-                    expected_url_substring=expected_url_substring,
+                    expected_url_substring=capture_url,
                     service_artifact_path=target_path,
                 )
             if service == "geminigen":

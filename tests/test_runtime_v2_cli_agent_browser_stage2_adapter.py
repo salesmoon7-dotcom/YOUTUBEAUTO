@@ -1324,7 +1324,10 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
 
             with patch(
                 "runtime_v2.cli.run_agent_browser_verify_job",
-                return_value={"status": "ok"},
+                return_value={
+                    "status": "ok",
+                    "details": {"current_url": "https://www.canva.com/design/foo/edit"},
+                },
             ):
                 with (
                     patch("runtime_v2.cli.Path.cwd", return_value=root),
@@ -1340,6 +1343,10 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
 
         self.assertEqual(exit_code, exit_codes.SUCCESS)
         evidence_mock.assert_called_once()
+        self.assertEqual(
+            evidence_mock.call_args.kwargs["expected_url_substring"],
+            "https://www.canva.com/design/foo/edit",
+        )
         self.assertEqual(evidence["service"], "canva")
         self.assertEqual(evidence["status"], "ok")
         self.assertFalse(bool(evidence["placeholder_artifact"]))
