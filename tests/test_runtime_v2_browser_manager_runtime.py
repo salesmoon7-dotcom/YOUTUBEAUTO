@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+import os
 
 import runtime_v2.browser.manager as browser_manager
 from runtime_v2.browser.manager import BrowserSession
@@ -27,6 +28,10 @@ class RuntimeV2BrowserManagerRuntimeTests(unittest.TestCase):
             readiness = iter([False, False, True])
 
             with (
+                patch(
+                    "runtime_v2.browser.manager._probe_local_port",
+                    side_effect=[False, False, False],
+                ),
                 patch(
                     "runtime_v2.browser.manager._resolve_browser_executable",
                     return_value=Path(
@@ -126,6 +131,26 @@ class RuntimeV2BrowserManagerRuntimeTests(unittest.TestCase):
             ok = supervisor._restart_session("genspark", "primary")
 
         self.assertFalse(ok)
+
+    def test_ensure_browser_plane_ownership_recovers_corrupted_lock_file(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            lock_path = Path(tmp_dir) / "browser_plane.lock"
+            lock_path.write_text('{"pid":1}{broken', encoding="utf-8")
+
+            with patch.dict(
+                os.environ,
+                {"RUNTIME_V2_BROWSER_PLANE_LOCK": str(lock_path)},
+                clear=False,
+            ):
+                result = browser_manager.ensure_browser_plane_ownership(
+                    run_id="test-run"
+                )
+
+                repaired = lock_path.read_text(encoding="utf-8")
+
+        self.assertTrue(bool(result["owned"]))
+        self.assertEqual(str(result["action_result"]), "ownership_acquired")
+        self.assertIn('"run_id": "test-run"', repaired)
 
 
 if __name__ == "__main__":

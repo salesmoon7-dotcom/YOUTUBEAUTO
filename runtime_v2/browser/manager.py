@@ -96,9 +96,9 @@ def _read_browser_plane_lock() -> dict[str, object]:
     try:
         raw_payload = json.loads(lock_file.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return {}
+        return {"lock_state": "unknown", "metadata_valid": False}
     if not isinstance(raw_payload, dict):
-        return {}
+        return {"lock_state": "unknown", "metadata_valid": False}
     return {str(key): raw_payload[key] for key in raw_payload}
 
 
@@ -181,6 +181,13 @@ def ensure_browser_plane_ownership(run_id: str = "") -> dict[str, object]:
     payload = _browser_plane_payload(run_id)
     snapshot = inspect_browser_plane_owner()
     lock_state = str(snapshot.get("lock_state", "free"))
+    if lock_state == "unknown":
+        try:
+            if lock_file.exists():
+                lock_file.unlink()
+        except OSError:
+            return {**snapshot, "owned": False, "action_result": "ownership_unknown"}
+        lock_state = "free"
     if lock_state == "free":
         try:
             _ = _write_browser_plane_lock(payload, replace=False)
