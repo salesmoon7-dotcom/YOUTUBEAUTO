@@ -1363,7 +1363,9 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                                 "output": '{"ok":true,"step":"page_count_after","count":4}'
                             },
                             {"output": '{"ok":true,"step":"selected_created_page"}'},
-                            {"output": '{"ok":true,"step":"page_picker_unavailable"}'},
+                            {
+                                "output": '{"ok":true,"step":"typed_current_page","page":"19"}'
+                            },
                             {"output": '{"ok":true,"step":"clicked_download_execute"}'},
                         ]
                     },
