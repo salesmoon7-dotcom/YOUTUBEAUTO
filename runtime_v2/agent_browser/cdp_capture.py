@@ -151,12 +151,6 @@ def write_functional_evidence_bundle(
             evidence_root / service_artifact_path.name,
             service=service,
         )
-    elif service == "canva":
-        asset_path = capture_page_screenshot(
-            port, expected_url_substring, evidence_root / service_artifact_path.name
-        )
-        data = asset_path.read_bytes()
-        sha256 = hashlib.sha256(data).hexdigest()
     else:
         asset_path, sha256 = capture_primary_image_asset(
             port,

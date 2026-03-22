@@ -226,15 +226,25 @@ def _build_thumb_data(
     title_for_thumb = ""
     if stage1_contract is not None:
         title_for_thumb = str(stage1_contract.get("title_for_thumb", "")).strip()
+    bg_prompt = prompt
     line1 = title_for_thumb
     line2 = ""
-    if "\n" in title_for_thumb:
+    if title_for_thumb:
         parts = [part.strip() for part in title_for_thumb.splitlines() if part.strip()]
-        if parts:
-            line1 = parts[0]
-            line2 = parts[1] if len(parts) > 1 else ""
+        if parts and any(part.startswith("Line 1:") for part in parts):
+            preface = [part for part in parts if not part.startswith("Line ")]
+            bg_prompt = preface[0] if preface else prompt
+            for part in parts:
+                if part.startswith("Line 1:"):
+                    line1 = part.removeprefix("Line 1:").strip()
+                elif part.startswith("Line 2:"):
+                    line2 = part.removeprefix("Line 2:").strip()
+        elif "\n" in title_for_thumb:
+            if parts:
+                line1 = parts[0]
+                line2 = parts[1] if len(parts) > 1 else ""
     return {
-        "bg_prompt": prompt,
+        "bg_prompt": bg_prompt,
         "line1": line1,
         "line2": line2,
     }

@@ -1934,9 +1934,12 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         ref_img = str(request_payload_obj.get("ref_img", "")).strip()
         first_frame_path = str(request_payload_obj.get("first_frame_path", "")).strip()
         try:
-            ref_images_requested, ref_images_resolved = _resolve_stage2_ref_image_paths(
-                request_payload_obj
-            )
+            if service == "canva" and not ref_img:
+                ref_images_requested, ref_images_resolved = [], []
+            else:
+                ref_images_requested, ref_images_resolved = (
+                    _resolve_stage2_ref_image_paths(request_payload_obj)
+                )
         except RuntimeError:
             write_stage2_attach_evidence(
                 workspace=workspace,
@@ -2022,19 +2025,19 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
             {
                 "type": "eval",
-                "script": "(() => { const duplicateBtn = Array.from(document.querySelectorAll('button,[role=button]')).find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text.includes('페이지 복제') || text.includes('Duplicate page'); }); if (duplicateBtn instanceof HTMLElement) { duplicateBtn.click(); return JSON.stringify({ok:true, step:'duplicated_template_page'}); } document.dispatchEvent(new KeyboardEvent('keydown', {key:'a', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'a', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keydown', {key:'c', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'c', ctrlKey:true, bubbles:true})); return JSON.stringify({ok:true, step:'copied_template'}); })()",
+                "script": "(() => { const duplicateBtn = Array.from(document.querySelectorAll('button,[role=button]')).find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text.includes('페이지 복제') || text.includes('Duplicate page'); }); if (duplicateBtn instanceof HTMLElement) { duplicateBtn.click(); window.__runtime_v2_canva_duplicated = true; return JSON.stringify({ok:true, step:'duplicated_template_page'}); } document.dispatchEvent(new KeyboardEvent('keydown', {key:'a', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'a', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keydown', {key:'c', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'c', ctrlKey:true, bubbles:true})); window.__runtime_v2_canva_duplicated = false; return JSON.stringify({ok:true, step:'copied_template'}); })()",
             },
             {
                 "type": "eval",
-                "script": "(() => { const labels=['페이지 추가','Add a new page']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text=((item.innerText||item.textContent||'')+' '+(item.getAttribute('aria-label')||'')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:true, step:'add_page_optional'}); btn.click(); return JSON.stringify({ok:true, step:'clicked_add_page'}); })()",
+                "script": "(() => { if (window.__runtime_v2_canva_duplicated) return JSON.stringify({ok:true, step:'add_page_optional'}); const labels=['페이지 추가','Add a new page']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text=((item.innerText||item.textContent||'')+' '+(item.getAttribute('aria-label')||'')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:true, step:'add_page_optional'}); btn.click(); return JSON.stringify({ok:true, step:'clicked_add_page'}); })()",
             },
             {
                 "type": "eval",
-                "script": "(() => { document.dispatchEvent(new KeyboardEvent('keydown', {key:'v', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'v', ctrlKey:true, bubbles:true})); return JSON.stringify({ok:true, step:'pasted_template'}); })()",
+                "script": "(() => { if (window.__runtime_v2_canva_duplicated) return JSON.stringify({ok:true, step:'pasted_template_optional'}); document.dispatchEvent(new KeyboardEvent('keydown', {key:'v', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'v', ctrlKey:true, bubbles:true})); return JSON.stringify({ok:true, step:'pasted_template'}); })()",
             },
             {
                 "type": "eval",
-                "script": "(() => { const count = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; return JSON.stringify({ok:true, step:'page_count_after', count}); })()",
+                "script": "(() => { const before = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; const count = before; if (window.__runtime_v2_canva_duplicated && count <= before) { const labels=['페이지 추가','Add a new page']; const buttons = Array.from(document.querySelectorAll('button')); const addBtn = buttons.find(item => { const text=((item.innerText||item.textContent||'')+' '+(item.getAttribute('aria-label')||'')).trim(); return labels.some(label => text.includes(label)); }); if (addBtn instanceof HTMLElement) { addBtn.click(); document.dispatchEvent(new KeyboardEvent('keydown', {key:'v', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'v', ctrlKey:true, bubbles:true})); const fallbackCount = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; return JSON.stringify({ok:true, step:'page_count_after', count:fallbackCount, fallback_clicked_add_page:true, fallback_pasted_template:true}); } } return JSON.stringify({ok:true, step:'page_count_after', count}); })()",
             },
             {
                 "type": "eval",
@@ -2112,7 +2115,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 },
                 {
                     "type": "eval",
-                    "script": "(() => { const items = Array.from(document.querySelectorAll('button,[role=menuitem]')); const btn = items.find(item => { if (!(item instanceof HTMLElement)) return false; const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text.includes('다운로드') || text.includes('Download'); }); if (!(btn instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_DOWNLOAD_MENU'}); btn.click(); return JSON.stringify({ok:true, step:'opened_download_panel'}); })()",
+                    "script": "(() => { const items = Array.from(document.querySelectorAll('button,[role=menuitem]')); const btn = items.find(item => { if (!(item instanceof HTMLElement)) return false; const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text.includes('다운로드') || text.includes('Download') || text.includes('내보내기') || text.includes('Export') || text.includes('공유') || text.includes('Share'); }); if (!(btn instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_DOWNLOAD_MENU'}); btn.click(); return JSON.stringify({ok:true, step:'opened_download_panel'}); })()",
                 },
                 {
                     "type": "eval",
@@ -2124,7 +2127,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 },
                 {
                     "type": "eval",
-                    "script": "(() => { const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); const role = item.getAttribute('role') || ''; return (text.includes('다운로드') || text.includes('Download')) && role !== 'menuitem'; }); if (!btn) return JSON.stringify({ok:false,error:'NO_DOWNLOAD_EXECUTE_BUTTON'}); btn.click(); return JSON.stringify({ok:true, step:'clicked_download_execute'}); })()",
+                    "script": "(() => { const buttons = Array.from(document.querySelectorAll('button,[role=button],a')); const btn = buttons.find(item => { if (!(item instanceof HTMLElement)) return false; const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); const role = item.getAttribute('role') || ''; const disabled = item.getAttribute('aria-disabled') || ''; return (text.includes('다운로드') || text.includes('Download') || text.includes('저장') || text.includes('Save') || text.includes('내보내기') || text.includes('Export') || text.includes('공유') || text.includes('Share') || text.includes('PNG')) && role !== 'menuitem' && disabled !== 'true'; }); if (!(btn instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_DOWNLOAD_EXECUTE_BUTTON'}); btn.click(); return JSON.stringify({ok:true, step:'clicked_download_execute'}); })()",
                 },
                 {
                     "type": "eval",
@@ -2768,6 +2771,7 @@ def _resolve_stage2_ref_image_paths(
         str(payload.get("ref_img_1", "")).strip(),
         str(payload.get("ref_img_2", "")).strip(),
     ]
+    requested = [item for item in requested if item]
     asset_root = str(payload.get("asset_root", "")).strip()
     asset_root_path = Path(asset_root).resolve() if asset_root else None
     resolved: list[str] = []

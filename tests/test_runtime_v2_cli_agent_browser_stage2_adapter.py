@@ -14,6 +14,7 @@ from runtime_v2.cli import (
     _attach_genspark_ref_images_via_filechooser,
     _attach_seaart_ref_images_via_playwright,
     _attach_stage2_ref_images,
+    _resolve_stage2_ref_image_paths,
     _run_agent_browser_eval,
     _run_agent_browser_stage2_adapter_child,
     _run_qwen3_adapter_child,
@@ -298,6 +299,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
 
             with (
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
                 patch(
                     "runtime_v2.cli.run_agent_browser_verify_job",
                     side_effect=fake_verify,
@@ -474,6 +476,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
 
             with (
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
                 patch(
                     "runtime_v2.cli.run_agent_browser_verify_job",
                     side_effect=fake_verify,
@@ -1565,6 +1568,589 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
 
         self.assertEqual(exit_code, exit_codes.SUCCESS)
 
+    def test_stage2_adapter_child_skips_add_page_and_paste_after_duplicate(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+            captured_actions: list[dict[str, object]] = []
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                _ = artifact_root
+                payload = cast(dict[str, object], job.payload)
+                captured_actions.extend(
+                    cast(list[dict[str, object]], payload.get("actions", []))
+                )
+                return {"status": "ok"}
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        duplicate_script = next(
+            action
+            for action in captured_actions
+            if action.get("type") == "eval"
+            and "duplicated_template_page" in str(action.get("script", ""))
+        )
+        add_page_script = next(
+            action
+            for action in captured_actions
+            if action.get("type") == "eval"
+            and "clicked_add_page" in str(action.get("script", ""))
+        )
+        paste_script = next(
+            action
+            for action in captured_actions
+            if action.get("type") == "eval"
+            and "pasted_template" in str(action.get("script", ""))
+        )
+        self.assertIn("__runtime_v2_canva_duplicated", str(duplicate_script["script"]))
+        self.assertIn("add_page_optional", str(add_page_script["script"]))
+        self.assertIn("pasted_template_optional", str(paste_script["script"]))
+
+    def test_stage2_adapter_child_falls_back_when_canva_duplicate_does_not_increase_pages(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+            captured_actions: list[dict[str, object]] = []
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                _ = artifact_root
+                payload = cast(dict[str, object], job.payload)
+                captured_actions.extend(
+                    cast(list[dict[str, object]], payload.get("actions", []))
+                )
+                return {"status": "ok"}
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        page_count_script = next(
+            action
+            for action in captured_actions
+            if action.get("type") == "eval"
+            and "page_count_after" in str(action.get("script", ""))
+        )
+        self.assertIn("fallback_clicked_add_page", str(page_count_script["script"]))
+        self.assertIn("fallback_pasted_template", str(page_count_script["script"]))
+
+    def test_stage2_adapter_child_accepts_canva_export_wording(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+
+            steps = [
+                {"ok": True, "step": "page_count_before", "count": 5},
+                {"ok": True, "step": "body_focused"},
+                {"ok": True, "step": "duplicated_template_page"},
+                {"ok": True, "step": "page_count_after", "count": 6},
+                {"ok": True, "step": "selected_created_page"},
+                {"ok": True, "step": "focused_background_canvas"},
+                {"ok": True, "step": "opened_background_generate_panel"},
+                {"ok": True, "step": "filled_background_prompt"},
+                {"ok": True, "step": "submitted_background_generate"},
+                {"ok": True, "step": "opened_upload_tab"},
+                {"ok": True, "step": "placed_uploaded_image"},
+                {"ok": True, "step": "remove_background_optional"},
+                {"ok": True, "step": "position_panel_optional"},
+                {"ok": True, "step": "position_inputs_optional", "count": 0},
+                {
+                    "ok": True,
+                    "step": "edited_thumbnail_text",
+                    "applied": ["fallback-0"],
+                },
+                {"ok": True, "step": "opened_file_menu"},
+                {"ok": True, "step": "opened_download_panel"},
+                {"ok": True, "step": "typed_current_page", "page": "6"},
+                {"ok": True, "step": "done_button_optional"},
+                {"ok": True, "step": "clicked_download_execute"},
+                {"ok": True, "step": "cleanup_deleted_created_page"},
+            ]
+
+            responses: list[object] = []
+            for payload in steps:
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", json.dumps(payload, ensure_ascii=True))
+                setattr(completed, "stderr", "")
+                responses.append(completed)
+
+            def fake_run(*args_: object, **kwargs: object) -> object:
+                _ = kwargs
+                command = cast(list[str], args_[0])
+                if len(command) >= 4 and command[3] == "download":
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    output_path.write_bytes(b"png")
+                if responses:
+                    return responses.pop(0)
+                completed = cast(object, type("Completed", (), {})())
+                setattr(
+                    completed, "stdout", json.dumps({"ok": True}, ensure_ascii=True)
+                )
+                setattr(completed, "stderr", "")
+                return completed
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok"},
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+
+    def test_stage2_adapter_child_accepts_canva_share_wording_for_download_entry(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+
+            steps = [
+                {"ok": True, "step": "page_count_before", "count": 5},
+                {"ok": True, "step": "body_focused"},
+                {"ok": True, "step": "duplicated_template_page"},
+                {"ok": True, "step": "page_count_after", "count": 6},
+                {"ok": True, "step": "selected_created_page"},
+                {"ok": True, "step": "focused_background_canvas"},
+                {"ok": True, "step": "opened_background_generate_panel"},
+                {"ok": True, "step": "filled_background_prompt"},
+                {"ok": True, "step": "submitted_background_generate"},
+                {"ok": True, "step": "opened_upload_tab"},
+                {"ok": True, "step": "placed_uploaded_image"},
+                {"ok": True, "step": "remove_background_optional"},
+                {"ok": True, "step": "position_panel_optional"},
+                {"ok": True, "step": "position_inputs_optional", "count": 0},
+                {
+                    "ok": True,
+                    "step": "edited_thumbnail_text",
+                    "applied": ["rgb(255, 215, 0)"],
+                },
+                {"ok": True, "step": "opened_file_menu"},
+                {"ok": True, "step": "opened_download_panel"},
+                {"ok": True, "step": "typed_current_page", "page": "6"},
+                {"ok": True, "step": "done_button_optional"},
+                {"ok": True, "step": "clicked_download_execute"},
+                {"ok": True, "step": "cleanup_deleted_created_page"},
+            ]
+
+            responses: list[object] = []
+            for payload in steps:
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", json.dumps(payload, ensure_ascii=True))
+                setattr(completed, "stderr", "")
+                responses.append(completed)
+
+            def fake_run(*args_: object, **kwargs: object) -> object:
+                _ = kwargs
+                command = cast(list[str], args_[0])
+                if len(command) >= 4 and command[3] == "download":
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    output_path.write_bytes(b"png")
+                if responses:
+                    return responses.pop(0)
+                completed = cast(object, type("Completed", (), {})())
+                setattr(
+                    completed, "stdout", json.dumps({"ok": True}, ensure_ascii=True)
+                )
+                setattr(completed, "stderr", "")
+                return completed
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok"},
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+
+    def test_stage2_adapter_child_accepts_canva_role_button_for_download_execute(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+
+            steps = [
+                {"ok": True, "step": "page_count_before", "count": 6},
+                {"ok": True, "step": "body_focused"},
+                {"ok": True, "step": "duplicated_template_page"},
+                {"ok": True, "step": "page_count_after", "count": 7},
+                {"ok": True, "step": "selected_created_page"},
+                {"ok": True, "step": "focused_background_canvas"},
+                {"ok": True, "step": "opened_background_generate_panel"},
+                {"ok": True, "step": "filled_background_prompt"},
+                {"ok": True, "step": "submitted_background_generate"},
+                {"ok": True, "step": "opened_upload_tab"},
+                {"ok": True, "step": "placed_uploaded_image"},
+                {"ok": True, "step": "remove_background_optional"},
+                {"ok": True, "step": "position_panel_optional"},
+                {"ok": True, "step": "position_inputs_optional", "count": 0},
+                {
+                    "ok": True,
+                    "step": "edited_thumbnail_text",
+                    "applied": ["fallback-0"],
+                },
+                {"ok": True, "step": "opened_file_menu"},
+                {"ok": True, "step": "opened_download_panel"},
+                {"ok": True, "step": "typed_current_page", "page": "7"},
+                {"ok": True, "step": "done_button_optional"},
+                {"ok": True, "step": "clicked_download_execute"},
+                {"ok": True, "step": "cleanup_deleted_created_page"},
+            ]
+
+            responses: list[object] = []
+            for payload in steps:
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", json.dumps(payload, ensure_ascii=True))
+                setattr(completed, "stderr", "")
+                responses.append(completed)
+
+            def fake_run(*args_: object, **kwargs: object) -> object:
+                _ = kwargs
+                command = cast(list[str], args_[0])
+                if len(command) >= 4 and command[3] == "download":
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    output_path.write_bytes(b"png")
+                if responses:
+                    return responses.pop(0)
+                completed = cast(object, type("Completed", (), {})())
+                setattr(
+                    completed, "stdout", json.dumps({"ok": True}, ensure_ascii=True)
+                )
+                setattr(completed, "stderr", "")
+                return completed
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok"},
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+
+    def test_stage2_adapter_child_accepts_canva_share_fallback_for_download_entry(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+
+            steps = [
+                {"ok": True, "step": "page_count_before", "count": 5},
+                {"ok": True, "step": "body_focused"},
+                {"ok": True, "step": "duplicated_template_page"},
+                {"ok": True, "step": "page_count_after", "count": 6},
+                {"ok": True, "step": "selected_created_page"},
+                {"ok": True, "step": "focused_background_canvas"},
+                {"ok": True, "step": "opened_background_generate_panel"},
+                {"ok": True, "step": "filled_background_prompt"},
+                {"ok": True, "step": "submitted_background_generate"},
+                {"ok": True, "step": "opened_upload_tab"},
+                {"ok": True, "step": "placed_uploaded_image"},
+                {"ok": True, "step": "remove_background_optional"},
+                {"ok": True, "step": "position_panel_optional"},
+                {"ok": True, "step": "position_inputs_optional", "count": 0},
+                {
+                    "ok": True,
+                    "step": "edited_thumbnail_text",
+                    "applied": ["fallback-0"],
+                },
+                {"ok": True, "step": "opened_file_menu"},
+                {"ok": True, "step": "opened_download_panel"},
+                {"ok": True, "step": "typed_current_page", "page": "6"},
+                {"ok": True, "step": "done_button_optional"},
+                {"ok": True, "step": "clicked_download_execute"},
+                {"ok": True, "step": "cleanup_deleted_created_page"},
+            ]
+
+            responses: list[object] = []
+            for payload in steps:
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", json.dumps(payload, ensure_ascii=True))
+                setattr(completed, "stderr", "")
+                responses.append(completed)
+
+            def fake_run(*args_: object, **kwargs: object) -> object:
+                _ = kwargs
+                command = cast(list[str], args_[0])
+                if len(command) >= 4 and command[3] == "download":
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    output_path.write_bytes(b"png")
+                if responses:
+                    return responses.pop(0)
+                completed = cast(object, type("Completed", (), {})())
+                setattr(
+                    completed, "stdout", json.dumps({"ok": True}, ensure_ascii=True)
+                )
+                setattr(completed, "stderr", "")
+                return completed
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok"},
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+
+    def test_stage2_adapter_child_accepts_canva_save_wording_for_download_execute(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+
+            steps = [
+                {"ok": True, "step": "page_count_before", "count": 6},
+                {"ok": True, "step": "body_focused"},
+                {"ok": True, "step": "duplicated_template_page"},
+                {"ok": True, "step": "page_count_after", "count": 7},
+                {"ok": True, "step": "selected_created_page"},
+                {"ok": True, "step": "focused_background_canvas"},
+                {"ok": True, "step": "opened_background_generate_panel"},
+                {"ok": True, "step": "filled_background_prompt"},
+                {"ok": True, "step": "submitted_background_generate"},
+                {"ok": True, "step": "opened_upload_tab"},
+                {"ok": True, "step": "placed_uploaded_image"},
+                {"ok": True, "step": "remove_background_optional"},
+                {"ok": True, "step": "position_panel_optional"},
+                {"ok": True, "step": "position_inputs_optional", "count": 0},
+                {
+                    "ok": True,
+                    "step": "edited_thumbnail_text",
+                    "applied": ["fallback-0"],
+                },
+                {"ok": True, "step": "opened_file_menu"},
+                {"ok": True, "step": "opened_download_panel"},
+                {"ok": True, "step": "typed_current_page", "page": "7"},
+                {"ok": True, "step": "done_button_optional"},
+                {"ok": True, "step": "clicked_download_execute"},
+                {"ok": True, "step": "cleanup_deleted_created_page"},
+            ]
+
+            responses: list[object] = []
+            for payload in steps:
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", json.dumps(payload, ensure_ascii=True))
+                setattr(completed, "stderr", "")
+                responses.append(completed)
+
+            def fake_run(*args_: object, **kwargs: object) -> object:
+                _ = kwargs
+                command = cast(list[str], args_[0])
+                if len(command) >= 4 and command[3] == "download":
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    output_path.write_bytes(b"png")
+                if responses:
+                    return responses.pop(0)
+                completed = cast(object, type("Completed", (), {})())
+                setattr(
+                    completed, "stdout", json.dumps({"ok": True}, ensure_ascii=True)
+                )
+                setattr(completed, "stderr", "")
+                return completed
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok"},
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+
+    def test_stage2_adapter_child_accepts_canva_share_wording_for_download_execute(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+
+            steps = [
+                {"ok": True, "step": "page_count_before", "count": 6},
+                {"ok": True, "step": "body_focused"},
+                {"ok": True, "step": "duplicated_template_page"},
+                {"ok": True, "step": "page_count_after", "count": 7},
+                {"ok": True, "step": "selected_created_page"},
+                {"ok": True, "step": "focused_background_canvas"},
+                {"ok": True, "step": "opened_background_generate_panel"},
+                {"ok": True, "step": "filled_background_prompt"},
+                {"ok": True, "step": "submitted_background_generate"},
+                {"ok": True, "step": "opened_upload_tab"},
+                {"ok": True, "step": "placed_uploaded_image"},
+                {"ok": True, "step": "remove_background_optional"},
+                {"ok": True, "step": "position_panel_optional"},
+                {"ok": True, "step": "position_inputs_optional", "count": 0},
+                {
+                    "ok": True,
+                    "step": "edited_thumbnail_text",
+                    "applied": ["fallback-0"],
+                },
+                {"ok": True, "step": "opened_file_menu"},
+                {"ok": True, "step": "opened_download_panel"},
+                {"ok": True, "step": "typed_current_page", "page": "7"},
+                {"ok": True, "step": "done_button_optional"},
+                {"ok": True, "step": "clicked_download_execute"},
+                {"ok": True, "step": "cleanup_deleted_created_page"},
+            ]
+
+            responses: list[object] = []
+            for payload in steps:
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", json.dumps(payload, ensure_ascii=True))
+                setattr(completed, "stderr", "")
+                responses.append(completed)
+
+            def fake_run(*args_: object, **kwargs: object) -> object:
+                _ = kwargs
+                command = cast(list[str], args_[0])
+                if len(command) >= 4 and command[3] == "download":
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    output_path.write_bytes(b"png")
+                if responses:
+                    return responses.pop(0)
+                completed = cast(object, type("Completed", (), {})())
+                setattr(
+                    completed, "stdout", json.dumps({"ok": True}, ensure_ascii=True)
+                )
+                setattr(completed, "stderr", "")
+                return completed
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok"},
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+
     def test_stage2_adapter_child_accepts_canva_magic_background_button(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -1860,6 +2446,54 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         ]
         self.assertEqual(uploads, [])
 
+    def test_resolve_stage2_ref_image_paths_drops_empty_requested_entries(self) -> None:
+        requested, resolved = _resolve_stage2_ref_image_paths(
+            {"ref_img_1": "", "ref_img_2": ""}
+        )
+
+        self.assertEqual(requested, [])
+        self.assertEqual(resolved, [])
+
+    def test_canva_skips_ref_path_resolution_without_ref_img(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            request_payload = {
+                "payload": {
+                    "prompt": "scene prompt",
+                    "ref_img_1": "Use attached images as reference.",
+                    "ref_img_2": "",
+                }
+            }
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={
+                        "status": "failed",
+                        "error_code": "AGENT_BROWSER_COMMAND_FAILED",
+                        "details": {},
+                    },
+                ),
+                patch(
+                    "runtime_v2.cli._resolve_stage2_ref_image_paths",
+                    side_effect=AssertionError("should not resolve ref paths"),
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+
     def test_stage2_adapter_child_builds_full_canva_legacy_sequence_actions(
         self,
     ) -> None:
@@ -1901,6 +2535,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
 
             with (
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
                 patch(
                     "runtime_v2.cli.run_agent_browser_verify_job",
                     side_effect=fake_verify,
@@ -1929,16 +2564,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertTrue(
             any("cleanup_deleted_created_page" in script for script in scripts)
         )
-        self.assertTrue(any("prepared_upload_input" in script for script in scripts))
         self.assertTrue(any("placed_uploaded_image" in script for script in scripts))
-        self.assertTrue(
-            any("__runtime_v2_canva_before_upload" in script for script in scripts)
-        )
-        self.assertEqual(len(uploads), 1)
-        self.assertEqual(
-            uploads[0]["selector"], "input[data-runtime-v2-canva-upload='ready']"
-        )
-        self.assertEqual(uploads[0]["files"], ["D:/ref.png"])
+        self.assertEqual(uploads, [])
 
     def test_stage2_adapter_child_fail_closes_when_functional_capture_fails(
         self,
