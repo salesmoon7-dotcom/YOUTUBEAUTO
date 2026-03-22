@@ -74,6 +74,40 @@ class RuntimeV2CdpCaptureTests(unittest.TestCase):
             )
             self.assertEqual(payload["service"], "seaart")
 
+    def test_write_functional_evidence_bundle_uses_page_screenshot_for_canva(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            target_path = root / "exports" / "canva.png"
+
+            def fake_screenshot(
+                port: int, expected_url_substring: str, output_path: Path
+            ) -> Path:
+                _ = port
+                _ = expected_url_substring
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                _ = output_path.write_bytes(b"screen-png")
+                return output_path
+
+            with patch(
+                "runtime_v2.agent_browser.cdp_capture.capture_page_screenshot",
+                side_effect=fake_screenshot,
+            ) as screenshot_mock:
+                evidence = write_functional_evidence_bundle(
+                    workspace=root,
+                    service="canva",
+                    port=9666,
+                    expected_url_substring="canva.com",
+                    service_artifact_path=target_path,
+                )
+                self.assertEqual(screenshot_mock.call_count, 2)
+                self.assertTrue(target_path.exists())
+                self.assertEqual(target_path.read_bytes(), b"screen-png")
+                self.assertEqual(
+                    Path(str(evidence["downloaded_asset"])).read_bytes(), b"screen-png"
+                )
+
     def test_capture_primary_image_asset_falls_back_to_page_context_fetch_on_403(
         self,
     ) -> None:
