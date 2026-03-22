@@ -1608,7 +1608,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 self.assertFalse(bool(evidence["placeholder_artifact"]))
                 self.assertTrue(output_path.exists())
 
-    def test_stage2_adapter_child_builds_geminigen_legacy_upload_actions(
+    def test_stage2_adapter_child_uses_geminigen_playwright_upload_path(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -1666,18 +1666,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             action for action in captured_actions if action.get("type") == "upload"
         ]
         scripts = [str(action.get("script", "")) for action in captured_actions]
-        self.assertEqual(len(uploads), 2)
-        self.assertEqual(
-            uploads[0]["selector"], "input[data-runtime-v2-geminigen-upload='first']"
-        )
-        self.assertEqual(
-            uploads[1]["selector"], "input[data-runtime-v2-geminigen-upload='last']"
-        )
-        self.assertEqual(uploads[0]["files"], [str(first_frame.resolve())])
-        self.assertEqual(uploads[1]["files"], [str(first_frame.resolve())])
-        self.assertTrue(
-            any("prepared_geminigen_upload_inputs" in script for script in scripts)
-        )
+        self.assertEqual(uploads, [])
         self.assertTrue(any("selected_create_new" in script for script in scripts))
         self.assertTrue(any("clicked_generate" in script for script in scripts))
 

@@ -2149,25 +2149,6 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
         ]
         actions = []
-        if first_frame_path:
-            actions.extend(
-                [
-                    {
-                        "type": "eval",
-                        "script": "(() => { const labels = ['First Image', 'Last Image']; const prepared = []; for (const labelText of labels) { const blocks = Array.from(document.querySelectorAll('div.border-dashed.cursor-pointer, div.cursor-pointer, label, div')); const target = blocks.find(node => ((node.textContent || '').trim() || '').includes(labelText)); if (!(target instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_IMAGE_SLOT', label: labelText}); target.click(); const container = target.closest('div, section, article') || target.parentElement || document.body; let cur = container; let input = null; for (let i = 0; i < 6 && cur; i += 1) { input = cur.querySelector('input[type=file]'); if (input) break; cur = cur.parentElement; } if (!(input instanceof HTMLInputElement)) { input = document.querySelector('input[type=file]'); } if (!(input instanceof HTMLInputElement)) return JSON.stringify({ok:false,error:'NO_FILE_INPUT', label: labelText}); input.setAttribute('data-runtime-v2-geminigen-upload', labelText === 'First Image' ? 'first' : 'last'); prepared.push(labelText); } return JSON.stringify({ok:true, step:'prepared_geminigen_upload_inputs', prepared}); })()",
-                    },
-                    {
-                        "type": "upload",
-                        "selector": "input[data-runtime-v2-geminigen-upload='first']",
-                        "files": [first_frame_path],
-                    },
-                    {
-                        "type": "upload",
-                        "selector": "input[data-runtime-v2-geminigen-upload='last']",
-                        "files": [first_frame_path],
-                    },
-                ]
-            )
         actions.extend(
             [
                 {
@@ -2574,6 +2555,9 @@ def _attach_stage2_ref_images(
     if expected_url_substring == expected_url_substring_for_service("seaart"):
         _attach_seaart_ref_images_via_playwright(port=port, file_paths=file_paths)
         return
+    if expected_url_substring == expected_url_substring_for_service("geminigen"):
+        _attach_geminigen_ref_images_via_playwright(port=port, file_paths=file_paths)
+        return
     target = _select_page_target(port, expected_url_substring)
     eval_result = _cdp_command(
         target["webSocketDebuggerUrl"],
@@ -2675,6 +2659,37 @@ def _attach_seaart_ref_images_via_playwright(
                 return
             for index, file_path in enumerate(resolved_files[:count]):
                 locator.nth(index).set_input_files([file_path])
+        finally:
+            browser.close()
+
+
+def _attach_geminigen_ref_images_via_playwright(
+    *, port: int, file_paths: list[str]
+) -> None:
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
+        try:
+            page = None
+            for context in browser.contexts:
+                for candidate in context.pages:
+                    if "geminigen.ai" in candidate.url:
+                        page = candidate
+                        break
+                if page is not None:
+                    break
+            if page is None:
+                raise RuntimeError("NO_UPLOAD_TARGET")
+            page.bring_to_front()
+            try:
+                with page.expect_file_chooser(timeout=5000) as chooser_info:
+                    page.get_by_text("Select Image", exact=False).first.click()
+            except (PlaywrightTimeoutError, RuntimeError):
+                raise RuntimeError("NO_FILE_INPUT")
+            chooser = chooser_info.value
+            chooser.set_files([str(Path(file_paths[0]).resolve())])
         finally:
             browser.close()
 
