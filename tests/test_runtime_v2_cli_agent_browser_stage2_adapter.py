@@ -1501,9 +1501,9 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "opened_upload_tab"},
                 {"ok": True, "step": "placed_uploaded_image"},
                 {"ok": True, "step": "remove_background_optional"},
-                {"ok": True, "step": "opened_position_panel"},
+                {"ok": False, "error": "NO_POSITION_BUTTON"},
                 {"ok": True, "step": "opened_arrange_tab"},
-                {"ok": True, "step": "set_image_position"},
+                {"ok": False, "error": "POSITION_INPUTS_MISSING"},
                 {
                     "ok": True,
                     "step": "edited_thumbnail_text",

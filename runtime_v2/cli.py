@@ -2076,7 +2076,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                     },
                     {
                         "type": "eval",
-                        "script": "(() => { const labels = ['위치', 'Position']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:false,error:'NO_POSITION_BUTTON'}); btn.click(); return JSON.stringify({ok:true, step:'opened_position_panel'}); })()",
+                        "script": "(() => { const labels = ['위치', 'Position']; const buttons = Array.from(document.querySelectorAll('button,[role=button],div')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text.includes(label)); }); if (!(btn instanceof HTMLElement)) return JSON.stringify({ok:true, step:'position_panel_optional'}); btn.click(); return JSON.stringify({ok:true, step:'opened_position_panel'}); })()",
                     },
                     {
                         "type": "eval",
@@ -2084,7 +2084,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                     },
                     {
                         "type": "eval",
-                        "script": "(() => { const values = ['1045','720','235','0']; const inputs = Array.from(document.querySelectorAll('input[inputmode=\"decimal\"]')).filter(node => node instanceof HTMLInputElement && node.offsetWidth > 0 && node.offsetHeight > 0); if (inputs.length < 4) return JSON.stringify({ok:false,error:'POSITION_INPUTS_MISSING', count: inputs.length}); for (let index = 0; index < 4; index += 1) { const input = inputs[index]; input.focus(); input.value = values[index]; input.dispatchEvent(new Event('input', {bubbles:true})); input.dispatchEvent(new Event('change', {bubbles:true})); } return JSON.stringify({ok:true, step:'set_image_position', values}); })()",
+                        "script": "(() => { const values = ['1045','720','235','0']; const inputs = Array.from(document.querySelectorAll('input[inputmode=\"decimal\"]')).filter(node => node instanceof HTMLInputElement && node.offsetWidth > 0 && node.offsetHeight > 0); if (inputs.length < 4) return JSON.stringify({ok:true, step:'position_inputs_optional', count: inputs.length}); for (let index = 0; index < 4; index += 1) { const input = inputs[index]; input.focus(); input.value = values[index]; input.dispatchEvent(new Event('input', {bubbles:true})); input.dispatchEvent(new Event('change', {bubbles:true})); } return JSON.stringify({ok:true, step:'set_image_position', values}); })()",
                     },
                 ]
             )
