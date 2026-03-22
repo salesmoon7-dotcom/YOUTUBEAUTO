@@ -182,8 +182,7 @@ class BrowserSupervisor:
         if not self._begin_restart(service, session_id):
             return False
         try:
-            self.manager.restart(service)
-            return True
+            return bool(self.manager.restart(service))
         finally:
             self._finish_restart(service, session_id)
 

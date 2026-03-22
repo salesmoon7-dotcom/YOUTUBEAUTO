@@ -19,6 +19,15 @@ from runtime_v2.workers.native_only import (
 )
 
 
+_RETRYABLE_BROWSER_ERROR_CODES = {
+    "BROWSER_UNHEALTHY",
+    "BROWSER_BLOCKED",
+    "AGENT_BROWSER_COMMAND_FAILED",
+    "AGENT_BROWSER_VERIFY_FAILED",
+    "AGENT_BROWSER_TIMEOUT",
+}
+
+
 def _int_value(raw_value: object, default: int) -> int:
     if isinstance(raw_value, bool):
         return int(raw_value)
@@ -78,6 +87,9 @@ def run_geminigen_job(
         stderr_path = Path(str(adapter_result["stderr_path"]))
         attach_evidence = attach_evidence_path(workspace)
         if not bool(adapter_result.get("ok", False)):
+            adapter_error_code = str(
+                adapter_result.get("error_code", "geminigen_adapter_failed")
+            )
             return finalize_worker_result(
                 workspace,
                 status="failed",
@@ -89,10 +101,8 @@ def run_geminigen_job(
                     stderr_path,
                     *([attach_evidence] if attach_evidence.exists() else []),
                 ],
-                error_code=str(
-                    adapter_result.get("error_code", "geminigen_adapter_failed")
-                ),
-                retryable=False,
+                error_code=adapter_error_code,
+                retryable=adapter_error_code in _RETRYABLE_BROWSER_ERROR_CODES,
                 details=cast(dict[str, object], adapter_result.get("details", {})),
                 completion={"state": "failed", "final_output": False},
             )

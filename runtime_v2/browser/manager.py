@@ -254,6 +254,7 @@ class BrowserSession:
     lock_recovered: bool = False
     lock_pid_alive: bool = False
     lock_port_open: bool = False
+    cdp_endpoint_ready: bool = False
     lock_metadata_valid: bool = True
     lock_age_sec: float = 0.0
     last_recovery_action: str = ""
@@ -279,6 +280,7 @@ class BrowserSession:
             "lock_recovered": self.lock_recovered,
             "lock_pid_alive": self.lock_pid_alive,
             "lock_port_open": self.lock_port_open,
+            "cdp_endpoint_ready": self.cdp_endpoint_ready,
             "lock_metadata_valid": self.lock_metadata_valid,
             "lock_age_sec": self.lock_age_sec,
             "last_recovery_action": self.last_recovery_action,
@@ -337,6 +339,7 @@ class BrowserSession:
             lock_recovered=bool(payload.get("lock_recovered", False)),
             lock_pid_alive=bool(payload.get("lock_pid_alive", False)),
             lock_port_open=bool(payload.get("lock_port_open", False)),
+            cdp_endpoint_ready=bool(payload.get("cdp_endpoint_ready", False)),
             lock_metadata_valid=bool(payload.get("lock_metadata_valid", True)),
             lock_age_sec=_to_float(payload.get("lock_age_sec", 0.0), 0.0),
             last_recovery_action=str(payload.get("last_recovery_action", "")),
@@ -556,6 +559,7 @@ def reconcile_browser_sessions(
                 lock_recovered=loaded_session.lock_recovered,
                 lock_pid_alive=loaded_session.lock_pid_alive,
                 lock_port_open=loaded_session.lock_port_open,
+                cdp_endpoint_ready=loaded_session.cdp_endpoint_ready,
                 lock_metadata_valid=loaded_session.lock_metadata_valid,
                 lock_age_sec=loaded_session.lock_age_sec,
                 last_recovery_action=loaded_session.last_recovery_action,
@@ -882,13 +886,13 @@ class BrowserManager:
             session.status == "running" for session in self.sessions
         )
 
-    def restart(self, service: str) -> None:
+    def restart(self, service: str) -> bool:
         self.running = True
         session = self._session_by_service(service)
         ownership = ensure_browser_plane_ownership()
         if not bool(ownership.get("owned", False)):
             session.status = "external"
-            return
+            return False
         now = time()
         session.restart_count += 1
         session.started_at = now
@@ -897,7 +901,10 @@ class BrowserManager:
         session.consecutive_failures = 0
         session.status = "running"
         session.blocked_reason = ""
-        _ = _launch_debug_browser(session)
+        launched = _launch_debug_browser(session)
+        if not launched:
+            session.status = "unhealthy"
+        return launched
 
     def shutdown(self) -> None:
         self.running = False
@@ -957,6 +964,34 @@ def _probe_local_port(port: int, timeout_sec: float = 0.2) -> bool:
             return True
     except OSError:
         return False
+
+
+def _debug_endpoint_ready(service: str, port: int) -> bool:
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/json/version", timeout=3
+        ) as response:
+            version_payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    if not isinstance(version_payload, dict):
+        return False
+    ws_url = (
+        str(version_payload.get("webSocketDebuggerUrl", "")).strip()
+        or str(version_payload.get("webSocketUrl", "")).strip()
+    )
+    if not (ws_url.startswith("ws://") or ws_url.startswith("wss://")):
+        return False
+    session = BrowserSession(
+        service=service,
+        group="browser_pool",
+        session_id="primary",
+        port=port,
+        profile_dir="",
+        status="running",
+    )
+    tabs = _list_debug_tabs(session)
+    return bool(tabs)
 
 
 def _session_ready(session: BrowserSession) -> bool:
@@ -1053,6 +1088,7 @@ def _refresh_session_ready_marker(session: BrowserSession) -> bool:
 
 def _evaluate_session_health(session: BrowserSession) -> tuple[bool, str]:
     port_healthy = _probe_local_port(session.port)
+    session.cdp_endpoint_ready = False
     if not port_healthy:
         _clear_session_ready_marker(session)
         if not _manager_owns_browser(session.service):
@@ -1074,6 +1110,10 @@ def _evaluate_session_health(session: BrowserSession) -> tuple[bool, str]:
             return False, "busy_lock"
         if session.lock_state == "unknown":
             return False, "unknown_lock"
+        return False, "unhealthy"
+    session.cdp_endpoint_ready = _debug_endpoint_ready(session.service, session.port)
+    if not session.cdp_endpoint_ready:
+        _clear_session_ready_marker(session)
         return False, "unhealthy"
     _clear_lock_result(session)
     tabs = _list_debug_tabs(session)
@@ -1173,7 +1213,7 @@ def _launch_debug_browser(session: BrowserSession) -> bool:
         return False
     for _ in range(20):
         sleep(0.5)
-        if _probe_local_port(session.port):
+        if _debug_endpoint_ready(session.service, session.port):
             lock_file = _profile_lock_file(session.profile_dir)
             launched_pid = _to_int(getattr(child, "pid", 0))
             launch_lock_payload = {
