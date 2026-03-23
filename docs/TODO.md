@@ -52,6 +52,11 @@
   - 따라서 현재 남은 문제는 helper/UI mismatch가 아니라 `content layout / visual composition`입니다.
   - 다음 배치는 `canva content layout only`로 고정합니다.
   - 다음 배치 금지사항: 브라우저 재시작/업로드/다운로드 selector 재수정, semantic-row rerun, multi-service 작업 재개.
+- 2026-03-23 canva fresh boundary correction:
+  - `runtime_v2/stage2/canva_worker.py`와 `runtime_v2/cli.py` 수정 후 fresh `real_canva_boundary.job.json` rerun은 더 이상 generic `BROWSER_UNHEALTHY`가 아니라 `REF_IMAGE_UPLOAD_FAILED`로 닫혔습니다.
+  - 즉 현재 single blocker는 browser plane이 아니라 `canva boundary ref contract`입니다.
+  - fresh emit 결과 `real_canva_boundary.job.json`의 Canva payload에는 아직 `ref_img`가 비어 있었고, 현재 `chatgpt-sheet1-15/assets/asset_manifest.json`이 가리키는 current-run `image_primary`/stage2 image role 파일도 실제로 존재하지 않았습니다.
+  - 따라서 다음 canva-only batch는 `content layout` 전에 `existing row15 source evidence에서 truthful ref image path를 다시 pin`하는 경계로 축소합니다.
 - 오라클 shortest-path 전략(현재 SSOT):
   - 남은 검증은 semantic target row(`Sheet1` row 16 / CLI `--row-index 14`)에 대한 `Stage 5 detached run` **1회**만 수행합니다.
   - 그 전에 `python -m runtime_v2.cli --readiness-check`만 확인하고, readiness fail이면 Stage 5를 시작하지 않습니다.

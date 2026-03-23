@@ -233,6 +233,51 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertFalse(stale_attach.exists())
 
+    def test_canva_worker_uses_attach_evidence_error_code_over_generic_browser_exit(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = root / "exports" / "scene-01.png"
+            job = _stage2_job("canva")
+            job.payload["use_agent_browser"] = True
+            job.payload["service_artifact_path"] = str(output_path)
+            workspace = artifact_root / "canva" / job.job_id
+            workspace.mkdir(parents=True, exist_ok=True)
+
+            def _fake_adapter(*args: object, **kwargs: object) -> dict[str, object]:
+                del args, kwargs
+                attach_evidence = attach_evidence_path(workspace)
+                written_chars = attach_evidence.write_text(
+                    json.dumps(
+                        {
+                            "status": "failed",
+                            "error_code": "REF_IMAGE_UPLOAD_FAILED",
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                self.assertGreater(written_chars, 0)
+                return {
+                    "ok": False,
+                    "error_code": "BROWSER_UNHEALTHY",
+                    "stdout_path": root / "stdout.log",
+                    "stderr_path": root / "stderr.log",
+                    "details": {},
+                }
+
+            with patch(
+                "runtime_v2.stage2.canva_worker.run_verified_adapter_command",
+                side_effect=_fake_adapter,
+            ):
+                result = run_canva_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "REF_IMAGE_UPLOAD_FAILED")
+        self.assertFalse(bool(result["retryable"]))
+
     def test_agent_browser_stage2_adapter_command_uses_hidden_cli_child(self) -> None:
         command = build_stage2_agent_browser_adapter_command(
             service="genspark",

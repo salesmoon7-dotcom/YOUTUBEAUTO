@@ -190,6 +190,85 @@ class RuntimeV2CliBoundaryEmitTests(unittest.TestCase):
         self.assertEqual(inner_job["worker"], "geminigen")
         self.assertTrue(bool(inner_job["payload"]["use_agent_browser"]))
 
+    def test_emit_boundary_contract_path_builds_canva_job_with_asset_manifest_ref(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            asset_root = root / "assets"
+            images_root = asset_root / "images"
+            images_root.mkdir(parents=True, exist_ok=True)
+            image_primary = images_root / "ref-1-boundary-run-4.png"
+            image_primary.write_bytes(b"png")
+            (asset_root / "asset_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "roles": {
+                            "image_primary": str(image_primary.resolve()),
+                        }
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            video_plan_path = root / "video_plan.json"
+            video_plan_path.write_text(
+                json.dumps(
+                    {
+                        "run_id": "boundary-run-4",
+                        "row_ref": "Sheet1!row4",
+                        "reason_code": "ok",
+                        "asset_plan": {
+                            "asset_root": str(asset_root.resolve()),
+                            "common_asset_folder": str(asset_root.resolve()),
+                        },
+                        "scene_plan": [
+                            {"scene_index": 1, "prompt": "scene one"},
+                            {"scene_index": 2, "prompt": "scene two"},
+                            {"scene_index": 3, "prompt": "scene three"},
+                        ],
+                        "videos": ["video one prompt"],
+                        "stage1_handoff": {
+                            "contract": {
+                                "run_id": "boundary-run-4",
+                                "row_ref": "Sheet1!row4",
+                                "topic": "Boundary topic",
+                                "voice_texts": [],
+                                "ref_img_1": "",
+                                "ref_img_2": "",
+                            }
+                        },
+                        "use_agent_browser_services": ["canva"],
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            output_path = root / "canva.job.json"
+
+            with patch(
+                "sys.argv",
+                [
+                    "runtime_v2.cli",
+                    "--emit-boundary-contract-path",
+                    str(output_path),
+                    "--boundary-workload",
+                    "canva",
+                    "--video-plan-path",
+                    str(video_plan_path),
+                    "--boundary-scene-index",
+                    "3",
+                ],
+            ):
+                exit_code = main()
+
+            contract = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        inner_job = contract["job"]
+        self.assertEqual(inner_job["worker"], "canva")
+        self.assertEqual(inner_job["payload"]["ref_img"], str(image_primary.resolve()))
+
 
 if __name__ == "__main__":
     _ = unittest.main()

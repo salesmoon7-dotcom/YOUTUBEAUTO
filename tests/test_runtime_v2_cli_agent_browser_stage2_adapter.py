@@ -2947,6 +2947,118 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertTrue(any("placed_uploaded_image" in script for script in scripts))
         self.assertEqual(uploads, [])
 
+    def test_stage2_adapter_child_records_specific_canva_truth_gate_failure(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            transcript_path = root / "agent_browser_transcript.json"
+            transcript_path.write_text(
+                json.dumps(
+                    {
+                        "steps": [
+                            {
+                                "output": json.dumps(
+                                    {
+                                        "ok": True,
+                                        "step": "page_count_before",
+                                        "count": 1,
+                                    },
+                                    ensure_ascii=True,
+                                )
+                            },
+                            {
+                                "output": json.dumps(
+                                    {
+                                        "ok": True,
+                                        "step": "page_count_after",
+                                        "count": 1,
+                                    },
+                                    ensure_ascii=True,
+                                )
+                            },
+                            {
+                                "output": json.dumps(
+                                    {
+                                        "ok": True,
+                                        "step": "edited_thumbnail_text",
+                                        "applied": ["fallback-0", "fallback-1"],
+                                    },
+                                    ensure_ascii=True,
+                                )
+                            },
+                            {
+                                "output": json.dumps(
+                                    {
+                                        "ok": True,
+                                        "step": "selected_created_page",
+                                    },
+                                    ensure_ascii=True,
+                                )
+                            },
+                            {
+                                "output": json.dumps(
+                                    {
+                                        "ok": True,
+                                        "step": "clicked_download_execute",
+                                    },
+                                    ensure_ascii=True,
+                                )
+                            },
+                        ]
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            (root / "thumb_data.json").write_text(
+                json.dumps(
+                    {
+                        "bg_prompt": "legacy background",
+                        "line1": "Legacy",
+                        "line2": "Thumb",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            (root / "request.json").write_text(
+                json.dumps({"payload": {"prompt": "scene prompt"}}, ensure_ascii=True),
+                encoding="utf-8",
+            )
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={
+                        "status": "ok",
+                        "details": {"transcript_path": str(transcript_path.resolve())},
+                    },
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+            evidence = json.loads(
+                (root / "attach_evidence.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+        self.assertEqual(evidence["error_code"], "CANVA_TRUTHFUL_ARTIFACT_GATE_FAILED")
+        details = cast(dict[object, object], evidence["details"])
+        self.assertFalse(bool(details["clone_ok"]))
+
     def test_stage2_adapter_child_fail_closes_when_functional_capture_fails(
         self,
     ) -> None:

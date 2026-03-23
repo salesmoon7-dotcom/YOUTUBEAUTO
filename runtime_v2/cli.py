@@ -2513,7 +2513,11 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             if service == "canva" and canva_truth_gate_failed:
                 raise RuntimeError("CANVA_TRUTHFUL_ARTIFACT_GATE_FAILED")
             placeholder_artifact = False
-        except Exception:
+        except Exception as exc:
+            failure_result = result
+            if service == "canva" and str(exc) == "CANVA_TRUTHFUL_ARTIFACT_GATE_FAILED":
+                failure_result = dict(result)
+                failure_result["error_code"] = "CANVA_TRUTHFUL_ARTIFACT_GATE_FAILED"
             if service == "genspark":
                 debug_state_path = _write_stage2_adapter_debug_state(
                     workspace=workspace,
@@ -2534,7 +2538,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 workspace=workspace,
                 service=service,
                 port=args.port,
-                result=result,
+                result=failure_result,
                 probe_debug_only=True,
                 recovery_attempted=False,
                 placeholder_artifact=placeholder_artifact,
@@ -2545,6 +2549,12 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                     {
                         key: value
                         for key, value in {
+                            **(
+                                canva_extra_details
+                                if service == "canva"
+                                and canva_extra_details is not None
+                                else {}
+                            ),
                             "debug_state_path": (
                                 str(debug_state_path)
                                 if debug_state_path is not None
@@ -2556,9 +2566,11 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                                 else ""
                             ),
                         }.items()
-                        if value
+                        if value not in {"", None}
                     }
-                    if debug_state_path is not None or retry_trace_path is not None
+                    if service == "canva"
+                    or debug_state_path is not None
+                    or retry_trace_path is not None
                     else None
                 ),
             )

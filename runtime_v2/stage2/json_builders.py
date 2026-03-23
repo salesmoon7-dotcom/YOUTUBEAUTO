@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import re
 from typing import cast
@@ -250,12 +251,14 @@ def _build_thumb_data(
     }
 
 
-def _select_ref_img(timeline: list[dict[str, object]]) -> str:
+def _select_ref_img(timeline: list[dict[str, object]], asset_root: Path) -> str:
     for preferred_workload in ("genspark", "seaart"):
         for entry in timeline:
             if str(entry.get("workload", "")) != preferred_workload:
                 continue
-            candidate = str(entry.get("asset_path", "")).strip()
+            candidate = _resolve_ref_input_as_file(
+                str(entry.get("asset_path", "")).strip(), asset_root
+            )
             if candidate:
                 return candidate
     return ""
@@ -286,6 +289,23 @@ def _select_ref_img_from_stage1(
         if resolved:
             return resolved
     return ""
+
+
+def _select_ref_img_from_asset_manifest(asset_root: Path) -> str:
+    manifest_path = asset_root / "asset_manifest.json"
+    if not manifest_path.exists() or not manifest_path.is_file():
+        return ""
+    try:
+        raw_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(raw_payload, dict):
+        return ""
+    roles = raw_payload.get("roles", {})
+    if not isinstance(roles, dict):
+        return ""
+    candidate = str(roles.get("image_primary", "")).strip()
+    return _resolve_ref_input_as_file(candidate, asset_root)
 
 
 def _select_ref_images_from_stage1(
@@ -525,13 +545,15 @@ def build_stage2_jobs(
             )
             ref_img = _select_ref_img_from_stage1(stage1_contract, asset_root)
             if not ref_img:
-                ref_img = _select_ref_img(timeline)
+                ref_img = _select_ref_img(timeline, asset_root)
+            if not ref_img:
+                ref_img = _select_ref_img_from_asset_manifest(asset_root)
             if ref_img:
                 payload["ref_img"] = ref_img
         if workload == "geminigen":
             ref_img = _select_ref_img_from_stage1(stage1_contract, asset_root)
             if not ref_img:
-                ref_img = _select_ref_img(timeline)
+                ref_img = _select_ref_img(timeline, asset_root)
             if ref_img:
                 payload["first_frame_path"] = ref_img
         if workload in agent_browser_services:

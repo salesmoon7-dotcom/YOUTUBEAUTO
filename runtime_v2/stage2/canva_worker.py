@@ -47,6 +47,16 @@ def _int_detail(details: dict[str, object], key: str) -> int:
     return 0
 
 
+def _canva_adapter_error_code(
+    adapter_result: dict[str, object], attach_evidence_payload: dict[str, object]
+) -> str:
+    adapter_error_code = str(adapter_result.get("error_code", "canva_adapter_failed"))
+    attach_error_code = str(attach_evidence_payload.get("error_code", "")).strip()
+    if adapter_error_code == "BROWSER_UNHEALTHY" and attach_error_code:
+        return attach_error_code
+    return adapter_error_code
+
+
 def run_canva_job(
     job: JobContract, artifact_root: Path, registry_file: Path | None = None
 ) -> dict[str, object]:
@@ -103,8 +113,8 @@ def run_canva_job(
             else {}
         )
         if not bool(adapter_result.get("ok", False)):
-            adapter_error_code = str(
-                adapter_result.get("error_code", "canva_adapter_failed")
+            adapter_error_code = _canva_adapter_error_code(
+                adapter_result, attach_evidence_payload
             )
             return finalize_worker_result(
                 workspace,
