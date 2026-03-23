@@ -1938,7 +1938,10 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         ref_img = str(request_payload_obj.get("ref_img", "")).strip()
         first_frame_path = str(request_payload_obj.get("first_frame_path", "")).strip()
         try:
-            if service == "canva" and not ref_img:
+            if service == "canva" and ref_img:
+                ref_images_requested = [ref_img]
+                ref_images_resolved = [ref_img]
+            elif service == "canva" and not ref_img:
                 ref_images_requested, ref_images_resolved = [], []
             else:
                 ref_images_requested, ref_images_resolved = (
@@ -2255,6 +2258,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             )
         except Exception:
             ref_upload_error_code = "REF_IMAGE_UPLOAD_FAILED"
+            canva_requested = [ref_img] if service == "canva" and ref_img else []
             write_stage2_attach_evidence(
                 workspace=workspace,
                 service=service,
@@ -2266,8 +2270,12 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 probe_debug_only=True,
                 recovery_attempted=False,
                 placeholder_artifact=False,
-                ref_images_requested=ref_images_requested,
-                ref_images_resolved=ref_images_resolved,
+                ref_images_requested=(
+                    canva_requested if service == "canva" else ref_images_requested
+                ),
+                ref_images_resolved=(
+                    canva_requested if service == "canva" else ref_images_resolved
+                ),
                 ref_images_attach_attempted=ref_images_attach_attempted,
                 ref_upload_error_code=ref_upload_error_code,
             )
@@ -2752,6 +2760,7 @@ def _attach_geminigen_ref_images_via_playwright(
 def _attach_canva_ref_images_via_playwright(
     *, port: int, file_paths: list[str]
 ) -> None:
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as playwright:
@@ -2768,10 +2777,38 @@ def _attach_canva_ref_images_via_playwright(
             if page is None:
                 raise RuntimeError("NO_UPLOAD_TARGET")
             page.bring_to_front()
+            for label in ("업로드 항목", "업로드", "Uploads"):
+                try:
+                    page.get_by_text(label, exact=False).first.click()
+                    break
+                except Exception:
+                    continue
             locator = page.locator("input[type=file]")
-            if locator.count() <= 0:
+            if locator.count() > 0:
+                try:
+                    locator.nth(0).set_input_files([str(Path(file_paths[0]).resolve())])
+                    return
+                except Exception:
+                    pass
+            try:
+                with page.expect_file_chooser(timeout=5000) as chooser_info:
+                    for label in (
+                        "업로드 파일",
+                        "Upload files",
+                        "파일 업로드",
+                        "디바이스에서 업로드",
+                    ):
+                        try:
+                            page.get_by_text(label, exact=False).first.click()
+                            break
+                        except Exception:
+                            continue
+                    else:
+                        raise RuntimeError("NO_FILE_INPUT")
+            except (PlaywrightTimeoutError, RuntimeError):
                 raise RuntimeError("NO_FILE_INPUT")
-            locator.nth(0).set_input_files([str(Path(file_paths[0]).resolve())])
+            chooser = chooser_info.value
+            chooser.set_files([str(Path(file_paths[0]).resolve())])
         finally:
             browser.close()
 

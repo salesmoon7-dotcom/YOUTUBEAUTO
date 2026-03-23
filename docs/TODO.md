@@ -57,6 +57,11 @@
   - 즉 현재 single blocker는 browser plane이 아니라 `canva boundary ref contract`입니다.
   - fresh emit 결과 `real_canva_boundary.job.json`의 Canva payload에는 아직 `ref_img`가 비어 있었고, 현재 `chatgpt-sheet1-15/assets/asset_manifest.json`이 가리키는 current-run `image_primary`/stage2 image role 파일도 실제로 존재하지 않았습니다.
   - 따라서 다음 canva-only batch는 `content layout` 전에 `existing row15 source evidence에서 truthful ref image path를 다시 pin`하는 경계로 축소합니다.
+- 2026-03-23 canva ref source pinned:
+  - `runtime_v2/stage2/json_builders.py`는 이제 row15 asset root에 현재 run ref가 없어도 실제 존재하는 최신 `ref-1-*.png`를 Canva `ref_img`로 emit합니다.
+  - fresh `real_canva_boundary.job.json`와 direct `build_stage2_jobs(video_plan)` 출력 모두 `ref_img=D:\YOUTUBEAUTO_RUNTIME\runtime_state\artifacts\chatgpt\chatgpt-sheet1-15\assets\images\ref-1-6f266f6f-e8c4-4073-93e6-de1c8c4aadf2.png`까지는 확인됐습니다.
+  - fresh real Canva boundary rerun은 더 이상 `REF_IMAGE_UPLOAD_FAILED`가 아니라 `AGENT_BROWSER_COMMAND_FAILED`로 닫히며, `attach_evidence.json`에는 실제 요청/해결 경로가 유지됩니다.
+  - 따라서 다음 single blocker는 `ref source`나 `upload failure`가 아니라 `live Canva adapter action`입니다.
 - 오라클 shortest-path 전략(현재 SSOT):
   - 남은 검증은 semantic target row(`Sheet1` row 16 / CLI `--row-index 14`)에 대한 `Stage 5 detached run` **1회**만 수행합니다.
   - 그 전에 `python -m runtime_v2.cli --readiness-check`만 확인하고, readiness fail이면 Stage 5를 시작하지 않습니다.

@@ -308,6 +308,22 @@ def _select_ref_img_from_asset_manifest(asset_root: Path) -> str:
     return _resolve_ref_input_as_file(candidate, asset_root)
 
 
+def _select_existing_ref_img_from_asset_root(asset_root: Path) -> str:
+    images_root = asset_root / "images"
+    if not images_root.exists() or not images_root.is_dir():
+        return ""
+    for pattern in ("ref-1-*.png", "ref-2-*.png"):
+        candidates = sorted(
+            images_root.glob(pattern),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        for candidate in candidates:
+            if candidate.exists() and candidate.is_file():
+                return str(candidate.resolve())
+    return ""
+
+
 def _select_ref_images_from_stage1(
     stage1_contract: dict[str, object] | None,
 ) -> tuple[str, str]:
@@ -548,6 +564,8 @@ def build_stage2_jobs(
                 ref_img = _select_ref_img(timeline, asset_root)
             if not ref_img:
                 ref_img = _select_ref_img_from_asset_manifest(asset_root)
+            if not ref_img:
+                ref_img = _select_existing_ref_img_from_asset_root(asset_root)
             if ref_img:
                 payload["ref_img"] = ref_img
         if workload == "geminigen":

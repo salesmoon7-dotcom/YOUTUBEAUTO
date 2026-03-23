@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from runtime_v2 import exit_codes
 from runtime_v2.cli import (
+    _attach_canva_ref_images_via_playwright,
     CliArgs,
     _attach_genspark_ref_images_via_filechooser,
     _attach_seaart_ref_images_via_playwright,
@@ -1125,6 +1126,329 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 [str(Path(r"D:\tmp\ref2.png").resolve())],
             ],
         )
+
+    def test_attach_canva_ref_images_opens_upload_tab_and_uses_file_input(self) -> None:
+        class _Locator:
+            def __init__(self) -> None:
+                self.calls: list[list[str]] = []
+
+            def count(self) -> int:
+                return 1
+
+            def nth(self, index: int) -> "_Locator":
+                _ = index
+                return self
+
+            def set_input_files(self, files: list[str]) -> None:
+                self.calls.append(files)
+
+        class _TextLocator:
+            def __init__(self, label: str, clicks: list[str]) -> None:
+                self._label = label
+                self._clicks = clicks
+
+            @property
+            def first(self) -> "_TextLocator":
+                return self
+
+            def click(self) -> None:
+                self._clicks.append(self._label)
+
+        class _Page:
+            def __init__(self, locator: _Locator, clicks: list[str]) -> None:
+                self.url = "https://www.canva.com/design/foo/edit"
+                self._locator = locator
+                self._clicks = clicks
+
+            def bring_to_front(self) -> None:
+                return None
+
+            def locator(self, selector: str) -> _Locator:
+                _ = selector
+                return self._locator
+
+            def get_by_text(self, text: str, exact: bool = False) -> _TextLocator:
+                _ = exact
+                return _TextLocator(text, self._clicks)
+
+        class _Context:
+            def __init__(self, page: _Page) -> None:
+                self.pages = [page]
+
+        class _Browser:
+            def __init__(self, context: _Context) -> None:
+                self.contexts = [context]
+
+            def close(self) -> None:
+                return None
+
+        class _Chromium:
+            def __init__(self, browser: _Browser) -> None:
+                self._browser = browser
+
+            def connect_over_cdp(self, endpoint: str) -> _Browser:
+                _ = endpoint
+                return self._browser
+
+        class _Playwright:
+            def __init__(self, chromium: _Chromium) -> None:
+                self.chromium = chromium
+
+        class _PlaywrightContext:
+            def __init__(self, playwright: _Playwright) -> None:
+                self._playwright = playwright
+
+            def __enter__(self) -> _Playwright:
+                return self._playwright
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+                _ = (exc_type, exc, tb)
+                return False
+
+        clicks: list[str] = []
+        locator = _Locator()
+        page = _Page(locator, clicks)
+        browser = _Browser(_Context(page))
+        playwright_context = _PlaywrightContext(_Playwright(_Chromium(browser)))
+
+        with patch(
+            "playwright.sync_api.sync_playwright", return_value=playwright_context
+        ):
+            _attach_canva_ref_images_via_playwright(
+                port=9666,
+                file_paths=[r"D:\tmp\ref1.png"],
+            )
+
+        self.assertEqual(clicks[0], "업로드 항목")
+        self.assertEqual(
+            locator.calls,
+            [[str(Path(r"D:\tmp\ref1.png").resolve())]],
+        )
+
+    def test_attach_canva_ref_images_falls_back_to_file_chooser(self) -> None:
+        class _Chooser:
+            def __init__(self) -> None:
+                self.files: list[str] = []
+
+            def set_files(self, files: list[str]) -> None:
+                self.files = files
+
+        class _ChooserContext:
+            def __init__(self, chooser: _Chooser) -> None:
+                self.value = chooser
+
+            def __enter__(self) -> "_ChooserContext":
+                return self
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+                _ = (exc_type, exc, tb)
+                return False
+
+        class _Locator:
+            def count(self) -> int:
+                return 0
+
+        class _TextLocator:
+            def __init__(self, label: str, clicks: list[str]) -> None:
+                self._label = label
+                self._clicks = clicks
+
+            @property
+            def first(self) -> "_TextLocator":
+                return self
+
+            def click(self) -> None:
+                self._clicks.append(self._label)
+
+        class _Page:
+            def __init__(self, chooser: _Chooser, clicks: list[str]) -> None:
+                self.url = "https://www.canva.com/design/foo/edit"
+                self._chooser = chooser
+                self._clicks = clicks
+
+            def bring_to_front(self) -> None:
+                return None
+
+            def locator(self, selector: str) -> _Locator:
+                _ = selector
+                return _Locator()
+
+            def get_by_text(self, text: str, exact: bool = False) -> _TextLocator:
+                _ = exact
+                return _TextLocator(text, self._clicks)
+
+            def expect_file_chooser(self, timeout: int = 5000) -> _ChooserContext:
+                _ = timeout
+                return _ChooserContext(self._chooser)
+
+        class _Context:
+            def __init__(self, page: _Page) -> None:
+                self.pages = [page]
+
+        class _Browser:
+            def __init__(self, context: _Context) -> None:
+                self.contexts = [context]
+
+            def close(self) -> None:
+                return None
+
+        class _Chromium:
+            def __init__(self, browser: _Browser) -> None:
+                self._browser = browser
+
+            def connect_over_cdp(self, endpoint: str) -> _Browser:
+                _ = endpoint
+                return self._browser
+
+        class _Playwright:
+            def __init__(self, chromium: _Chromium) -> None:
+                self.chromium = chromium
+
+        class _PlaywrightContext:
+            def __init__(self, playwright: _Playwright) -> None:
+                self._playwright = playwright
+
+            def __enter__(self) -> _Playwright:
+                return self._playwright
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+                _ = (exc_type, exc, tb)
+                return False
+
+        clicks: list[str] = []
+        chooser = _Chooser()
+        page = _Page(chooser, clicks)
+        browser = _Browser(_Context(page))
+        playwright_context = _PlaywrightContext(_Playwright(_Chromium(browser)))
+
+        with patch(
+            "playwright.sync_api.sync_playwright", return_value=playwright_context
+        ):
+            _attach_canva_ref_images_via_playwright(
+                port=9666,
+                file_paths=[r"D:\tmp\ref1.png"],
+            )
+
+        self.assertIn("업로드 항목", clicks)
+        self.assertIn("업로드 파일", clicks)
+        self.assertEqual(chooser.files, [str(Path(r"D:\tmp\ref1.png").resolve())])
+
+    def test_attach_canva_ref_images_falls_back_when_set_input_files_fails(
+        self,
+    ) -> None:
+        class _Chooser:
+            def __init__(self) -> None:
+                self.files: list[str] = []
+
+            def set_files(self, files: list[str]) -> None:
+                self.files = files
+
+        class _ChooserContext:
+            def __init__(self, chooser: _Chooser) -> None:
+                self.value = chooser
+
+            def __enter__(self) -> "_ChooserContext":
+                return self
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+                _ = (exc_type, exc, tb)
+                return False
+
+        class _Locator:
+            def count(self) -> int:
+                return 1
+
+            def nth(self, index: int) -> "_Locator":
+                _ = index
+                return self
+
+            def set_input_files(self, files: list[str]) -> None:
+                _ = files
+                raise RuntimeError("UPLOAD_BLOCKED")
+
+        class _TextLocator:
+            def __init__(self, label: str, clicks: list[str]) -> None:
+                self._label = label
+                self._clicks = clicks
+
+            @property
+            def first(self) -> "_TextLocator":
+                return self
+
+            def click(self) -> None:
+                self._clicks.append(self._label)
+
+        class _Page:
+            def __init__(self, chooser: _Chooser, clicks: list[str]) -> None:
+                self.url = "https://www.canva.com/design/foo/edit"
+                self._chooser = chooser
+                self._clicks = clicks
+
+            def bring_to_front(self) -> None:
+                return None
+
+            def locator(self, selector: str) -> _Locator:
+                _ = selector
+                return _Locator()
+
+            def get_by_text(self, text: str, exact: bool = False) -> _TextLocator:
+                _ = exact
+                return _TextLocator(text, self._clicks)
+
+            def expect_file_chooser(self, timeout: int = 5000) -> _ChooserContext:
+                _ = timeout
+                return _ChooserContext(self._chooser)
+
+        class _Context:
+            def __init__(self, page: _Page) -> None:
+                self.pages = [page]
+
+        class _Browser:
+            def __init__(self, context: _Context) -> None:
+                self.contexts = [context]
+
+            def close(self) -> None:
+                return None
+
+        class _Chromium:
+            def __init__(self, browser: _Browser) -> None:
+                self._browser = browser
+
+            def connect_over_cdp(self, endpoint: str) -> _Browser:
+                _ = endpoint
+                return self._browser
+
+        class _Playwright:
+            def __init__(self, chromium: _Chromium) -> None:
+                self.chromium = chromium
+
+        class _PlaywrightContext:
+            def __init__(self, playwright: _Playwright) -> None:
+                self._playwright = playwright
+
+            def __enter__(self) -> _Playwright:
+                return self._playwright
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+                _ = (exc_type, exc, tb)
+                return False
+
+        clicks: list[str] = []
+        chooser = _Chooser()
+        page = _Page(chooser, clicks)
+        browser = _Browser(_Context(page))
+        playwright_context = _PlaywrightContext(_Playwright(_Chromium(browser)))
+
+        with patch(
+            "playwright.sync_api.sync_playwright", return_value=playwright_context
+        ):
+            _attach_canva_ref_images_via_playwright(
+                port=9666,
+                file_paths=[r"D:\tmp\ref1.png"],
+            )
+
+        self.assertIn("업로드 파일", clicks)
+        self.assertEqual(chooser.files, [str(Path(r"D:\tmp\ref1.png").resolve())])
 
     def test_stage2_adapter_child_fails_closed_without_internal_recovery(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
