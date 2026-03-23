@@ -2540,7 +2540,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 placeholder_artifact=placeholder_artifact,
                 ref_images_requested=ref_images_requested,
                 ref_images_resolved=ref_images_resolved,
-                ref_images_attach_attempted=bool(ref_images_requested),
+                ref_images_attach_attempted=ref_images_attach_attempted,
                 extra_details=(
                     {
                         key: value

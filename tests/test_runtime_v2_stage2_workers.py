@@ -12,6 +12,7 @@ from runtime_v2.config import RuntimeConfig, WorkloadName
 from runtime_v2.contracts.job_contract import JobContract
 from runtime_v2.control_plane import run_worker
 from runtime_v2.stage2.agent_browser_adapter import (
+    attach_evidence_path,
     build_stage2_agent_browser_adapter_command,
 )
 from runtime_v2.stage2.canva_worker import run_canva_job
@@ -199,6 +200,38 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "BROWSER_UNHEALTHY")
         self.assertTrue(bool(result["retryable"]))
+
+    def test_canva_worker_clears_stale_attach_evidence_before_adapter_run(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            job = _stage2_job("canva")
+            job.payload["use_agent_browser"] = True
+            workspace = artifact_root / job.workload / job.job_id
+            workspace.mkdir(parents=True, exist_ok=True)
+            stale_attach = attach_evidence_path(workspace)
+            stale_attach.write_text(
+                json.dumps(
+                    {"error_code": "REF_IMAGE_UPLOAD_FAILED", "status": "failed"},
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+
+            with patch(
+                "runtime_v2.stage2.canva_worker.run_verified_adapter_command",
+                return_value={
+                    "ok": False,
+                    "error_code": "BROWSER_UNHEALTHY",
+                    "stdout_path": root / "stdout.log",
+                    "stderr_path": root / "stderr.log",
+                    "details": {},
+                },
+            ):
+                result = run_canva_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertFalse(stale_attach.exists())
 
     def test_agent_browser_stage2_adapter_command_uses_hidden_cli_child(self) -> None:
         command = build_stage2_agent_browser_adapter_command(

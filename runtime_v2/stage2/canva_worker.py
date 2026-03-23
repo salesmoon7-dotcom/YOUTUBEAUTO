@@ -81,6 +81,9 @@ def run_canva_job(
     if isinstance(adapter_command_raw, list) and adapter_command_raw:
         adapter_command_items = cast(list[object], adapter_command_raw)
         adapter_command = [str(item) for item in adapter_command_items]
+        stale_attach_evidence = attach_evidence_path(workspace)
+        if stale_attach_evidence.exists():
+            stale_attach_evidence.unlink()
         adapter_result = run_verified_adapter_command(
             workspace,
             approved_root=artifact_root,

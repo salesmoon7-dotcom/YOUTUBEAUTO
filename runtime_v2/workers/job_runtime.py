@@ -5,6 +5,7 @@ import shutil
 import tempfile
 from collections.abc import Mapping
 from pathlib import Path
+from time import sleep
 
 from runtime_v2.contracts.job_contract import JobContract
 from runtime_v2.config import RuntimeConfig, external_runtime_root
@@ -33,7 +34,18 @@ def write_json_atomic(path: Path, payload: Mapping[str, object]) -> Path:
     ) as handle:
         _ = handle.write(json.dumps(payload, ensure_ascii=True, indent=2))
         temp_path = Path(handle.name)
-    _ = temp_path.replace(path)
+    last_error: PermissionError | None = None
+    for attempt in range(5):
+        try:
+            _ = temp_path.replace(path)
+            break
+        except PermissionError as exc:
+            last_error = exc
+            if attempt == 4:
+                raise
+            sleep(0.05 * (attempt + 1))
+    if last_error is not None and not path.exists():
+        raise last_error
     return path
 
 
