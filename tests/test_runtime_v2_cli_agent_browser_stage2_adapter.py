@@ -3345,6 +3345,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertTrue(
             any("권한이 업데이트되었습니다" in script for script in scripts)
         )
+        self.assertTrue(any("source:'aria-label'" in script for script in scripts))
         self.assertEqual(uploads, [])
 
     def test_stage2_adapter_child_records_specific_canva_truth_gate_failure(

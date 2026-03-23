@@ -67,6 +67,11 @@
   - Canva background prompt 경로도 레거시처럼 `4s polling x 3 + ESC/reclick`로 강화했고, `Product Background` 권한 갱신 모달의 `수락` 액션을 scoped step으로 추가했습니다.
   - fresh real Canva boundary rerun은 여전히 `AGENT_BROWSER_COMMAND_FAILED`이며 latest transcript는 `NO_BACKGROUND_PROMPT_INPUT`로 닫힙니다.
   - live DOM probing 기준 `수락` 이후에도 prompt textarea/contenteditable이 노출되지 않아, 현재 next single blocker는 runtime 코드가 아니라 `live Canva app-contract`입니다.
+- 2026-03-24 canva exact prompt button contract:
+  - live Playwright probing에서 generic `Product Background`/text click이 아니라 `button[aria-label='배경 생성']`을 정확히 눌렀을 때만 visible prompt textarea(`placeholder='예: 열대 섬의 일몰, 수채화 스타일'`)가 나타나는 것을 확인했습니다.
+  - `runtime_v2/cli.py` opener는 이 exact button contract를 우선하도록 줄였습니다.
+  - 단, fresh full rerun transcript는 아직 pre-change opener variant를 사용해 working tree와 live child execution 사이에 drift가 남아 있습니다.
+  - 따라서 다음 single blocker는 Canva prompt selector 자체가 아니라 `live child execution drift`입니다.
 - 오라클 shortest-path 전략(현재 SSOT):
   - 남은 검증은 semantic target row(`Sheet1` row 16 / CLI `--row-index 14`)에 대한 `Stage 5 detached run` **1회**만 수행합니다.
   - 그 전에 `python -m runtime_v2.cli --readiness-check`만 확인하고, readiness fail이면 Stage 5를 시작하지 않습니다.
