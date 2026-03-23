@@ -1225,25 +1225,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             [[str(Path(r"D:\tmp\ref1.png").resolve())]],
         )
 
-    def test_attach_canva_ref_images_falls_back_to_file_chooser(self) -> None:
-        class _Chooser:
-            def __init__(self) -> None:
-                self.files: list[str] = []
-
-            def set_files(self, files: list[str]) -> None:
-                self.files = files
-
-        class _ChooserContext:
-            def __init__(self, chooser: _Chooser) -> None:
-                self.value = chooser
-
-            def __enter__(self) -> "_ChooserContext":
-                return self
-
-            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
-                _ = (exc_type, exc, tb)
-                return False
-
+    def test_attach_canva_ref_images_fail_closes_without_file_input(self) -> None:
         class _Locator:
             def count(self) -> int:
                 return 0
@@ -1261,9 +1243,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 self._clicks.append(self._label)
 
         class _Page:
-            def __init__(self, chooser: _Chooser, clicks: list[str]) -> None:
+            def __init__(self, clicks: list[str]) -> None:
                 self.url = "https://www.canva.com/design/foo/edit"
-                self._chooser = chooser
                 self._clicks = clicks
 
             def bring_to_front(self) -> None:
@@ -1277,9 +1258,9 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 _ = exact
                 return _TextLocator(text, self._clicks)
 
-            def expect_file_chooser(self, timeout: int = 5000) -> _ChooserContext:
+            def wait_for_timeout(self, timeout: int) -> None:
                 _ = timeout
-                return _ChooserContext(self._chooser)
+                return None
 
         class _Context:
             def __init__(self, page: _Page) -> None:
@@ -1316,8 +1297,112 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 return False
 
         clicks: list[str] = []
-        chooser = _Chooser()
-        page = _Page(chooser, clicks)
+        page = _Page(clicks)
+        browser = _Browser(_Context(page))
+        playwright_context = _PlaywrightContext(_Playwright(_Chromium(browser)))
+
+        with patch(
+            "playwright.sync_api.sync_playwright", return_value=playwright_context
+        ):
+            with self.assertRaisesRegex(RuntimeError, "NO_FILE_INPUT"):
+                _attach_canva_ref_images_via_playwright(
+                    port=9666,
+                    file_paths=[r"D:\tmp\ref1.png"],
+                )
+
+        self.assertIn("업로드 항목", clicks)
+        self.assertIn("파일 업로드", clicks)
+
+    def test_attach_canva_ref_images_clicks_upload_files_before_input_attach(
+        self,
+    ) -> None:
+        class _Locator:
+            def __init__(self) -> None:
+                self.calls: list[list[str]] = []
+                self._counts = [0, 1]
+
+            def count(self) -> int:
+                if self._counts:
+                    return self._counts.pop(0)
+                return 1
+
+            def nth(self, index: int) -> "_Locator":
+                _ = index
+                return self
+
+            def set_input_files(self, files: list[str]) -> None:
+                self.calls.append(files)
+
+        class _TextLocator:
+            def __init__(self, label: str, clicks: list[str]) -> None:
+                self._label = label
+                self._clicks = clicks
+
+            @property
+            def first(self) -> "_TextLocator":
+                return self
+
+            def click(self) -> None:
+                self._clicks.append(self._label)
+
+        class _Page:
+            def __init__(self, locator: _Locator, clicks: list[str]) -> None:
+                self.url = "https://www.canva.com/design/foo/edit"
+                self._locator = locator
+                self._clicks = clicks
+
+            def bring_to_front(self) -> None:
+                return None
+
+            def locator(self, selector: str) -> _Locator:
+                _ = selector
+                return self._locator
+
+            def get_by_text(self, text: str, exact: bool = False) -> _TextLocator:
+                _ = exact
+                return _TextLocator(text, self._clicks)
+
+            def wait_for_timeout(self, timeout: int) -> None:
+                _ = timeout
+                return None
+
+        class _Context:
+            def __init__(self, page: _Page) -> None:
+                self.pages = [page]
+
+        class _Browser:
+            def __init__(self, context: _Context) -> None:
+                self.contexts = [context]
+
+            def close(self) -> None:
+                return None
+
+        class _Chromium:
+            def __init__(self, browser: _Browser) -> None:
+                self._browser = browser
+
+            def connect_over_cdp(self, endpoint: str) -> _Browser:
+                _ = endpoint
+                return self._browser
+
+        class _Playwright:
+            def __init__(self, chromium: _Chromium) -> None:
+                self.chromium = chromium
+
+        class _PlaywrightContext:
+            def __init__(self, playwright: _Playwright) -> None:
+                self._playwright = playwright
+
+            def __enter__(self) -> _Playwright:
+                return self._playwright
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+                _ = (exc_type, exc, tb)
+                return False
+
+        clicks: list[str] = []
+        locator = _Locator()
+        page = _Page(locator, clicks)
         browser = _Browser(_Context(page))
         playwright_context = _PlaywrightContext(_Playwright(_Chromium(browser)))
 
@@ -1330,30 +1415,12 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             )
 
         self.assertIn("업로드 항목", clicks)
-        self.assertIn("업로드 파일", clicks)
-        self.assertEqual(chooser.files, [str(Path(r"D:\tmp\ref1.png").resolve())])
+        self.assertIn("파일 업로드", clicks)
+        self.assertEqual(locator.calls, [[str(Path(r"D:\tmp\ref1.png").resolve())]])
 
-    def test_attach_canva_ref_images_falls_back_when_set_input_files_fails(
+    def test_attach_canva_ref_images_fail_closes_when_set_input_files_fails(
         self,
     ) -> None:
-        class _Chooser:
-            def __init__(self) -> None:
-                self.files: list[str] = []
-
-            def set_files(self, files: list[str]) -> None:
-                self.files = files
-
-        class _ChooserContext:
-            def __init__(self, chooser: _Chooser) -> None:
-                self.value = chooser
-
-            def __enter__(self) -> "_ChooserContext":
-                return self
-
-            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
-                _ = (exc_type, exc, tb)
-                return False
-
         class _Locator:
             def count(self) -> int:
                 return 1
@@ -1379,9 +1446,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 self._clicks.append(self._label)
 
         class _Page:
-            def __init__(self, chooser: _Chooser, clicks: list[str]) -> None:
+            def __init__(self, clicks: list[str]) -> None:
                 self.url = "https://www.canva.com/design/foo/edit"
-                self._chooser = chooser
                 self._clicks = clicks
 
             def bring_to_front(self) -> None:
@@ -1395,9 +1461,9 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 _ = exact
                 return _TextLocator(text, self._clicks)
 
-            def expect_file_chooser(self, timeout: int = 5000) -> _ChooserContext:
+            def wait_for_timeout(self, timeout: int) -> None:
                 _ = timeout
-                return _ChooserContext(self._chooser)
+                return None
 
         class _Context:
             def __init__(self, page: _Page) -> None:
@@ -1434,21 +1500,21 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 return False
 
         clicks: list[str] = []
-        chooser = _Chooser()
-        page = _Page(chooser, clicks)
+        page = _Page(clicks)
         browser = _Browser(_Context(page))
         playwright_context = _PlaywrightContext(_Playwright(_Chromium(browser)))
 
         with patch(
             "playwright.sync_api.sync_playwright", return_value=playwright_context
         ):
-            _attach_canva_ref_images_via_playwright(
-                port=9666,
-                file_paths=[r"D:\tmp\ref1.png"],
-            )
+            with self.assertRaisesRegex(RuntimeError, "NO_FILE_INPUT"):
+                _attach_canva_ref_images_via_playwright(
+                    port=9666,
+                    file_paths=[r"D:\tmp\ref1.png"],
+                )
 
-        self.assertIn("업로드 파일", clicks)
-        self.assertEqual(chooser.files, [str(Path(r"D:\tmp\ref1.png").resolve())])
+        self.assertIn("업로드 항목", clicks)
+        self.assertNotIn("업로드 파일", clicks)
 
     def test_stage2_adapter_child_fails_closed_without_internal_recovery(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -3269,6 +3335,16 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             any("cleanup_deleted_created_page" in script for script in scripts)
         )
         self.assertTrue(any("placed_uploaded_image" in script for script in scripts))
+        self.assertTrue(any("attempt < 3" in script for script in scripts))
+        self.assertTrue(any("key:'Escape'" in script for script in scripts))
+        self.assertTrue(any("Date.now() + 4000" in script for script in scripts))
+        self.assertTrue(any("await wait(800)" in script for script in scripts))
+        self.assertTrue(
+            any("accepted_background_permission" in script for script in scripts)
+        )
+        self.assertTrue(
+            any("권한이 업데이트되었습니다" in script for script in scripts)
+        )
         self.assertEqual(uploads, [])
 
     def test_stage2_adapter_child_records_specific_canva_truth_gate_failure(

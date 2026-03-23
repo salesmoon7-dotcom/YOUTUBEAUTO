@@ -2063,9 +2063,13 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
             {
                 "type": "eval",
-                "script": '(() => { const selectors = [\'textarea[placeholder*="예시"]\',\'textarea[placeholder*="Describe"]\',\'textarea[placeholder*="prompt"]\',\'textarea[aria-label*="프롬프트"]\',\'textarea[aria-label*="Prompt"]\',\'div[role="dialog"] textarea\',\'div[contenteditable="true"][role="textbox"]\',\'div[contenteditable="true"][data-lexical-editor="true"]\',\'[role="textbox"][contenteditable="true"]\',\'textarea\']; const promptText = '
+                "script": "(() => { const nodes = Array.from(document.querySelectorAll('div,section,[role=dialog]')); const modal = nodes.find(node => { const text = (node.innerText || node.textContent || '').trim(); return text.includes('권한이 업데이트되었습니다') && text.includes('수락'); }); if (!(modal instanceof HTMLElement)) return JSON.stringify({ok:true, step:'background_permission_optional'}); const buttons = Array.from(modal.querySelectorAll('button,[role=button]')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text === '수락' || text.includes('Accept') || text.includes('허용') || text.includes('Allow') || text.includes('계속') || text.includes('Continue'); }); if (!(btn instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_BACKGROUND_PERMISSION_ACCEPT'}); btn.click(); return JSON.stringify({ok:true, step:'accepted_background_permission'}); })()",
+            },
+            {
+                "type": "eval",
+                "script": "(async () => { const selectors = ['textarea[placeholder*=\"예시\"]','textarea[placeholder*=\"Describe\"]','textarea[placeholder*=\"prompt\"]','textarea[aria-label*=\"프롬프트\"]','textarea[aria-label*=\"Prompt\"]','div[role=\"dialog\"] textarea','div[contenteditable=\"true\"][role=\"textbox\"]','div[contenteditable=\"true\"][data-lexical-editor=\"true\"]','[role=\"textbox\"][contenteditable=\"true\"]','textarea']; const labels = ['배경 생성', 'Create background', 'Background generator', 'Magic Background', 'Product Background']; const promptText = "
                 + json.dumps(bg_prompt, ensure_ascii=True)
-                + "; for (const selector of selectors) { const input = document.querySelector(selector); if (!(input instanceof HTMLElement)) continue; input.focus(); if ('value' in input) { const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set; if (setter && input instanceof HTMLTextAreaElement) { setter.call(input, promptText); } else { input.value = promptText; } input.dispatchEvent(new Event('input', {bubbles:true})); input.dispatchEvent(new Event('change', {bubbles:true})); return JSON.stringify({ok:true, step:'filled_background_prompt'}); } if (input.isContentEditable) { input.textContent = promptText; input.dispatchEvent(new InputEvent('input', {bubbles:true, data: promptText, inputType:'insertText'})); return JSON.stringify({ok:true, step:'filled_background_prompt'}); } } return JSON.stringify({ok:false,error:'NO_BACKGROUND_PROMPT_INPUT'}); })()",
+                + "; const findPromptInput = () => { for (const selector of selectors) { const input = document.querySelector(selector); if (!(input instanceof HTMLElement)) continue; if (!(input.offsetWidth > 0 || input.offsetHeight > 0)) continue; return input; } return null; }; const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms)); for (let attempt = 0; attempt < 3; attempt += 1) { const deadline = Date.now() + 4000; while (Date.now() < deadline) { const input = findPromptInput(); if (input instanceof HTMLElement) { input.focus(); if ('value' in input) { const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set; if (setter && input instanceof HTMLTextAreaElement) { setter.call(input, ''); setter.call(input, promptText); } else { input.value = promptText; } input.dispatchEvent(new Event('input', {bubbles:true})); input.dispatchEvent(new Event('change', {bubbles:true})); return JSON.stringify({ok:true, step:'filled_background_prompt', attempt: attempt + 1}); } if (input.isContentEditable) { input.textContent = promptText; input.dispatchEvent(new InputEvent('input', {bubbles:true, data: promptText, inputType:'insertText'})); return JSON.stringify({ok:true, step:'filled_background_prompt', attempt: attempt + 1}); } } await wait(200); } document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', code:'Escape', keyCode:27, which:27, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'Escape', code:'Escape', keyCode:27, which:27, bubbles:true})); const buttons = Array.from(document.querySelectorAll('button,[role=button],div')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text.includes(label)); }); if (btn instanceof HTMLElement) { btn.click(); } await wait(800); } return JSON.stringify({ok:false,error:'NO_BACKGROUND_PROMPT_INPUT'}); })()",
             },
             {
                 "type": "eval",
@@ -2760,7 +2764,6 @@ def _attach_geminigen_ref_images_via_playwright(
 def _attach_canva_ref_images_via_playwright(
     *, port: int, file_paths: list[str]
 ) -> None:
-    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as playwright:
@@ -2784,31 +2787,21 @@ def _attach_canva_ref_images_via_playwright(
                 except Exception:
                     continue
             locator = page.locator("input[type=file]")
-            if locator.count() > 0:
-                try:
-                    locator.nth(0).set_input_files([str(Path(file_paths[0]).resolve())])
-                    return
-                except Exception:
-                    pass
+            if locator.count() <= 0:
+                for label in ("파일 업로드", "Upload files"):
+                    try:
+                        page.get_by_text(label, exact=False).first.click()
+                        page.wait_for_timeout(1000)
+                        break
+                    except Exception:
+                        continue
+                locator = page.locator("input[type=file]")
+                if locator.count() <= 0:
+                    raise RuntimeError("NO_FILE_INPUT")
             try:
-                with page.expect_file_chooser(timeout=5000) as chooser_info:
-                    for label in (
-                        "업로드 파일",
-                        "Upload files",
-                        "파일 업로드",
-                        "디바이스에서 업로드",
-                    ):
-                        try:
-                            page.get_by_text(label, exact=False).first.click()
-                            break
-                        except Exception:
-                            continue
-                    else:
-                        raise RuntimeError("NO_FILE_INPUT")
-            except (PlaywrightTimeoutError, RuntimeError):
-                raise RuntimeError("NO_FILE_INPUT")
-            chooser = chooser_info.value
-            chooser.set_files([str(Path(file_paths[0]).resolve())])
+                locator.nth(0).set_input_files([str(Path(file_paths[0]).resolve())])
+            except Exception as exc:
+                raise RuntimeError("NO_FILE_INPUT") from exc
         finally:
             browser.close()
 

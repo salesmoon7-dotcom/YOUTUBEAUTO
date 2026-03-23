@@ -62,6 +62,11 @@
   - fresh `real_canva_boundary.job.json`와 direct `build_stage2_jobs(video_plan)` 출력 모두 `ref_img=D:\YOUTUBEAUTO_RUNTIME\runtime_state\artifacts\chatgpt\chatgpt-sheet1-15\assets\images\ref-1-6f266f6f-e8c4-4073-93e6-de1c8c4aadf2.png`까지는 확인됐습니다.
   - fresh real Canva boundary rerun은 더 이상 `REF_IMAGE_UPLOAD_FAILED`가 아니라 `AGENT_BROWSER_COMMAND_FAILED`로 닫히며, `attach_evidence.json`에는 실제 요청/해결 경로가 유지됩니다.
   - 따라서 다음 single blocker는 `ref source`나 `upload failure`가 아니라 `live Canva adapter action`입니다.
+- 2026-03-24 canva live app-contract blocker:
+  - Canva upload 경로는 레거시처럼 `업로드 탭 -> 파일 업로드 버튼 -> input[type=file]`로 다시 맞췄고 native chooser fallback은 제거했습니다.
+  - Canva background prompt 경로도 레거시처럼 `4s polling x 3 + ESC/reclick`로 강화했고, `Product Background` 권한 갱신 모달의 `수락` 액션을 scoped step으로 추가했습니다.
+  - fresh real Canva boundary rerun은 여전히 `AGENT_BROWSER_COMMAND_FAILED`이며 latest transcript는 `NO_BACKGROUND_PROMPT_INPUT`로 닫힙니다.
+  - live DOM probing 기준 `수락` 이후에도 prompt textarea/contenteditable이 노출되지 않아, 현재 next single blocker는 runtime 코드가 아니라 `live Canva app-contract`입니다.
 - 오라클 shortest-path 전략(현재 SSOT):
   - 남은 검증은 semantic target row(`Sheet1` row 16 / CLI `--row-index 14`)에 대한 `Stage 5 detached run` **1회**만 수행합니다.
   - 그 전에 `python -m runtime_v2.cli --readiness-check`만 확인하고, readiness fail이면 Stage 5를 시작하지 않습니다.
