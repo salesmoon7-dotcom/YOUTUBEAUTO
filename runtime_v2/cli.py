@@ -2018,7 +2018,10 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         actions = [
             {
                 "type": "eval",
-                "script": "(() => { const count = Array.from(document.querySelectorAll('div,button,[role=button],[aria-label*=\"페이지 설정\"],button[aria-label*=\"Delete page\"],button[aria-label*=\"페이지 삭제\"]')).filter(node => node instanceof HTMLElement && (node.offsetWidth > 0 || node.offsetHeight > 0)).map(node => (node.textContent || '').trim()).filter(text => text.includes('페이지') && text.includes('페이지 제목 추가')).length; window.__runtime_v2_canva_page_count_before = count; return JSON.stringify({ok:true, step:'page_count_before', count}); })()",
+                "script": _canva_page_count_script("page_count_before").replace(
+                    "return JSON.stringify({ok:true, step:'page_count_before', count: totalPages});",
+                    "window.__runtime_v2_canva_page_count_before = totalPages; return JSON.stringify({ok:true, step:'page_count_before', count: totalPages});",
+                ),
             },
             {
                 "type": "eval",
@@ -2038,7 +2041,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
             {
                 "type": "eval",
-                "script": "(() => { const before = Number(window.__runtime_v2_canva_page_count_before || 0); const countPages = () => Array.from(document.querySelectorAll('div,button,[role=button],[aria-label*=\"페이지 설정\"],button[aria-label*=\"Delete page\"],button[aria-label*=\"페이지 삭제\"]')).filter(node => node instanceof HTMLElement && (node.offsetWidth > 0 || node.offsetHeight > 0)).map(node => (node.textContent || '').trim()).filter(text => text.includes('페이지') && text.includes('페이지 제목 추가')).length; const count = countPages(); if (window.__runtime_v2_canva_duplicated && before > 0 && count <= before) { const labels=['페이지 추가','Add a new page']; const buttons = Array.from(document.querySelectorAll('button')); const addBtn = buttons.find(item => { const text=((item.innerText||item.textContent||'')+' '+(item.getAttribute('aria-label')||'')).trim(); return labels.some(label => text.includes(label)); }); if (addBtn instanceof HTMLElement) { addBtn.click(); document.dispatchEvent(new KeyboardEvent('keydown', {key:'v', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'v', ctrlKey:true, bubbles:true})); const fallbackCount = countPages(); return JSON.stringify({ok:true, step:'page_count_after', count:fallbackCount, fallback_clicked_add_page:true, fallback_pasted_template:true}); } } return JSON.stringify({ok:true, step:'page_count_after', count}); })()",
+                "script": "(() => { const before = Number(window.__runtime_v2_canva_page_count_before || 0); const body = document.body && document.body.innerText ? document.body.innerText : ''; const match = body.match(/페이지\\s*(\\d+)\\s*\\/\\s*(\\d+)/) || body.match(/Page\\s*(\\d+)\\s*\\/\\s*(\\d+)/i); const fallback = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; const countPages = () => { const currentBody = document.body && document.body.innerText ? document.body.innerText : ''; const currentMatch = currentBody.match(/페이지\\s*(\\d+)\\s*\\/\\s*(\\d+)/) || currentBody.match(/Page\\s*(\\d+)\\s*\\/\\s*(\\d+)/i); const currentFallback = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; return currentMatch ? Number(currentMatch[2]) : currentFallback; }; const count = match ? Number(match[2]) : fallback; if (window.__runtime_v2_canva_duplicated && before > 0 && count <= before) { const labels=['페이지 추가','Add a new page']; const buttons = Array.from(document.querySelectorAll('button')); const addBtn = buttons.find(item => { const text=((item.innerText||item.textContent||'')+' '+(item.getAttribute('aria-label')||'')).trim(); return labels.some(label => text.includes(label)); }); if (addBtn instanceof HTMLElement) { addBtn.click(); document.dispatchEvent(new KeyboardEvent('keydown', {key:'v', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'v', ctrlKey:true, bubbles:true})); const fallbackCount = countPages(); return JSON.stringify({ok:true, step:'page_count_after', count:fallbackCount, fallback_clicked_add_page:true, fallback_pasted_template:true}); } } return JSON.stringify({ok:true, step:'page_count_after', count}); })()",
             },
             {
                 "type": "eval",
@@ -2807,6 +2810,18 @@ def _resolve_stage2_ref_image_paths(
             raise RuntimeError("REF_IMAGE_UPLOAD_FAILED")
         resolved.append(str(candidate))
     return requested, resolved
+
+
+def _canva_page_count_script(step_name: str) -> str:
+    return (
+        "(() => { "
+        "const body = document.body && document.body.innerText ? document.body.innerText : ''; "
+        "const match = body.match(/페이지\\s*(\\d+)\\s*\\/\\s*(\\d+)/) || body.match(/Page\\s*(\\d+)\\s*\\/\\s*(\\d+)/i); "
+        'const fallback = document.querySelectorAll(\'button[aria-label="페이지 삭제"], button[aria-label="Delete page"]\').length; '
+        "const totalPages = match ? Number(match[2]) : fallback; "
+        f"return JSON.stringify({{ok:true, step:'{step_name}', count: totalPages}}); "
+        "})()"
+    )
 
 
 def _run_qwen3_adapter_child(args: CliArgs) -> int:

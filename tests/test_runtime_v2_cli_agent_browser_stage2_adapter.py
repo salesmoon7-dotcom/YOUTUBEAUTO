@@ -14,6 +14,7 @@ from runtime_v2.cli import (
     _attach_genspark_ref_images_via_filechooser,
     _attach_seaart_ref_images_via_playwright,
     _attach_stage2_ref_images,
+    _canva_page_count_script,
     _resolve_stage2_ref_image_paths,
     _run_agent_browser_eval,
     _run_agent_browser_stage2_adapter_child,
@@ -1709,6 +1710,12 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         )
         self.assertIn("fallback_clicked_add_page", str(page_count_script["script"]))
         self.assertIn("fallback_pasted_template", str(page_count_script["script"]))
+
+    def test_canva_page_count_uses_footer_total_pages(self) -> None:
+        script = _canva_page_count_script("page_count_before")
+        self.assertIn("페이지\\s*(\\d+)\\s*\\/\\s*(\\d+)", script)
+        self.assertIn("Page\\s*(\\d+)\\s*\\/\\s*(\\d+)", script)
+        self.assertIn("totalPages", script)
 
     def test_stage2_adapter_child_accepts_canva_export_wording(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
