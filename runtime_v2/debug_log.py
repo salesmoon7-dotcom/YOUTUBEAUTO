@@ -84,6 +84,11 @@ def summarize_runtime_result(result: Mapping[str, object]) -> dict[str, object]:
             payload["final_artifact_path"] = str(
                 completion.get("final_artifact_path", "")
             )
+        worker_status = payload["worker_status"]
+        if worker_status in {"failed", "blocked"}:
+            payload["status"] = str(worker_status)
+            if raw_error_code.strip():
+                payload["code"] = raw_error_code
     else:
         payload["stage"] = str(resolved.get("stage", result.get("stage", "")))
         raw_error_code = str(

@@ -46,6 +46,30 @@ class RuntimeV2DebugLogTests(unittest.TestCase):
         self.assertEqual(summary["error_code"], "-")
         self.assertEqual(summary["raw_error_code"], "-")
 
+    def test_summarize_runtime_result_prefers_failed_worker_status_over_top_level_ok(
+        self,
+    ) -> None:
+        summary = summarize_runtime_result(
+            {
+                "status": "ok",
+                "code": "OK",
+                "job": {
+                    "job_id": "job-1",
+                    "workload": "canva",
+                    "status": "queued",
+                },
+                "worker_result": {
+                    "status": "failed",
+                    "stage": "canva_adapter",
+                    "error_code": "BROWSER_UNHEALTHY",
+                    "completion": {"state": "failed", "final_output": False},
+                },
+            }
+        )
+
+        self.assertEqual(summary["status"], "failed")
+        self.assertEqual(summary["code"], "BROWSER_UNHEALTHY")
+
     def test_summarize_runtime_result_exposes_raw_error_code_from_resolved_result(
         self,
     ) -> None:

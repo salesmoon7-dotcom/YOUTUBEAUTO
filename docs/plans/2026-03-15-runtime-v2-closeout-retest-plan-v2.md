@@ -292,6 +292,22 @@ Rules for the next batch:
 - no new browser-plane work unless Canva evidence directly proves the browser plane regressed again
 - stop once `clone_ok` is either proven true with a truthful thumbnail artifact or replaced by a more precise single blocker
 
+### Phase 5C. Canva content-layout-only batch
+
+Current boundary conclusion:
+- latest real-source Canva runs already pass upload/text/download helper stages.
+- the remaining issue is not tool flow but `content layout / visual composition` quality of the exported thumbnail.
+
+Therefore the next batch is narrowed again:
+- treat Canva as a single `content-layout-only` task.
+- do not reopen browser-plane, upload, page-picker, or semantic-row scope unless new evidence directly proves regression.
+
+Success criteria for the batch:
+- exported `THUMB.png` must visibly reflect the intended title/topic composition, not just a placeholder-style background.
+
+Failure criteria for the batch:
+- if the export is still placeholder-like, record the remaining blocker as a layout/composition contract, not as generic Canva execution failure.
+
 ### Time limits and stop conditions
 
 These limits exist to prevent another uncontrolled multi-hour rerun.

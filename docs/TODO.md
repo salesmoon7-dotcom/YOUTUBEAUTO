@@ -47,6 +47,11 @@
   - `canva`는 helper/UI mismatch는 대부분 제거됐지만, latest real-source evidence에서 핵심 품질 문제는 `clone_ok=false`입니다.
   - 즉 남은 next step은 broad rerun이 아니라 `canva template semantics` 단일 배치입니다.
   - 다음 배치에서는 `page duplication actually creates the intended thumbnail page`만 다루고, 그 전까지 `semantic-row` closeout과 multi-service rerun은 금지합니다.
+- 2026-03-21 canva latest stop point:
+  - 최신 real-source transcript 기준으로 `placed_uploaded_image`, `edited_thumbnail_text`, `clicked_download_execute`까지는 실제로 통과합니다.
+  - 따라서 현재 남은 문제는 helper/UI mismatch가 아니라 `content layout / visual composition`입니다.
+  - 다음 배치는 `canva content layout only`로 고정합니다.
+  - 다음 배치 금지사항: 브라우저 재시작/업로드/다운로드 selector 재수정, semantic-row rerun, multi-service 작업 재개.
 - 오라클 shortest-path 전략(현재 SSOT):
   - 남은 검증은 semantic target row(`Sheet1` row 16 / CLI `--row-index 14`)에 대한 `Stage 5 detached run` **1회**만 수행합니다.
   - 그 전에 `python -m runtime_v2.cli --readiness-check`만 확인하고, readiness fail이면 Stage 5를 시작하지 않습니다.

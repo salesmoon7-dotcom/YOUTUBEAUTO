@@ -1894,6 +1894,9 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
     )
     workspace.mkdir(parents=True, exist_ok=True)
     artifact_root = workspace / "agent_browser_adapter_artifacts"
+    attach_evidence = workspace / "attach_evidence.json"
+    if attach_evidence.exists():
+        attach_evidence.unlink()
 
     pre_actions: list[dict[str, object]] = []
     actions: list[dict[str, object]] = []
@@ -2235,10 +2238,13 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             )
             return exit_codes.BROWSER_UNHEALTHY
     ref_upload_error_code = ""
+    ref_images_attach_attempted = False
     if service in {"genspark", "seaart", "canva"} and (
-        ref_img_1 or ref_img_2 or ref_img
+        (service == "canva" and bool(ref_img))
+        or (service != "canva" and bool(ref_img_1 or ref_img_2))
     ):
         try:
+            ref_images_attach_attempted = True
             attach_paths = ref_images_resolved
             if service == "canva" and ref_img:
                 attach_paths = [ref_img]
@@ -2262,7 +2268,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 placeholder_artifact=False,
                 ref_images_requested=ref_images_requested,
                 ref_images_resolved=ref_images_resolved,
-                ref_images_attach_attempted=True,
+                ref_images_attach_attempted=ref_images_attach_attempted,
                 ref_upload_error_code=ref_upload_error_code,
             )
             return exit_codes.BROWSER_UNHEALTHY
@@ -2284,7 +2290,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             placeholder_artifact=False,
             ref_images_requested=ref_images_requested,
             ref_images_resolved=ref_images_resolved,
-            ref_images_attach_attempted=bool(ref_images_requested),
+            ref_images_attach_attempted=ref_images_attach_attempted,
         )
         return exit_codes.BROWSER_UNHEALTHY
     attach_ok = stage2_attach_verify_succeeded(result)
@@ -2299,7 +2305,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             placeholder_artifact=False,
             ref_images_requested=ref_images_requested,
             ref_images_resolved=ref_images_resolved,
-            ref_images_attach_attempted=bool(ref_images_requested),
+            ref_images_attach_attempted=ref_images_attach_attempted,
         )
         return exit_codes.BROWSER_UNHEALTHY
     write_stage2_attach_evidence(
@@ -2312,7 +2318,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         placeholder_artifact=False,
         ref_images_requested=ref_images_requested,
         ref_images_resolved=ref_images_resolved,
-        ref_images_attach_attempted=bool(ref_images_requested),
+        ref_images_attach_attempted=ref_images_attach_attempted,
         ref_upload_error_code=ref_upload_error_code,
     )
     if service == "canva":
