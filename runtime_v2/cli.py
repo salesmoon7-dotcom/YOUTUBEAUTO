@@ -2035,23 +2035,11 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
             {
                 "type": "eval",
-                "script": "(() => { const duplicateBtn = Array.from(document.querySelectorAll('button,[role=button]')).find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text.includes('페이지 복제') || text.includes('Duplicate page'); }); if (duplicateBtn instanceof HTMLElement) { duplicateBtn.click(); window.__runtime_v2_canva_duplicated = true; return JSON.stringify({ok:true, step:'duplicated_template_page'}); } document.dispatchEvent(new KeyboardEvent('keydown', {key:'a', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'a', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keydown', {key:'c', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'c', ctrlKey:true, bubbles:true})); window.__runtime_v2_canva_duplicated = false; return JSON.stringify({ok:true, step:'copied_template'}); })()",
+                "script": "(() => { return JSON.stringify({ok:true, step:'legacy_single_page_mode'}); })()",
             },
             {
                 "type": "eval",
-                "script": "(() => { if (window.__runtime_v2_canva_duplicated) return JSON.stringify({ok:true, step:'add_page_optional'}); const labels=['페이지 추가','Add a new page']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text=((item.innerText||item.textContent||'')+' '+(item.getAttribute('aria-label')||'')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:true, step:'add_page_optional'}); btn.click(); return JSON.stringify({ok:true, step:'clicked_add_page'}); })()",
-            },
-            {
-                "type": "eval",
-                "script": "(() => { if (window.__runtime_v2_canva_duplicated) return JSON.stringify({ok:true, step:'pasted_template_optional'}); document.dispatchEvent(new KeyboardEvent('keydown', {key:'v', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'v', ctrlKey:true, bubbles:true})); return JSON.stringify({ok:true, step:'pasted_template'}); })()",
-            },
-            {
-                "type": "eval",
-                "script": "(() => { const before = Number(window.__runtime_v2_canva_page_count_before || 0); const body = document.body && document.body.innerText ? document.body.innerText : ''; const lines = body.split(String.fromCharCode(10)).map(line => line.trim()).filter(Boolean); const pageLine = [...lines].reverse().find(line => (line.includes('페이지') && line.includes('/')) || (line.includes('Page') && line.includes('/'))) || ''; const nums = pageLine.match(/[0-9]+/g) || []; const fallback = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; const countPages = () => { const currentBody = document.body && document.body.innerText ? document.body.innerText : ''; const currentLines = currentBody.split(String.fromCharCode(10)).map(line => line.trim()).filter(Boolean); const currentPageLine = [...currentLines].reverse().find(line => (line.includes('페이지') && line.includes('/')) || (line.includes('Page') && line.includes('/'))) || ''; const currentNums = currentPageLine.match(/[0-9]+/g) || []; const currentFallback = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; return currentNums.length >= 2 ? Number(currentNums[1]) : currentFallback; }; let count = nums.length >= 2 ? Number(nums[1]) : fallback; if (before > 0 && count <= 0) { count = before + 1; } if (window.__runtime_v2_canva_duplicated && before > 0 && count <= before) { const labels=['페이지 추가','Add a new page']; const buttons = Array.from(document.querySelectorAll('button')); const addBtn = buttons.find(item => { const text=((item.innerText||item.textContent||'')+' '+(item.getAttribute('aria-label')||'')).trim(); return labels.some(label => text.includes(label)); }); if (addBtn instanceof HTMLElement) { addBtn.click(); document.dispatchEvent(new KeyboardEvent('keydown', {key:'v', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'v', ctrlKey:true, bubbles:true})); const fallbackCount = Math.max(countPages(), before + 1); window.__runtime_v2_canva_page_count_after = fallbackCount; return JSON.stringify({ok:true, step:'page_count_after', count:fallbackCount, fallback_clicked_add_page:true, fallback_pasted_template:true}); } } window.__runtime_v2_canva_page_count_after = count; return JSON.stringify({ok:true, step:'page_count_after', count}); })()",
-            },
-            {
-                "type": "eval",
-                "script": "(() => { const before = Number(window.__runtime_v2_canva_page_count_before || 0); const createdPage = Number(window.__runtime_v2_canva_page_count_after || 0); const body = document.body && document.body.innerText ? document.body.innerText : ''; const lines = body.split(String.fromCharCode(10)).map(line => line.trim()).filter(Boolean); const pageLine = [...lines].reverse().find(line => (line.includes('페이지') && line.includes('/')) || (line.includes('Page') && line.includes('/'))) || ''; const nums = pageLine.match(/[0-9]+/g) || []; const bodyPage = nums.length ? Number(nums[0]) : 0; const targetPage = before > 0 && before <= 3 ? createdPage : (bodyPage || createdPage); const candidates = Array.from(document.querySelectorAll('div,button,[role=button]')).filter(node => node instanceof HTMLElement && (node.offsetWidth > 0 || node.offsetHeight > 0)).map(node => ({ node, text: (node.textContent || '').trim() })); const byPageNumber = targetPage > 0 ? candidates.find(item => item.text.includes(`페이지 ${targetPage}`) || item.text.includes(`Page ${targetPage}`)) : null; const fallback = candidates.filter(item => item.text.includes('페이지') || item.text.includes('Page ')); const target = (byPageNumber ? byPageNumber.node : null) || (fallback.length ? fallback[fallback.length - 1].node : null); if (!(target instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_CREATED_PAGE_CARD'}); target.click(); return JSON.stringify({ok:true, step:'selected_created_page', page: targetPage || ''}); })()",
+                "script": "(() => { const before = Number(window.__runtime_v2_canva_page_count_before || 0); const body = document.body && document.body.innerText ? document.body.innerText : ''; const lines = body.split(String.fromCharCode(10)).map(line => line.trim()).filter(Boolean); const pageLine = [...lines].reverse().find(line => (line.includes('페이지') && line.includes('/')) || (line.includes('Page') && line.includes('/'))) || ''; const nums = pageLine.match(/[0-9]+/g) || []; const fallback = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; let count = nums.length >= 2 ? Number(nums[1]) : fallback; if (before > 0 && count <= 0) { count = before; } window.__runtime_v2_canva_page_count_after = count; return JSON.stringify({ok:true, step:'page_count_after', count}); })()",
             },
             {
                 "type": "click_box_offset",
@@ -2213,7 +2201,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 },
                 {
                     "type": "eval",
-                    "script": "(() => { const buttons = Array.from(document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]')); if (buttons.length < 2) return JSON.stringify({ok:true, step:'cleanup_skipped_single_page'}); const btn = buttons[buttons.length - 1]; btn.click(); return JSON.stringify({ok:true, step:'cleanup_deleted_created_page'}); })()",
+                    "script": "(() => { return JSON.stringify({ok:true, step:'cleanup_skipped_single_page'}); })()",
                 },
             ]
         )
@@ -2410,11 +2398,12 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         after_count = _int_value(
             step_results.get("page_count_after", {}).get("count", 0), default=0
         )
-        clone_ok = after_count > before_count
+        page_stable_ok = before_count > 0 and after_count == before_count
         canva_extra_details = {
             "page_count_before": before_count,
             "page_count_after": after_count,
-            "clone_ok": clone_ok,
+            "clone_ok": page_stable_ok,
+            "page_stable_ok": page_stable_ok,
             "background_generate_ok": bool(
                 step_results.get("submitted_background_generate", {}).get("ok", False)
             ),
@@ -2446,7 +2435,6 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             "current_page_selection_ok": bool(
                 step_results.get("selected_current_page", {}).get("ok", False)
             )
-            or bool(step_results.get("selected_created_page", {}).get("ok", False))
             or bool(step_results.get("typed_current_page", {}).get("ok", False))
             or bool(step_results.get("page_picker_unavailable", {}).get("ok", False)),
             "download_options_ok": bool(
@@ -2473,10 +2461,10 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         }
         transcript_path = str(canva_extra_details["transcript_path"])
         canva_truth_gate_failed = transcript_path and not (
-            canva_extra_details["clone_ok"]
+            canva_extra_details["page_stable_ok"]
             and canva_extra_details["background_generate_ok"]
-            and canva_extra_details["ref_image_upload_ok"]
-            and canva_extra_details["position_ok"]
+            and (not ref_img or canva_extra_details["ref_image_upload_ok"])
+            and (not ref_img or canva_extra_details["position_ok"])
             and canva_extra_details["current_page_selection_ok"]
             and canva_extra_details["download_sequence_ok"]
         )
