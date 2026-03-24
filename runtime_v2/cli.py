@@ -2104,6 +2104,16 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             actions.extend(
                 [
                     {
+                        "type": "click",
+                        "selector": 'xpath=(//*[@role="button" and @aria-label="'
+                        + ref_img_name.replace('"', '\\"')
+                        + '"])[1]',
+                    },
+                    {
+                        "type": "wait",
+                        "target": "1200",
+                    },
+                    {
                         "type": "drag_box_to_box",
                         "source_selector": 'xpath=(//*[@role="button" and @aria-label="'
                         + ref_img_name.replace('"', '\\"')
@@ -2111,6 +2121,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                         "dest_selector": '[aria-label="캔버스 진입점"]',
                         "dest_x_ratio": 0.5,
                         "dest_y_ratio": 0.15,
+                        "steps": 20,
                         "step": "placed_uploaded_image",
                     },
                     {

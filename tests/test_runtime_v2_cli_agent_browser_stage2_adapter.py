@@ -3341,7 +3341,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         click_selector_actions = [
             action for action in captured_actions if action.get("type") == "click"
         ]
-        self.assertEqual(len(click_selector_actions), 5)
+        self.assertEqual(len(click_selector_actions), 6)
         self.assertEqual(
             click_selector_actions[0].get("selector"),
             'xpath=(//button[@role="tab" and contains(normalize-space(.),"Product Background")])[1]',
@@ -3371,6 +3371,13 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             any(
                 action.get("selector")
                 == 'xpath=(//button[@role="menuitem" and (normalize-space(.)="다운로드" or normalize-space(.)="Download")])[1]'
+                for action in click_selector_actions
+            )
+        )
+        self.assertTrue(
+            any(
+                action.get("selector")
+                == 'xpath=(//*[@role="button" and @aria-label="ref.png"])[1]'
                 for action in click_selector_actions
             )
         )
