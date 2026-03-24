@@ -72,7 +72,8 @@ def stalled_workloads(path: Path, *, now_ts: float, timeout_sec: int) -> list[st
     registry = load_worker_registry(path)
     stalled: list[str] = []
     for workload, entry in registry.items():
-        if str(entry.get("state", "")).strip().lower() != "running":
+        state = str(entry.get("state", "")).strip().lower()
+        if state not in {"running", "busy"}:
             continue
         if has_progress_stall(entry, now_ts=now_ts, timeout_sec=timeout_sec):
             stalled.append(workload)
