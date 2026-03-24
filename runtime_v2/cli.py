@@ -2095,6 +2095,10 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 "script": "(async () => { const before = new Set(Array.isArray(window.__runtime_v2_canva_generated_before) ? window.__runtime_v2_canva_generated_before : []); const isRealGeneratedKey = (key) => { if (!key) return false; if (key.includes('static.canva.com')) return false; if (key.includes('.svg')) return false; return key.includes('media.canva.com') || key.startsWith('blob:') || key.startsWith('data:image'); }; const candidateKey = (node) => { if (!(node instanceof HTMLElement)) return ''; if (!(node.offsetWidth > 30 || node.offsetHeight > 30)) return ''; const style = window.getComputedStyle(node); const backgroundImage = style.backgroundImage || ''; const src = node instanceof HTMLImageElement ? (node.currentSrc || node.src || '') : ''; const key = src || backgroundImage; return isRealGeneratedKey(key) ? key : ''; }; const deadline = Date.now() + 20000; while (Date.now() < deadline) { const candidates = Array.from(document.querySelectorAll('img,[role=img],div')); for (const node of candidates) { const key = candidateKey(node); if (!key || before.has(key)) continue; node.click(); await new Promise(resolve => setTimeout(resolve, 1500)); return JSON.stringify({ok:true, step:'selected_generated_background', key}); } await new Promise(resolve => setTimeout(resolve, 1000)); } return JSON.stringify({ok:true, step:'background_generate_result_optional'}); })()",
             },
             {
+                "type": "wait",
+                "target": "2000",
+            },
+            {
                 "type": "eval",
                 "script": "(() => { const labels = ['업로드 항목', '업로드', 'Uploads']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:false,error:'NO_UPLOAD_TAB'}); btn.click(); return JSON.stringify({ok:true, step:'opened_upload_tab'}); })()",
             },

@@ -78,7 +78,7 @@
   - 남은 single blocker는 업로드 이미지/배경 합성 품질뿐입니다. 현재 crop은 텍스트는 맞지만 배경이 흰색이고 이미지가 보이지 않습니다.
 - 2026-03-25 canva composition closeout:
   - low-page duplicate-page flow 기준으로 latest real Canva boundary는 `status=ok`, `final_output=true`까지 다시 수렴했습니다.
-  - raw CDP canvas crop과 최종 service artifact 모두 요청 텍스트와 인물 이미지를 실제로 보여 줍니다.
+  - raw CDP canvas crop과 최종 service artifact 모두 요청 텍스트, 인물 이미지, 추상 회청색 배경을 실제로 보여 줍니다.
   - 현재 남은 `text_edit_ok=false`는 latest live evidence와 비교했을 때 false negative로 정리하고, 본 배치는 Canva completion stop point로 닫습니다.
 - 2026-03-24 canva exact prompt button contract:
   - live Playwright probing에서 generic `Product Background`/text click이 아니라 `button[aria-label='배경 생성']`을 정확히 눌렀을 때만 visible prompt textarea(`placeholder='예: 열대 섬의 일몰, 수채화 스타일'`)가 나타나는 것을 확인했습니다.
