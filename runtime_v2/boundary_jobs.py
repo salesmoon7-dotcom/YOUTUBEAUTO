@@ -42,6 +42,15 @@ def _artifact_root_from_path(path: str | Path) -> Path:
     raise ValueError("missing_artifact_root_ancestor")
 
 
+def _select_boundary_voice_texts(
+    voice_texts: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    for entry in voice_texts:
+        if str(entry.get("col", "")).strip() == "#01":
+            return [entry]
+    return [voice_texts[0]]
+
+
 def build_qwen_boundary_contract(
     *, stage1_handoff_path: str | Path, model_name: str = "voice-model-a"
 ) -> dict[str, object]:
@@ -53,10 +62,6 @@ def build_qwen_boundary_contract(
     if not isinstance(raw_voice_texts, list) or not raw_voice_texts:
         raise ValueError("missing_voice_texts")
     artifact_root = _artifact_root_from_path(stage1_handoff_path)
-    job_id = f"qwen3-{run_id or 'boundary'}"
-    service_artifact_path = (
-        artifact_root / "qwen3_tts" / job_id / "speech.flac"
-    ).resolve()
     voice_texts: list[dict[str, object]] = []
     for entry in cast(list[object], raw_voice_texts):
         item = _mapping(entry)
@@ -75,6 +80,13 @@ def build_qwen_boundary_contract(
         )
     if not voice_texts:
         raise ValueError("missing_voice_texts")
+    boundary_voice_texts = _select_boundary_voice_texts(voice_texts)
+    boundary_suffix = run_id or row_ref or "boundary"
+    boundary_suffix = boundary_suffix.replace("!", "-").replace(":", "-")
+    job_id = f"qwen3-boundary-{boundary_suffix}"
+    service_artifact_path = (
+        artifact_root / "qwen3_tts" / job_id / "speech.flac"
+    ).resolve()
     return build_explicit_job_contract(
         job_id=job_id,
         workload="qwen3_tts",
@@ -83,7 +95,7 @@ def build_qwen_boundary_contract(
             "run_id": run_id,
             "row_ref": row_ref,
             "topic": topic,
-            "voice_texts": voice_texts,
+            "voice_texts": boundary_voice_texts,
             "model_name": model_name,
             "service_artifact_path": str(service_artifact_path),
             "chain_depth": 0,
