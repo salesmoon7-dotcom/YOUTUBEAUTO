@@ -2047,19 +2047,34 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
             {
                 "type": "eval",
-                "script": "(() => { const before = Number(window.__runtime_v2_canva_page_count_before || 0); const body = document.body && document.body.innerText ? document.body.innerText : ''; const match = body.match(/페이지\\s*(\\d+)\\s*\\/\\s*(\\d+)/) || body.match(/Page\\s*(\\d+)\\s*\\/\\s*(\\d+)/i); const fallback = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; const countPages = () => { const currentBody = document.body && document.body.innerText ? document.body.innerText : ''; const currentMatch = currentBody.match(/페이지\\s*(\\d+)\\s*\\/\\s*(\\d+)/) || currentBody.match(/Page\\s*(\\d+)\\s*\\/\\s*(\\d+)/i); const currentFallback = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; return currentMatch ? Number(currentMatch[2]) : currentFallback; }; const count = match ? Number(match[2]) : fallback; if (window.__runtime_v2_canva_duplicated && before > 0 && count <= before) { const labels=['페이지 추가','Add a new page']; const buttons = Array.from(document.querySelectorAll('button')); const addBtn = buttons.find(item => { const text=((item.innerText||item.textContent||'')+' '+(item.getAttribute('aria-label')||'')).trim(); return labels.some(label => text.includes(label)); }); if (addBtn instanceof HTMLElement) { addBtn.click(); document.dispatchEvent(new KeyboardEvent('keydown', {key:'v', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'v', ctrlKey:true, bubbles:true})); const fallbackCount = countPages(); return JSON.stringify({ok:true, step:'page_count_after', count:fallbackCount, fallback_clicked_add_page:true, fallback_pasted_template:true}); } } return JSON.stringify({ok:true, step:'page_count_after', count}); })()",
+                "script": "(() => { const before = Number(window.__runtime_v2_canva_page_count_before || 0); const body = document.body && document.body.innerText ? document.body.innerText : ''; const lines = body.split(String.fromCharCode(10)).map(line => line.trim()).filter(Boolean); const pageLine = [...lines].reverse().find(line => (line.includes('페이지') && line.includes('/')) || (line.includes('Page') && line.includes('/'))) || ''; const nums = pageLine.match(/[0-9]+/g) || []; const fallback = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; const countPages = () => { const currentBody = document.body && document.body.innerText ? document.body.innerText : ''; const currentLines = currentBody.split(String.fromCharCode(10)).map(line => line.trim()).filter(Boolean); const currentPageLine = [...currentLines].reverse().find(line => (line.includes('페이지') && line.includes('/')) || (line.includes('Page') && line.includes('/'))) || ''; const currentNums = currentPageLine.match(/[0-9]+/g) || []; const currentFallback = document.querySelectorAll('button[aria-label=\"페이지 삭제\"], button[aria-label=\"Delete page\"]').length; return currentNums.length >= 2 ? Number(currentNums[1]) : currentFallback; }; let count = nums.length >= 2 ? Number(nums[1]) : fallback; if (before > 0 && count <= 0) { count = before + 1; } if (window.__runtime_v2_canva_duplicated && before > 0 && count <= before) { const labels=['페이지 추가','Add a new page']; const buttons = Array.from(document.querySelectorAll('button')); const addBtn = buttons.find(item => { const text=((item.innerText||item.textContent||'')+' '+(item.getAttribute('aria-label')||'')).trim(); return labels.some(label => text.includes(label)); }); if (addBtn instanceof HTMLElement) { addBtn.click(); document.dispatchEvent(new KeyboardEvent('keydown', {key:'v', ctrlKey:true, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'v', ctrlKey:true, bubbles:true})); const fallbackCount = Math.max(countPages(), before + 1); window.__runtime_v2_canva_page_count_after = fallbackCount; return JSON.stringify({ok:true, step:'page_count_after', count:fallbackCount, fallback_clicked_add_page:true, fallback_pasted_template:true}); } } window.__runtime_v2_canva_page_count_after = count; return JSON.stringify({ok:true, step:'page_count_after', count}); })()",
             },
             {
                 "type": "eval",
-                "script": "(() => { const cardTexts = Array.from(document.querySelectorAll('div,button,[role=button]')).filter(node => node instanceof HTMLElement && (node.offsetWidth > 0 || node.offsetHeight > 0)).map(node => ({ node, text: (node.textContent || '').trim() })).filter(item => item.text.includes('페이지') && item.text.includes('페이지 제목 추가')); const target = cardTexts.length ? cardTexts[cardTexts.length - 1].node : null; if (!(target instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_CREATED_PAGE_CARD'}); target.click(); return JSON.stringify({ok:true, step:'selected_created_page'}); })()",
+                "script": "(() => { const before = Number(window.__runtime_v2_canva_page_count_before || 0); const createdPage = Number(window.__runtime_v2_canva_page_count_after || 0); const body = document.body && document.body.innerText ? document.body.innerText : ''; const lines = body.split(String.fromCharCode(10)).map(line => line.trim()).filter(Boolean); const pageLine = [...lines].reverse().find(line => (line.includes('페이지') && line.includes('/')) || (line.includes('Page') && line.includes('/'))) || ''; const nums = pageLine.match(/[0-9]+/g) || []; const bodyPage = nums.length ? Number(nums[0]) : 0; const targetPage = before > 0 && before <= 3 ? createdPage : (bodyPage || createdPage); const candidates = Array.from(document.querySelectorAll('div,button,[role=button]')).filter(node => node instanceof HTMLElement && (node.offsetWidth > 0 || node.offsetHeight > 0)).map(node => ({ node, text: (node.textContent || '').trim() })); const byPageNumber = targetPage > 0 ? candidates.find(item => item.text.includes(`페이지 ${targetPage}`) || item.text.includes(`Page ${targetPage}`)) : null; const fallback = candidates.filter(item => item.text.includes('페이지') || item.text.includes('Page ')); const target = (byPageNumber ? byPageNumber.node : null) || (fallback.length ? fallback[fallback.length - 1].node : null); if (!(target instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_CREATED_PAGE_CARD'}); target.click(); return JSON.stringify({ok:true, step:'selected_created_page', page: targetPage || ''}); })()",
+            },
+            {
+                "type": "click_box_offset",
+                "selector": '[aria-label="캔버스 진입점"]',
+                "x_ratio": 0.5,
+                "y_ratio": 0.15,
+                "step": "focused_background_canvas",
+            },
+            {
+                "type": "wait",
+                "target": "800",
+            },
+            {
+                "type": "click",
+                "selector": 'xpath=(//button[@role="tab" and contains(normalize-space(.),"Product Background")])[1]',
+            },
+            {
+                "type": "wait",
+                "target": "800",
             },
             {
                 "type": "eval",
-                "script": "(() => { const targets = Array.from(document.querySelectorAll('div.fbzKiw')).filter(node => node instanceof HTMLElement && node.offsetWidth > 0 && node.offsetHeight > 0); const target = targets.length ? targets[targets.length - 1] : document.body; if (target instanceof HTMLElement) { target.click(); return JSON.stringify({ok:true, step:'focused_background_canvas'}); } return JSON.stringify({ok:false,error:'NO_BACKGROUND_CANVAS'}); })()",
-            },
-            {
-                "type": "eval",
-                "script": "(() => { const exact = Array.from(document.querySelectorAll('button,[role=button]')).find(item => ((item.getAttribute('aria-label') || '').trim() === '배경 생성')); if (exact instanceof HTMLElement) { exact.click(); return JSON.stringify({ok:true, step:'opened_background_generate_panel', source:'aria-label'}); } const labels = ['배경 생성', 'Create background', 'Background generator', 'Magic Background', 'Product Background']; const buttons = Array.from(document.querySelectorAll('button,[role=button],div')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:false,error:'NO_BACKGROUND_GENERATE_BUTTON'}); if (btn instanceof HTMLElement) { btn.click(); return JSON.stringify({ok:true, step:'opened_background_generate_panel', source:'fallback-text'}); } return JSON.stringify({ok:false,error:'NO_BACKGROUND_GENERATE_BUTTON'}); })()",
+                "script": "(async () => { const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms)); const findExact = () => Array.from(document.querySelectorAll('button,[role=button]')).find(item => ((item.getAttribute('aria-label') || '').trim() === '배경 생성')); const hasGenerateCta = () => Array.from(document.querySelectorAll('button,[role=button]')).some(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text === '생성' || text.includes('Generate'); }); const deadline = Date.now() + 4000; while (Date.now() < deadline) { const exact = findExact(); if (exact instanceof HTMLElement) { exact.click(); return JSON.stringify({ok:true, step:'opened_background_generate_panel', source:'aria-label'}); } if (hasGenerateCta()) { return JSON.stringify({ok:true, step:'opened_background_generate_panel', source:'generate-cta-only'}); } await wait(200); } return JSON.stringify({ok:false,error:'NO_BACKGROUND_GENERATE_BUTTON'}); })()",
             },
             {
                 "type": "eval",
@@ -2069,7 +2084,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 "type": "eval",
                 "script": "(async () => { const selectors = ['textarea[placeholder*=\"예시\"]','textarea[placeholder*=\"Describe\"]','textarea[placeholder*=\"prompt\"]','textarea[aria-label*=\"프롬프트\"]','textarea[aria-label*=\"Prompt\"]','div[role=\"dialog\"] textarea','div[contenteditable=\"true\"][role=\"textbox\"]','div[contenteditable=\"true\"][data-lexical-editor=\"true\"]','[role=\"textbox\"][contenteditable=\"true\"]','textarea']; const labels = ['배경 생성', 'Create background', 'Background generator', 'Magic Background', 'Product Background']; const promptText = "
                 + json.dumps(bg_prompt, ensure_ascii=True)
-                + "; const findPromptInput = () => { for (const selector of selectors) { const input = document.querySelector(selector); if (!(input instanceof HTMLElement)) continue; if (!(input.offsetWidth > 0 || input.offsetHeight > 0)) continue; return input; } return null; }; const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms)); for (let attempt = 0; attempt < 3; attempt += 1) { const deadline = Date.now() + 4000; while (Date.now() < deadline) { const input = findPromptInput(); if (input instanceof HTMLElement) { input.focus(); if ('value' in input) { const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set; if (setter && input instanceof HTMLTextAreaElement) { setter.call(input, ''); setter.call(input, promptText); } else { input.value = promptText; } input.dispatchEvent(new Event('input', {bubbles:true})); input.dispatchEvent(new Event('change', {bubbles:true})); return JSON.stringify({ok:true, step:'filled_background_prompt', attempt: attempt + 1}); } if (input.isContentEditable) { input.textContent = promptText; input.dispatchEvent(new InputEvent('input', {bubbles:true, data: promptText, inputType:'insertText'})); return JSON.stringify({ok:true, step:'filled_background_prompt', attempt: attempt + 1}); } } await wait(200); } document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', code:'Escape', keyCode:27, which:27, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'Escape', code:'Escape', keyCode:27, which:27, bubbles:true})); const buttons = Array.from(document.querySelectorAll('button,[role=button],div')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text.includes(label)); }); if (btn instanceof HTMLElement) { btn.click(); } await wait(800); } return JSON.stringify({ok:false,error:'NO_BACKGROUND_PROMPT_INPUT'}); })()",
+                + "; const findPromptInput = () => { for (const selector of selectors) { const input = document.querySelector(selector); if (!(input instanceof HTMLElement)) continue; if (!(input.offsetWidth > 0 || input.offsetHeight > 0)) continue; return input; } return null; }; const hasGenerateCta = () => Array.from(document.querySelectorAll('button,[role=button]')).some(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text === '생성' || text.includes('Generate'); }); const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms)); for (let attempt = 0; attempt < 3; attempt += 1) { const deadline = Date.now() + 4000; while (Date.now() < deadline) { const input = findPromptInput(); if (input instanceof HTMLElement) { input.focus(); if ('value' in input) { const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set; if (setter && input instanceof HTMLTextAreaElement) { setter.call(input, ''); setter.call(input, promptText); } else { input.value = promptText; } input.dispatchEvent(new Event('input', {bubbles:true})); input.dispatchEvent(new Event('change', {bubbles:true})); return JSON.stringify({ok:true, step:'filled_background_prompt', attempt: attempt + 1}); } if (input.isContentEditable) { input.textContent = promptText; input.dispatchEvent(new InputEvent('input', {bubbles:true, data: promptText, inputType:'insertText'})); return JSON.stringify({ok:true, step:'filled_background_prompt', attempt: attempt + 1}); } } if (hasGenerateCta()) { return JSON.stringify({ok:true, step:'background_prompt_optional'}); } await wait(200); } document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', code:'Escape', keyCode:27, which:27, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'Escape', code:'Escape', keyCode:27, which:27, bubbles:true})); const buttons = Array.from(document.querySelectorAll('button,[role=button],div')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text.includes(label)); }); if (btn instanceof HTMLElement) { btn.click(); } await wait(800); } return JSON.stringify({ok:false,error:'NO_BACKGROUND_PROMPT_INPUT'}); })()",
             },
             {
                 "type": "eval",
@@ -2077,7 +2092,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
             {
                 "type": "eval",
-                "script": "(async () => { const before = new Set(Array.isArray(window.__runtime_v2_canva_generated_before) ? window.__runtime_v2_canva_generated_before : []); const candidateKey = (node) => { if (!(node instanceof HTMLElement)) return ''; if (!(node.offsetWidth > 30 || node.offsetHeight > 30)) return ''; const style = window.getComputedStyle(node); const backgroundImage = style.backgroundImage || ''; const src = node instanceof HTMLImageElement ? (node.currentSrc || node.src || '') : ''; return src || backgroundImage; }; const deadline = Date.now() + 20000; while (Date.now() < deadline) { const candidates = Array.from(document.querySelectorAll('img,[role=img],div')); for (const node of candidates) { const key = candidateKey(node); if (!key || before.has(key)) continue; node.click(); await new Promise(resolve => setTimeout(resolve, 1500)); return JSON.stringify({ok:true, step:'selected_generated_background', key}); } await new Promise(resolve => setTimeout(resolve, 1000)); } return JSON.stringify({ok:true, step:'background_generate_result_optional'}); })()",
+                "script": "(async () => { const before = new Set(Array.isArray(window.__runtime_v2_canva_generated_before) ? window.__runtime_v2_canva_generated_before : []); const isRealGeneratedKey = (key) => { if (!key) return false; if (key.includes('static.canva.com')) return false; if (key.includes('.svg')) return false; return key.includes('media.canva.com') || key.startsWith('blob:') || key.startsWith('data:image'); }; const candidateKey = (node) => { if (!(node instanceof HTMLElement)) return ''; if (!(node.offsetWidth > 30 || node.offsetHeight > 30)) return ''; const style = window.getComputedStyle(node); const backgroundImage = style.backgroundImage || ''; const src = node instanceof HTMLImageElement ? (node.currentSrc || node.src || '') : ''; const key = src || backgroundImage; return isRealGeneratedKey(key) ? key : ''; }; const deadline = Date.now() + 20000; while (Date.now() < deadline) { const candidates = Array.from(document.querySelectorAll('img,[role=img],div')); for (const node of candidates) { const key = candidateKey(node); if (!key || before.has(key)) continue; node.click(); await new Promise(resolve => setTimeout(resolve, 1500)); return JSON.stringify({ok:true, step:'selected_generated_background', key}); } await new Promise(resolve => setTimeout(resolve, 1000)); } return JSON.stringify({ok:true, step:'background_generate_result_optional'}); })()",
             },
             {
                 "type": "eval",
@@ -2085,11 +2100,18 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
         ]
         if ref_img:
+            ref_img_name = Path(ref_img).name
             actions.extend(
                 [
                     {
-                        "type": "eval",
-                        "script": "(async () => { const before = new Set(Array.from(document.querySelectorAll('img,[role=img]')).map(node => { if (!(node instanceof HTMLElement)) return ''; if (node.offsetWidth < 30 || node.offsetHeight < 30) return ''; const style = window.getComputedStyle(node); const backgroundImage = style.backgroundImage || ''; const src = node instanceof HTMLImageElement ? (node.currentSrc || node.src || '') : ''; return src || backgroundImage; }).filter(Boolean)); const deadline = Date.now() + 15000; const candidateKey = (node) => { if (!(node instanceof HTMLElement)) return ''; if (node.offsetWidth < 30 || node.offsetHeight < 30) return ''; const style = window.getComputedStyle(node); const backgroundImage = style.backgroundImage || ''; const src = node instanceof HTMLImageElement ? (node.currentSrc || node.src || '') : ''; return src || backgroundImage; }; while (Date.now() < deadline) { const candidates = Array.from(document.querySelectorAll('img,[role=img]')); for (const node of candidates) { const key = candidateKey(node); if (!key || before.has(key)) continue; node.click(); await new Promise(resolve => setTimeout(resolve, 3000)); return JSON.stringify({ok:true, step:'placed_uploaded_image', key}); } await new Promise(resolve => setTimeout(resolve, 1000)); } return JSON.stringify({ok:false,error:'NO_UPLOADED_IMAGE_THUMB'}); })()",
+                        "type": "drag_box_to_box",
+                        "source_selector": 'xpath=(//*[@role="button" and @aria-label="'
+                        + ref_img_name.replace('"', '\\"')
+                        + '"])[1]',
+                        "dest_selector": '[aria-label="캔버스 진입점"]',
+                        "dest_x_ratio": 0.5,
+                        "dest_y_ratio": 0.15,
+                        "step": "placed_uploaded_image",
                     },
                     {
                         "type": "eval",
@@ -2097,11 +2119,38 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                     },
                     {
                         "type": "eval",
-                        "script": "(() => { const labels = ['위치', 'Position']; const buttons = Array.from(document.querySelectorAll('button,[role=button],div')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text.includes(label)); }); if (!(btn instanceof HTMLElement)) return JSON.stringify({ok:true, step:'position_panel_optional'}); btn.click(); return JSON.stringify({ok:true, step:'opened_position_panel'}); })()",
+                        "script": "(async () => { const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms)); const deadline = Date.now() + 30000; while (Date.now() < deadline) { const spinners = Array.from(document.querySelectorAll('[class*=\"spinner\"], [class*=\"loading\"], [class*=\"processing\"]')).filter(node => node instanceof HTMLElement && (node.offsetWidth > 0 || node.offsetHeight > 0)); if (spinners.length === 0) { return JSON.stringify({ok:true, step:'remove_background_wait_complete'}); } await wait(1000); } return JSON.stringify({ok:true, step:'remove_background_wait_timeout'}); })()",
                     },
                     {
                         "type": "eval",
-                        "script": "(() => { const labels = ['정렬', 'Arrange']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text.includes(label)); }); if (!btn) return JSON.stringify({ok:true, step:'position_inputs_already_visible'}); btn.click(); return JSON.stringify({ok:true, step:'opened_arrange_tab'}); })()",
+                        "script": "(() => { document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', code:'Escape', keyCode:27, which:27, bubbles:true})); document.dispatchEvent(new KeyboardEvent('keyup', {key:'Escape', code:'Escape', keyCode:27, which:27, bubbles:true})); return JSON.stringify({ok:true, step:'closed_remove_background_panel'}); })()",
+                    },
+                    {
+                        "type": "click_box_offset",
+                        "selector": '[aria-label="캔버스 진입점"]',
+                        "x_ratio": 0.5,
+                        "y_ratio": 0.35,
+                        "step": "reselected_canvas_image",
+                    },
+                    {
+                        "type": "wait",
+                        "target": "800",
+                    },
+                    {
+                        "type": "click",
+                        "selector": 'xpath=(//button[contains(normalize-space(.),"위치") or contains(normalize-space(.),"Position")])[1]',
+                    },
+                    {
+                        "type": "wait",
+                        "target": "800",
+                    },
+                    {
+                        "type": "click",
+                        "selector": 'xpath=(//button[contains(normalize-space(.),"정렬") or contains(normalize-space(.),"Arrange")])[1]',
+                    },
+                    {
+                        "type": "wait",
+                        "target": "800",
                     },
                     {
                         "type": "eval",
@@ -2112,27 +2161,32 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         if line1 or line2:
             actions.append(
                 {
-                    "type": "eval",
-                    "script": "(() => { const line1 = "
-                    + json.dumps(line1, ensure_ascii=True)
-                    + "; const line2 = "
-                    + json.dumps(line2, ensure_ascii=True)
-                    + "; const applied = []; const spans = Array.from(document.querySelectorAll('span[style*=\"color\"]')).filter(el => el instanceof HTMLElement && (el.offsetWidth > 0 || el.offsetHeight > 0)); const yellow = spans.find(el => String(el.getAttribute('style') || '').includes('rgb(255, 215, 0)')); const white = spans.find(el => String(el.getAttribute('style') || '').includes('rgb(255, 255, 255)')); if (yellow && line1) { yellow.textContent = line1; applied.push('rgb(255, 215, 0)'); } if (white && line2) { white.textContent = line2; applied.push('rgb(255, 255, 255)'); } if (applied.length === 0) { const nodes = Array.from(document.querySelectorAll('main div, main span, main p, main h1, main h2, main h3')).filter(el => el instanceof HTMLElement && (el.offsetWidth > 0 || el.offsetHeight > 0) && (el.textContent || '').trim().length >= 4 && (el.textContent || '').trim().length <= 120); const first = nodes[0]; const second = nodes[1]; if (first && line1 && line2 && !second) { first.textContent = line1 + ' / ' + line2; applied.push('fallback-combined'); } else { if (first && line1) { first.textContent = line1; applied.push('fallback-0'); } if (second && line2) { second.textContent = line2; applied.push('fallback-1'); } } } if (applied.length === 0) return JSON.stringify({ok:false,error:'NO_TEXT_TARGET'}); return JSON.stringify({ok:true, step:'edited_thumbnail_text', applied}); })()",
+                    "type": "playwright_edit_canva_text",
+                    "line1": line1,
+                    "line2": line2,
                 }
             )
         actions.extend(
             [
                 {
-                    "type": "eval",
-                    "script": "(() => { const labels = ['파일', 'File']; const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return labels.some(label => text === label || text.includes(label)); }); if (!btn) return JSON.stringify({ok:false,error:'NO_FILE_MENU'}); btn.click(); return JSON.stringify({ok:true, step:'opened_file_menu'}); })()",
+                    "type": "click",
+                    "selector": 'xpath=(//button[normalize-space(.)="파일" or normalize-space(.)="File"])[1]',
+                },
+                {
+                    "type": "wait",
+                    "target": "1000",
+                },
+                {
+                    "type": "click",
+                    "selector": 'xpath=(//button[@role="menuitem" and (normalize-space(.)="다운로드" or normalize-space(.)="Download")])[1]',
+                },
+                {
+                    "type": "wait",
+                    "target": "1000",
                 },
                 {
                     "type": "eval",
-                    "script": "(() => { const items = Array.from(document.querySelectorAll('button,[role=menuitem]')); const btn = items.find(item => { if (!(item instanceof HTMLElement)) return false; const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text.includes('다운로드') || text.includes('Download') || text.includes('내보내기') || text.includes('Export') || text.includes('공유') || text.includes('Share'); }); if (!(btn instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_DOWNLOAD_MENU'}); btn.click(); return JSON.stringify({ok:true, step:'opened_download_panel'}); })()",
-                },
-                {
-                    "type": "eval",
-                    "script": "(() => { const input = document.querySelector('input[placeholder*=\"페이지\"], input[placeholder*=\"page\"]'); if (!(input instanceof HTMLElement)) return JSON.stringify({ok:true, step:'page_picker_unavailable'}); input.click(); const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text.includes('현재 페이지') || text.includes('Current page'); }); if (btn instanceof HTMLElement) { btn.click(); return JSON.stringify({ok:true, step:'selected_current_page'}); } const body = document.body && document.body.innerText ? document.body.innerText : ''; const match = body.match(/페이지\\s*(\\d+)\\s*\\/\\s*\\d+/) || body.match(/Page\\s*(\\d+)\\s*\\/\\s*\\d+/i); if ('value' in input && match && match[1]) { input.focus(); input.value = match[1]; input.dispatchEvent(new Event('input', {bubbles:true})); input.dispatchEvent(new Event('change', {bubbles:true})); return JSON.stringify({ok:true, step:'typed_current_page', page: match[1]}); } return JSON.stringify({ok:false,error:'NO_CURRENT_PAGE_OPTION'}); })()",
+                    "script": "(() => { const input = document.querySelector('input[placeholder*=\"페이지\"], input[placeholder*=\"page\"]'); if (!(input instanceof HTMLElement)) return JSON.stringify({ok:true, step:'page_picker_unavailable'}); input.click(); const buttons = Array.from(document.querySelectorAll('button')); const btn = buttons.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text.includes('현재 페이지') || text.includes('Current page'); }); if (btn instanceof HTMLElement) { btn.click(); return JSON.stringify({ok:true, step:'selected_current_page'}); } const body = document.body && document.body.innerText ? document.body.innerText : ''; const lines = body.split(String.fromCharCode(10)).map(line => line.trim()).filter(Boolean); const pageLine = [...lines].reverse().find(line => (line.includes('페이지') && line.includes('/')) || (line.includes('Page') && line.includes('/'))) || ''; const nums = pageLine.match(/[0-9]+/g) || []; const bodyPage = nums.length ? String(nums[0] || '') : ''; if ('value' in input && bodyPage) { input.focus(); input.value = bodyPage; input.dispatchEvent(new Event('input', {bubbles:true})); input.dispatchEvent(new Event('change', {bubbles:true})); return JSON.stringify({ok:true, step:'typed_current_page', page: bodyPage, source:'body-match-last'}); } return JSON.stringify({ok:true, step:'current_page_selection_optional'}); })()",
                 },
                 {
                     "type": "eval",
@@ -2405,7 +2459,9 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         transcript_path = str(canva_extra_details["transcript_path"])
         canva_truth_gate_failed = transcript_path and not (
             canva_extra_details["clone_ok"]
-            and canva_extra_details["text_edit_ok"]
+            and canva_extra_details["background_generate_ok"]
+            and canva_extra_details["ref_image_upload_ok"]
+            and canva_extra_details["position_ok"]
             and canva_extra_details["current_page_selection_ok"]
             and canva_extra_details["download_sequence_ok"]
         )

@@ -9,6 +9,8 @@ import urllib.request
 from pathlib import Path
 from typing import cast
 
+from playwright.sync_api import sync_playwright
+
 from runtime_v2.agent_browser.command_builder import (
     build_eval_command,
     build_get_title_command,
@@ -57,6 +59,18 @@ def _service_timeout_sec(service: str) -> int:
     return 30
 
 
+def _float_value(raw: object, default: float = 0.0) -> float:
+    if isinstance(raw, bool):
+        return float(int(raw))
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    if isinstance(raw, str):
+        text = raw.strip()
+        if text:
+            return float(text)
+    return default
+
+
 def _snapshot_required(service: str, payload: dict[str, object]) -> bool:
     raw = payload.get("capture_snapshot")
     if isinstance(raw, bool):
@@ -79,6 +93,86 @@ def _normalize_agent_browser_actions(raw_actions: object) -> list[dict[str, obje
     return action_items
 
 
+def _select_canva_page(port: int):
+    browser = (
+        sync_playwright().start().chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
+    )
+    page = None
+    for context in browser.contexts:
+        for candidate in context.pages:
+            if "canva.com" in candidate.url:
+                page = candidate
+                break
+        if page is not None:
+            break
+    if page is None:
+        browser.close()
+        raise RuntimeError("NO_CANVA_PAGE")
+    page.bring_to_front()
+    return browser, page
+
+
+def _playwright_edit_canva_colored_text(
+    *, port: int, line1: str, line2: str, timeout_sec: int
+) -> dict[str, object]:
+    del timeout_sec
+    browser, page = _select_canva_page(port)
+    try:
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(500)
+
+        def _edit_by_color(color: str, text: str) -> bool:
+            if not text:
+                return True
+            locator = page.locator(f"span[style*='color: {color}']")
+            count = locator.count()
+            target = None
+            best_width = -1.0
+            for index in range(count):
+                candidate = locator.nth(index)
+                try:
+                    box = candidate.bounding_box()
+                except Exception:
+                    box = None
+                if box and box.get("width", 0) > 0 and box.get("height", 0) > 0:
+                    width = float(box.get("width", 0))
+                    if width > best_width:
+                        best_width = width
+                        target = candidate
+            if target is None:
+                return False
+            target.dblclick(timeout=2000)
+            page.wait_for_timeout(300)
+            page.keyboard.press("Control+A")
+            page.wait_for_timeout(100)
+            page.keyboard.type(text)
+            page.wait_for_timeout(300)
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+            return True
+
+        result1 = _edit_by_color("rgb(255, 215, 0)", line1)
+        result2 = _edit_by_color("rgb(255, 255, 255)", line2)
+        body_text = page.evaluate(
+            "() => document.body && document.body.innerText ? document.body.innerText : ''"
+        )
+        body_text_str = str(body_text)
+        if not result1 and line1 and line1 in body_text_str:
+            result1 = True
+        if not result2 and line2 and line2 in body_text_str:
+            result2 = True
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(500)
+        return {
+            "ok": bool(result1 or result2),
+            "step": "edited_thumbnail_text",
+            "line1_ok": result1,
+            "line2_ok": result2,
+        }
+    finally:
+        browser.close()
+
+
 def _run_agent_browser_actions(
     *,
     service: str,
@@ -93,6 +187,11 @@ def _run_agent_browser_actions(
             command = build_eval_command(
                 port=port, script=str(action.get("script", ""))
             )
+        elif action_type == "click":
+            selector = str(action.get("selector", "")).strip()
+            if not selector:
+                raise RuntimeError("missing_click_selector")
+            command = ["agent-browser", "--cdp", str(port), "click", selector]
         elif action_type == "upload":
             selector = str(action.get("selector", "input[type=file]"))
             files = [str(item) for item in cast(list[object], action.get("files", []))]
@@ -100,6 +199,228 @@ def _run_agent_browser_actions(
         elif action_type == "wait":
             target = str(action.get("target", "1000"))
             command = ["agent-browser", "--cdp", str(port), "wait", target]
+        elif action_type == "click_box_offset":
+            selector = str(action.get("selector", "")).strip()
+            if not selector:
+                raise RuntimeError("missing_click_box_offset_selector")
+            box_command = ["agent-browser", "--cdp", str(port), "get", "box", selector]
+            box_output = _run_agent_browser_command(
+                box_command, timeout_sec=timeout_sec
+            )
+            transcript.append(
+                {
+                    "command": box_command,
+                    "output": box_output,
+                    "action_index": index,
+                }
+            )
+            box_payload = json.loads(box_output)
+            if not isinstance(box_payload, dict):
+                raise RuntimeError("invalid_click_box_offset_box")
+            x = _float_value(box_payload.get("x", 0.0))
+            y = _float_value(box_payload.get("y", 0.0))
+            width = _float_value(box_payload.get("width", 0.0))
+            height = _float_value(box_payload.get("height", 0.0))
+            x_ratio = _float_value(action.get("x_ratio", 0.5), default=0.5)
+            y_ratio = _float_value(action.get("y_ratio", 0.5), default=0.5)
+            click_x = int(round(x + width * x_ratio))
+            click_y = int(round(y + height * y_ratio))
+            for mouse_command in (
+                [
+                    "agent-browser",
+                    "--cdp",
+                    str(port),
+                    "mouse",
+                    "move",
+                    str(click_x),
+                    str(click_y),
+                ],
+                ["agent-browser", "--cdp", str(port), "mouse", "down"],
+                ["agent-browser", "--cdp", str(port), "mouse", "up"],
+            ):
+                mouse_output = _run_agent_browser_command(
+                    mouse_command, timeout_sec=timeout_sec
+                )
+                transcript.append(
+                    {
+                        "command": mouse_command,
+                        "output": mouse_output,
+                        "action_index": index,
+                    }
+                )
+            output = json.dumps(
+                {
+                    "ok": True,
+                    "step": str(action.get("step", "clicked_box_offset")),
+                    "selector": selector,
+                    "x": click_x,
+                    "y": click_y,
+                },
+                ensure_ascii=True,
+            )
+            command = [
+                "agent-browser",
+                "--cdp",
+                str(port),
+                "mouse",
+                "up",
+            ]
+            parsed_output = json.loads(output)
+            transcript.append(
+                {
+                    "command": command,
+                    "output": output,
+                    "action_index": index,
+                }
+            )
+            if isinstance(parsed_output, dict) and not bool(
+                parsed_output.get("ok", False)
+            ):
+                raise RuntimeError(f"agent_browser_action_failed:{parsed_output}")
+            continue
+        elif action_type == "drag_box_to_box":
+            source_selector = str(action.get("source_selector", "")).strip()
+            dest_selector = str(action.get("dest_selector", "")).strip()
+            if not source_selector or not dest_selector:
+                raise RuntimeError("missing_drag_box_to_box_selector")
+            source_box_command = [
+                "agent-browser",
+                "--cdp",
+                str(port),
+                "get",
+                "box",
+                source_selector,
+            ]
+            source_box_output = _run_agent_browser_command(
+                source_box_command, timeout_sec=timeout_sec
+            )
+            transcript.append(
+                {
+                    "command": source_box_command,
+                    "output": source_box_output,
+                    "action_index": index,
+                }
+            )
+            dest_box_command = [
+                "agent-browser",
+                "--cdp",
+                str(port),
+                "get",
+                "box",
+                dest_selector,
+            ]
+            dest_box_output = _run_agent_browser_command(
+                dest_box_command, timeout_sec=timeout_sec
+            )
+            transcript.append(
+                {
+                    "command": dest_box_command,
+                    "output": dest_box_output,
+                    "action_index": index,
+                }
+            )
+            source_box = json.loads(source_box_output)
+            dest_box = json.loads(dest_box_output)
+            if not isinstance(source_box, dict) or not isinstance(dest_box, dict):
+                raise RuntimeError("invalid_drag_box_to_box_box")
+            source_x = _float_value(source_box.get("x", 0.0))
+            source_y = _float_value(source_box.get("y", 0.0))
+            source_w = _float_value(source_box.get("width", 0.0))
+            source_h = _float_value(source_box.get("height", 0.0))
+            dest_x = _float_value(dest_box.get("x", 0.0))
+            dest_y = _float_value(dest_box.get("y", 0.0))
+            dest_w = _float_value(dest_box.get("width", 0.0))
+            dest_h = _float_value(dest_box.get("height", 0.0))
+            dest_x_ratio = _float_value(action.get("dest_x_ratio", 0.5), default=0.5)
+            dest_y_ratio = _float_value(action.get("dest_y_ratio", 0.5), default=0.5)
+            start_x = int(round(source_x + source_w / 2.0))
+            start_y = int(round(source_y + source_h / 2.0))
+            end_x = int(round(dest_x + dest_w * dest_x_ratio))
+            end_y = int(round(dest_y + dest_h * dest_y_ratio))
+            drag_steps = max(int(_float_value(action.get("steps", 20), default=20)), 2)
+            mouse_commands: list[list[str]] = [
+                [
+                    "agent-browser",
+                    "--cdp",
+                    str(port),
+                    "mouse",
+                    "move",
+                    str(start_x),
+                    str(start_y),
+                ],
+                ["agent-browser", "--cdp", str(port), "mouse", "down"],
+            ]
+            for step_index in range(1, drag_steps + 1):
+                progress = step_index / drag_steps
+                current_x = int(round(start_x + (end_x - start_x) * progress))
+                current_y = int(round(start_y + (end_y - start_y) * progress))
+                mouse_commands.append(
+                    [
+                        "agent-browser",
+                        "--cdp",
+                        str(port),
+                        "mouse",
+                        "move",
+                        str(current_x),
+                        str(current_y),
+                    ]
+                )
+            mouse_commands.append(["agent-browser", "--cdp", str(port), "mouse", "up"])
+            for mouse_command in mouse_commands:
+                mouse_output = _run_agent_browser_command(
+                    mouse_command, timeout_sec=timeout_sec
+                )
+                transcript.append(
+                    {
+                        "command": mouse_command,
+                        "output": mouse_output,
+                        "action_index": index,
+                    }
+                )
+            output = json.dumps(
+                {
+                    "ok": True,
+                    "step": str(action.get("step", "dragged_box_to_box")),
+                    "source_selector": source_selector,
+                    "dest_selector": dest_selector,
+                    "x": end_x,
+                    "y": end_y,
+                },
+                ensure_ascii=True,
+            )
+            command = ["agent-browser", "--cdp", str(port), "mouse", "up"]
+            parsed_output = json.loads(output)
+            transcript.append(
+                {
+                    "command": command,
+                    "output": output,
+                    "action_index": index,
+                }
+            )
+            if isinstance(parsed_output, dict) and not bool(
+                parsed_output.get("ok", False)
+            ):
+                raise RuntimeError(f"agent_browser_action_failed:{parsed_output}")
+            continue
+        elif action_type == "playwright_edit_canva_text":
+            output_payload = _playwright_edit_canva_colored_text(
+                port=port,
+                line1=str(action.get("line1", "")),
+                line2=str(action.get("line2", "")),
+                timeout_sec=timeout_sec,
+            )
+            output = json.dumps(output_payload, ensure_ascii=True)
+            command = ["playwright-edit-canva-text"]
+            transcript.append(
+                {
+                    "command": command,
+                    "output": output,
+                    "action_index": index,
+                }
+            )
+            if not bool(output_payload.get("ok", False)):
+                raise RuntimeError(f"agent_browser_action_failed:{output_payload}")
+            continue
         else:
             raise RuntimeError(f"unknown_agent_browser_action:{action_type}")
         output = _run_agent_browser_command(command, timeout_sec=timeout_sec)

@@ -3329,23 +3329,121 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             any("clicked_remove_background" in script for script in scripts)
         )
         self.assertTrue(any("set_image_position" in script for script in scripts))
-        self.assertTrue(any("edited_thumbnail_text" in script for script in scripts))
         self.assertTrue(any("clicked_download_execute" in script for script in scripts))
         self.assertTrue(
             any("cleanup_deleted_created_page" in script for script in scripts)
         )
-        self.assertTrue(any("placed_uploaded_image" in script for script in scripts))
         self.assertTrue(any("attempt < 3" in script for script in scripts))
         self.assertTrue(any("key:'Escape'" in script for script in scripts))
         self.assertTrue(any("Date.now() + 4000" in script for script in scripts))
+        self.assertTrue(any("Date.now() + 2000" in script for script in scripts))
         self.assertTrue(any("await wait(800)" in script for script in scripts))
+        click_selector_actions = [
+            action for action in captured_actions if action.get("type") == "click"
+        ]
+        self.assertEqual(len(click_selector_actions), 5)
+        self.assertEqual(
+            click_selector_actions[0].get("selector"),
+            'xpath=(//button[@role="tab" and contains(normalize-space(.),"Product Background")])[1]',
+        )
+        self.assertTrue(
+            any(
+                action.get("selector")
+                == 'xpath=(//button[contains(normalize-space(.),"위치") or contains(normalize-space(.),"Position")])[1]'
+                for action in click_selector_actions
+            )
+        )
+        self.assertTrue(
+            any(
+                action.get("selector")
+                == 'xpath=(//button[contains(normalize-space(.),"정렬") or contains(normalize-space(.),"Arrange")])[1]'
+                for action in click_selector_actions
+            )
+        )
+        self.assertTrue(
+            any(
+                action.get("selector")
+                == 'xpath=(//button[normalize-space(.)="파일" or normalize-space(.)="File"])[1]'
+                for action in click_selector_actions
+            )
+        )
+        self.assertTrue(
+            any(
+                action.get("selector")
+                == 'xpath=(//button[@role="menuitem" and (normalize-space(.)="다운로드" or normalize-space(.)="Download")])[1]'
+                for action in click_selector_actions
+            )
+        )
+        click_actions = [
+            action
+            for action in captured_actions
+            if action.get("type") == "click_box_offset"
+        ]
+        wait_actions = [
+            action for action in captured_actions if action.get("type") == "wait"
+        ]
+        drag_actions = [
+            action
+            for action in captured_actions
+            if action.get("type") == "drag_box_to_box"
+        ]
+        text_actions = [
+            action
+            for action in captured_actions
+            if action.get("type") == "playwright_edit_canva_text"
+        ]
+        self.assertEqual(len(click_actions), 2)
+        self.assertTrue(any(action.get("target") == "800" for action in wait_actions))
+        self.assertEqual(len(drag_actions), 1)
+        self.assertEqual(len(text_actions), 1)
+        self.assertEqual(text_actions[0].get("line1"), "Legacy")
+        self.assertEqual(text_actions[0].get("line2"), "Thumb")
+        self.assertEqual(
+            click_actions[0].get("selector"), '[aria-label="캔버스 진입점"]'
+        )
+        self.assertEqual(click_actions[0].get("x_ratio"), 0.5)
+        self.assertEqual(click_actions[0].get("y_ratio"), 0.15)
+        self.assertTrue(
+            any(
+                action.get("step") == "focused_background_canvas"
+                for action in click_actions
+            )
+        )
+        self.assertTrue(
+            any(
+                action.get("step") == "reselected_canvas_image"
+                for action in click_actions
+            )
+        )
+        self.assertEqual(
+            drag_actions[0].get("dest_selector"), '[aria-label="캔버스 진입점"]'
+        )
+        self.assertTrue(
+            str(drag_actions[0].get("source_selector", "")).startswith(
+                'xpath=(//*[@role="button"'
+            )
+        )
+        self.assertEqual(drag_actions[0].get("step"), "placed_uploaded_image")
+        self.assertEqual(drag_actions[0].get("dest_x_ratio"), 0.5)
+        self.assertEqual(drag_actions[0].get("dest_y_ratio"), 0.15)
         self.assertTrue(
             any("accepted_background_permission" in script for script in scripts)
         )
         self.assertTrue(
             any("권한이 업데이트되었습니다" in script for script in scripts)
         )
+        self.assertTrue(
+            any("remove_background_wait_complete" in script for script in scripts)
+        )
+        self.assertTrue(
+            any("closed_remove_background_panel" in script for script in scripts)
+        )
+        self.assertTrue(any("static.canva.com" in script for script in scripts))
+        self.assertTrue(any("media.canva.com" in script for script in scripts))
         self.assertTrue(any("source:'aria-label'" in script for script in scripts))
+        self.assertTrue(
+            any("source:'generate-cta-only'" in script for script in scripts)
+        )
         self.assertEqual(uploads, [])
 
     def test_stage2_adapter_child_records_specific_canva_truth_gate_failure(

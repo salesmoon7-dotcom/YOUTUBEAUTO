@@ -28,6 +28,41 @@ def capture_page_screenshot(
     return output_path
 
 
+def capture_canva_canvas_screenshot(port: int, output_path: Path) -> Path:
+    target = _select_page_target(port, "canva.com")
+    box_payload = _cdp_command(
+        target["webSocketDebuggerUrl"],
+        method="Runtime.evaluate",
+        params={
+            "expression": "(() => { const el = document.querySelector('[aria-label=\"캔버스 진입점\"]'); if (!(el instanceof HTMLElement)) return null; const rect = el.getBoundingClientRect(); return {x: rect.left, y: rect.top, width: rect.width, height: rect.height, scale: window.devicePixelRatio || 1}; })()",
+            "returnByValue": True,
+        },
+    )
+    box = cast(
+        dict[str, object],
+        cast(dict[str, object], box_payload.get("result", {})).get("result", {}),
+    ).get("value")
+    if not isinstance(box, dict):
+        raise RuntimeError("CANVA_CANVAS_BOX_NOT_FOUND")
+    scale = float(box.get("scale", 1) or 1)
+    clip = {
+        "x": float(box.get("x", 0) or 0),
+        "y": float(box.get("y", 0) or 0),
+        "width": float(box.get("width", 0) or 0),
+        "height": float(box.get("height", 0) or 0),
+        "scale": scale,
+    }
+    payload = _cdp_command(
+        target["webSocketDebuggerUrl"],
+        method="Page.captureScreenshot",
+        params={"format": "png", "clip": clip},
+    )
+    data = str(cast(dict[str, object], payload.get("result", {})).get("data", ""))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(base64.b64decode(data))
+    return output_path
+
+
 def capture_primary_image_asset(
     port: int,
     expected_url_substring: str,
@@ -151,6 +186,11 @@ def write_functional_evidence_bundle(
             evidence_root / service_artifact_path.name,
             service=service,
         )
+    elif service == "canva":
+        asset_path = capture_canva_canvas_screenshot(
+            port, evidence_root / service_artifact_path.name
+        )
+        sha256 = hashlib.sha256(asset_path.read_bytes()).hexdigest()
     else:
         asset_path, sha256 = capture_primary_image_asset(
             port,

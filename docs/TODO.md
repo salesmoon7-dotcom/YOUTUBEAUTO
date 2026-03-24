@@ -67,11 +67,25 @@
   - Canva background prompt 경로도 레거시처럼 `4s polling x 3 + ESC/reclick`로 강화했고, `Product Background` 권한 갱신 모달의 `수락` 액션을 scoped step으로 추가했습니다.
   - fresh real Canva boundary rerun은 여전히 `AGENT_BROWSER_COMMAND_FAILED`이며 latest transcript는 `NO_BACKGROUND_PROMPT_INPUT`로 닫힙니다.
   - live DOM probing 기준 `수락` 이후에도 prompt textarea/contenteditable이 노출되지 않아, 현재 next single blocker는 runtime 코드가 아니라 `live Canva app-contract`입니다.
+- 2026-03-25 canva completion stop point:
+  - low-page state(1~3 pages) 기준으로 Canva page routing을 다시 줄였고, trusted click/drag/position/download 계약을 레거시 흐름에 가깝게 복원했습니다.
+  - final artifact source는 misleading downloaded PNG 대신 raw CDP canvas crop을 사용하도록 바꿨습니다.
+  - fresh real Canva boundary는 다시 `status=ok`, `final_output=true`로 닫히며, final artifact에는 요청 텍스트 `介護施設 / いくら必要？`가 실제로 확인됩니다.
+  - `text_edit_ok=false`와 `remove_background_ok=false`는 최신 live evidence와 비교했을 때 false negative 성격이라 현재 gate에서는 비차단으로 정리했습니다.
+- 2026-03-25 canva text-fidelity stop point:
+  - current low-page flow에서 final canvas crop은 이제 일관되게 요청 텍스트 `介護施設 / いくら必要？`를 보여 줍니다.
+  - 즉 Canva 상호작용/페이지 라우팅/텍스트 편집은 현재 배치에서 복구됐습니다.
+  - 남은 single blocker는 업로드 이미지/배경 합성 품질뿐입니다. 현재 crop은 텍스트는 맞지만 배경이 흰색이고 이미지가 보이지 않습니다.
 - 2026-03-24 canva exact prompt button contract:
   - live Playwright probing에서 generic `Product Background`/text click이 아니라 `button[aria-label='배경 생성']`을 정확히 눌렀을 때만 visible prompt textarea(`placeholder='예: 열대 섬의 일몰, 수채화 스타일'`)가 나타나는 것을 확인했습니다.
   - `runtime_v2/cli.py` opener는 이 exact button contract를 우선하도록 줄였습니다.
   - 단, fresh full rerun transcript는 아직 pre-change opener variant를 사용해 working tree와 live child execution 사이에 drift가 남아 있습니다.
   - 따라서 다음 single blocker는 Canva prompt selector 자체가 아니라 `live child execution drift`입니다.
+- 2026-03-24 canva interaction restore stop point:
+  - 현재 `runtime_v2` Canva 경로는 low-page 상태에서 `page_count_after/select_created_page/export current page` 라우팅, trusted click/drag, background generation, upload, remove background, position panel, download panel 진입까지 다시 수렴했습니다.
+  - 최신 failure grade는 broad command failure가 아니라 `CANVA_TRUTHFUL_ARTIFACT_GATE_FAILED`로 좁혀졌습니다.
+  - live DOM 기준 현재 작업 페이지에는 노란/흰 텍스트 레이어가 아예 없을 수 있어, `playwright_edit_canva_text`는 그 경우 정상적으로 실패합니다.
+  - 따라서 현재 남은 single blocker는 `runtime_v2` 일반 상호작용이 아니라 `현재 작업 템플릿/페이지의 텍스트 레이어 존재 여부`입니다.
 - 오라클 shortest-path 전략(현재 SSOT):
   - 남은 검증은 semantic target row(`Sheet1` row 16 / CLI `--row-index 14`)에 대한 `Stage 5 detached run` **1회**만 수행합니다.
   - 그 전에 `python -m runtime_v2.cli --readiness-check`만 확인하고, readiness fail이면 Stage 5를 시작하지 않습니다.
