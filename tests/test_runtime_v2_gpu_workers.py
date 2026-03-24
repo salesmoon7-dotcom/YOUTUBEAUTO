@@ -251,6 +251,86 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(str(details["ref_audio_used"]), str(ref_audio.resolve()))
         self.assertEqual(str(details["output_format"]), "flac")
 
+    def test_qwen3_worker_maps_pagefile_failure_to_precise_error_code(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            image_path = root / "image.png"
+            output_path = artifact_root / "speech.flac"
+            ref_audio = root / "ref.mp3"
+            _ = image_path.write_bytes(b"png")
+            _ = ref_audio.write_bytes(b"mp3")
+            stdout_path = root / "artifacts" / "stdout.log"
+            stderr_path = root / "artifacts" / "stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+            job = JobContract(
+                job_id="qwen-job-pagefile",
+                workload="qwen3_tts",
+                payload={
+                    "voice_texts": [
+                        {"col": "#01", "text": "hello world", "original_voices": [1]}
+                    ],
+                    "image_path": str(image_path.resolve()),
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                },
+            )
+
+            def _fake_adapter(*args: object, **kwargs: object) -> dict[str, object]:
+                workspace = Path(str(args[0]))
+                del kwargs
+                _ = (workspace / "qwen3_result.json").write_text(
+                    json.dumps(
+                        {
+                            "status": "error",
+                            "errors": [
+                                {
+                                    "item": "unhandled",
+                                    "error": "The paging file is too small. (os error 1455)",
+                                }
+                            ],
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                return {
+                    "ok": False,
+                    "error_code": "ADAPTER_NONZERO_EXIT",
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "details": {"returncode": 70},
+                }
+
+            with (
+                patch(
+                    "runtime_v2.workers.qwen3_worker.LEGACY_QWEN3_CONFIG",
+                    root / "qwen3_tts_config.json",
+                ),
+                patch(
+                    "runtime_v2.workers.qwen3_worker.run_verified_adapter_command",
+                    side_effect=_fake_adapter,
+                ),
+            ):
+                _ = (root / "qwen3_tts_config.json").write_text(
+                    json.dumps(
+                        {
+                            "reference_audio_default": str(ref_audio.resolve()),
+                            "output_format": "flac",
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                result = run_qwen3_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "QWEN_PAGEFILE_TOO_SMALL")
+        details = cast(dict[object, object], result["details"])
+        self.assertIn("qwen3_result", details)
+
     def test_qwen3_worker_records_legacy_model_and_generation_defaults(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

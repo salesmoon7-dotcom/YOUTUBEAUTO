@@ -145,6 +145,37 @@ def _legacy_qwen3_runtime(config: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _load_qwen3_result_payload(workspace: Path) -> dict[str, object]:
+    result_path = workspace / "qwen3_result.json"
+    if not result_path.exists() or not result_path.is_file():
+        return {}
+    try:
+        raw_payload = json.loads(result_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return cast(dict[str, object], raw_payload) if isinstance(raw_payload, dict) else {}
+
+
+def _qwen3_adapter_error_code(
+    adapter_result: dict[str, object], workspace: Path
+) -> tuple[str, dict[str, object]]:
+    error_code = str(adapter_result.get("error_code", "qwen3_tts_adapter_failed"))
+    qwen_result = _load_qwen3_result_payload(workspace)
+    if not qwen_result:
+        return error_code, {}
+    errors = qwen_result.get("errors", [])
+    if isinstance(errors, list):
+        for raw_entry in cast(list[object], errors):
+            if not isinstance(raw_entry, dict):
+                continue
+            entry = cast(dict[str, object], raw_entry)
+            message = str(entry.get("error", "")).strip()
+            lowered = message.lower()
+            if "1455" in lowered or "paging file" in lowered:
+                return "QWEN_PAGEFILE_TOO_SMALL", {"qwen3_result": qwen_result}
+    return error_code, {"qwen3_result": qwen_result}
+
+
 def _build_rvc_next_job(
     job: JobContract, verified_output: Path
 ) -> dict[str, object] | None:
@@ -284,17 +315,19 @@ def run_qwen3_job(
         stdout_path = Path(str(adapter_result["stdout_path"]))
         stderr_path = Path(str(adapter_result["stderr_path"]))
         if not bool(adapter_result.get("ok", False)):
+            adapter_error_code, adapter_extra_details = _qwen3_adapter_error_code(
+                adapter_result, workspace
+            )
             return finalize_worker_result(
                 workspace,
                 status="failed",
                 stage="qwen3_tts_adapter",
                 artifacts=[request_file, prompt_file, stdout_path, stderr_path],
-                error_code=str(
-                    adapter_result.get("error_code", "qwen3_tts_adapter_failed")
-                ),
+                error_code=adapter_error_code,
                 retryable=False,
                 details={
                     **cast(dict[str, object], adapter_result.get("details", {})),
+                    **adapter_extra_details,
                     "reference_audio": reference_audio,
                     "ref_audio_used": reference_audio,
                     "output_format": output_format,
