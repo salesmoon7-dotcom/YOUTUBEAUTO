@@ -275,6 +275,92 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             self.assertEqual(details["bg_prompt"], "legacy background")
             self.assertEqual(details["transcript_path"], str(transcript_path.resolve()))
 
+    def test_stage2_adapter_child_accepts_line_ok_canva_text_result_without_applied(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "thumb.png"
+            workspace = root
+            transcript_path = workspace / "agent_browser_transcript.json"
+            transcript_path.write_text(
+                json.dumps(
+                    {
+                        "steps": [
+                            {
+                                "output": '{"ok":true,"step":"page_count_before","count":1}'
+                            },
+                            {
+                                "output": '{"ok":true,"step":"page_count_after","count":2}'
+                            },
+                            {
+                                "output": '{"ok":true,"step":"submitted_background_generate"}'
+                            },
+                            {"output": '{"ok":true,"step":"placed_uploaded_image"}'},
+                            {
+                                "output": '{"ok":true,"step":"clicked_remove_background"}'
+                            },
+                            {"output": '{"ok":true,"step":"set_image_position"}'},
+                            {
+                                "output": '{"ok":true,"step":"typed_current_page","page":"2","source":"created-page-explicit"}'
+                            },
+                            {
+                                "output": '{"ok":true,"step":"edited_thumbnail_text","line1_ok":true,"line2_ok":false}'
+                            },
+                            {
+                                "output": '{"ok":true,"step":"confirmed_download_options"}'
+                            },
+                            {"output": '{"ok":true,"step":"clicked_download_execute"}'},
+                            {
+                                "output": '{"ok":true,"step":"cleanup_deleted_created_page"}'
+                            },
+                        ]
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            (workspace / "thumb_data.json").write_text(
+                json.dumps(
+                    {
+                        "bg_prompt": "legacy background",
+                        "line1": "Legacy",
+                        "line2": "Thumb",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={
+                        "status": "ok",
+                        "details": {"transcript_path": str(transcript_path.resolve())},
+                    },
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+            self.assertEqual(exit_code, exit_codes.SUCCESS)
+            evidence = json.loads(
+                (root / "attach_evidence.json").read_text(encoding="utf-8")
+            )
+            details = cast(dict[object, object], evidence["details"])
+            self.assertTrue(bool(details["text_edit_ok"]))
+
     def test_stage2_adapter_child_uses_native_setter_and_enter_for_genspark_prompt(
         self,
     ) -> None:

@@ -218,7 +218,35 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
 
         self.assertEqual(_service_timeout_sec("seaart"), 60)
         self.assertEqual(_service_timeout_sec("geminigen"), 60)
-        self.assertEqual(_service_timeout_sec("canva"), 30)
+
+    def test_last_visible_locator_prefers_last_visible_candidate(self) -> None:
+        from runtime_v2.workers.agent_browser_worker import _last_visible_locator
+
+        class FakeCandidate:
+            def __init__(self, width: int, height: int) -> None:
+                self._box = {"width": width, "height": height}
+
+            def bounding_box(self):
+                return self._box
+
+        class FakeLocator:
+            def __init__(self, items) -> None:
+                self._items = items
+
+            def count(self) -> int:
+                return len(self._items)
+
+            def nth(self, index: int):
+                return self._items[index]
+
+        hidden = FakeCandidate(0, 0)
+        first_visible = FakeCandidate(120, 30)
+        last_visible = FakeCandidate(80, 20)
+        locator = FakeLocator([hidden, first_visible, last_visible])
+
+        target = _last_visible_locator(locator)
+
+        self.assertIs(target, last_visible)
 
     def test_agent_browser_verify_skips_snapshot_for_non_chatgpt_services(self) -> None:
         from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job

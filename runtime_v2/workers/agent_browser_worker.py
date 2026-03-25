@@ -112,6 +112,20 @@ def _select_canva_page(port: int):
     return browser, page
 
 
+def _last_visible_locator(locator):
+    count = locator.count()
+    target = None
+    for index in range(count):
+        candidate = locator.nth(index)
+        try:
+            box = candidate.bounding_box()
+        except Exception:
+            box = None
+        if box and box.get("width", 0) > 0 and box.get("height", 0) > 0:
+            target = candidate
+    return target
+
+
 def _playwright_edit_canva_colored_text(
     *, port: int, line1: str, line2: str, timeout_sec: int
 ) -> dict[str, object]:
@@ -125,20 +139,7 @@ def _playwright_edit_canva_colored_text(
             if not text:
                 return True
             locator = page.locator(f"span[style*='color: {color}']")
-            count = locator.count()
-            target = None
-            best_width = -1.0
-            for index in range(count):
-                candidate = locator.nth(index)
-                try:
-                    box = candidate.bounding_box()
-                except Exception:
-                    box = None
-                if box and box.get("width", 0) > 0 and box.get("height", 0) > 0:
-                    width = float(box.get("width", 0))
-                    if width > best_width:
-                        best_width = width
-                        target = candidate
+            target = _last_visible_locator(locator)
             if target is None:
                 return False
             target.dblclick(timeout=2000)

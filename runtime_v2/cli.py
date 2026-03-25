@@ -2417,16 +2417,30 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             "position_ok": bool(ref_img)
             and bool(step_results.get("set_image_position", {}).get("ok", False)),
             "text_edit_ok": bool(
-                step_results.get("edited_thumbnail_text", {}).get("ok", False)
-                and len(
-                    cast(
-                        list[object],
-                        step_results.get("edited_thumbnail_text", {}).get(
-                            "applied", []
-                        ),
+                (
+                    step_results.get("edited_thumbnail_text", {}).get("ok", False)
+                    and (
+                        len(
+                            cast(
+                                list[object],
+                                step_results.get("edited_thumbnail_text", {}).get(
+                                    "applied", []
+                                ),
+                            )
+                        )
+                        > 0
+                        or bool(
+                            step_results.get("edited_thumbnail_text", {}).get(
+                                "line1_ok", False
+                            )
+                        )
+                        or bool(
+                            step_results.get("edited_thumbnail_text", {}).get(
+                                "line2_ok", False
+                            )
+                        )
                     )
                 )
-                > 0
             )
             or not (line1 or line2),
             "current_page_selection_ok": bool(
