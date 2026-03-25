@@ -201,12 +201,12 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                                 "output": '{"ok":true,"step":"page_count_before","count":1}'
                             },
                             {
-                                "output": '{"ok":true,"step":"page_count_after","count":1}'
+                                "output": '{"ok":true,"step":"page_count_after","count":2}'
                             },
                             {
                                 "output": '{"ok":true,"step":"submitted_background_generate"}'
                             },
-                            {"output": '{"ok":true,"step":"page_picker_unavailable"}'},
+                            {"output": '{"ok":true,"step":"selected_created_page"}'},
                             {
                                 "output": '{"ok":true,"step":"edited_thumbnail_text","applied":["fallback-0"]}'
                             },
@@ -215,7 +215,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                             },
                             {"output": '{"ok":true,"step":"clicked_download_execute"}'},
                             {
-                                "output": '{"ok":true,"step":"cleanup_skipped_single_page"}'
+                                "output": '{"ok":true,"step":"cleanup_deleted_created_page"}'
                             },
                         ]
                     },
@@ -263,7 +263,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             )
             details = cast(dict[object, object], evidence["details"])
             self.assertEqual(details["page_count_before"], 1)
-            self.assertEqual(details["page_count_after"], 1)
+            self.assertEqual(details["page_count_after"], 2)
             self.assertTrue(bool(details["clone_ok"]))
             self.assertTrue(bool(details["background_generate_ok"]))
             self.assertTrue(bool(details["current_page_selection_ok"]))
@@ -1760,7 +1760,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertEqual(evidence["status"], "ok")
         self.assertFalse(bool(evidence["placeholder_artifact"]))
 
-    def test_stage2_adapter_child_accepts_missing_canva_page_picker_in_single_page_mode(
+    def test_stage2_adapter_child_accepts_missing_canva_page_picker_after_created_page_selection(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -1776,12 +1776,12 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                                 "output": '{"ok":true,"step":"page_count_before","count":3}'
                             },
                             {
-                                "output": '{"ok":true,"step":"page_count_after","count":3}'
+                                "output": '{"ok":true,"step":"page_count_after","count":4}'
                             },
                             {
                                 "output": '{"ok":true,"step":"submitted_background_generate"}'
                             },
-                            {"output": '{"ok":true,"step":"page_picker_unavailable"}'},
+                            {"output": '{"ok":true,"step":"selected_created_page"}'},
                             {
                                 "output": '{"ok":true,"step":"typed_current_page","page":"19"}'
                             },
@@ -1836,7 +1836,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "copied_template"},
                 {"ok": True, "step": "clicked_add_page"},
                 {"ok": True, "step": "pasted_template"},
-                {"ok": True, "step": "page_count_after", "count": 4},
+                {"ok": True, "step": "page_count_after", "count": 5},
                 {"ok": True, "step": "focused_background_canvas"},
                 {"ok": True, "step": "opened_background_generate_panel"},
                 {"ok": True, "step": "filled_background_prompt"},
@@ -1857,7 +1857,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "page_picker_unavailable"},
                 {"ok": True, "step": "done_button_optional"},
                 {"ok": True, "step": "clicked_download_execute"},
-                {"ok": True, "step": "cleanup_skipped_single_page"},
+                {"ok": True, "step": "cleanup_deleted_created_page"},
             ]
 
             responses: list[object] = []
@@ -1925,7 +1925,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "page_count_before", "count": 8},
                 {"ok": True, "step": "body_focused"},
                 {"ok": True, "step": "duplicated_template_page"},
-                {"ok": True, "step": "page_count_after", "count": 8},
+                {"ok": True, "step": "page_count_after", "count": 9},
                 {"ok": True, "step": "focused_background_canvas"},
                 {"ok": True, "step": "opened_background_generate_panel"},
                 {"ok": True, "step": "filled_background_prompt"},
@@ -1943,10 +1943,10 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 },
                 {"ok": True, "step": "opened_file_menu"},
                 {"ok": True, "step": "opened_download_panel"},
-                {"ok": True, "step": "page_picker_unavailable"},
+                {"ok": True, "step": "selected_created_page"},
                 {"ok": True, "step": "done_button_optional"},
                 {"ok": True, "step": "clicked_download_execute"},
-                {"ok": True, "step": "cleanup_skipped_single_page"},
+                {"ok": True, "step": "cleanup_deleted_created_page"},
             ]
 
             responses: list[object] = []
@@ -1999,7 +1999,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
 
         self.assertEqual(exit_code, exit_codes.SUCCESS)
 
-    def test_stage2_adapter_child_uses_legacy_single_page_canva_flow(
+    def test_stage2_adapter_child_skips_add_page_and_paste_after_duplicate(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -2036,15 +2036,29 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
         self.assertEqual(exit_code, exit_codes.SUCCESS)
-        scripts = [str(action.get("script", "")) for action in captured_actions]
-        self.assertTrue(any("legacy_single_page_mode" in script for script in scripts))
-        self.assertFalse(
-            any("duplicated_template_page" in script for script in scripts)
+        duplicate_script = next(
+            action
+            for action in captured_actions
+            if action.get("type") == "eval"
+            and "duplicated_template_page" in str(action.get("script", ""))
         )
-        self.assertFalse(any("clicked_add_page" in script for script in scripts))
-        self.assertFalse(any("pasted_template" in script for script in scripts))
+        add_page_script = next(
+            action
+            for action in captured_actions
+            if action.get("type") == "eval"
+            and "clicked_add_page" in str(action.get("script", ""))
+        )
+        paste_script = next(
+            action
+            for action in captured_actions
+            if action.get("type") == "eval"
+            and "pasted_template" in str(action.get("script", ""))
+        )
+        self.assertIn("__runtime_v2_canva_duplicated", str(duplicate_script["script"]))
+        self.assertIn("add_page_optional", str(add_page_script["script"]))
+        self.assertIn("pasted_template_optional", str(paste_script["script"]))
 
-    def test_stage2_adapter_child_keeps_canva_page_count_script_single_page(
+    def test_stage2_adapter_child_falls_back_when_canva_duplicate_does_not_increase_pages(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -2087,9 +2101,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             if action.get("type") == "eval"
             and "page_count_after" in str(action.get("script", ""))
         )
-        self.assertNotIn("fallback_clicked_add_page", str(page_count_script["script"]))
-        self.assertNotIn("fallback_pasted_template", str(page_count_script["script"]))
-        self.assertNotIn("Add a new page", str(page_count_script["script"]))
+        self.assertIn("fallback_clicked_add_page", str(page_count_script["script"]))
+        self.assertIn("fallback_pasted_template", str(page_count_script["script"]))
 
     def test_canva_page_count_uses_footer_total_pages(self) -> None:
         script = _canva_page_count_script("page_count_before")
@@ -2112,8 +2125,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "page_count_before", "count": 5},
                 {"ok": True, "step": "body_focused"},
                 {"ok": True, "step": "duplicated_template_page"},
-                {"ok": True, "step": "page_count_after", "count": 5},
-                {"ok": True, "step": "page_picker_unavailable"},
+                {"ok": True, "step": "page_count_after", "count": 6},
+                {"ok": True, "step": "selected_created_page"},
                 {"ok": True, "step": "focused_background_canvas"},
                 {"ok": True, "step": "opened_background_generate_panel"},
                 {"ok": True, "step": "filled_background_prompt"},
@@ -2133,7 +2146,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "typed_current_page", "page": "6"},
                 {"ok": True, "step": "done_button_optional"},
                 {"ok": True, "step": "clicked_download_execute"},
-                {"ok": True, "step": "cleanup_skipped_single_page"},
+                {"ok": True, "step": "cleanup_deleted_created_page"},
             ]
 
             responses: list[object] = []
@@ -2203,8 +2216,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "page_count_before", "count": 5},
                 {"ok": True, "step": "body_focused"},
                 {"ok": True, "step": "duplicated_template_page"},
-                {"ok": True, "step": "page_count_after", "count": 5},
-                {"ok": True, "step": "page_picker_unavailable"},
+                {"ok": True, "step": "page_count_after", "count": 6},
+                {"ok": True, "step": "selected_created_page"},
                 {"ok": True, "step": "focused_background_canvas"},
                 {"ok": True, "step": "opened_background_generate_panel"},
                 {"ok": True, "step": "filled_background_prompt"},
@@ -2224,7 +2237,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "typed_current_page", "page": "6"},
                 {"ok": True, "step": "done_button_optional"},
                 {"ok": True, "step": "clicked_download_execute"},
-                {"ok": True, "step": "cleanup_skipped_single_page"},
+                {"ok": True, "step": "cleanup_deleted_created_page"},
             ]
 
             responses: list[object] = []
@@ -2294,8 +2307,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "page_count_before", "count": 6},
                 {"ok": True, "step": "body_focused"},
                 {"ok": True, "step": "duplicated_template_page"},
-                {"ok": True, "step": "page_count_after", "count": 6},
-                {"ok": True, "step": "page_picker_unavailable"},
+                {"ok": True, "step": "page_count_after", "count": 7},
+                {"ok": True, "step": "selected_created_page"},
                 {"ok": True, "step": "focused_background_canvas"},
                 {"ok": True, "step": "opened_background_generate_panel"},
                 {"ok": True, "step": "filled_background_prompt"},
@@ -2315,7 +2328,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "typed_current_page", "page": "7"},
                 {"ok": True, "step": "done_button_optional"},
                 {"ok": True, "step": "clicked_download_execute"},
-                {"ok": True, "step": "cleanup_skipped_single_page"},
+                {"ok": True, "step": "cleanup_deleted_created_page"},
             ]
 
             responses: list[object] = []
@@ -2385,8 +2398,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "page_count_before", "count": 5},
                 {"ok": True, "step": "body_focused"},
                 {"ok": True, "step": "duplicated_template_page"},
-                {"ok": True, "step": "page_count_after", "count": 5},
-                {"ok": True, "step": "page_picker_unavailable"},
+                {"ok": True, "step": "page_count_after", "count": 6},
+                {"ok": True, "step": "selected_created_page"},
                 {"ok": True, "step": "focused_background_canvas"},
                 {"ok": True, "step": "opened_background_generate_panel"},
                 {"ok": True, "step": "filled_background_prompt"},
@@ -2406,7 +2419,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "typed_current_page", "page": "6"},
                 {"ok": True, "step": "done_button_optional"},
                 {"ok": True, "step": "clicked_download_execute"},
-                {"ok": True, "step": "cleanup_skipped_single_page"},
+                {"ok": True, "step": "cleanup_deleted_created_page"},
             ]
 
             responses: list[object] = []
@@ -2476,8 +2489,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "page_count_before", "count": 6},
                 {"ok": True, "step": "body_focused"},
                 {"ok": True, "step": "duplicated_template_page"},
-                {"ok": True, "step": "page_count_after", "count": 6},
-                {"ok": True, "step": "page_picker_unavailable"},
+                {"ok": True, "step": "page_count_after", "count": 7},
+                {"ok": True, "step": "selected_created_page"},
                 {"ok": True, "step": "focused_background_canvas"},
                 {"ok": True, "step": "opened_background_generate_panel"},
                 {"ok": True, "step": "filled_background_prompt"},
@@ -2497,7 +2510,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "typed_current_page", "page": "7"},
                 {"ok": True, "step": "done_button_optional"},
                 {"ok": True, "step": "clicked_download_execute"},
-                {"ok": True, "step": "cleanup_skipped_single_page"},
+                {"ok": True, "step": "cleanup_deleted_created_page"},
             ]
 
             responses: list[object] = []
@@ -2565,8 +2578,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "page_count_before", "count": 5},
                 {"ok": True, "step": "body_focused"},
                 {"ok": True, "step": "duplicated_template_page"},
-                {"ok": True, "step": "page_count_after", "count": 5},
-                {"ok": True, "step": "page_picker_unavailable"},
+                {"ok": True, "step": "page_count_after", "count": 6},
+                {"ok": True, "step": "selected_created_page"},
                 {"ok": True, "step": "focused_background_canvas"},
                 {"ok": True, "step": "opened_background_generate_panel"},
                 {"ok": True, "step": "filled_background_prompt"},
@@ -2643,8 +2656,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "page_count_before", "count": 5},
                 {"ok": True, "step": "body_focused"},
                 {"ok": True, "step": "duplicated_template_page"},
-                {"ok": True, "step": "page_count_after", "count": 4},
-                {"ok": True, "step": "page_picker_unavailable"},
+                {"ok": True, "step": "page_count_after", "count": 5},
+                {"ok": True, "step": "selected_created_page"},
                 {"ok": True, "step": "submitted_background_generate"},
                 {"ok": True, "step": "opened_upload_tab"},
                 {"ok": True, "step": "typed_current_page", "page": "5"},
@@ -2715,8 +2728,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "page_count_before", "count": 6},
                 {"ok": True, "step": "body_focused"},
                 {"ok": True, "step": "duplicated_template_page"},
-                {"ok": True, "step": "page_count_after", "count": 6},
-                {"ok": True, "step": "page_picker_unavailable"},
+                {"ok": True, "step": "page_count_after", "count": 7},
+                {"ok": True, "step": "selected_created_page"},
                 {"ok": True, "step": "focused_background_canvas"},
                 {"ok": True, "step": "opened_background_generate_panel"},
                 {"ok": True, "step": "filled_background_prompt"},
@@ -2736,7 +2749,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "typed_current_page", "page": "7"},
                 {"ok": True, "step": "done_button_optional"},
                 {"ok": True, "step": "clicked_download_execute"},
-                {"ok": True, "step": "cleanup_skipped_single_page"},
+                {"ok": True, "step": "cleanup_deleted_created_page"},
             ]
 
             responses: list[object] = []
@@ -2793,8 +2806,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "page_count_before", "count": 8},
                 {"ok": True, "step": "body_focused"},
                 {"ok": True, "step": "duplicated_template_page"},
-                {"ok": True, "step": "page_count_after", "count": 8},
-                {"ok": True, "step": "page_picker_unavailable"},
+                {"ok": True, "step": "page_count_after", "count": 9},
+                {"ok": True, "step": "selected_created_page"},
                 {"ok": True, "step": "focused_background_canvas"},
                 {"ok": True, "step": "opened_background_generate_panel"},
                 {"ok": True, "step": "filled_background_prompt"},
@@ -2816,7 +2829,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "page_picker_unavailable"},
                 {"ok": True, "step": "done_button_optional"},
                 {"ok": True, "step": "clicked_download_execute"},
-                {"ok": True, "step": "cleanup_skipped_single_page"},
+                {"ok": True, "step": "cleanup_deleted_created_page"},
             ]
 
             responses: list[object] = []
@@ -2906,7 +2919,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         )
         self.assertIn("selected_generated_background", str(bg_select_script["script"]))
 
-    def test_stage2_adapter_child_does_not_emit_canva_created_page_selection_script(
+    def test_stage2_adapter_child_selects_canva_created_page_card_not_delete_button(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -2923,8 +2936,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "page_count_before", "count": 8},
                 {"ok": True, "step": "body_focused"},
                 {"ok": True, "step": "duplicated_template_page"},
-                {"ok": True, "step": "page_count_after", "count": 8},
-                {"ok": True, "step": "page_picker_unavailable"},
+                {"ok": True, "step": "page_count_after", "count": 9},
+                {"ok": True, "step": "selected_created_page"},
                 {"ok": True, "step": "focused_background_canvas"},
             ]
 
@@ -2959,9 +2972,14 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
         self.assertEqual(exit_code, exit_codes.SUCCESS)
-        scripts = [str(action.get("script", "")) for action in captured_actions]
-        self.assertTrue(any("legacy_single_page_mode" in script for script in scripts))
-        self.assertFalse(any("selected_created_page" in script for script in scripts))
+        select_action = next(
+            action
+            for action in captured_actions
+            if action.get("type") == "eval"
+            and "selected_created_page" in str(action.get("script", ""))
+        )
+        self.assertIn("selected_created_page", str(select_action["script"]))
+        self.assertNotIn('aria-label*="Delete page"', str(select_action["script"]))
 
     def test_stage2_adapter_child_canva_text_falls_back_without_color_spans(
         self,
@@ -2991,7 +3009,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "copied_template"},
                 {"ok": True, "step": "clicked_add_page"},
                 {"ok": True, "step": "pasted_template"},
-                {"ok": True, "step": "page_count_after", "count": 4},
+                {"ok": True, "step": "page_count_after", "count": 5},
                 {"ok": True, "step": "focused_background_canvas"},
                 {"ok": True, "step": "opened_background_generate_panel"},
                 {"ok": True, "step": "filled_background_prompt"},
@@ -3010,10 +3028,10 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 },
                 {"ok": True, "step": "opened_file_menu"},
                 {"ok": True, "step": "opened_download_panel"},
-                {"ok": True, "step": "page_picker_unavailable"},
+                {"ok": True, "step": "selected_created_page"},
                 {"ok": True, "step": "done_button_optional"},
                 {"ok": True, "step": "clicked_download_execute"},
-                {"ok": True, "step": "cleanup_skipped_single_page"},
+                {"ok": True, "step": "cleanup_deleted_created_page"},
             ]:
                 completed = cast(object, type("Completed", (), {})())
                 setattr(completed, "stdout", json.dumps(payload, ensure_ascii=True))
@@ -3316,9 +3334,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertTrue(any("set_image_position" in script for script in scripts))
         self.assertTrue(any("clicked_download_execute" in script for script in scripts))
         self.assertTrue(
-            any("cleanup_skipped_single_page" in script for script in scripts)
+            any("cleanup_deleted_created_page" in script for script in scripts)
         )
-        self.assertTrue(any("legacy_single_page_mode" in script for script in scripts))
         self.assertTrue(any("attempt < 3" in script for script in scripts))
         self.assertTrue(any("key:'Escape'" in script for script in scripts))
         self.assertTrue(any("Date.now() + 4000" in script for script in scripts))
@@ -3484,7 +3501,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                                 "output": json.dumps(
                                     {
                                         "ok": True,
-                                        "step": "page_picker_unavailable",
+                                        "step": "selected_created_page",
                                     },
                                     ensure_ascii=True,
                                 )
@@ -3549,8 +3566,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
         self.assertEqual(evidence["error_code"], "CANVA_TRUTHFUL_ARTIFACT_GATE_FAILED")
         details = cast(dict[object, object], evidence["details"])
-        self.assertTrue(bool(details["clone_ok"]))
-        self.assertTrue(bool(details["page_stable_ok"]))
+        self.assertFalse(bool(details["clone_ok"]))
 
     def test_stage2_adapter_child_fail_closes_when_functional_capture_fails(
         self,
