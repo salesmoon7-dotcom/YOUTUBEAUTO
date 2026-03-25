@@ -17,6 +17,26 @@ This retest plan covers all disputed boundaries raised in the second postmortem:
 - fallback reduction
 - semantic-row closeout evidence
 
+## Current Stop Point
+
+- Operational failure to record explicitly:
+  - For roughly the last two months, repeated runtime work drifted into surrounding service-boundary checks and reruns while the actual top blocker (`stage1 chatgpt -> JSON/Excel generation`) remained unresolved.
+  - This consumed user time without restoring the real pipeline goal and created the appearance of continuous progress without actual closeout movement.
+  - This plan must now be interpreted with that failure in mind: when `stage1` cannot produce `parsed_payload.json` / `stage1_handoff.json` / `video_plan.json`, no surrounding boundary proof may be treated as meaningful forward progress.
+
+- Current live stop point is no longer `Canva`, `qwen3_tts`, or `GeminiGen`.
+- Readiness is currently green and minimum-unit proofs for `Canva`, `qwen3_tts`, and `GeminiGen` were gathered, but semantic-row closeout is still blocked before `stage1_handoff` generation.
+- The current top blocker is `stage1 chatgpt` on the live longform GPT path:
+  - prompt submission succeeds,
+  - `in_flight_marker` is observed,
+  - the UI then ends in `생각 중지됨` with no assistant blocks,
+  - the runtime now fail-closes this as `CHATGPT_THINKING_STOPPED_NO_OUTPUT` instead of leaving the control loop at `seeded_queue`.
+- Current trusted evidence:
+  - foreground reproduction: `D:\YOUTUBEAUTO_RUNTIME\probe\stage1-foreground-row15-20260325-v4\result.json`
+  - detached semantic-row proof: `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-closeout-20260325-05\probe_result.json`
+- Therefore the next allowed action is not another broad semantic-row retry or another service-boundary proof.
+- The next allowed action is only to resolve the `stage1 chatgpt` live no-output blocker so that `parsed_payload.json`, `stage1_handoff.json`, `video_plan.json`, and Excel writeback can be produced again.
+
 ---
 
 ## What Changes From The Previous Test Approach
