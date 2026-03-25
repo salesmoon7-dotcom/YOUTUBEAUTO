@@ -206,7 +206,9 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                             {
                                 "output": '{"ok":true,"step":"submitted_background_generate"}'
                             },
-                            {"output": '{"ok":true,"step":"selected_created_page"}'},
+                            {
+                                "output": '{"ok":true,"step":"typed_current_page","page":"2","source":"created-page-explicit"}'
+                            },
                             {
                                 "output": '{"ok":true,"step":"edited_thumbnail_text","applied":["fallback-0"]}'
                             },
@@ -2919,7 +2921,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         )
         self.assertIn("selected_generated_background", str(bg_select_script["script"]))
 
-    def test_stage2_adapter_child_selects_canva_created_page_card_not_delete_button(
+    def test_stage2_adapter_child_types_created_canva_page_in_download_panel(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -2937,7 +2939,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 {"ok": True, "step": "body_focused"},
                 {"ok": True, "step": "duplicated_template_page"},
                 {"ok": True, "step": "page_count_after", "count": 9},
-                {"ok": True, "step": "selected_created_page"},
+                {"ok": True, "step": "typed_current_page", "page": "9"},
                 {"ok": True, "step": "focused_background_canvas"},
             ]
 
@@ -2972,14 +2974,17 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
         self.assertEqual(exit_code, exit_codes.SUCCESS)
-        select_action = next(
+        page_input_action = next(
             action
             for action in captured_actions
             if action.get("type") == "eval"
-            and "selected_created_page" in str(action.get("script", ""))
+            and "typed_current_page" in str(action.get("script", ""))
         )
-        self.assertIn("selected_created_page", str(select_action["script"]))
-        self.assertNotIn('aria-label*="Delete page"', str(select_action["script"]))
+        self.assertIn("created-page-explicit", str(page_input_action["script"]))
+        self.assertIn(
+            "__runtime_v2_canva_page_count_after", str(page_input_action["script"])
+        )
+        self.assertIn("KeyboardEvent", str(page_input_action["script"]))
 
     def test_stage2_adapter_child_canva_text_falls_back_without_color_spans(
         self,
@@ -3336,6 +3341,15 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertTrue(
             any("cleanup_deleted_created_page" in script for script in scripts)
         )
+        self.assertFalse(any("selected_created_page" in script for script in scripts))
+        page_input_script = next(
+            script for script in scripts if "typed_current_page" in script
+        )
+        self.assertIn("created-page-explicit", page_input_script)
+        cleanup_script = next(
+            script for script in scripts if "cleanup_deleted_created_page" in script
+        )
+        self.assertIn("__runtime_v2_canva_created_page", cleanup_script)
         self.assertTrue(any("attempt < 3" in script for script in scripts))
         self.assertTrue(any("key:'Escape'" in script for script in scripts))
         self.assertTrue(any("Date.now() + 4000" in script for script in scripts))
@@ -3344,7 +3358,13 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         click_selector_actions = [
             action for action in captured_actions if action.get("type") == "click"
         ]
-        self.assertEqual(len(click_selector_actions), 6)
+        self.assertEqual(len(click_selector_actions), 5)
+        self.assertFalse(
+            any(
+                'aria-label="ref.png"' in str(action.get("selector", ""))
+                for action in click_selector_actions
+            )
+        )
         self.assertEqual(
             click_selector_actions[0].get("selector"),
             'xpath=(//button[@role="tab" and contains(normalize-space(.),"Product Background")])[1]',
@@ -3374,13 +3394,6 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             any(
                 action.get("selector")
                 == 'xpath=(//button[@role="menuitem" and (normalize-space(.)="다운로드" or normalize-space(.)="Download")])[1]'
-                for action in click_selector_actions
-            )
-        )
-        self.assertTrue(
-            any(
-                action.get("selector")
-                == 'xpath=(//*[@role="button" and @aria-label="ref.png"])[1]'
                 for action in click_selector_actions
             )
         )
