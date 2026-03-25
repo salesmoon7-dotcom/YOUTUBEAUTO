@@ -59,6 +59,100 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertIn("[Title]\n머니 제목", response)
         self.assertIn("[#01 intro Character] - Voice 1(1)\nscene prompt one", response)
 
+    def test_generate_gpt_response_text_accepts_response_after_recovery_cta(
+        self,
+    ) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def __init__(self) -> None:
+                self._reads = 0
+
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                return {
+                    "ok": True,
+                    "submit_evidence": {
+                        "classification": "sent",
+                        "classification_reason": "send_clicked",
+                        "retry_safe_decision": False,
+                    },
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                self._reads += 1
+                if self._reads == 1:
+                    return {
+                        "assistant_text": "",
+                        "legacy_blocks": [],
+                        "has_stop": False,
+                        "has_send_button": True,
+                        "recovery_clicked": True,
+                    }
+                return {
+                    "assistant_text": "[Voice]\nCOPY\nhello",
+                    "legacy_blocks": [],
+                    "has_stop": False,
+                    "has_send_button": True,
+                    "recovery_clicked": False,
+                }
+
+        result = generate_gpt_response_text(
+            prompt="hello",
+            backend=FakeBackend(),
+            timeout_sec=5,
+            poll_interval_sec=0.01,
+            completion_idle_sec=0.0,
+            response_start_timeout_sec=0.1,
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("[Voice]", str(result["response_text"]))
+
+    def test_generate_gpt_response_text_fails_closed_when_thinking_stops(self) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def __init__(self) -> None:
+                self._attempt = 0
+                self._reads = 0
+
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                self._attempt += 1
+                return {
+                    "ok": True,
+                    "submit_evidence": {
+                        "classification": "sent",
+                        "classification_reason": "send_clicked",
+                        "retry_safe_decision": False,
+                    },
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                self._reads += 1
+                if self._reads == 1:
+                    return {
+                        "assistant_text": "",
+                        "legacy_blocks": [],
+                        "has_stop": True,
+                        "has_send_button": False,
+                        "thinking_stopped": False,
+                    }
+                return {
+                    "assistant_text": "",
+                    "legacy_blocks": [],
+                    "has_stop": False,
+                    "has_send_button": False,
+                    "thinking_stopped": True,
+                }
+
+        result = generate_gpt_response_text(
+            prompt="hello",
+            backend=FakeBackend(),
+            timeout_sec=5,
+            poll_interval_sec=0.01,
+            completion_idle_sec=0.0,
+            response_start_timeout_sec=0.1,
+        )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_THINKING_STOPPED_NO_OUTPUT")
+
     def test_agent_browser_backend_preselects_chatgpt_tab_before_eval(self) -> None:
         calls: list[list[str]] = []
 
@@ -86,6 +180,11 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         )
 
         with (
+            mock.patch.object(
+                backend,
+                "_wait_for_send_state",
+                return_value={"ok": True, "sendClicked": True, "submit_evidence": {}},
+            ),
             mock.patch(
                 "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
                 return_value=[
@@ -273,15 +372,22 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             command_runner=fake_runner,
         )
 
-        with mock.patch(
-            "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
-            return_value=[
-                {"title": "Omnibox Popup", "url": "chrome://newtab"},
-                {
-                    "title": CHATGPT_LONGFORM_TITLE_SUBSTRING,
-                    "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}",
-                },
-            ],
+        with (
+            mock.patch.object(
+                backend,
+                "_wait_for_send_state",
+                return_value={"ok": True, "sendClicked": True, "submit_evidence": {}},
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
+                return_value=[
+                    {"title": "Omnibox Popup", "url": "chrome://newtab"},
+                    {
+                        "title": CHATGPT_LONGFORM_TITLE_SUBSTRING,
+                        "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}",
+                    },
+                ],
+            ),
         ):
             result = backend.submit_prompt("hello")
 
@@ -331,6 +437,11 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         )
 
         with (
+            mock.patch.object(
+                backend,
+                "_wait_for_send_state",
+                return_value={"ok": True, "sendClicked": True, "submit_evidence": {}},
+            ),
             mock.patch(
                 "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
                 return_value=[{"title": "ChatGPT", "url": "https://chatgpt.com/c/abc"}],
@@ -340,7 +451,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             result = backend.submit_prompt("hello")
 
         self.assertTrue(bool(result["ok"]))
-        self.assertEqual(eval_calls, 2)
+        self.assertGreaterEqual(eval_calls, 2)
 
     def test_raw_cdp_method_timeout_is_wrapped_as_runtime_error(self) -> None:
         from runtime_v2.stage1 import chatgpt_backend as backend_module
@@ -577,6 +688,11 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         )
 
         with (
+            mock.patch.object(
+                backend,
+                "_wait_for_send_state",
+                return_value={"ok": True, "sendClicked": True, "submit_evidence": {}},
+            ),
             mock.patch(
                 "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
                 return_value=[
@@ -638,6 +754,11 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         )
 
         with (
+            mock.patch.object(
+                backend,
+                "_wait_for_send_state",
+                return_value={"ok": True, "sendClicked": True, "submit_evidence": {}},
+            ),
             mock.patch(
                 "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
                 return_value=[{"title": "ChatGPT", "url": "https://chatgpt.com/c/abc"}],

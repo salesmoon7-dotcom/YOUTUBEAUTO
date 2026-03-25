@@ -90,6 +90,7 @@ def generate_gpt_response_text(
         if backend is None
         else backend
     )
+    recovered_after_stream_abort = False
     for attempt in (1, 2):
         emit("submit_start", attempt=attempt, backend="chatgpt_backend")
         try:
@@ -138,7 +139,7 @@ def generate_gpt_response_text(
         started = time.time()
         last_text = ""
         stable_count = 0
-        saw_streaming = False
+        saw_streaming = recovered_after_stream_abort
         last_state: dict[str, object] = {}
         last_activity_ts = time.time()
         consecutive_read_failures = 0
@@ -193,6 +194,12 @@ def generate_gpt_response_text(
             response_text = _response_text_from_state(text, legacy_blocks)
             has_stop = bool(state.get("has_stop", False))
             has_send_button = bool(state.get("has_send_button", False))
+            recovery_clicked = bool(state.get("recovery_clicked", False))
+            thinking_stopped = bool(state.get("thinking_stopped", False))
+            if recovery_clicked and not saw_streaming:
+                emit("recovery_clicked", attempt=attempt, backend="chatgpt_backend")
+                saw_streaming = True
+                last_activity_ts = time.time()
             if has_stop:
                 if not saw_streaming:
                     emit("streaming_seen", attempt=attempt, backend="chatgpt_backend")
@@ -243,6 +250,27 @@ def generate_gpt_response_text(
                     )
                     result["timeline"] = timeline
                     return result
+            if saw_streaming and thinking_stopped and not response_text:
+                emit(
+                    "thinking_stopped",
+                    attempt=attempt,
+                    backend="chatgpt_backend",
+                )
+                failed: dict[str, object] = {
+                    "status": "failed",
+                    "error_code": "CHATGPT_THINKING_STOPPED_NO_OUTPUT",
+                    "failure_stage": "read",
+                    "submit_info": cast(dict[str, object], submit_info),
+                    "final_state": cast(dict[str, object], state),
+                }
+                emit(
+                    "final_state",
+                    attempt=attempt,
+                    final_state="failed",
+                    final_state_code="CHATGPT_THINKING_STOPPED_NO_OUTPUT",
+                )
+                failed["timeline"] = timeline
+                return failed
             if (
                 not saw_streaming
                 and not text

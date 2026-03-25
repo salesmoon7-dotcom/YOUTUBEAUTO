@@ -263,6 +263,9 @@ class AgentBrowserCdpBackend:
             "assistant_text": str(parsed.get("assistant_text", "")),
             "assistant_block_count": parsed.get("assistant_block_count", 0),
             "legacy_blocks": parsed.get("legacy_blocks", []),
+            "has_recovery_cta": bool(parsed.get("has_recovery_cta", False)),
+            "recovery_clicked": bool(parsed.get("recovery_clicked", False)),
+            "thinking_stopped": bool(parsed.get("thinking_stopped", False)),
             "selected_tab": self._current_selected_tab(),
             "backend_fallbacks": self._fallback_events_payload(),
         }
@@ -508,9 +511,14 @@ def _response_script(payload: str) -> str:
         "for (const selector of responseSelectors) { const found = Array.from(document.querySelectorAll(selector)).filter(el => !el.closest('form')); if (found.length) { assistantBlocks = found; break; } }"
         "const last = assistantBlocks.length ? assistantBlocks[assistantBlocks.length - 1] : null;"
         "const text = last ? ((last.innerText || last.textContent || '').trim()) : '';"
+        "const bodyText = document.body ? ((document.body.innerText || document.body.textContent || '').trim()) : '';"
+        "const recoveryCandidates = Array.from(document.querySelectorAll('a,button')).filter(el => { const txt = ((el.innerText || el.textContent || '') + ' ' + (el.getAttribute('aria-label') || '')).trim(); return txt.includes('지금 응답 받기') || txt.includes('Get response now'); });"
+        "const recovery = recoveryCandidates.find(el => el && el.offsetParent !== null) || null;"
+        "let recoveryClicked = false;"
+        "if (recovery) { ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(type => recovery.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,view:window}))); if (typeof recovery.click === 'function') recovery.click(); recoveryClicked = true; }"
         "const legacyLabels = ['[Voice]','[Title]','[Title for Thumb]','[Description]','[Keywords]','[BGM]','[URL]','[Ref Img 1]','[Ref Img 2]','[Shorts Description]','[Shorts Voice]','[Shorts Clip Mapping]'];"
         "const legacyBlocks = Array.from(document.querySelectorAll('p')).map((p)=>{ const label=(p.innerText||p.textContent||'').trim(); if(!(legacyLabels.includes(label) || /^\\[Video\\d+/.test(label) || /^\\[#\\d+/.test(label))) return null; let next=p.nextElementSibling; while(next && next.tagName!=='PRE') next=next.nextElementSibling; return {label, body: next ? ((next.innerText||next.textContent||'').trim()) : ''}; }).filter(Boolean);"
-        "return JSON.stringify({has_stop: hasStop, has_send_button: hasSendButton, assistant_block_count: assistantBlocks.length, assistant_text: text, legacy_blocks: legacyBlocks});"
+        "return JSON.stringify({has_stop: hasStop, has_send_button: hasSendButton, assistant_block_count: assistantBlocks.length, assistant_text: text, legacy_blocks: legacyBlocks, has_recovery_cta: !!recovery, recovery_clicked: recoveryClicked, thinking_stopped: bodyText.includes('생각 중지됨') || bodyText.includes('Stopped thinking')});"
         "})()"
     )
 

@@ -653,6 +653,27 @@ def _pid_is_running(pid: int) -> bool:
     except PermissionError:
         return True
     except OSError:
+        if os.name == "nt":
+            try:
+                result = subprocess.run(
+                    ["tasklist", "/FI", f"PID eq {pid}"],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=5,
+                    check=False,
+                )
+            except (OSError, subprocess.SubprocessError):
+                return False
+            output = f"{result.stdout}\n{result.stderr}"
+            lowered = output.lower()
+            if (
+                "no tasks are running" in lowered
+                or "정보: 지정된 조건과 일치하는 작업이 없습니다" in lowered
+            ):
+                return False
+            return str(pid) in output
         return False
     return True
 
