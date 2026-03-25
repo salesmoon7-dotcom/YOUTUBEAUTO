@@ -31,8 +31,10 @@ This retest plan covers all disputed boundaries raised in the second postmortem:
   - `in_flight_marker` is observed,
   - the UI then ends in `생각 중지됨` with no assistant blocks,
   - the runtime now fail-closes this as `CHATGPT_THINKING_STOPPED_NO_OUTPUT` instead of leaving the control loop at `seeded_queue`.
+  - one automatic retry/re-request is now attempted in the production path, but the latest live foreground reproduction still ends in the same blocker.
 - Current trusted evidence:
   - foreground reproduction: `D:\YOUTUBEAUTO_RUNTIME\probe\stage1-foreground-row15-20260325-v4\result.json`
+  - latest foreground reproduction: `D:\YOUTUBEAUTO_RUNTIME\probe\stage1-foreground-row15-20260325-v10\result.json`
   - detached semantic-row proof: `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-closeout-20260325-05\probe_result.json`
 - Therefore the next allowed action is not another broad semantic-row retry or another service-boundary proof.
 - The next allowed action is only to resolve the `stage1 chatgpt` live no-output blocker so that `parsed_payload.json`, `stage1_handoff.json`, `video_plan.json`, and Excel writeback can be produced again.

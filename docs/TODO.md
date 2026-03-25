@@ -22,8 +22,10 @@
   - 다음 사이클에서는 이 운영 실패를 재현하지 않도록, `JSON/Excel 생성이 막힌 상태에서는 다른 service-boundary 검증을 우선하지 않는다`를 강제합니다.
   - 현재 semantic target row의 실제 최상위 blocker는 `stage1 chatgpt -> JSON/Excel 생성`입니다.
   - live ChatGPT longform GPT는 prompt 전송과 `in_flight_marker`까지는 성공하지만, 최종적으로 답변 블록 없이 `생각 중지됨`으로 끝나며 `CHATGPT_THINKING_STOPPED_NO_OUTPUT`로 fail-close 됩니다.
+  - current code는 이 경로에서 1회 자동 재요청까지 수행하지만, latest foreground evidence에서도 여전히 같은 blocker로 종료됩니다.
   - 따라서 현재 `parsed_payload.json`, `stage1_handoff.json`, `video_plan.json`, Excel writeback은 생성되지 않습니다.
   - foreground proof: `D:\YOUTUBEAUTO_RUNTIME\probe\stage1-foreground-row15-20260325-v4\result.json`
+  - latest foreground proof: `D:\YOUTUBEAUTO_RUNTIME\probe\stage1-foreground-row15-20260325-v10\result.json`
   - detached proof: `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-closeout-20260325-05\probe_result.json`
   - 다음 작업은 service-boundary 추가 검증이 아니라 `stage1 chatgpt live no-output blocker` 단일 경계만 다룹니다.
 - 오늘 세션에서 해결된 항목:

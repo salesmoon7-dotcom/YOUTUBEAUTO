@@ -196,6 +196,9 @@ def generate_gpt_response_text(
             has_send_button = bool(state.get("has_send_button", False))
             recovery_clicked = bool(state.get("recovery_clicked", False))
             thinking_stopped = bool(state.get("thinking_stopped", False))
+            upstream_error_retry_exhausted = bool(
+                state.get("upstream_error_retry_exhausted", False)
+            )
             if recovery_clicked and not saw_streaming:
                 emit("recovery_clicked", attempt=attempt, backend="chatgpt_backend")
                 saw_streaming = True
@@ -251,11 +254,42 @@ def generate_gpt_response_text(
                     result["timeline"] = timeline
                     return result
             if saw_streaming and thinking_stopped and not response_text:
+                if attempt >= 2 and upstream_error_retry_exhausted:
+                    emit(
+                        "upstream_error_retry_exhausted",
+                        attempt=attempt,
+                        backend="chatgpt_backend",
+                    )
+                    failed: dict[str, object] = {
+                        "status": "failed",
+                        "error_code": "CHATGPT_UPSTREAM_ERROR_RETRY_EXHAUSTED",
+                        "failure_stage": "read",
+                        "submit_info": cast(dict[str, object], submit_info),
+                        "final_state": cast(dict[str, object], state),
+                    }
+                    emit(
+                        "final_state",
+                        attempt=attempt,
+                        final_state="failed",
+                        final_state_code="CHATGPT_UPSTREAM_ERROR_RETRY_EXHAUSTED",
+                    )
+                    failed["timeline"] = timeline
+                    return failed
                 emit(
                     "thinking_stopped",
                     attempt=attempt,
                     backend="chatgpt_backend",
                 )
+                if attempt == 1 and relaunch_browser is not None:
+                    emit(
+                        "retry_decision",
+                        attempt=attempt,
+                        backend="chatgpt_backend",
+                        reason="thinking_stopped_no_output",
+                    )
+                    relaunch_browser()
+                    recovered_after_stream_abort = True
+                    break
                 failed: dict[str, object] = {
                     "status": "failed",
                     "error_code": "CHATGPT_THINKING_STOPPED_NO_OUTPUT",
@@ -411,7 +445,16 @@ def _response_text_from_state(text: str, legacy_blocks: object) -> str:
                 parts.append(f"{label}\n{body}")
         if parts:
             return "\n\n".join(parts)
-    return text
+    normalized = text.strip()
+    lowered = normalized.lower()
+    status_only = {"생각 중지됨", "stopped thinking", "문서 읽는 중"}
+    if lowered in status_only:
+        return ""
+    if normalized.startswith("롱폼의 말:"):
+        body = normalized.split(":", 1)[1].strip() if ":" in normalized else ""
+        if body.lower() in status_only or body in {"지금 응답 받기", "다시 시도"}:
+            return ""
+    return normalized
 
 
 def _backend_fallbacks(payload: dict[str, object]) -> list[str]:

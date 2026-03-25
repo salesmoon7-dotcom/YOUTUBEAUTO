@@ -59,6 +59,11 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertIn("[Title]\n머니 제목", response)
         self.assertIn("[#01 intro Character] - Voice 1(1)\nscene prompt one", response)
 
+    def test_response_text_from_state_ignores_status_only_assistant_text(self) -> None:
+        self.assertEqual(_response_text_from_state("생각 중지됨", []), "")
+        self.assertEqual(_response_text_from_state("롱폼의 말:\n생각 중지됨", []), "")
+        self.assertEqual(_response_text_from_state("롱폼의 말:\n문서 읽는 중", []), "")
+
     def test_generate_gpt_response_text_accepts_response_after_recovery_cta(
         self,
     ) -> None:
@@ -106,7 +111,18 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertIn("[Voice]", str(result["response_text"]))
 
-    def test_generate_gpt_response_text_fails_closed_when_thinking_stops(self) -> None:
+    def test_response_script_falls_back_to_conversation_turn_sections(self) -> None:
+        from runtime_v2.stage1.chatgpt_backend import _response_script
+
+        script = _response_script(
+            '{"stopSelectors":[],"sendSelectors":[],"responseSelectors":[]}'
+        )
+
+        self.assertIn("conversation-turn-", script)
+        self.assertIn("나의 말:", script)
+        self.assertIn("의 말:", script)
+
+    def test_generate_gpt_response_text_retries_once_when_thinking_stops(self) -> None:
         class FakeBackend(ChatGPTBackend):
             def __init__(self) -> None:
                 self._attempt = 0
@@ -125,7 +141,66 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
             def read_response_state(self) -> dict[str, object]:
                 self._reads += 1
-                if self._reads == 1:
+                if self._attempt == 1:
+                    if self._reads == 1:
+                        return {
+                            "assistant_text": "",
+                            "legacy_blocks": [],
+                            "has_stop": True,
+                            "has_send_button": False,
+                            "thinking_stopped": False,
+                        }
+                    return {
+                        "assistant_text": "",
+                        "legacy_blocks": [],
+                        "has_stop": False,
+                        "has_send_button": False,
+                        "thinking_stopped": True,
+                    }
+                return {
+                    "assistant_text": "[Voice]\nCOPY\nhello",
+                    "legacy_blocks": [],
+                    "has_stop": False,
+                    "has_send_button": True,
+                    "thinking_stopped": False,
+                }
+
+        relaunch_calls: list[str] = []
+        result = generate_gpt_response_text(
+            prompt="hello",
+            backend=FakeBackend(),
+            timeout_sec=5,
+            poll_interval_sec=0.01,
+            completion_idle_sec=0.0,
+            response_start_timeout_sec=0.1,
+            relaunch_browser=lambda: relaunch_calls.append("relaunch"),
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(relaunch_calls, ["relaunch"])
+
+    def test_generate_gpt_response_text_fails_closed_after_retry_when_thinking_stops(
+        self,
+    ) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def __init__(self) -> None:
+                self._attempt = 0
+                self._reads = 0
+
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                self._attempt += 1
+                return {
+                    "ok": True,
+                    "submit_evidence": {
+                        "classification": "sent",
+                        "classification_reason": "send_clicked",
+                        "retry_safe_decision": False,
+                    },
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                self._reads += 1
+                if self._reads in (1, 3):
                     return {
                         "assistant_text": "",
                         "legacy_blocks": [],
@@ -141,6 +216,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                     "thinking_stopped": True,
                 }
 
+        relaunch_calls: list[str] = []
         result = generate_gpt_response_text(
             prompt="hello",
             backend=FakeBackend(),
@@ -148,10 +224,64 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             poll_interval_sec=0.01,
             completion_idle_sec=0.0,
             response_start_timeout_sec=0.1,
+            relaunch_browser=lambda: relaunch_calls.append("relaunch"),
         )
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "CHATGPT_THINKING_STOPPED_NO_OUTPUT")
+        self.assertEqual(relaunch_calls, ["relaunch"])
+
+    def test_generate_gpt_response_text_surfaces_upstream_retry_exhausted(self) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def __init__(self) -> None:
+                self._attempt = 0
+                self._reads = 0
+
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                self._attempt += 1
+                return {
+                    "ok": True,
+                    "submit_evidence": {
+                        "classification": "sent",
+                        "classification_reason": "send_clicked",
+                        "retry_safe_decision": False,
+                    },
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                self._reads += 1
+                if self._reads in (1, 3):
+                    return {
+                        "assistant_text": "",
+                        "legacy_blocks": [],
+                        "has_stop": True,
+                        "has_send_button": False,
+                        "thinking_stopped": False,
+                        "upstream_error_retry_exhausted": False,
+                    }
+                return {
+                    "assistant_text": "",
+                    "legacy_blocks": [],
+                    "has_stop": False,
+                    "has_send_button": False,
+                    "thinking_stopped": True,
+                    "upstream_error_retry_exhausted": True,
+                }
+
+        relaunch_calls: list[str] = []
+        result = generate_gpt_response_text(
+            prompt="hello",
+            backend=FakeBackend(),
+            timeout_sec=5,
+            poll_interval_sec=0.01,
+            completion_idle_sec=0.0,
+            response_start_timeout_sec=0.1,
+            relaunch_browser=lambda: relaunch_calls.append("relaunch"),
+        )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_UPSTREAM_ERROR_RETRY_EXHAUSTED")
+        self.assertEqual(relaunch_calls, ["relaunch"])
 
     def test_agent_browser_backend_preselects_chatgpt_tab_before_eval(self) -> None:
         calls: list[list[str]] = []
