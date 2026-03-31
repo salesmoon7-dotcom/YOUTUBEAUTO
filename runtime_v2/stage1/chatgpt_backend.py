@@ -395,24 +395,76 @@ def reset_chatgpt_context(
         target = _select_generic_chatgpt_target(port)
         if target is None:
             raise RuntimeError("chatgpt_context_target_missing")
+    try:
+        _wait_for_chatgpt_prompt_ready(target["webSocketDebuggerUrl"], timeout_sec=2.0)
+        return {
+            "status": "ok",
+            "port": port,
+            "target_url": CHATGPT_LONGFORM_URL,
+            "target": target,
+        }
+    except RuntimeError:
+        pass
     _run_raw_cdp_method(
         target["webSocketDebuggerUrl"],
         "Page.navigate",
         {"url": CHATGPT_LONGFORM_URL},
     )
-    time.sleep(2.0)
-    _run_raw_cdp_method(
-        target["webSocketDebuggerUrl"],
-        "Page.reload",
-        {"ignoreCache": True},
-    )
-    time.sleep(1.0)
+    time.sleep(3.0)
+    _wait_for_chatgpt_prompt_ready(target["webSocketDebuggerUrl"], timeout_sec=30.0)
     return {
         "status": "ok",
         "port": port,
         "target_url": CHATGPT_LONGFORM_URL,
         "target": target,
     }
+
+
+def chatgpt_context_ready(
+    port: int,
+    *,
+    expected_url_substring: str = CHATGPT_LONGFORM_URL_SUBSTRING,
+) -> bool:
+    try:
+        target = _select_page_target(port, expected_url_substring)
+    except RuntimeError:
+        return False
+    try:
+        _wait_for_chatgpt_prompt_ready(target["webSocketDebuggerUrl"], timeout_sec=2.0)
+    except RuntimeError:
+        return False
+    return True
+
+
+def _wait_for_chatgpt_prompt_ready(
+    websocket_url: str, *, timeout_sec: float = 20.0
+) -> None:
+    deadline = time.time() + timeout_sec
+    expression = (
+        "(() => {"
+        "const visibleNode = (node) => { if (!node) return false; const rects = typeof node.getClientRects === 'function' ? node.getClientRects() : []; const visible = !!node.isConnected && ((rects && rects.length > 0) || node.offsetParent !== null); const style = window.getComputedStyle(node); return visible && style.visibility !== 'hidden' && style.display !== 'none'; };"
+        "const candidates = [document.querySelector('#prompt-textarea'), document.querySelector(\"div[contenteditable=\\\"true\\\"]\"), document.querySelector('textarea')].filter(Boolean);"
+        "const hydratedInput = candidates.find((node) => visibleNode(node) && ((node.getAttribute && node.getAttribute('contenteditable') === 'true') || node.tagName === 'TEXTAREA'));"
+        "const inputReady = !!hydratedInput;"
+        "const send = document.querySelector('#composer-submit-button') || document.querySelector('button[data-testid=\"send-button\"]') || document.querySelector('button[aria-label=\"프롬프트 보내기\"]');"
+        "const sendReady = !!send && visibleNode(send) && !send.disabled;"
+        "return inputReady && sendReady;"
+        "})()"
+    )
+    while time.time() < deadline:
+        try:
+            payload = _run_raw_cdp_method(
+                websocket_url,
+                "Runtime.evaluate",
+                {"expression": expression, "returnByValue": True},
+            )
+            result = cast(dict[str, object], payload.get("result", {}))
+            if bool(result.get("value", False)):
+                return
+        except Exception:
+            pass
+        time.sleep(0.5)
+    raise RuntimeError("chatgpt_prompt_not_ready")
 
 
 def _prepare_input_script(payload: str) -> str:

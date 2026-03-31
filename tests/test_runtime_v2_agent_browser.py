@@ -527,7 +527,7 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         sleep_mock.assert_called_once_with(5)
         self.assertGreaterEqual(len(transcript), 5)
 
-    def test_genspark_initial_attach_keeps_compose_tab_when_it_matches_expected_url(
+    def test_genspark_initial_attach_prefers_result_tab_when_present(
         self,
     ) -> None:
         from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
@@ -550,9 +550,9 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
             outputs = iter(
                 [
                     "[0] AI 이미지 - https://www.genspark.ai/agents?type=image_generation_agent\n[1] image_generation_agent - https://www.genspark.ai/agents?id=stale\n",
-                    "selected compose",
-                    "https://www.genspark.ai/agents?type=image_generation_agent",
-                    "AI 이미지",
+                    "selected result",
+                    "https://www.genspark.ai/agents?id=stale",
+                    "image_generation_agent",
                 ]
             )
             commands: list[list[str]] = []
@@ -572,7 +572,67 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         details = cast(dict[str, object], result["details"])
         self.assertEqual(
             str(details["current_url"]),
-            "https://www.genspark.ai/agents?type=image_generation_agent",
+            "https://www.genspark.ai/agents?id=stale",
+        )
+        self.assertEqual(str(details["current_title"]), "image_generation_agent")
+
+    def test_genspark_refreshes_current_url_after_actions_create_result_tab(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "artifacts"
+            job = JobContract(
+                job_id="agent-browser-genspark-refresh-after-actions",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-genspark-refresh-after-actions",
+                payload={
+                    "service": "genspark",
+                    "port": 9333,
+                    "expected_url_substring": "genspark.ai/agents?type=image_generation_agent",
+                    "expected_title_substring": "Genspark",
+                    "capture_snapshot": False,
+                    "actions": [
+                        {
+                            "type": "eval",
+                            "script": "(() => JSON.stringify({ok:true, step:'clicked_generate'}))()",
+                        }
+                    ],
+                },
+            )
+
+            outputs = iter(
+                [
+                    "[0] AI 이미지 - https://www.genspark.ai/agents?type=image_generation_agent\n",
+                    "selected compose",
+                    "https://www.genspark.ai/agents?type=image_generation_agent",
+                    "AI 이미지",
+                    '"{\\"ok\\":true,\\"step\\":\\"clicked_generate\\"}"',
+                    "[0] AI 이미지 - https://www.genspark.ai/agents?type=image_generation_agent\n[1] Genspark Agents - https://www.genspark.ai/agents?id=result123\n",
+                    "selected result",
+                    "[0] AI 이미지 - https://www.genspark.ai/agents?type=image_generation_agent\n[1] Genspark Agents - https://www.genspark.ai/agents?id=result123\n",
+                    "selected result",
+                    "https://www.genspark.ai/agents?id=result123",
+                    "Genspark Agents",
+                ]
+            )
+
+            def fake_run(command: list[str], *, timeout_sec: int = 30) -> str:
+                _ = timeout_sec
+                return next(outputs)
+
+            with patch(
+                "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                side_effect=fake_run,
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(
+            str(details["current_url"]),
+            "https://www.genspark.ai/agents?id=result123",
         )
 
     def test_genspark_initial_attach_accepts_single_remaining_result_tab(self) -> None:
@@ -618,7 +678,27 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
             str(details["current_url"]),
             "https://www.genspark.ai/agents?id=single",
         )
-        self.assertEqual(str(details["current_title"]), "image_generation_agent")
+
+    def test_prefer_genspark_compose_tab_returns_result_tab_when_both_exist(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import _prefer_genspark_compose_tab
+
+        tabs = cast(
+            list[dict[str, object]],
+            [
+                {
+                    "index": 0,
+                    "url": "https://www.genspark.ai/agents?type=image_generation_agent",
+                },
+                {
+                    "index": 1,
+                    "url": "https://www.genspark.ai/agents?id=ea70b8cb-336d-454f-a485-cd44fc607f7e",
+                },
+            ],
+        )
+
+        self.assertEqual(_prefer_genspark_compose_tab(tabs), 1)
 
 
 if __name__ == "__main__":

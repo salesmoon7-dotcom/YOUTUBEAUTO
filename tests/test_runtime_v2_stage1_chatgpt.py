@@ -16,6 +16,8 @@ from runtime_v2.stage1.chatgpt_runner import (
     build_video_plan_from_topic_spec,
     run_stage1_chatgpt_job,
 )
+from runtime_v2.stage1.chatgpt_backend import reset_chatgpt_context
+from runtime_v2.stage1.chatgpt_backend import chatgpt_context_ready
 from runtime_v2.stage1.parsed_payload import build_stage1_parsed_payload_from_topic_spec
 
 
@@ -64,6 +66,69 @@ BGM: serious piano
 
 
 class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
+    def test_chatgpt_context_ready_returns_false_when_target_missing(self) -> None:
+        with patch(
+            "runtime_v2.stage1.chatgpt_backend._select_page_target",
+            side_effect=RuntimeError("missing"),
+        ):
+            self.assertFalse(chatgpt_context_ready(9222))
+
+    def test_stage1_skips_reset_when_context_already_ready(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            workspace = root / "workspace"
+            workspace.mkdir(parents=True, exist_ok=True)
+
+            with (
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.chatgpt_context_ready",
+                    return_value=True,
+                ),
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.reset_chatgpt_context"
+                ) as reset_mock,
+            ):
+                result = run_stage1_chatgpt_job(
+                    _topic_spec(),
+                    workspace,
+                    debug_log="logs/stage1-skip-reset.jsonl",
+                )
+
+        self.assertEqual(result["status"], "ok")
+        reset_mock.assert_not_called()
+
+    def test_reset_chatgpt_context_waits_for_prompt_ready(self) -> None:
+        runtime_results = iter(
+            [
+                {"result": {"value": False}},
+                {"result": {"value": True}},
+            ]
+        )
+
+        def _fake_run_raw(ws_url: str, method: str, params: dict[str, object]):
+            if method == "Runtime.evaluate":
+                return next(runtime_results)
+            return {}
+
+        with (
+            patch(
+                "runtime_v2.stage1.chatgpt_backend._select_page_target",
+                return_value={
+                    "webSocketDebuggerUrl": "ws://example",
+                    "url": "https://chatgpt.com/g/foo",
+                    "title": "ChatGPT",
+                },
+            ),
+            patch(
+                "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_method",
+                side_effect=_fake_run_raw,
+            ) as run_raw,
+        ):
+            result = reset_chatgpt_context(9222)
+
+        self.assertEqual(result["status"], "ok")
+        self.assertGreaterEqual(run_raw.call_count, 2)
+
     def test_relaunch_chatgpt_browser_is_noop_in_attach_only_mode(self) -> None:
         with patch.dict(
             os.environ,
@@ -107,9 +172,15 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             }
         )
 
-        self.assertIn("영상 제작 모드로 진행하세요.", prompt)
-        self.assertIn("출력은 [Voice] 블록부터 시작하세요.", prompt)
-        self.assertIn("Research Locale: JP", prompt)
+        self.assertIn(
+            "[System] 이전 대화 맥락은 모두 무시하고 이번 입력만으로 처리하세요.",
+            prompt,
+        )
+        self.assertIn("[Title] 국민연금 수령 시기를 앞당기면 손해인가 이득인가", prompt)
+        self.assertIn("[Keywords]", prompt)
+        self.assertIn("[Voice] 日本語のロングフォーム原稿を作成してください。", prompt)
+        self.assertIn("[Locale] ja-JP", prompt)
+        self.assertIn("[Instruction]", prompt)
         self.assertNotIn(
             "[Ref Img 1], [Ref Img 2], [Video1], [Video2] ... 블록도 함께 채우세요.",
             prompt,
@@ -147,6 +218,54 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             voice_texts = cast(list[dict[str, object]], contract["voice_texts"])
             voice_groups = cast(list[dict[str, object]], contract["voice_groups"])
             self.assertEqual(voice_texts[0]["text"], voice_groups[0]["voice"])
+
+    def test_stage1_result_includes_declared_next_jobs_from_video_plan(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            workspace = root / "workspace"
+            workspace.mkdir(parents=True, exist_ok=True)
+
+            result = run_stage1_chatgpt_job(
+                _topic_spec(),
+                workspace,
+                debug_log="logs/stage1-audit-run.jsonl",
+            )
+
+        self.assertEqual(result["status"], "ok")
+        result_path = Path(cast(str, result["result_path"]))
+        result_payload = cast(
+            dict[str, object], json.loads(result_path.read_text(encoding="utf-8"))
+        )
+        self.assertGreater(
+            len(cast(list[object], result_payload.get("next_jobs", []))), 0
+        )
+
+    def test_stage1_does_not_gate_on_chatgpt_context_ready(self) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            workspace = root / "workspace"
+            workspace.mkdir(parents=True, exist_ok=True)
+
+            with (
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.chatgpt_context_ready",
+                    return_value=False,
+                ),
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.attach_gpt_response_text_from_browser_evidence",
+                    return_value={
+                        **_topic_spec(),
+                        "gpt_response_text": "[Title]\n테스트\n\n[Voice]\n1. 테스트입니다.",
+                    },
+                ),
+            ):
+                result = run_stage1_chatgpt_job(
+                    _topic_spec(),
+                    workspace,
+                    debug_log="logs/stage1-no-reset-gate.jsonl",
+                )
+
+        self.assertEqual(result["status"], "ok")
 
     def test_stage1_ignores_channel_hint_and_builds_native_video_plan(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -735,7 +854,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         self.assertIn("영상 제작 모드로 진행하세요.", called_prompt)
-        self.assertIn("Research Locale: JP", called_prompt)
+        self.assertIn("[Locale] ja-JP", called_prompt)
         self.assertIn(
             "scene one from gpt", cast(list[object], parsed_payload["scene_prompts"])
         )

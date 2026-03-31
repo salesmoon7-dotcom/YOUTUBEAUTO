@@ -528,14 +528,20 @@ def _prefer_service_specific_tab(
 
 
 def _prefer_genspark_compose_tab(tabs: list[dict[str, object]]) -> int | None:
+    result_tab: int | None = None
+    compose_tab: int | None = None
     for item in tabs:
         url = str(item.get("url", ""))
         raw_index = item.get("index")
         if not isinstance(raw_index, int):
             continue
+        if url.startswith("https://www.genspark.ai/agents?id="):
+            result_tab = raw_index
         if url.startswith("https://www.genspark.ai/agents?type=image_generation_agent"):
-            return raw_index
-    return None
+            compose_tab = raw_index
+    if result_tab is not None:
+        return result_tab
+    return compose_tab
 
 
 def _fallback_single_genspark_tab(
@@ -733,6 +739,61 @@ def run_agent_browser_verify_job(
                 actions=action_items,
                 timeout_sec=timeout_sec,
             )
+            if service == "genspark":
+                tab_list_command = build_tab_list_command(port=port)
+                tab_list_output = _run_agent_browser_command(
+                    tab_list_command, timeout_sec=timeout_sec
+                )
+                transcript.append(
+                    {
+                        "command": tab_list_command,
+                        "output": tab_list_output,
+                        "action_index": len(action_items),
+                    }
+                )
+                tabs = parse_tab_list_output(tab_list_output)
+                refreshed_tab = _prefer_genspark_compose_tab(tabs)
+                if refreshed_tab is not None:
+                    selected_tab = refreshed_tab
+                    select_command = build_tab_select_command(
+                        port=port, index=selected_tab
+                    )
+                    select_output = _run_agent_browser_command(
+                        select_command, timeout_sec=timeout_sec
+                    )
+                    transcript.append(
+                        {
+                            "command": select_command,
+                            "output": select_output,
+                            "action_index": len(action_items),
+                        }
+                    )
+                    get_url_command = build_get_url_command(port=port)
+                    current_url = parse_scalar_output(
+                        _run_agent_browser_command(
+                            get_url_command, timeout_sec=timeout_sec
+                        )
+                    )
+                    transcript.append(
+                        {
+                            "command": get_url_command,
+                            "output": current_url,
+                            "action_index": len(action_items),
+                        }
+                    )
+                    get_title_command = build_get_title_command(port=port)
+                    current_title = parse_scalar_output(
+                        _run_agent_browser_command(
+                            get_title_command, timeout_sec=timeout_sec
+                        )
+                    )
+                    transcript.append(
+                        {
+                            "command": get_title_command,
+                            "output": current_title,
+                            "action_index": len(action_items),
+                        }
+                    )
 
         snapshot_path = None
         if capture_snapshot:

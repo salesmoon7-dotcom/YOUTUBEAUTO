@@ -30,7 +30,7 @@ def normalize_stage1_handoff_contract(payload: dict[str, object]) -> dict[str, o
     normalized.setdefault("scene_prompts", [])
     normalized.setdefault("voice_groups", [])
     normalized.setdefault("voice_lines", _voice_lines_from_voice_groups(normalized))
-    normalized.setdefault("voice_texts", _voice_texts_from_voice_groups(normalized))
+    normalized.setdefault("voice_texts", _voice_texts_from_voice_lines(normalized))
     normalized.setdefault("ref_img_1", "")
     normalized.setdefault("ref_img_2", "")
     normalized.setdefault("videos", [])
@@ -117,3 +117,25 @@ def _voice_texts_from_voice_groups(
         )
     normalized_entries.sort(key=lambda item: item[0])
     return [entry for _, entry in normalized_entries]
+
+
+def _voice_texts_from_voice_lines(
+    payload: dict[str, object],
+) -> list[dict[str, object]]:
+    voice_lines = payload.get("voice_lines", [])
+    if isinstance(voice_lines, list):
+        normalized: list[dict[str, object]] = []
+        for index, item in enumerate(cast(list[object], voice_lines), start=1):
+            text = str(item).strip()
+            if not text:
+                continue
+            normalized.append(
+                {
+                    "col": f"#{index:02d}",
+                    "text": text,
+                    "original_voices": [index],
+                }
+            )
+        if normalized:
+            return normalized
+    return _voice_texts_from_voice_groups(payload)

@@ -46,6 +46,7 @@ class RuntimeV2Stage1HandoffBridgeTests(unittest.TestCase):
     def test_handoff_normalization_derives_voice_texts_from_voice_groups(self) -> None:
         payload = _handoff()
         payload.pop("voice_texts")
+        payload["voice_lines"] = []
         payload["scene_prompts"] = ["scene prompt one", "scene prompt two"]
         payload["voice_groups"] = [
             {"scene_index": 1, "voice": "narration one"},
@@ -65,6 +66,7 @@ class RuntimeV2Stage1HandoffBridgeTests(unittest.TestCase):
     def test_handoff_normalization_sorts_voice_texts_by_scene_index(self) -> None:
         payload = _handoff()
         payload.pop("voice_texts")
+        payload["voice_lines"] = []
         payload["voice_groups"] = [
             {"scene_index": 2, "voice": "second narration"},
             {"scene_index": 1, "voice": "first narration"},
@@ -101,6 +103,28 @@ class RuntimeV2Stage1HandoffBridgeTests(unittest.TestCase):
                     "text": "voice thirteen\nvoice fourteen\nvoice fifteen\nvoice sixteen",
                     "original_voices": [13, 14, 15, 16],
                 }
+            ],
+        )
+
+    def test_handoff_normalization_prefers_voice_lines_over_blob_voice_groups(
+        self,
+    ) -> None:
+        payload = _handoff()
+        payload.pop("voice_texts")
+        payload["voice_groups"] = [
+            {"scene_index": 1, "voice": "same long body"},
+            {"scene_index": 2, "voice": "same long body"},
+        ]
+        payload["voice_lines"] = ["line one", "line two", "line three"]
+
+        normalized = normalize_stage1_handoff_contract(payload)
+
+        self.assertEqual(
+            normalized["voice_texts"],
+            [
+                {"col": "#01", "text": "line one", "original_voices": [1]},
+                {"col": "#02", "text": "line two", "original_voices": [2]},
+                {"col": "#03", "text": "line three", "original_voices": [3]},
             ],
         )
 

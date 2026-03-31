@@ -2969,31 +2969,165 @@ def _run_qwen3_adapter_child(args: CliArgs) -> int:
     if not rows:
         return exit_codes.CLI_USAGE
     row = cast(dict[str, object], rows[0])
+    voice_texts = (
+        cast(list[object], row.get("voice_texts", []))
+        if isinstance(row.get("voice_texts", []), list)
+        else []
+    )
     (project_root / "voice_texts.json").write_text(
-        json.dumps(row.get("voice_texts", []), ensure_ascii=False, indent=2),
+        json.dumps(voice_texts, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     result_path = workspace / "qwen3_result.json"
-    command = [
-        r"D:/qwen3_tts_env/Scripts/python.exe",
-        r"D:/YOUTUBE_AUTO/scripts/qwen3_tts_automation.py",
-        "--prompt-file",
-        str(prompt_path.resolve()),
-        "--row-index",
-        "0",
-        "--result-json",
-        str(result_path.resolve()),
-    ]
-    if args.ref_audio.strip():
-        command.extend(["--ref-audio", args.ref_audio.strip()])
-    completed = subprocess.run(
-        command, capture_output=True, text=True, encoding="utf-8", errors="replace"
+    (workspace / "qwen3_started.json").write_text(
+        json.dumps(
+            {
+                "status": "started",
+                "started_at": time(),
+                "voice_count": len(voice_texts),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
     )
-    (workspace / "qwen3_stdout.log").write_text(completed.stdout, encoding="utf-8")
-    (workspace / "qwen3_stderr.log").write_text(completed.stderr, encoding="utf-8")
-    if completed.returncode != 0:
-        return exit_codes.ADAPTER_FAIL
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+    qwen_python = r"D:/qwen3_tts_env/Scripts/python.exe"
+    qwen_script = r"D:/YOUTUBE_AUTO/scripts/qwen3_tts_automation.py"
     voice_dir = project_root / "voice"
+    voice_dir.mkdir(parents=True, exist_ok=True)
+    line_items = [
+        cast(dict[str, object], item) for item in voice_texts if isinstance(item, dict)
+    ]
+    if not line_items:
+        return exit_codes.ADAPTER_FAIL
+
+    def _qwen_line_timeout_sec(text_value: str) -> int:
+        base = 180
+        scaled = len(text_value.strip()) * 2
+        return max(base, min(900, base + scaled))
+
+    for line_index, item in enumerate(line_items, start=1):
+        line_prompt_payload = dict(prompt_payload)
+        line_row = dict(row)
+        line_project_root = workspace / f"project_{line_index:03d}"
+        line_voice_dir = line_project_root / "voice"
+        line_voice_dir.mkdir(parents=True, exist_ok=True)
+        line_row["voice_texts"] = [item]
+        line_row["folder_path"] = str(line_project_root.resolve())
+        line_prompt_payload["rows"] = [line_row]
+        line_prompt_path = workspace / f"qwen_prompt_{line_index:03d}.json"
+        line_result_path = workspace / f"qwen3_result_{line_index:03d}.json"
+        line_prompt_path.write_text(
+            json.dumps(line_prompt_payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        command = [
+            qwen_python,
+            qwen_script,
+            "--prompt-file",
+            str(line_prompt_path.resolve()),
+            "--row-index",
+            "0",
+            "--result-json",
+            str(line_result_path.resolve()),
+        ]
+        if args.ref_audio.strip():
+            command.extend(["--ref-audio", args.ref_audio.strip()])
+        line_timeout_sec = _qwen_line_timeout_sec(str(item.get("text", "")))
+        try:
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=line_timeout_sec,
+            )
+        except subprocess.TimeoutExpired as exc:
+            timed_out_stdout = (
+                exc.stdout
+                if isinstance(exc.stdout, str)
+                else exc.stdout.decode("utf-8", errors="replace")
+                if exc.stdout
+                else ""
+            )
+            timed_out_stderr = (
+                exc.stderr
+                if isinstance(exc.stderr, str)
+                else exc.stderr.decode("utf-8", errors="replace")
+                if exc.stderr
+                else ""
+            )
+            stdout_chunks.append(
+                f"=== line {line_index:03d} {item.get('col', '')} timeout {line_timeout_sec}s ===\n{timed_out_stdout}"
+            )
+            stderr_chunks.append(
+                f"=== line {line_index:03d} {item.get('col', '')} timeout {line_timeout_sec}s ===\n{timed_out_stderr}"
+            )
+            (workspace / "qwen3_stdout.log").write_text(
+                "\n".join(stdout_chunks), encoding="utf-8"
+            )
+            (workspace / "qwen3_stderr.log").write_text(
+                "\n".join(stderr_chunks), encoding="utf-8"
+            )
+            (workspace / "qwen3_timeout.json").write_text(
+                json.dumps(
+                    {
+                        "status": "timeout",
+                        "line_index": line_index,
+                        "col": item.get("col", ""),
+                        "timeout_sec": line_timeout_sec,
+                        "prompt_file": str(line_prompt_path.resolve()),
+                        "result_file": str(line_result_path.resolve()),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            return exit_codes.ADAPTER_FAIL
+        stdout_chunks.append(
+            f"=== line {line_index:03d} {item.get('col', '')} ===\n{completed.stdout}"
+        )
+        stderr_chunks.append(
+            f"=== line {line_index:03d} {item.get('col', '')} ===\n{completed.stderr}"
+        )
+        if completed.returncode != 0:
+            (workspace / "qwen3_stdout.log").write_text(
+                "\n".join(stdout_chunks), encoding="utf-8"
+            )
+            (workspace / "qwen3_stderr.log").write_text(
+                "\n".join(stderr_chunks), encoding="utf-8"
+            )
+            return exit_codes.ADAPTER_FAIL
+        line_candidates = sorted(
+            list(line_voice_dir.glob("#*.flac"))
+            + list(line_voice_dir.glob("#*.wav"))
+            + list(line_voice_dir.glob("#*.mp3"))
+        )
+        line_candidates = [path for path in line_candidates if path.name != "#00.txt"]
+        if not line_candidates:
+            (workspace / "qwen3_stdout.log").write_text(
+                "\n".join(stdout_chunks), encoding="utf-8"
+            )
+            (workspace / "qwen3_stderr.log").write_text(
+                "\n".join(stderr_chunks), encoding="utf-8"
+            )
+            return exit_codes.ADAPTER_FAIL
+        final_line_name = (
+            str(item.get("col", f"#{line_index:02d}")).strip() or f"#{line_index:02d}"
+        )
+        suffix = line_candidates[0].suffix or ".flac"
+        target_line_path = voice_dir / f"{final_line_name}{suffix}"
+        target_line_path.write_bytes(line_candidates[0].read_bytes())
+    (workspace / "qwen3_stdout.log").write_text(
+        "\n".join(stdout_chunks), encoding="utf-8"
+    )
+    (workspace / "qwen3_stderr.log").write_text(
+        "\n".join(stderr_chunks), encoding="utf-8"
+    )
     candidates = sorted(
         list(voice_dir.glob("#*.flac"))
         + list(voice_dir.glob("#*.wav"))

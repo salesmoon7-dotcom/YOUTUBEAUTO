@@ -18,8 +18,10 @@ from runtime_v2.stage1.parsed_payload import (
     validate_stage1_parsed_payload,
 )
 from runtime_v2.stage1.chatgpt_interaction import generate_gpt_response_text
+from runtime_v2.stage1.chatgpt_backend import chatgpt_context_ready
 from runtime_v2.stage1.chatgpt_backend import reset_chatgpt_context
 from runtime_v2.stage1.result_contract import stage1_result_payload
+from runtime_v2.stage2.router import route_video_plan
 from runtime_v2.workers.job_runtime import finalize_worker_result, write_json_atomic
 
 
@@ -110,11 +112,12 @@ def build_live_chatgpt_prompt(topic_spec: dict[str, object]) -> str:
     topic = str(topic_spec.get("topic", "")).strip()
     return "\n".join(
         [
-            "영상 제작 모드로 진행하세요.",
-            "질문형 설명/근거 요약이 아니라, 가이드 최종 출력 포맷 결과만 생성하세요.",
-            "출력은 [Voice] 블록부터 시작하세요.",
-            "Research Locale: JP",
-            "자료 조사/출처는 일본어 기준으로만 구성하세요.",
+            "[System] 이전 대화 맥락은 모두 무시하고 이번 입력만으로 처리하세요.",
+            f"[Title] {topic}",
+            "[Keywords] 介護施設, 費用, 準備, 老後資金, 特養, 有料老人ホーム, 老健, 月額, 入居一時金, 介護保険",
+            "[Voice] 日本語のロングフォーム原稿を作成してください。",
+            "[Locale] ja-JP",
+            "[Instruction] 검색/탐색/분석 없이 바로 원고를 작성하세요. 아래 형식 그대로 출력하세요: [Title], [Voice], [Description], [Keywords], [#01], [#02].",
             f"Topic: {topic}",
         ]
     )
@@ -488,21 +491,6 @@ def run_stage1_chatgpt_job(
     ):
         browser_evidence = cast(dict[str, object], {"service": "chatgpt", "port": 9222})
         topic_spec = {**topic_spec, "browser_evidence": browser_evidence}
-    if _requires_live_chatgpt_capture(browser_evidence):
-        raw_port = browser_evidence.get("port")
-        port = raw_port if isinstance(raw_port, int) and raw_port > 0 else 9222
-        try:
-            _ = reset_chatgpt_context(port)
-        except RuntimeError as exc:
-            return _stage1_failed(
-                workspace,
-                debug_log=debug_log,
-                run_id=str(topic_spec.get("run_id", "")).strip(),
-                row_ref=str(topic_spec.get("row_ref", "")).strip(),
-                error_code="CHATGPT_CONTEXT_RESET_FAILED",
-                reason_code="CHATGPT_CONTEXT_RESET_FAILED",
-                evidence={"reset_error": str(exc)},
-            )
     topic_spec = attach_gpt_response_text_from_browser_evidence(
         topic_spec, browser_evidence
     )
@@ -605,40 +593,20 @@ def run_stage1_chatgpt_job(
 
     video_plan_path = workspace / "video_plan.json"
     worker_result_path = workspace / "result.json"
+    next_jobs, _ = route_video_plan(video_plan)
     stage1_result = stage1_result_payload(
         run_id=str(video_plan.get("run_id", "")),
         row_ref=str(video_plan.get("row_ref", "")),
         video_plan_path=str(video_plan_path.resolve()),
         debug_log=debug_log,
         reason_code=str(video_plan.get("reason_code", "ok")),
-        next_jobs=[],
+        next_jobs=next_jobs,
         result_path=str(worker_result_path.resolve()),
         raw_output_path=str(raw_output_path.resolve()),
         parsed_payload_path=str(parsed_payload_path.resolve()),
         handoff_path=str(handoff_path.resolve()),
     )
     stage1_reset: dict[str, object] = {}
-    if _requires_live_chatgpt_capture(browser_evidence):
-        raw_port = browser_evidence.get("port")
-        port = raw_port if isinstance(raw_port, int) and raw_port > 0 else 9222
-        try:
-            stage1_reset = reset_chatgpt_context(port)
-        except RuntimeError as exc:
-            return _stage1_failed(
-                workspace,
-                debug_log=debug_log,
-                run_id=run_id,
-                row_ref=row_ref,
-                error_code="CHATGPT_CONTEXT_RESET_FAILED",
-                reason_code="CHATGPT_CONTEXT_RESET_FAILED",
-                evidence={
-                    "reset_error": str(exc),
-                    "raw_output_path": str(raw_output_path.resolve()),
-                    "parsed_payload_path": str(parsed_payload_path.resolve()),
-                    "handoff_path": str(handoff_path.resolve()),
-                },
-                raw_output_path=str(raw_output_path.resolve()),
-            )
     return finalize_worker_result(
         workspace,
         status="ok",

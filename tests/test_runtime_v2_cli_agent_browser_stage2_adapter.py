@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import cast
-from unittest.mock import patch
+from unittest.mock import patch, mock_open
 
 from runtime_v2 import exit_codes
 from runtime_v2.cli import (
@@ -104,6 +104,97 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
 
         self.assertEqual(exit_code, exit_codes.SUCCESS)
         child_mock.assert_called_once()
+
+    def test_qwen3_adapter_child_splits_voice_texts_into_single_line_runs(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            (root / "project" / "voice").mkdir(parents=True, exist_ok=True)
+            (root / "qwen_prompt.json").write_text(
+                json.dumps(
+                    {
+                        "rows": [
+                            {
+                                "row_index": 0,
+                                "voice_texts": [
+                                    {
+                                        "col": "#01",
+                                        "text": "one",
+                                        "original_voices": [1],
+                                    },
+                                    {
+                                        "col": "#02",
+                                        "text": "two",
+                                        "original_voices": [2],
+                                    },
+                                ],
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            (root / "project" / "voice" / "#01.flac").write_bytes(b"a")
+            (root / "project" / "voice" / "#02.flac").write_bytes(b"b")
+            args = CliArgs()
+            args.service_artifact_path = str((root / "speech.flac").resolve())
+            args.ref_audio = ""
+
+            completed = cast(object, type("Completed", (), {})())
+            setattr(completed, "returncode", 0)
+            setattr(completed, "stdout", "ok")
+            setattr(completed, "stderr", "")
+
+            def fake_run(*args, **kwargs):
+                command = args[0]
+                _ = kwargs
+                if (
+                    isinstance(command, list)
+                    and command
+                    and str(command[0]).endswith("python.exe")
+                ):
+                    prompt_path = Path(command[command.index("--prompt-file") + 1])
+                    prompt_payload = json.loads(prompt_path.read_text(encoding="utf-8"))
+                    row_payload = cast(
+                        dict[str, object], cast(list[object], prompt_payload["rows"])[0]
+                    )
+                    folder_path = Path(str(row_payload["folder_path"])) / "voice"
+                    folder_path.mkdir(parents=True, exist_ok=True)
+                    col = str(
+                        cast(
+                            dict[str, object],
+                            cast(list[object], row_payload["voice_texts"])[0],
+                        )["col"]
+                    )
+                    (folder_path / f"{col}.flac").write_bytes(b"line")
+                else:
+                    (root / "speech.flac").write_bytes(b"concat")
+                return completed
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.subprocess.run", side_effect=fake_run
+                ) as run_mock,
+            ):
+                exit_code = _run_qwen3_adapter_child(args)
+
+            self.assertEqual(exit_code, exit_codes.SUCCESS)
+            self.assertEqual(run_mock.call_count, 3)
+            prompt001 = json.loads(
+                (root / "qwen_prompt_001.json").read_text(encoding="utf-8")
+            )
+            prompt002 = json.loads(
+                (root / "qwen_prompt_002.json").read_text(encoding="utf-8")
+            )
+            row001 = cast(dict[str, object], cast(list[object], prompt001["rows"])[0])
+            row002 = cast(dict[str, object], cast(list[object], prompt002["rows"])[0])
+            self.assertNotEqual(row001["folder_path"], row002["folder_path"])
+            first_timeout = run_mock.call_args_list[0].kwargs.get("timeout")
+            self.assertIsInstance(first_timeout, int)
+            self.assertGreaterEqual(cast(int, first_timeout), 180)
+            self.assertTrue((root / "qwen3_started.json").exists())
 
     def test_stage2_adapter_child_writes_functional_evidence_for_genspark(
         self,
