@@ -447,6 +447,6 @@ Immediate reassessment triggers:
 
 1. updated legacy difference table
 2. updated fallback removal table
-3. corrected pipeline flow document
+3. corrected pipeline flow document (`docs/plans/2026-04-01-runtime-v2-corrected-pipeline-flow.md`)
 4. one closeout retest result interpreted only by current evidence
 5. per-subprogram prompt handling classification table

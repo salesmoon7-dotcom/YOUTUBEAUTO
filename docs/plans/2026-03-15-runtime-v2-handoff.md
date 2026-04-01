@@ -7,12 +7,13 @@
 
 ## Canonical Plan / TODO Sources
 
-다음 두 문서를 현재 SSOT로 사용합니다.
+다음 문서들을 현재 SSOT로 사용합니다.
 
 1. `docs/TODO.md`
-2. `docs/plans/2026-03-12-runtime-v2-full-legacy-subprogram-port-plan.md`
+2. `docs/plans/2026-03-15-runtime-v2-closeout-retest-plan-v2.md`
+3. `docs/plans/2026-04-01-runtime-v2-corrected-pipeline-flow.md`
 
-이 handoff는 위 두 문서의 실행 요약본입니다.
+이 handoff는 위 문서들의 실행 요약본입니다.
 
 ## What Was Actually Fixed In This Session
 
