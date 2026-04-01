@@ -1897,6 +1897,23 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
     attach_evidence = workspace / "attach_evidence.json"
     if attach_evidence.exists():
         attach_evidence.unlink()
+    write_stage2_attach_evidence(
+        workspace=workspace,
+        service=service,
+        port=args.port,
+        result={
+            "status": "started",
+            "stage": "agent_browser_stage2_adapter_child",
+            "details": {
+                "current_url": str(args.expected_url_substring or ""),
+                "current_title": str(args.expected_title_substring or ""),
+                "transcript_path": "",
+            },
+        },
+        probe_debug_only=True,
+        recovery_attempted=False,
+        placeholder_artifact=False,
+    )
 
     pre_actions: list[dict[str, object]] = []
     actions: list[dict[str, object]] = []
@@ -1964,22 +1981,28 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             return exit_codes.BROWSER_UNHEALTHY
     canva_extra_details: dict[str, object] | None = None
     if prompt and service == "genspark":
-        _close_genspark_result_tabs(args.port)
+        is_result_tab_job = bool(ref_img_1 or ref_img_2 or first_frame_path)
+        if not is_result_tab_job:
+            _close_genspark_result_tabs(args.port)
         effective_prompt = prompt
         pre_actions = [
-            {
-                "type": "eval",
-                "script": "(() => { if (location.href !== 'https://www.genspark.ai/agents?type=image_generation_agent') { location.href = 'https://www.genspark.ai/agents?type=image_generation_agent'; return JSON.stringify({ok:true, step:'navigated_image_agent'}); } return JSON.stringify({ok:true, step:'already_on_image_agent'}); })()",
-            },
-            {
-                "type": "eval",
-                "script": "(() => { const buttons = Array.from(document.querySelectorAll('button,[role=button],a')); const target = buttons.find(item => ((item.innerText || item.textContent || '').trim()).startsWith('New')); if (target instanceof HTMLElement) { target.click(); return JSON.stringify({ok:true, step:'selected_new_session'}); } return JSON.stringify({ok:true, step:'new_session_not_found'}); })()",
-            },
             {
                 "type": "eval",
                 "script": "(() => { const dismissLabels = ['나중에','Later','닫기','Close']; const buttons = Array.from(document.querySelectorAll('button')); for (const btn of buttons) { const text = (btn.innerText || btn.textContent || '').trim(); const aria = btn.getAttribute ? (btn.getAttribute('aria-label') || '') : ''; if (dismissLabels.includes(text) || dismissLabels.includes(aria)) { btn.click(); return JSON.stringify({ok:true, step:'dismissed_modal'}); } } return JSON.stringify({ok:true, step:'no_modal'}); })()",
             },
         ]
+        if not is_result_tab_job:
+            pre_actions = [
+                {
+                    "type": "eval",
+                    "script": "(() => { if (location.href !== 'https://www.genspark.ai/agents?type=image_generation_agent') { location.href = 'https://www.genspark.ai/agents?type=image_generation_agent'; return JSON.stringify({ok:true, step:'navigated_image_agent'}); } return JSON.stringify({ok:true, step:'already_on_image_agent'}); })()",
+                },
+                {
+                    "type": "eval",
+                    "script": "(() => { const buttons = Array.from(document.querySelectorAll('button,[role=button],a')); const target = buttons.find(item => ((item.innerText || item.textContent || '').trim()).startsWith('New')); if (target instanceof HTMLElement) { target.click(); return JSON.stringify({ok:true, step:'selected_new_session'}); } return JSON.stringify({ok:true, step:'new_session_not_found'}); })()",
+                },
+                *pre_actions,
+            ]
         actions = [
             {
                 "type": "wait",
@@ -2878,10 +2901,20 @@ def _attach_canva_ref_images_via_playwright(
 
 
 def _close_genspark_result_tabs(port: int) -> None:
-    with urllib.request.urlopen(
-        f"http://127.0.0.1:{port}/json/list", timeout=10
-    ) as response:
-        payload = json.loads(response.read().decode("utf-8", "ignore"))
+    payload: list[object] = []
+    for _ in range(3):
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/json/list", timeout=10
+            ) as response:
+                payload = cast(
+                    list[object], json.loads(response.read().decode("utf-8", "ignore"))
+                )
+            break
+        except Exception:
+            sleep(1.0)
+    else:
+        return
     pages = [
         cast(dict[str, object], item)
         for item in cast(list[object], payload)

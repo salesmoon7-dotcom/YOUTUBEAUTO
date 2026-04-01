@@ -39,6 +39,8 @@ This retest plan covers all disputed boundaries raised in the second postmortem:
 
 - Current status: the runtime appears to no longer be in a state where this plan can be executed deterministically step-by-step.
 - Evidence collected so far strongly suggests that orchestration shape and shared service/browser state are part of the blocker because repeated fresh closeouts surface different blockers even after localized fixes.
+- A major contributing cause is drift from the legacy recovery/input model: legacy kept browser restart, current tab/page selection, and single-task execution simple, while the current runtime layered shared browser reuse, retries, resets, fallbacks, and broad closeout reruns on top of each other.
+- That drift increased state surface area until lower-level programs and even prompt input could no longer be trusted as stable primitives.
 - However, this is still a diagnosis at the level of strong operational evidence, not a mathematically complete proof of a single root cause.
 - Other contributing factors may still exist, including external service instability, environment drift, rate limiting/quota behavior, or state leakage that current evidence has not fully isolated.
 - Therefore, the current working decision is to treat the plan as structurally blocked until a `runtime simplification reset` is completed.
@@ -56,6 +58,11 @@ For the remainder of today, the execution order is re-scoped to the shortest pat
 1. Stop treating fresh closeout reruns as meaningful progress while blocker identity is unstable.
 2. Reduce the runtime state surface until one blocker remains stable across reruns.
 3. Only then resume single-scene/service isolation.
+   - This isolation step should follow the legacy operating pattern as closely as possible:
+     - hard browser restart if unhealthy,
+     - explicit current tab/page selection,
+     - one scene / one service only,
+     - then exactly one fresh closeout rerun.
 4. Only after that resume exactly one fresh row15 closeout.
 
 Hard rules for today:
@@ -88,6 +95,25 @@ Required simplification rules:
 
 4. Escalation rule
    - If the same blocker recurs after 2 truthful reruns, stop adding tactical fixes and simplify the runtime surface first.
+
+## Current Analysis Phase
+
+- Fresh closeout reruns are paused as a primary activity.
+- The next phase is a retrospective failure analysis of why testing, verification, and restoration became unstable over roughly the last month.
+- This phase is not about finding one more service bug. It is about explaining why the debugging process itself amplified complexity.
+
+Analysis targets:
+- stale/shared browser reuse across runs
+- repeated closeout reruns used as blocker discovery
+- attach/health drift across ChatGPT, Genspark, SeaArt, qwen, and Canva
+- prompt input / prompt submission / prompt recovery instability across browser-driven subprograms
+- retry/reset/fallback branch accumulation
+- mismatch between written plan discipline and actual execution behavior
+
+Expected output of this phase:
+- a written causal report,
+- a smaller set of runtime rules that can actually be enforced,
+- and a clearer baseline for what can be considered trustworthy progress.
 
 ---
 

@@ -32,6 +32,10 @@
   - Therefore the plan is structurally blocked until a `runtime simplification reset` is done. Continuing the same closeout pattern without that reset is not considered valid progress.
   - 일부 run에서는 `chatgpt`/`qwen`이 통과하고 `genspark`나 `seaart`가 막히고, 다른 run에서는 다시 `chatgpt` reset/backend가 먼저 막히는 등 blocker surface가 계속 이동합니다.
   - 따라서 current goal은 단일 서비스 하나를 고치는 것이 아니라 `runtime simplification reset`을 기준선으로 고정하고, 그 이후에만 isolated proof 또는 fresh closeout을 다시 허용하는 것입니다.
+  - next execution rule is explicitly legacy-aligned:
+    - `shared browser/session reuse`를 멈추고,
+    - `fresh browser/session -> single scene/service -> success or fail-close`를 먼저 하고,
+    - 그 single proof가 통과한 상태에서만 `row15 closeout` exactly one rerun을 허용합니다.
   - 금지사항:
     - `same blocker가 unresolved인 상태에서 새 rerun 추가`
     - `service/browser/session state를 더 복잡하게 만드는 임시 우회`
@@ -42,6 +46,20 @@
   - 모든 worker는 몇 분 안에 결과가 없으면 `running`으로 방치하지 말고 timeout/fail-close artifact를 남겨야 합니다.
   - `row15 closeout`은 개별 service 경계가 위 원칙으로 검증된 뒤에만 exactly one rerun 합니다.
   - 같은 blocker가 2회 이상 반복되면, service bugfix보다 먼저 runtime simplification을 수행합니다.
+  - 구조적 원인(현재 진단): 레거시가 사용하던 단순한 복구/입력 규칙(브라우저 재시작, 현재 탭/현재 페이지 명시 선택, 단일 작업 실행)에서 멀어질수록 shared browser/session state, retry/reset/fallback branch, closeout rerun이 겹쳐 상태 surface가 폭증했고, 그 결과 하위 프로그램뿐 아니라 기본 prompt 입력까지 불안정해졌습니다.
+- current phase update:
+  - closeout rerun 추적은 여기서 잠시 멈춥니다.
+  - 다음 active 작업은 `한 달 동안 엉망이 된 테스트/확인/복원 흐름의 원인 분석`입니다.
+  - 목표는 개별 blocker를 더 쫓는 것이 아니라, 왜 테스트할수록 상태가 더 꼬이고 복원 경로가 불안정해졌는지 구조적으로 설명하는 것입니다.
+  - 분석 범위:
+    - stale/shared browser reuse
+    - repeated fresh closeout reruns as debugging method
+    - service별 attach/health drift 누적
+    - browser-based 하부 프로그램의 prompt 입력/전송/복구 경계 붕괴
+    - reset/retry/fallback branch 증가로 인한 surface explosion
+    - 문서/계획과 실제 실행의 불일치
+  - 이 분석이 끝날 때까지 fresh closeout rerun은 진전으로 간주하지 않습니다.
+  - boundary isolate guardrail 추가: `runtime_v2.boundary_jobs.build_stage2_boundary_contract()`는 이제 `boundary-scene-index` 선택 시 ref job을 우선 집지 않으며, scene prompt가 `テストです。` 같은 placeholder면 boundary contract를 emit하지 않고 즉시 fail-close 합니다.
 - 오늘 세션에서 해결된 항목:
   - `topic_spec_fallback` 거짓 성공 누수를 차단해, 실GPT 출력 완료 없이 stage1이 성공처럼 통과하지 못하게 했습니다.
   - stage1 writeback의 stale snapshot bug를 수정해, `stage1_handoff`가 있을 때 엑셀 writeback이 실제 반영되도록 했습니다.

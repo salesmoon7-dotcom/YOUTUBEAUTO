@@ -807,6 +807,26 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
 
         self.assertEqual(_prefer_genspark_compose_tab(tabs), 1)
 
+    def test_fallback_single_genspark_tab_requires_expected_title_match(self) -> None:
+        from runtime_v2.workers.agent_browser_worker import (
+            _fallback_single_genspark_tab,
+        )
+
+        tabs = cast(
+            list[dict[str, object]],
+            [
+                {
+                    "index": 0,
+                    "title": "image_generation_agent",
+                    "url": "https://www.genspark.ai/agents?id=single",
+                }
+            ],
+        )
+
+        self.assertIsNone(
+            _fallback_single_genspark_tab(tabs, expected_title_substring="Genspark")
+        )
+
 
 if __name__ == "__main__":
     _ = unittest.main()

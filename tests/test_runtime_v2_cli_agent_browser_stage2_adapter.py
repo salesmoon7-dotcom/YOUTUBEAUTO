@@ -196,6 +196,83 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             self.assertGreaterEqual(cast(int, first_timeout), 180)
             self.assertTrue((root / "qwen3_started.json").exists())
 
+    def test_genspark_stage2_adapter_child_skips_compose_preactions_for_result_tab_job(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            asset_root = root / "assets"
+            images_root = asset_root / "images"
+            images_root.mkdir(parents=True, exist_ok=True)
+            _ = (images_root / "ref1.png").write_bytes(b"png")
+            _ = (images_root / "ref2.png").write_bytes(b"png")
+            args = CliArgs()
+            args.service = "genspark"
+            args.port = 9333
+            args.service_artifact_path = str((root / "output.png").resolve())
+            request_payload = {
+                "payload": {
+                    "prompt": "테스트입니다.",
+                    "asset_root": str(asset_root.resolve()),
+                    "ref_img_1": "images/ref1.png",
+                    "ref_img_2": "images/ref2.png",
+                }
+            }
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+
+            captured_actions: list[dict[str, object]] = []
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                _ = artifact_root
+                payload = cast(dict[str, object], job.payload)
+                captured_actions.extend(
+                    cast(list[dict[str, object]], payload.get("actions", []))
+                )
+                return {
+                    "status": "ok",
+                    "details": {
+                        "current_url": "https://www.genspark.ai/agents?id=abc",
+                        "current_title": "Genspark Agents",
+                        "transcript_path": "",
+                    },
+                }
+
+            completed = cast(object, type("Completed", (), {})())
+            setattr(
+                completed,
+                "stdout",
+                '{"ok":true,"src":"https://www.genspark.ai/api/files/example.png"}',
+            )
+            setattr(completed, "stderr", "")
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._attach_stage2_ref_images"),
+                patch("runtime_v2.cli._run_agent_browser_eval", return_value=completed),
+                patch("runtime_v2.cli.sleep"),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch(
+                    "runtime_v2.cli.write_stage2_attach_evidence",
+                    return_value=root / "attach_evidence.json",
+                ),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "genspark", "sha256": "ok"},
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        scripts = [str(action.get("script", "")) for action in captured_actions]
+        self.assertFalse(any("navigated_image_agent" in script for script in scripts))
+        self.assertFalse(any("selected_new_session" in script for script in scripts))
+
     def test_stage2_adapter_child_writes_functional_evidence_for_genspark(
         self,
     ) -> None:

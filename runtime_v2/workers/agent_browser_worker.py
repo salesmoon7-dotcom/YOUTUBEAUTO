@@ -553,9 +553,6 @@ def _fallback_single_genspark_tab(
 ) -> int | None:
     candidates: list[int] = []
     expected_title = expected_title_substring.strip().lower()
-    accepted_title_tokens = {
-        token for token in {expected_title, "image_generation_agent"} if token
-    }
     for item in tabs:
         raw_index = item.get("index")
         if not isinstance(raw_index, int):
@@ -564,9 +561,7 @@ def _fallback_single_genspark_tab(
         title = str(item.get("title", "")).strip().lower()
         if not url.startswith("https://www.genspark.ai/agents?id="):
             continue
-        if accepted_title_tokens and not any(
-            token in title for token in accepted_title_tokens
-        ):
+        if expected_title and expected_title not in title:
             continue
         candidates.append(raw_index)
     if len(candidates) == 1:
