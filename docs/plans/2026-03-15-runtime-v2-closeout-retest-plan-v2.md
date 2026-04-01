@@ -446,7 +446,7 @@ Immediate reassessment triggers:
 ## Deliverables
 
 1. updated legacy difference table (`docs/plans/2026-04-01-runtime-v2-legacy-difference-table.md`)
-2. updated fallback removal table
+2. updated fallback removal table (`docs/plans/2026-04-01-runtime-v2-fallback-removal-table.md`)
 3. corrected pipeline flow document (`docs/plans/2026-04-01-runtime-v2-corrected-pipeline-flow.md`)
 4. one closeout retest result interpreted only by current evidence (`docs/plans/2026-04-01-runtime-v2-closeout-retest-result.md`)
 5. per-subprogram prompt handling classification table (`docs/plans/2026-04-01-runtime-v2-prompt-handling-classification.md`)
