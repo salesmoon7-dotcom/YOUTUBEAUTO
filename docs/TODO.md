@@ -61,6 +61,7 @@
   - 이 분석이 끝날 때까지 fresh closeout rerun은 진전으로 간주하지 않습니다.
   - corrected pipeline flow SSOT는 `docs/plans/2026-04-01-runtime-v2-corrected-pipeline-flow.md`를 기준으로 유지합니다.
   - per-subprogram prompt handling classification SSOT는 `docs/plans/2026-04-01-runtime-v2-prompt-handling-classification.md`를 기준으로 유지합니다.
+  - updated legacy difference table SSOT는 `docs/plans/2026-04-01-runtime-v2-legacy-difference-table.md`를 기준으로 유지합니다.
   - boundary isolate guardrail 추가: `runtime_v2.boundary_jobs.build_stage2_boundary_contract()`는 이제 `boundary-scene-index` 선택 시 ref job을 우선 집지 않으며, scene prompt가 `テストです。` 같은 placeholder면 boundary contract를 emit하지 않고 즉시 fail-close 합니다.
 - 오늘 세션에서 해결된 항목:
   - `topic_spec_fallback` 거짓 성공 누수를 차단해, 실GPT 출력 완료 없이 stage1이 성공처럼 통과하지 못하게 했습니다.
