@@ -153,7 +153,7 @@ Current direct findings:
 | Workload | Current classification | Notes |
 |---|---|---|
 | `chatgpt` | structural transform with explicit system instructions | `build_live_chatgpt_prompt()` adds canonical stage1 system instructions; this audit does not classify it as ad-hoc per-service runtime strengthening, but it is not raw pass-through |
-| `genspark` | semantic injection | unauthorized browser-side strengthening existed; now removed in current workspace |
+| `genspark` | pass-through on current default path | unauthorized browser-side strengthening existed historically, but current workspace removed it and now keeps the original prompt only |
 | `seaart` | pass-through | prompt payload is used as-is in current stage2 path |
 | `canva` | structural transform | uses `bg_prompt`, `line1`, `line2`; no same-class arbitrary generate-now injection found |
 | `geminigen` | structural transform | uses prompt plus explicit provider/model/orientation fields; no same-class arbitrary free-text strengthening found |

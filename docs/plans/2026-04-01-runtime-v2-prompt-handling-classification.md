@@ -12,13 +12,13 @@
 |---|---|
 | `pass-through` | Runtime forwards the caller-provided prompt text without adding semantic content. |
 | `structural-transform` | Runtime reshapes the prompt into explicit contract fields or task JSON, but does not add new semantic intent. |
-| `semantic-injection` | Runtime adds instructional or semantic content beyond the caller-provided request. |
+| `semantic-injection` | Runtime adds new free-text semantic intent beyond the pinned contract fields or legacy prompt wrapper. |
 
 ## Current Classification
 
 | Subprogram | Class | Current contract evidence |
 |---|---|---|
-| `chatgpt` | `semantic-injection` | `runtime_v2/stage1/chatgpt_runner.py` `build_live_chatgpt_prompt()` adds fixed system/instruction/keyword blocks around the topic to force the legacy longform output contract. |
+| `chatgpt` | `structural-transform` | `runtime_v2/stage1/chatgpt_runner.py` `build_live_chatgpt_prompt()` wraps the topic in the pinned Stage 1 legacy longform contract fields and fixed instruction blocks. |
 | `genspark` | `pass-through` | `runtime_v2/stage2/request_builders.py` `build_image_prompt_file()` writes `payload.prompt` directly into `native_prompt.json`; `runtime_v2/cli.py` fills the browser input from the same prompt value without extra semantic text. |
 | `seaart` | `pass-through` | same `build_image_prompt_file()` path as `genspark`; no service-specific semantic strengthening layer is added before adapter execution. |
 | `geminigen` | `structural-transform` | `runtime_v2/stage2/request_builders.py` `build_geminigen_prompt_file()` places `payload.prompt` into `video_tasks[].prompt` and carries `first_frame_path` as a separate contract field. |
@@ -28,7 +28,8 @@
 
 - `genspark` and `seaart` must stay `pass-through` unless legacy evidence proves a minimal confirmation step is required.
 - `geminigen` and `canva` may remain `structural-transform` because the transform is explicit in contract fields, not hidden free-text injection.
-- `chatgpt` is the only currently pinned `semantic-injection` path because Stage 1 intentionally wraps the topic in the legacy longform production prompt.
+- `chatgpt` remains `structural-transform` because the Stage 1 wrapper is a pinned legacy production contract, not ad-hoc runtime prompt strengthening.
+- historical `genspark` semantic injection existed in older runtime drift, but it is not part of the current default path.
 
 ## Guardrails
 
