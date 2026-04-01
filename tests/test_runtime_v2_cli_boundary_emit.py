@@ -269,6 +269,127 @@ class RuntimeV2CliBoundaryEmitTests(unittest.TestCase):
         self.assertEqual(inner_job["worker"], "canva")
         self.assertEqual(inner_job["payload"]["ref_img"], str(image_primary.resolve()))
 
+    def test_emit_boundary_contract_path_rejects_placeholder_scene_prompt(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            asset_root = root / "assets"
+            asset_root.mkdir(parents=True, exist_ok=True)
+            video_plan_path = root / "video_plan.json"
+            video_plan_path.write_text(
+                json.dumps(
+                    {
+                        "run_id": "boundary-run-5",
+                        "row_ref": "Sheet1!row5",
+                        "reason_code": "ok",
+                        "asset_plan": {
+                            "asset_root": str(asset_root.resolve()),
+                            "common_asset_folder": str(asset_root.resolve()),
+                        },
+                        "scene_plan": [
+                            {
+                                "scene_index": 1,
+                                "prompt": "\u30c6\u30b9\u30c8\u3067\u3059\u3002",
+                            },
+                        ],
+                        "stage1_handoff": {
+                            "contract": {
+                                "run_id": "boundary-run-5",
+                                "row_ref": "Sheet1!row5",
+                                "topic": "Boundary topic",
+                                "voice_texts": [],
+                                "ref_img_1": "Use attached images as reference.\nPortrait prompt",
+                                "ref_img_2": "",
+                            }
+                        },
+                        "use_agent_browser_services": ["genspark"],
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            output_path = root / "genspark-placeholder.job.json"
+
+            with patch(
+                "sys.argv",
+                [
+                    "runtime_v2.cli",
+                    "--emit-boundary-contract-path",
+                    str(output_path),
+                    "--boundary-workload",
+                    "genspark",
+                    "--video-plan-path",
+                    str(video_plan_path),
+                    "--boundary-scene-index",
+                    "1",
+                ],
+            ):
+                exit_code = main()
+
+        self.assertEqual(exit_code, exit_codes.CLI_USAGE)
+        self.assertFalse(output_path.exists())
+
+    def test_emit_boundary_contract_path_skips_ref_job_when_scene_index_requested(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            asset_root = root / "assets"
+            asset_root.mkdir(parents=True, exist_ok=True)
+            video_plan_path = root / "video_plan.json"
+            video_plan_path.write_text(
+                json.dumps(
+                    {
+                        "run_id": "boundary-run-6",
+                        "row_ref": "Sheet1!row6",
+                        "reason_code": "ok",
+                        "asset_plan": {
+                            "asset_root": str(asset_root.resolve()),
+                            "common_asset_folder": str(asset_root.resolve()),
+                        },
+                        "scene_plan": [
+                            {"scene_index": 1, "prompt": "main scene prompt"},
+                        ],
+                        "stage1_handoff": {
+                            "contract": {
+                                "run_id": "boundary-run-6",
+                                "row_ref": "Sheet1!row6",
+                                "topic": "Boundary topic",
+                                "voice_texts": [],
+                                "ref_img_1": "Use attached images as reference.\nPortrait prompt",
+                                "ref_img_2": "",
+                            }
+                        },
+                        "use_agent_browser_services": ["genspark"],
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            output_path = root / "genspark-main.job.json"
+
+            with patch(
+                "sys.argv",
+                [
+                    "runtime_v2.cli",
+                    "--emit-boundary-contract-path",
+                    str(output_path),
+                    "--boundary-workload",
+                    "genspark",
+                    "--video-plan-path",
+                    str(video_plan_path),
+                    "--boundary-scene-index",
+                    "1",
+                ],
+            ):
+                exit_code = main()
+
+            contract = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        inner_job = contract["job"]
+        self.assertEqual(inner_job["job_id"], "genspark-boundary-run-6-1")
+        self.assertEqual(inner_job["payload"]["prompt"], "main scene prompt")
+
 
 if __name__ == "__main__":
     _ = unittest.main()

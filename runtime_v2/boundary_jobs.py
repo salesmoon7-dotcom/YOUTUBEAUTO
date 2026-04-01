@@ -8,6 +8,15 @@ from runtime_v2.contracts.job_contract import JobContract, build_explicit_job_co
 from runtime_v2.stage2.router import route_video_plan
 
 
+_BOUNDARY_PROMPT_PLACEHOLDERS = {
+    "test",
+    "test.",
+    "test prompt",
+    "\u30c6\u30b9\u30c8\u3067\u3059\u3002",
+    "\ud14c\uc2a4\ud2b8\uc785\ub2c8\ub2e4.",
+}
+
+
 def _mapping(value: object) -> dict[str, object] | None:
     if not isinstance(value, dict):
         return None
@@ -49,6 +58,18 @@ def _select_boundary_voice_texts(
         if str(entry.get("col", "")).strip() == "#01":
             return [entry]
     return [voice_texts[0]]
+
+
+def _boundary_prompt_is_placeholder(value: object) -> bool:
+    normalized = str(value).strip().lower()
+    if not normalized:
+        return True
+    return normalized in _BOUNDARY_PROMPT_PLACEHOLDERS
+
+
+def _job_id_is_ref_boundary(job_id: str) -> bool:
+    normalized = job_id.strip().lower()
+    return normalized.endswith("-ref-1") or normalized.endswith("-ref-2")
 
 
 def build_qwen_boundary_contract(
@@ -130,7 +151,11 @@ def build_stage2_boundary_contract(
                 return typed_job
             continue
         if scene_index is None:
+            if _boundary_prompt_is_placeholder(payload.get("prompt", "")):
+                raise ValueError("boundary_prompt_placeholder")
             return typed_job
+        if _job_id_is_ref_boundary(job_id):
+            continue
         if isinstance(job_scene_index, int):
             parsed_scene_index = job_scene_index
         elif isinstance(job_scene_index, float):
@@ -143,6 +168,8 @@ def build_stage2_boundary_contract(
         else:
             continue
         if parsed_scene_index == scene_index:
+            if _boundary_prompt_is_placeholder(payload.get("prompt", "")):
+                raise ValueError("boundary_prompt_placeholder")
             return typed_job
     raise ValueError("boundary_job_not_found")
 
