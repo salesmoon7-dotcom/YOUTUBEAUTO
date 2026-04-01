@@ -24,20 +24,70 @@ This retest plan covers all disputed boundaries raised in the second postmortem:
   - This consumed user time without restoring the real pipeline goal and created the appearance of continuous progress without actual closeout movement.
   - This plan must now be interpreted with that failure in mind: when `stage1` cannot produce `parsed_payload.json` / `stage1_handoff.json` / `video_plan.json`, no surrounding boundary proof may be treated as meaningful forward progress.
 
-- Current live stop point is no longer `Canva`, `qwen3_tts`, or `GeminiGen`.
-- Readiness is currently green and minimum-unit proofs for `Canva`, `qwen3_tts`, and `GeminiGen` were gathered, but semantic-row closeout is still blocked before `stage1_handoff` generation.
-- The current top blocker is `stage1 chatgpt` on the live longform GPT path:
-  - prompt submission succeeds,
-  - `in_flight_marker` is observed,
-  - the UI then ends in `생각 중지됨` with no assistant blocks,
-  - the runtime now fail-closes this as `CHATGPT_THINKING_STOPPED_NO_OUTPUT` instead of leaving the control loop at `seeded_queue`.
-  - one automatic retry/re-request is now attempted in the production path, but the latest live foreground reproduction still ends in the same blocker.
-- Current trusted evidence:
-  - foreground reproduction: `D:\YOUTUBEAUTO_RUNTIME\probe\stage1-foreground-row15-20260325-v4\result.json`
-  - latest foreground reproduction: `D:\YOUTUBEAUTO_RUNTIME\probe\stage1-foreground-row15-20260325-v10\result.json`
-  - detached semantic-row proof: `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-closeout-20260325-05\probe_result.json`
-- Therefore the next allowed action is not another broad semantic-row retry or another service-boundary proof.
-- The next allowed action is only to resolve the `stage1 chatgpt` live no-output blocker so that `parsed_payload.json`, `stage1_handoff.json`, `video_plan.json`, and Excel writeback can be produced again.
+- Current live stop point can no longer be described as a single stable service blocker.
+- Across the latest truthful reruns, the surfaced blocker keeps moving among:
+  - `stage1 chatgpt` reset/backend availability,
+  - `qwen3_tts` long-running / no-result / timeout behavior,
+  - `genspark` ref/main browser-unhealthy attach drift,
+  - `seaart` ref browser-unhealthy attach drift.
+- This means the runtime is not in a deterministic state where one service fix reliably stays fixed through the next closeout.
+- Current trusted evidence supports a structural-block reading rather than a stable single-service stop-point.
+- Therefore the next allowed action is no longer “fix the current top blocker and rerun closeout”.
+- The next allowed action is to simplify the runtime until one blocker remains stable across reruns and the simplification baseline is committed as the new execution baseline.
+
+## Structural Block
+
+- Current status: the runtime appears to no longer be in a state where this plan can be executed deterministically step-by-step.
+- Evidence collected so far strongly suggests that orchestration shape and shared service/browser state are part of the blocker because repeated fresh closeouts surface different blockers even after localized fixes.
+- However, this is still a diagnosis at the level of strong operational evidence, not a mathematically complete proof of a single root cause.
+- Other contributing factors may still exist, including external service instability, environment drift, rate limiting/quota behavior, or state leakage that current evidence has not fully isolated.
+- Therefore, the current working decision is to treat the plan as structurally blocked until a `runtime simplification reset` is completed.
+- While this structural block remains, additional fresh closeout reruns are not considered reliable progress signals, and any results from them must be interpreted cautiously until a reset establishes a cleaner baseline.
+
+## Today-Only Execution Strategy Reset
+
+- The previous execution approach violated two top-level principles:
+  - debugging was not becoming more efficient over time,
+  - the pipeline was not becoming simpler as blockers were investigated.
+- Any path that adds more active runs, more side-boundary checks, or more state surfaces before reducing the current blocker is now considered incorrect.
+
+For the remainder of today, the execution order is re-scoped to the shortest path only:
+
+1. Stop treating fresh closeout reruns as meaningful progress while blocker identity is unstable.
+2. Reduce the runtime state surface until one blocker remains stable across reruns.
+3. Only then resume single-scene/service isolation.
+4. Only after that resume exactly one fresh row15 closeout.
+
+Hard rules for today:
+- No broad iterative reruns to "see what fails next".
+- No new fallback/retry branches unless they remove complexity rather than add it.
+- No multi-surface debugging when one minimal surface can answer the question.
+- If `JSON/Excel` or `main scene` output is blocked, surrounding boundary work is not counted as progress.
+
+## Runtime Simplification Reset
+
+- The current architecture must be treated as partially overfit to prolonged debugging sessions.
+- From this point forward, debugging success is defined by *reduced state*, not by additional probes, retries, or long-lived sessions.
+
+Required simplification rules:
+
+1. Browser sessions
+   - Default to fresh service browser/session per proof step.
+   - Shared browser reuse is allowed only after a service has already demonstrated a clean single-job success on the current day.
+
+2. Worker runtime behavior
+   - Every worker must either:
+     - emit a success artifact, or
+     - emit a fail-close artifact/code,
+     within a short, bounded window.
+   - `running` without new artifact/result/heartbeat evidence is not an acceptable steady state.
+
+3. Closeout policy
+   - `row15 closeout` is not a discovery mechanism.
+   - It is only a final integration check after the current blocker service has been reduced to a single isolated proof and recovered.
+
+4. Escalation rule
+   - If the same blocker recurs after 2 truthful reruns, stop adding tactical fixes and simplify the runtime surface first.
 
 ---
 

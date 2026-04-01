@@ -68,6 +68,41 @@ from runtime_v2.contracts.job_contract import (
 )
 from runtime_v2.supervisor import run_gated
 
+
+def _read_closeout_state(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _write_closeout_state(
+    config: RuntimeConfig,
+    *,
+    run_id: str,
+    status: str,
+    reason: str,
+    attempt: int,
+) -> None:
+    from runtime_v2.workers.job_runtime import write_json_atomic
+
+    existing = _read_closeout_state(config.closeout_state_file)
+    started_at = existing.get("started_at", round(time(), 3))
+    finished_at = round(time(), 3) if status in {"completed", "failed"} else None
+    payload = {
+        "run_id": run_id,
+        "status": status,
+        "reason": reason,
+        "attempt": attempt,
+        "started_at": started_at,
+        "finished_at": finished_at,
+    }
+    _ = write_json_atomic(config.closeout_state_file, payload)
+
+
 MAX_CHAIN_DEPTH = 4
 MAX_NEXT_JOBS = 4
 MAX_STAGE1_DECLARED_NEXT_JOBS = 256
@@ -97,6 +132,17 @@ def run_control_loop_once(
     allow_runtime_side_effects: bool = True,
 ) -> dict[str, object]:
     runtime_config = config or RuntimeConfig()
+    closeout_state = _read_closeout_state(runtime_config.closeout_state_file)
+    if closeout_state.get("run_id") == run_id and closeout_state.get("status") in {
+        "running",
+        "completed",
+        "failed",
+    }:
+        return {
+            "status": str(closeout_state.get("status", "running")),
+            "code": str(closeout_state.get("reason", "CLOSEOUT_ALREADY_TRACKED")),
+            "run_id": run_id,
+        }
     default_config = RuntimeConfig()
     if allow_runtime_side_effects:
         ensure_runtime_bootstrap(
@@ -284,6 +330,13 @@ def run_control_loop_once(
                     "worker_stage": worker_stage,
                 },
             )
+            _write_closeout_state(
+                runtime_config,
+                run_id=run_id,
+                status="failed",
+                reason=failure_code,
+                attempt=1,
+            )
             return {
                 "status": "failed",
                 "code": failure_code,
@@ -340,10 +393,24 @@ def run_control_loop_once(
                 "invalid_reason": invalid_reason_summary(runtime_config.input_root),
             },
         )
+        _write_closeout_state(
+            runtime_config,
+            run_id=run_id,
+            status="completed",
+            reason="NO_JOB",
+            attempt=1,
+        )
         return {"status": "idle", "code": "NO_JOB"}
 
     previous_status = job.status
     if can_transition(previous_status, "running"):
+        _write_closeout_state(
+            runtime_config,
+            run_id=run_id,
+            status="running",
+            reason="job_running",
+            attempt=1,
+        )
         job.status = "running"
         _ = _upsert_job(queue_store, job)
         running_record = transition_record(job.job_id, previous_status, job.status)

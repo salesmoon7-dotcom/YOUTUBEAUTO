@@ -182,6 +182,11 @@ class RuntimeConfig:
     latest_completed_run_file: Path = field(
         default_factory=lambda: runtime_state_root() / "latest_completed_run.json"
     )
+    closeout_state_file: Path = field(
+        default_factory=lambda: runtime_state_root()
+        / "evidence"
+        / "closeout_state.json"
+    )
     failure_summary_file: Path = field(
         default_factory=lambda: runtime_state_root()
         / "evidence"
@@ -230,6 +235,7 @@ class RuntimeConfig:
             result_router_file=resolved_root / "evidence" / "result.json",
             latest_active_run_file=resolved_root / "latest_active_run.json",
             latest_completed_run_file=resolved_root / "latest_completed_run.json",
+            closeout_state_file=resolved_root / "evidence" / "closeout_state.json",
             failure_summary_file=resolved_root / "evidence" / "failure_summary.json",
             soak_events_file=resolved_root / "evidence" / "soak_events.jsonl",
             soak_report_file=resolved_root / "evidence" / "soak_24h_report.md",

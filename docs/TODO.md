@@ -17,17 +17,31 @@
   - 같은 rerun의 최종 산출물은 `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row1-rerun-03\artifacts\chatgpt\chatgpt-sheet1-45\assets\output\render_final.mp4`입니다.
   - 현재 상태 해석은 `docs/plans/2026-03-07-runtime-v2-staged-test-plan.md` 기준으로 `generic Stage 5 minimum rerun complete`, `Stage 5B complete`, `24h soak deferred`입니다.
 - 단, 사용자 지정 semantic target row는 성공 closeout 기준으로는 아직 미완료입니다. 대상은 `요양 시설 비용 현실과 준비해야 할 금액` 주제가 있는 `Sheet1!row15`(엑셀 UI 기준 16행)이며, runtime_v2 reader 기준 CLI 매핑은 `--row-index 14`입니다.
-- 2026-03-25 current top blocker:
-  - 운영 실패 기록: 지난 약 2개월 동안 실제 최상위 blocker(`stage1 chatgpt -> JSON/Excel 생성`)를 고정하지 못한 채 주변 boundary 검증과 rerun을 반복했고, 사용자는 이를 "하는 척만 하면서 시간을 낭비시킨 상태"로 인지하고 있습니다.
-  - 다음 사이클에서는 이 운영 실패를 재현하지 않도록, `JSON/Excel 생성이 막힌 상태에서는 다른 service-boundary 검증을 우선하지 않는다`를 강제합니다.
-  - 현재 semantic target row의 실제 최상위 blocker는 `stage1 chatgpt -> JSON/Excel 생성`입니다.
-  - live ChatGPT longform GPT는 prompt 전송과 `in_flight_marker`까지는 성공하지만, 최종적으로 답변 블록 없이 `생각 중지됨`으로 끝나며 `CHATGPT_THINKING_STOPPED_NO_OUTPUT`로 fail-close 됩니다.
-  - current code는 이 경로에서 1회 자동 재요청까지 수행하지만, latest foreground evidence에서도 여전히 같은 blocker로 종료됩니다.
-  - 따라서 현재 `parsed_payload.json`, `stage1_handoff.json`, `video_plan.json`, Excel writeback은 생성되지 않습니다.
-  - foreground proof: `D:\YOUTUBEAUTO_RUNTIME\probe\stage1-foreground-row15-20260325-v4\result.json`
-  - latest foreground proof: `D:\YOUTUBEAUTO_RUNTIME\probe\stage1-foreground-row15-20260325-v10\result.json`
-  - detached proof: `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-closeout-20260325-05\probe_result.json`
-  - 다음 작업은 service-boundary 추가 검증이 아니라 `stage1 chatgpt live no-output blocker` 단일 경계만 다룹니다.
+- 2026-04-01 current top blocker and execution rule reset:
+  - 운영 실패 기록: 지난 약 2개월 동안 실제 최상위 blocker를 빠르게 줄이지 못했고, 디버깅할수록 상태/예외/run이 늘어나는 방향으로 drift했습니다.
+  - 이 상태는 사용자가 지적한 두 대전제에 모두 위배됩니다.
+    - `디버깅이 효율적인가?` → 아니었습니다.
+    - `파이프라인이 심플한가?` → 아니었습니다.
+  - 따라서 다음 사이클의 최상위 원칙은 아래 둘입니다.
+    - `디버깅할수록 구조가 단순해져야 한다.`
+    - `broad iterative rerun 대신 최소 재현과 단일 scene/service 검증을 먼저 한다.`
+  - current semantic target row의 실제 live blocker는 단일 서비스 하나로 고정되지 않습니다.
+  - latest fresh closeout evidence는 `chatgpt reset/backend`, `qwen long-running / no-result / timeout`, `genspark ref/main browser unhealthy`, `seaart ref browser unhealthy`가 번갈아 surface되는 구조적 블록 상태를 보여 줍니다.
+  - 2026-04-01 latest judgment: the runtime has reached a state where the closeout plan cannot be followed reliably as-is.
+  - Repeated fresh closeouts (`18`~`38`) keep surfacing service/browser-state blockers in different places even after local fixes, which means the current runtime shape itself is now part of the blocker.
+  - Therefore the plan is structurally blocked until a `runtime simplification reset` is done. Continuing the same closeout pattern without that reset is not considered valid progress.
+  - 일부 run에서는 `chatgpt`/`qwen`이 통과하고 `genspark`나 `seaart`가 막히고, 다른 run에서는 다시 `chatgpt` reset/backend가 먼저 막히는 등 blocker surface가 계속 이동합니다.
+  - 따라서 current goal은 단일 서비스 하나를 고치는 것이 아니라 `runtime simplification reset`을 기준선으로 고정하고, 그 이후에만 isolated proof 또는 fresh closeout을 다시 허용하는 것입니다.
+  - 금지사항:
+    - `same blocker가 unresolved인 상태에서 새 rerun 추가`
+    - `service/browser/session state를 더 복잡하게 만드는 임시 우회`
+    - `JSON/Excel 미생성 상태에서 주변 boundary를 진전처럼 취급`
+- runtime simplification reset (must apply before more broad work):
+  - shared long-lived browser/session reuse를 기본값으로 두지 않습니다.
+  - service-level verification은 `fresh browser/session -> one job -> success or fail-close artifact` 순서로만 수행합니다.
+  - 모든 worker는 몇 분 안에 결과가 없으면 `running`으로 방치하지 말고 timeout/fail-close artifact를 남겨야 합니다.
+  - `row15 closeout`은 개별 service 경계가 위 원칙으로 검증된 뒤에만 exactly one rerun 합니다.
+  - 같은 blocker가 2회 이상 반복되면, service bugfix보다 먼저 runtime simplification을 수행합니다.
 - 오늘 세션에서 해결된 항목:
   - `topic_spec_fallback` 거짓 성공 누수를 차단해, 실GPT 출력 완료 없이 stage1이 성공처럼 통과하지 못하게 했습니다.
   - stage1 writeback의 stale snapshot bug를 수정해, `stage1_handoff`가 있을 때 엑셀 writeback이 실제 반영되도록 했습니다.
@@ -38,11 +52,10 @@
   - live ChatGPT prompt에서 `"[Ref Img 1], [Ref Img 2], [Video1], [Video2] ... 블록도 함께 채우세요."` 문구를 제거했습니다.
   - qwen output contract를 `speech.wav` 가정에서 `speech.flac`/`voice/#NN.flac` 기준으로 전환하는 코드/테스트 수정을 반영했습니다.
 - 현재 active blocker:
-  - stale qwen worker registry는 `runtime_v2/worker_registry.py`에서 `busy`도 stall 대상 state로 정렬해 반영했고, 현재 `D:\YOUTUBEAUTO_RUNTIME\runtime_state\health\worker_registry.json` 기준 `qwen3_tts`는 `idle`입니다.
-  - 따라서 과거 `WORKER_STALL_DETECTED`는 current live readiness blocker가 아니라 historical failure evidence로만 남깁니다.
-  - 현재 fresh `python -m runtime_v2.cli --readiness-check` 기준 live blocker는 `GPT_STATUS_STALE` 하나입니다.
-  - 다만 `docs/plans/2026-03-15-runtime-v2-closeout-retest-plan-v2.md`의 엄격 기준대로는 실패 시 `failure_summary.json`까지 있어야 closeout 완료로 보므로, 현재 상태는 `closed failure evidence 확보 / final closeout success 아님`으로 기록합니다.
-  - 새 창 문제는 코드상 `CREATE_NO_WINDOW`를 넣어 완화했지만, 사용자 체감 기준으로 완전 해결을 증명하는 최종 실행 증거는 아직 확보하지 못했습니다.
+  - current active blocker는 단일 서비스 하나로 안정적으로 고정되지 않습니다.
+  - latest truthful reruns 기준으로 blocker는 `chatgpt reset/backend`, `qwen running-without-result / timeout`, `genspark ref/main browser unhealthy`, `seaart ref browser unhealthy` 사이를 이동합니다.
+  - 따라서 개별 blocker보다 먼저 해결해야 할 것은 `runtime simplification baseline`의 코드/문서 정렬과 고정입니다.
+  - closeout 결과는 계속 기록하되, simplification baseline이 커밋/적용되기 전까지는 추가 fresh closeout을 의미 있는 진행으로 간주하지 않습니다.
   - 마지막 hidden rerun `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row1-target-16-18`은 `voice/#01..#04.flac` 일부만 남기고 `probe_result.json`, `qwen3_result.json`, `failure_summary.json`, `render/` 없이 종료돼 closeout 증거로 사용할 수 없습니다.
   - 추가 세션 실패 기록: 사용자 중단/실행 금지 지시 후에도 같은 성격의 runtime 검증/실행을 반복했고, 사용자는 이를 `10번 동안 지시를 무시한 것`으로 인지했습니다. 다음 사이클에서는 이 상태를 재현하지 않도록 `사용자 중단 후 재검증 금지` 규칙을 강제합니다.
 - 2026-03-20 분석 정리:

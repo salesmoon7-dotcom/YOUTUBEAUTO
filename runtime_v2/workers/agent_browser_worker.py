@@ -25,6 +25,8 @@ from runtime_v2.agent_browser.result_parser import (
     select_best_tab,
 )
 from runtime_v2.browser.manager import BrowserManager
+from runtime_v2.browser.supervisor import BrowserSupervisor
+from runtime_v2.config import RuntimeConfig
 from runtime_v2.contracts.job_contract import JobContract
 from runtime_v2.workers.job_runtime import (
     finalize_worker_result,
@@ -622,6 +624,21 @@ def _agent_browser_error_code(exc: Exception) -> str:
     return "AGENT_BROWSER_VERIFY_FAILED"
 
 
+def _recover_agent_browser_service(service: str) -> None:
+    manager = BrowserManager()
+    manager.start()
+    supervisor = BrowserSupervisor(manager)
+    cfg = RuntimeConfig()
+    _ = supervisor.tick(
+        registry_file=cfg.browser_registry_file,
+        health_file=cfg.browser_health_file,
+        run_id=f"agent-browser-recover-{service}",
+        recover_unhealthy=True,
+        restart_threshold=1,
+        cooldown_sec=0,
+    )
+
+
 def run_agent_browser_verify_job(
     job: JobContract,
     artifact_root: Path,
@@ -665,16 +682,25 @@ def run_agent_browser_verify_job(
     transcript: list[dict[str, object]] = []
     timeout_sec = _service_timeout_sec(service)
     capture_snapshot = _snapshot_required(service, job.payload)
-    try:
+    recovery_attempted = False
+
+    def _run_verify_once() -> tuple[
+        list[dict[str, object]], int | None, str, str, Path | None
+    ]:
+        local_transcript: list[dict[str, object]] = []
         tab_list_command = build_tab_list_command(port=port)
         used_http_fallback = False
         try:
             tab_list_output = _run_agent_browser_command(
                 tab_list_command, timeout_sec=timeout_sec
             )
-            transcript.append({"command": tab_list_command, "output": tab_list_output})
+            local_transcript.append(
+                {"command": tab_list_command, "output": tab_list_output}
+            )
             tabs = parse_tab_list_output(tab_list_output)
         except RuntimeError as exc:
+            if service in {"genspark", "seaart"} and not recovery_attempted:
+                raise RuntimeError(str(exc))
             if service == "chatgpt":
                 raise
             try:
@@ -682,7 +708,7 @@ def run_agent_browser_verify_job(
             except Exception as fallback_exc:
                 raise RuntimeError(str(fallback_exc)) from fallback_exc
             used_http_fallback = True
-            transcript.append(
+            local_transcript.append(
                 {
                     "command": [f"http://127.0.0.1:{port}/json/list"],
                     "output": json.dumps(tabs, ensure_ascii=False),
@@ -717,25 +743,29 @@ def run_agent_browser_verify_job(
             select_output = _run_agent_browser_command(
                 select_command, timeout_sec=timeout_sec
             )
-            transcript.append({"command": select_command, "output": select_output})
+            local_transcript.append(
+                {"command": select_command, "output": select_output}
+            )
             get_url_command = build_get_url_command(port=port)
             current_url = parse_scalar_output(
                 _run_agent_browser_command(get_url_command, timeout_sec=timeout_sec)
             )
-            transcript.append({"command": get_url_command, "output": current_url})
+            local_transcript.append({"command": get_url_command, "output": current_url})
 
             get_title_command = build_get_title_command(port=port)
             current_title = parse_scalar_output(
                 _run_agent_browser_command(get_title_command, timeout_sec=timeout_sec)
             )
-            transcript.append({"command": get_title_command, "output": current_title})
+            local_transcript.append(
+                {"command": get_title_command, "output": current_title}
+            )
 
         action_items = _normalize_agent_browser_actions(job.payload.get("actions", []))
         if action_items:
             _run_agent_browser_actions(
                 service=service,
                 port=port,
-                transcript=transcript,
+                transcript=local_transcript,
                 actions=action_items,
                 timeout_sec=timeout_sec,
             )
@@ -744,7 +774,7 @@ def run_agent_browser_verify_job(
                 tab_list_output = _run_agent_browser_command(
                     tab_list_command, timeout_sec=timeout_sec
                 )
-                transcript.append(
+                local_transcript.append(
                     {
                         "command": tab_list_command,
                         "output": tab_list_output,
@@ -761,7 +791,7 @@ def run_agent_browser_verify_job(
                     select_output = _run_agent_browser_command(
                         select_command, timeout_sec=timeout_sec
                     )
-                    transcript.append(
+                    local_transcript.append(
                         {
                             "command": select_command,
                             "output": select_output,
@@ -774,7 +804,7 @@ def run_agent_browser_verify_job(
                             get_url_command, timeout_sec=timeout_sec
                         )
                     )
-                    transcript.append(
+                    local_transcript.append(
                         {
                             "command": get_url_command,
                             "output": current_url,
@@ -787,7 +817,7 @@ def run_agent_browser_verify_job(
                             get_title_command, timeout_sec=timeout_sec
                         )
                     )
-                    transcript.append(
+                    local_transcript.append(
                         {
                             "command": get_title_command,
                             "output": current_title,
@@ -801,9 +831,35 @@ def run_agent_browser_verify_job(
             snapshot_output = _run_agent_browser_command(
                 snapshot_command, timeout_sec=timeout_sec
             )
-            transcript.append({"command": snapshot_command, "output": snapshot_output})
+            local_transcript.append(
+                {"command": snapshot_command, "output": snapshot_output}
+            )
             snapshot_path = workspace / "snapshot.txt"
             _ = snapshot_path.write_text(snapshot_output, encoding="utf-8")
+        return local_transcript, selected_tab, current_url, current_title, snapshot_path
+
+    try:
+        try:
+            transcript, selected_tab, current_url, current_title, snapshot_path = (
+                _run_verify_once()
+            )
+        except RuntimeError as exc:
+            if service in {"genspark", "seaart"} and not recovery_attempted:
+                recovery_attempted = True
+                _recover_agent_browser_service(service)
+                transcript.append(
+                    {
+                        "command": ["recovery"],
+                        "output": "service_recovered",
+                        "recovery_attempted": True,
+                        "agent_browser_error": str(exc),
+                    }
+                )
+                transcript, selected_tab, current_url, current_title, snapshot_path = (
+                    _run_verify_once()
+                )
+            else:
+                raise
 
         transcript_path = write_json_atomic(
             workspace / "agent_browser_transcript.json",

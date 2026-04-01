@@ -150,11 +150,12 @@ def inspect_browser_plane_owner() -> dict[str, object]:
     pid_alive = _pid_is_running(owner_pid) if metadata_valid else False
     heartbeat_at = _to_float(payload.get("last_heartbeat_at", 0.0), 0.0)
     lock_age_sec = max(0.0, round(time() - heartbeat_at, 3))
+    stale_sec = _browser_plane_lock_stale_sec()
     if metadata_valid and owner_pid == os.getpid():
         lock_state = "owned"
     elif not metadata_valid:
         lock_state = "unknown"
-    elif not pid_alive:
+    elif not pid_alive or lock_age_sec > stale_sec:
         lock_state = "stale"
     else:
         lock_state = "busy"
@@ -165,6 +166,7 @@ def inspect_browser_plane_owner() -> dict[str, object]:
         "metadata_valid": metadata_valid,
         "pid_alive": pid_alive,
         "lock_age_sec": lock_age_sec,
+        "stale_after_sec": stale_sec,
         "lock_file": str(lock_file),
     }
 

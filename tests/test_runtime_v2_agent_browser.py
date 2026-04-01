@@ -635,6 +635,113 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
             "https://www.genspark.ai/agents?id=result123",
         )
 
+    def test_genspark_retries_after_browser_recovery_on_tab_list_failure(self) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "artifacts"
+            job = JobContract(
+                job_id="agent-browser-genspark-recover-tab-list",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-genspark-recover-tab-list",
+                payload={
+                    "service": "genspark",
+                    "port": 9333,
+                    "expected_url_substring": "genspark.ai/agents?type=image_generation_agent",
+                    "expected_title_substring": "Genspark",
+                    "capture_snapshot": False,
+                },
+            )
+
+            outputs = iter(
+                [
+                    RuntimeError("connect ECONNREFUSED 127.0.0.1:9333"),
+                    "[0] Genspark Agents - https://www.genspark.ai/agents?id=result123\n",
+                    "selected result",
+                    "https://www.genspark.ai/agents?id=result123",
+                    "Genspark Agents",
+                ]
+            )
+
+            def fake_run(command: list[str], *, timeout_sec: int = 30) -> str:
+                _ = (command, timeout_sec)
+                value = next(outputs)
+                if isinstance(value, Exception):
+                    raise value
+                return value
+
+            with (
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                    side_effect=fake_run,
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._recover_agent_browser_service"
+                ) as recover_mock,
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        recover_mock.assert_called_once_with("genspark")
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(
+            str(details["current_url"]),
+            "https://www.genspark.ai/agents?id=result123",
+        )
+
+    def test_seaart_retries_after_browser_recovery_on_tab_list_failure(self) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "artifacts"
+            job = JobContract(
+                job_id="agent-browser-seaart-recover-tab-list",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-seaart-recover-tab-list",
+                payload={
+                    "service": "seaart",
+                    "port": 9444,
+                    "expected_url_substring": "seaart.ai",
+                    "expected_title_substring": "SeaArt",
+                    "capture_snapshot": False,
+                },
+            )
+
+            outputs = iter(
+                [
+                    RuntimeError("connect ECONNREFUSED 127.0.0.1:9444"),
+                    "[0] AI 이미지 생성기 - 텍스트와 이미지에서 독특한 아트 만들기 - https://www.seaart.ai/ko/create/image?id=test\n",
+                    "selected seaart",
+                    "https://www.seaart.ai/ko/create/image?id=test",
+                    "AI 이미지 생성기 - 텍스트와 이미지에서 독특한 아트 만들기",
+                ]
+            )
+
+            def fake_run(command: list[str], *, timeout_sec: int = 30) -> str:
+                _ = (command, timeout_sec)
+                value = next(outputs)
+                if isinstance(value, Exception):
+                    raise value
+                return value
+
+            with (
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                    side_effect=fake_run,
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._recover_agent_browser_service"
+                ) as recover_mock,
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(
+            str(details["current_url"]),
+            "https://www.seaart.ai/ko/create/image?id=test",
+        )
+
     def test_genspark_initial_attach_accepts_single_remaining_result_tab(self) -> None:
         from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
 

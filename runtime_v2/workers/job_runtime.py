@@ -19,6 +19,16 @@ def prepare_workspace(job: JobContract, artifact_root: Path | None = None) -> Pa
     workspace = resolved_root / job.workload / job.job_id
     workspace.mkdir(parents=True, exist_ok=True)
     _ = write_json_atomic(workspace / "job.json", job.to_dict())
+    _ = write_json_atomic(
+        workspace / "started.json",
+        {
+            "status": "started",
+            "job_id": job.job_id,
+            "workload": job.workload,
+            "run_id": str(job.payload.get("run_id", "")),
+            "started_at": __import__("time").time(),
+        },
+    )
     return workspace
 
 
@@ -100,6 +110,8 @@ def finalize_worker_result(
         "details": details or {},
         "next_jobs": next_jobs or [],
         "completion": completion or {},
+        "started_path": str((workspace / "started.json").resolve()),
+        "finished_at": __import__("time").time(),
     }
     _ = write_json_atomic(workspace / "manifest.json", manifest)
     _ = write_json_atomic(workspace / "result.json", result)
@@ -119,4 +131,6 @@ def finalize_worker_result(
         payload["next_jobs"] = next_jobs
     if completion:
         payload["completion"] = completion
+    payload["started_path"] = str((workspace / "started.json").resolve())
+    payload["finished_at"] = result["finished_at"]
     return payload
