@@ -1039,6 +1039,90 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             .endswith("rvc-geminigen-stage2-run-1/speech_rvc.wav")
         )
 
+    def test_control_plane_preserves_flac_suffix_when_canonicalizing_qwen_rvc_job(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            qwen_audio = root / "speech.flac"
+            _ = qwen_audio.write_bytes(b"flac")
+            seed_control_job(
+                JobContract(
+                    job_id="qwen-job",
+                    workload="qwen3_tts",
+                    checkpoint_key="seed:qwen-job",
+                    payload={
+                        "run_id": "stage2-run-flac",
+                        "row_ref": "Sheet1!row1",
+                        "chain_depth": 0,
+                    },
+                ),
+                config=config,
+            )
+
+            runtime_result: dict[str, object] = {
+                "status": "ok",
+                "code": "OK",
+                "worker_result": {
+                    "status": "ok",
+                    "stage": "qwen3_tts",
+                    "error_code": "",
+                    "retryable": False,
+                    "next_jobs": [
+                        build_explicit_job_contract(
+                            job_id="rvc-qwen-job",
+                            workload="rvc",
+                            checkpoint_key="derived:rvc:qwen-job",
+                            payload={
+                                "source_path": str(qwen_audio.resolve()),
+                                "model_name": "voice-model-a",
+                                "run_id": "stage2-run-flac",
+                                "row_ref": "Sheet1!row1",
+                                "service_artifact_path": str(
+                                    (root / "exports" / "speech_rvc.flac").resolve()
+                                ),
+                                "chain_depth": 1,
+                            },
+                            chain_step=1,
+                            parent_job_id="qwen-job",
+                        )
+                    ],
+                    "completion": {"state": "routed", "final_output": False},
+                },
+            }
+
+            with patch(
+                "runtime_v2.control_plane.run_gated", return_value=runtime_result
+            ):
+                _ = run_control_loop_once(
+                    owner="runtime_v2", config=config, run_id="control-run-qwen-flac"
+                )
+
+            queue_payload = cast(
+                object, json.loads(config.queue_store_file.read_text(encoding="utf-8"))
+            )
+            self.assertIsInstance(queue_payload, list)
+            if not isinstance(queue_payload, list):
+                self.fail("queue payload missing")
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            by_job_id = {str(item["job_id"]): item for item in queue_items}
+
+        self.assertIn("rvc-qwen3-stage2-run-flac", by_job_id)
+        rvc_payload = cast(
+            dict[object, object], by_job_id["rvc-qwen3-stage2-run-flac"]["payload"]
+        )
+        self.assertEqual(str(rvc_payload["source_mode"]), "tts-source")
+        self.assertTrue(
+            str(rvc_payload["service_artifact_path"])
+            .replace("\\", "/")
+            .endswith("rvc-qwen3-stage2-run-flac/speech_rvc.flac")
+        )
+
     def test_control_plane_prefers_geminigen_rvc_lane_over_qwen3_lane_for_same_run(
         self,
     ) -> None:

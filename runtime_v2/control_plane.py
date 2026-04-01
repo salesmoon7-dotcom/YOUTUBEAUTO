@@ -1755,6 +1755,13 @@ def _rvc_source_mode_priority(source_mode: str) -> int:
     return RVC_SOURCE_MODE_PRIORITY.get(source_mode, 0)
 
 
+def _canonical_rvc_output_suffix(payload: dict[str, object]) -> str:
+    candidate = str(payload.get("service_artifact_path", "")).strip().lower()
+    if candidate.endswith(".flac"):
+        return ".flac"
+    return ".wav"
+
+
 def _normalize_rvc_next_job(next_job: JobContract, *, artifact_root: Path) -> str:
     run_id = str(next_job.payload.get("run_id", "")).strip()
     if not run_id:
@@ -1770,8 +1777,9 @@ def _normalize_rvc_next_job(next_job: JobContract, *, artifact_root: Path) -> st
         canonical_job_id = f"rvc-geminigen-{run_id}"
     next_job.job_id = canonical_job_id
     next_job.checkpoint_key = f"derived:rvc:{source_mode}:{run_id}"
+    suffix = _canonical_rvc_output_suffix(next_job.payload)
     next_job.payload["service_artifact_path"] = str(
-        (artifact_root / "rvc" / canonical_job_id / "speech_rvc.wav").resolve()
+        (artifact_root / "rvc" / canonical_job_id / f"speech_rvc{suffix}").resolve()
     )
     return previous_job_id
 
