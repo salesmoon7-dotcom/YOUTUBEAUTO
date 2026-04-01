@@ -3004,9 +3004,9 @@ def _run_qwen3_adapter_child(args: CliArgs) -> int:
         return exit_codes.ADAPTER_FAIL
 
     def _qwen_line_timeout_sec(text_value: str) -> int:
-        base = 180
-        scaled = len(text_value.strip()) * 2
-        return max(base, min(900, base + scaled))
+        base = 360
+        scaled = len(text_value.strip()) * 3
+        return max(base, min(1800, base + scaled))
 
     for line_index, item in enumerate(line_items, start=1):
         line_prompt_payload = dict(prompt_payload)
