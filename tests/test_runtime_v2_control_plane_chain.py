@@ -104,6 +104,74 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertEqual(str(by_job_id["genspark-row1-gate-a"]["status"]), "completed")
         self.assertEqual(str(by_job_id["canva-row1-gate-b"]["status"]), "queued")
 
+    def test_control_loop_does_not_short_circuit_when_closeout_state_is_running(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            queue_store = QueueStore(config.queue_store_file)
+            queued_job = JobContract(
+                job_id="genspark-row15-gate-a",
+                workload="genspark",
+                checkpoint_key="stage2:genspark:Sheet1!row15:1",
+                payload={
+                    "run_id": "row-run-15",
+                    "row_ref": "Sheet1!row15",
+                    "promotion_gate": "A",
+                    "scene_index": 1,
+                },
+            )
+            queue_store.save([queued_job])
+            config.closeout_state_file.parent.mkdir(parents=True, exist_ok=True)
+            config.closeout_state_file.write_text(
+                json.dumps(
+                    {
+                        "run_id": "row-run-15",
+                        "status": "running",
+                        "reason": "job_running",
+                        "attempt": 1,
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={
+                    "status": "ok",
+                    "code": "OK",
+                    "worker_result": {
+                        "status": "ok",
+                        "stage": "genspark",
+                        "error_code": "",
+                        "retryable": False,
+                        "next_jobs": [],
+                        "details": {},
+                        "completion": {"state": "succeeded", "final_output": False},
+                    },
+                },
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="row-run-15",
+                )
+
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(str(queue_items[0]["status"]), "completed")
+
     def test_control_plane_fail_closes_later_gates_for_same_row_only(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

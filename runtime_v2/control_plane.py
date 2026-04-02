@@ -134,7 +134,6 @@ def run_control_loop_once(
     runtime_config = config or RuntimeConfig()
     closeout_state = _read_closeout_state(runtime_config.closeout_state_file)
     if closeout_state.get("run_id") == run_id and closeout_state.get("status") in {
-        "running",
         "completed",
         "failed",
     }:
