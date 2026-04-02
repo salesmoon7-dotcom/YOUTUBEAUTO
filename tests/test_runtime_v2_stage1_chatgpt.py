@@ -174,6 +174,15 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
 
         self.assertEqual(prompt, "국민연금 수령 시기를 앞당기면 손해인가 이득인가")
 
+    def test_build_live_chatgpt_prompt_preserves_topic_whitespace(self) -> None:
+        prompt = build_live_chatgpt_prompt(
+            {
+                "topic": "  국민연금 수령 시기를 앞당기면 손해인가 이득인가  ",
+            }
+        )
+
+        self.assertEqual(prompt, "  국민연금 수령 시기를 앞당기면 손해인가 이득인가  ")
+
     def test_stage1_runner_only_plans_from_existing_topic_spec(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

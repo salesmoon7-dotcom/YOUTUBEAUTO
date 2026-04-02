@@ -109,7 +109,7 @@ def build_video_plan_from_topic_spec(
 
 
 def build_live_chatgpt_prompt(topic_spec: dict[str, object]) -> str:
-    return str(topic_spec.get("topic", "")).strip()
+    return str(topic_spec.get("topic", ""))
 
 
 def attach_gpt_response_text_from_browser_evidence(
