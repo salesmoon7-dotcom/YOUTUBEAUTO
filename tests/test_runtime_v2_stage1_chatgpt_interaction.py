@@ -1206,6 +1206,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         timeline = cast(list[dict[str, object]], result["timeline"])
         event_names = [str(item["event"]) for item in timeline]
         self.assertIn("response_not_started", event_names)
+        self.assertEqual(event_names.count("response_not_started"), 1)
         self.assertNotIn("retry_decision", event_names)
 
     def test_generate_gpt_response_text_reports_submit_backend_failure(self) -> None:

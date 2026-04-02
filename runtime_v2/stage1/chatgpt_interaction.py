@@ -152,6 +152,7 @@ def generate_gpt_response_text(
         last_state: dict[str, object] = {}
         last_activity_ts = time.time()
         consecutive_read_failures = 0
+        response_not_started_emitted = False
         while time.time() - started < timeout_sec:
             try:
                 state = interaction_backend.read_response_state()
@@ -318,11 +319,13 @@ def generate_gpt_response_text(
                 and not text
                 and time.time() - started >= response_start_timeout_sec
             ):
-                emit(
-                    "response_not_started",
-                    attempt=attempt,
-                    backend="chatgpt_backend",
-                )
+                if not response_not_started_emitted:
+                    emit(
+                        "response_not_started",
+                        attempt=attempt,
+                        backend="chatgpt_backend",
+                    )
+                    response_not_started_emitted = True
                 if (
                     attempt == 1
                     and relaunch_browser is not None
