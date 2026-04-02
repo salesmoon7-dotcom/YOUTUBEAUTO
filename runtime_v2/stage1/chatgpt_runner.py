@@ -109,18 +109,7 @@ def build_video_plan_from_topic_spec(
 
 
 def build_live_chatgpt_prompt(topic_spec: dict[str, object]) -> str:
-    topic = str(topic_spec.get("topic", "")).strip()
-    return "\n".join(
-        [
-            "[System] 이전 대화 맥락은 모두 무시하고 이번 입력만으로 처리하세요.",
-            f"[Title] {topic}",
-            "[Keywords] 介護施設, 費用, 準備, 老後資金, 特養, 有料老人ホーム, 老健, 月額, 入居一時金, 介護保険",
-            "[Voice] 日本語のロングフォーム原稿を作成してください。",
-            "[Locale] ja-JP",
-            "[Instruction] 검색/탐색/분석 없이 바로 원고를 작성하세요. 아래 형식 그대로 출력하세요: [Title], [Voice], [Description], [Keywords], [#01], [#02].",
-            f"Topic: {topic}",
-        ]
-    )
+    return str(topic_spec.get("topic", "")).strip()
 
 
 def attach_gpt_response_text_from_browser_evidence(

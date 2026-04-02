@@ -165,27 +165,14 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         open_browser.assert_not_called()
         popen.assert_called_once()
 
-    def test_build_live_chatgpt_prompt_uses_longform_instruction_template(self) -> None:
+    def test_build_live_chatgpt_prompt_passes_topic_only(self) -> None:
         prompt = build_live_chatgpt_prompt(
             {
                 "topic": "국민연금 수령 시기를 앞당기면 손해인가 이득인가",
             }
         )
 
-        self.assertIn(
-            "[System] 이전 대화 맥락은 모두 무시하고 이번 입력만으로 처리하세요.",
-            prompt,
-        )
-        self.assertIn("[Title] 국민연금 수령 시기를 앞당기면 손해인가 이득인가", prompt)
-        self.assertIn("[Keywords]", prompt)
-        self.assertIn("[Voice] 日本語のロングフォーム原稿を作成してください。", prompt)
-        self.assertIn("[Locale] ja-JP", prompt)
-        self.assertIn("[Instruction]", prompt)
-        self.assertNotIn(
-            "[Ref Img 1], [Ref Img 2], [Video1], [Video2] ... 블록도 함께 채우세요.",
-            prompt,
-        )
-        self.assertIn("Topic: 국민연금 수령 시기를 앞당기면 손해인가 이득인가", prompt)
+        self.assertEqual(prompt, "국민연금 수령 시기를 앞당기면 손해인가 이득인가")
 
     def test_stage1_runner_only_plans_from_existing_topic_spec(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -853,8 +840,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             parsed_payload = cast(dict[str, object], handoff["contract"])
 
         self.assertEqual(result["status"], "ok")
-        self.assertIn("영상 제작 모드로 진행하세요.", called_prompt)
-        self.assertIn("[Locale] ja-JP", called_prompt)
+        self.assertEqual(called_prompt, "노후 생활비 300만원으로 충분한가")
         self.assertIn(
             "scene one from gpt", cast(list[object], parsed_payload["scene_prompts"])
         )
