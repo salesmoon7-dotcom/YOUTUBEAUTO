@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,7 +10,7 @@ from unittest.mock import patch
 from runtime_v2.stage2.agent_browser_adapter import (
     build_stage2_agent_browser_adapter_command,
 )
-from runtime_v2.config import allowed_workloads
+from runtime_v2.config import RuntimeConfig, allowed_workloads
 from runtime_v2.contracts.job_contract import JobContract
 from runtime_v2.control_plane import _run_worker
 
@@ -405,6 +406,75 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "AGENT_BROWSER_VERIFY_FAILED")
         self.assertEqual(str(details["exception_type"]), "TypeError")
+
+    def test_agent_browser_verify_marks_probe_browser_unhealthy_on_attach_failure(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            config = RuntimeConfig.from_root(root)
+            config.browser_health_file.parent.mkdir(parents=True, exist_ok=True)
+            config.browser_health_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "run_id": "probe-run",
+                        "checked_at": 1.0,
+                        "session_count": 1,
+                        "healthy_count": 1,
+                        "unhealthy_count": 0,
+                        "availability_percent": 100.0,
+                        "sessions": [
+                            {
+                                "service": "genspark",
+                                "port": 9333,
+                                "healthy": True,
+                                "status": "running",
+                                "cdp_endpoint_ready": True,
+                            }
+                        ],
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            job = JobContract(
+                job_id="agent-browser-genspark-health-downgrade",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-genspark-health-downgrade",
+                payload={
+                    "service": "genspark",
+                    "port": 9333,
+                    "expected_url_substring": "genspark.ai/agents?type=image_generation_agent",
+                    "expected_title_substring": "Genspark",
+                    "capture_snapshot": False,
+                },
+            )
+
+            with (
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                    side_effect=RuntimeError("connect ECONNREFUSED 127.0.0.1:9333"),
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._recover_agent_browser_service"
+                ),
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+            health_payload = json.loads(
+                config.browser_health_file.read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(result["status"], "failed")
+        session = cast(dict[str, object], health_payload["sessions"][0])
+        self.assertFalse(bool(session["healthy"]))
+        self.assertEqual(str(session["status"]), "unhealthy")
+        self.assertFalse(bool(session["cdp_endpoint_ready"]))
 
     def test_agent_browser_verify_accepts_legacy_string_actions(self) -> None:
         from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job

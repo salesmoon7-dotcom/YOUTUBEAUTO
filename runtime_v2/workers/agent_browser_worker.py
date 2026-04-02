@@ -24,6 +24,7 @@ from runtime_v2.agent_browser.result_parser import (
     parse_tab_list_output,
     select_best_tab,
 )
+from runtime_v2.browser.health import build_browser_health_payload, write_browser_health
 from runtime_v2.browser.manager import BrowserManager
 from runtime_v2.browser.supervisor import BrowserSupervisor
 from runtime_v2.config import RuntimeConfig
@@ -634,6 +635,51 @@ def _recover_agent_browser_service(service: str) -> None:
     )
 
 
+def _mark_probe_browser_unhealthy(
+    artifact_root: Path, *, service: str, port: int
+) -> None:
+    probe_root = (
+        artifact_root.parent if artifact_root.name == "artifacts" else artifact_root
+    )
+    cfg = RuntimeConfig.from_root(probe_root)
+    health_file = cfg.browser_health_file
+    if not health_file.exists():
+        return
+    try:
+        payload = json.loads(health_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    raw_sessions = payload.get("sessions", [])
+    if not isinstance(raw_sessions, list):
+        return
+    sessions: list[dict[str, object]] = []
+    changed = False
+    for raw in cast(list[object], raw_sessions):
+        if not isinstance(raw, dict):
+            continue
+        session = {str(key): value for key, value in raw.items()}
+        if (
+            str(session.get("service", "")) == service
+            and int(session.get("port", 0) or 0) == port
+        ):
+            session["healthy"] = False
+            session["status"] = "unhealthy"
+            session["cdp_endpoint_ready"] = False
+            session["blocked_reason"] = "agent_browser_attach_failed"
+            changed = True
+        sessions.append(session)
+    if not changed:
+        return
+    _ = write_browser_health(
+        build_browser_health_payload(
+            sessions,
+            runtime=str(payload.get("runtime", "runtime_v2")),
+            run_id=str(payload.get("run_id", "")),
+        ),
+        health_file,
+    )
+
+
 def run_agent_browser_verify_job(
     job: JobContract,
     artifact_root: Path,
@@ -885,6 +931,7 @@ def run_agent_browser_verify_job(
             completion={"state": "verified", "final_output": False},
         )
     except (RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
+        _mark_probe_browser_unhealthy(artifact_root, service=service, port=port)
         transcript_path = write_json_atomic(
             workspace / "agent_browser_transcript.json",
             {
