@@ -201,7 +201,6 @@ def generate_gpt_response_text(
             )
             if recovery_clicked and not saw_streaming:
                 emit("recovery_clicked", attempt=attempt, backend="chatgpt_backend")
-                saw_streaming = True
                 last_activity_ts = time.time()
             if has_stop:
                 if not saw_streaming:

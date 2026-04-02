@@ -64,7 +64,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(_response_text_from_state("롱폼의 말:\n생각 중지됨", []), "")
         self.assertEqual(_response_text_from_state("롱폼의 말:\n문서 읽는 중", []), "")
 
-    def test_generate_gpt_response_text_accepts_response_after_recovery_cta(
+    def test_generate_gpt_response_text_does_not_treat_recovery_cta_as_streaming(
         self,
     ) -> None:
         class FakeBackend(ChatGPTBackend):
@@ -102,14 +102,14 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         result = generate_gpt_response_text(
             prompt="hello",
             backend=FakeBackend(),
-            timeout_sec=5,
+            timeout_sec=1,
             poll_interval_sec=0.01,
             completion_idle_sec=0.0,
             response_start_timeout_sec=0.1,
         )
 
-        self.assertEqual(result["status"], "ok")
-        self.assertIn("[Voice]", str(result["response_text"]))
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
 
     def test_response_script_falls_back_to_conversation_turn_sections(self) -> None:
         from runtime_v2.stage1.chatgpt_backend import _response_script
