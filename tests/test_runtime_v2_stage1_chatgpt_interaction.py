@@ -1287,7 +1287,11 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(result["failure_stage"], "submit")
         self.assertIn("10060", str(details["backend_error"]))
         self.assertEqual(details["backend_fallback"], "raw_cdp_http")
-        self.assertEqual(result["submit_info"], {})
+        submit_info = cast(dict[str, object], result["submit_info"])
+        self.assertEqual(
+            cast(dict[str, object], submit_info["submit_evidence"])["attempt_key"],
+            "attempt-1",
+        )
         self.assertEqual(final_state["tab_count"], 1)
 
     def test_generate_gpt_response_text_reports_read_backend_failure(self) -> None:
@@ -1465,6 +1469,11 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(relaunch_calls, [])
         self.assertNotIn("retry_decision", event_names)
         self.assertEqual(event_names[-1], "final_state")
+        submit_info = cast(dict[str, object], result["submit_info"])
+        self.assertEqual(
+            cast(dict[str, object], submit_info["submit_evidence"])["attempt_key"],
+            "attempt-1",
+        )
         submit_evidence = cast(
             dict[str, object],
             cast(dict[str, object], result["details"])["submit_evidence"],

@@ -100,11 +100,26 @@ def generate_gpt_response_text(
             submit_evidence = extra_details.get("submit_evidence")
             if isinstance(submit_evidence, dict):
                 submit_evidence["attempt_key"] = _attempt_key(attempt)
+            else:
+                submit_evidence = {
+                    "attempt_key": _attempt_key(attempt),
+                    "classification": "ambiguous",
+                    "classification_reason": error_code,
+                    "retry_safe_decision": bool(retry_safe),
+                }
+                extra_details["submit_evidence"] = submit_evidence
+            failed_submit_info: dict[str, object] = {}
+            if isinstance(submit_evidence, dict):
+                failed_submit_info["submit_evidence"] = dict(submit_evidence)
+            no_send_evidence = extra_details.get("no_send_evidence")
+            if isinstance(no_send_evidence, dict):
+                failed_submit_info["no_send_evidence"] = dict(no_send_evidence)
             emit("submit_failed", attempt=attempt, backend="chatgpt_backend")
             failed = _interaction_failure(
                 failure_stage="submit",
                 error_code="CHATGPT_BACKEND_UNAVAILABLE",
                 backend_error=error_code,
+                submit_info=failed_submit_info,
                 final_state=probe(port),
                 extra_details=extra_details,
             )
