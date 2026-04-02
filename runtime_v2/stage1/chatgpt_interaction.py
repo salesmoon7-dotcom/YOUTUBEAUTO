@@ -477,6 +477,8 @@ def _response_text_from_state(text: str, legacy_blocks: object) -> str:
                 if body.startswith("COPY\n"):
                     body = body[len("COPY\n") :]
                 parts.append(f"{label}\n{body}")
+            elif label and "\n" in label:
+                parts.append(label)
         if parts:
             return "\n\n".join(parts)
     normalized = text.strip()

@@ -59,6 +59,26 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertIn("[Title]\n머니 제목", response)
         self.assertIn("[#01 intro Character] - Voice 1(1)\nscene prompt one", response)
 
+    def test_response_text_from_state_accepts_label_embedded_legacy_blocks(
+        self,
+    ) -> None:
+        response = _response_text_from_state(
+            "plain text",
+            [
+                {
+                    "label": "[#01]\n첫 번째 장면 설명",
+                    "body": "",
+                },
+                {
+                    "label": "[#02]\n두 번째 장면 설명",
+                    "body": "",
+                },
+            ],
+        )
+
+        self.assertIn("[#01]\n첫 번째 장면 설명", response)
+        self.assertIn("[#02]\n두 번째 장면 설명", response)
+
     def test_response_text_from_state_ignores_status_only_assistant_text(self) -> None:
         self.assertEqual(_response_text_from_state("생각 중지됨", []), "")
         self.assertEqual(_response_text_from_state("롱폼의 말:\n생각 중지됨", []), "")
