@@ -230,6 +230,56 @@ def _select_primary_audio(
     return None
 
 
+def _select_audio_sources(
+    render_spec: dict[str, object], artifact_root: Path, *, run_id: str = ""
+) -> list[Path]:
+    explicit_sources: list[Path] = []
+    raw_audio_refs = render_spec.get("audio_refs", [])
+    if isinstance(raw_audio_refs, list):
+        for raw_entry in cast(list[object], raw_audio_refs):
+            if not isinstance(raw_entry, str) or not raw_entry.strip():
+                continue
+            resolved = resolve_local_input(raw_entry)
+            if resolved is not None and resolved.suffix.lower() in AUDIO_EXTENSIONS:
+                explicit_sources.append(resolved.resolve())
+    deduped_explicit: list[Path] = []
+    seen: set[Path] = set()
+    for source in explicit_sources:
+        if source in seen or not source.exists() or not source.is_file():
+            continue
+        deduped_explicit.append(source)
+        seen.add(source)
+    if deduped_explicit:
+        return deduped_explicit
+    primary = _select_primary_audio(render_spec, artifact_root, run_id=run_id)
+    return [] if primary is None else [primary]
+
+
+def _concat_audio_tracks(
+    audio_tracks: list[Path], output_path: Path
+) -> dict[str, object]:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    concat_file = output_path.parent / "render_audio_concat.txt"
+    concat_text = "".join(
+        f"file '{str(path.resolve()).replace("'", "''")}'\n" for path in audio_tracks
+    )
+    concat_file.write_text(concat_text, encoding="utf-8")
+    command = [
+        "ffmpeg",
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(concat_file.resolve()),
+        "-c",
+        "copy",
+        str(output_path.resolve()),
+    ]
+    return run_external_process(command, cwd=output_path.parent)
+
+
 def _validate_asset_manifest(
     asset_manifest_path: Path, *, run_id: str, row_ref: str
 ) -> str:
@@ -588,10 +638,11 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
 
         scene_clips: list[Path] = []
         process_details = {"stdout": "", "stderr": ""}
-        audio_source = _select_primary_audio(
+        audio_sources = _select_audio_sources(
             render_spec_payload, artifact_root, run_id=render_run_id
         )
-        if audio_source is None and _voice_texts_present(voice_json_path):
+        audio_source = audio_sources[0] if len(audio_sources) == 1 else None
+        if not audio_sources and _voice_texts_present(voice_json_path):
             return finalize_worker_result(
                 workspace,
                 status="failed",
@@ -606,6 +657,45 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
                     "reason_code": str(render_spec_payload.get("reason_code", "ok")),
                 },
             )
+        if len(audio_sources) > 1:
+            concatenated_audio = (
+                render_folder
+                / "output"
+                / f"{render_run_id or 'render'}_audio_concat{audio_sources[0].suffix.lower()}"
+            )
+            concat_audio_result = _concat_audio_tracks(
+                audio_sources, concatenated_audio
+            )
+            concat_audio_exit = concat_audio_result.get("exit_code", 1)
+            concat_audio_exit_int = (
+                int(concat_audio_exit)
+                if isinstance(concat_audio_exit, (int, float, str))
+                else 1
+            )
+            if (
+                concat_audio_exit_int != 0
+                or not concatenated_audio.exists()
+                or not concatenated_audio.is_file()
+            ):
+                return finalize_worker_result(
+                    workspace,
+                    status="failed",
+                    stage="render",
+                    artifacts=[staged_render_spec, voice_json_path],
+                    error_code="ffmpeg_failed",
+                    retryable=True,
+                    completion={"state": "failed", "final_output": False},
+                    details={
+                        "render_folder_path": str(render_folder.resolve()),
+                        "voice_json_path": str(voice_json_path.resolve()),
+                        "stdout": str(concat_audio_result.get("stdout", "")),
+                        "stderr": str(concat_audio_result.get("stderr", "")),
+                        "reason_code": str(
+                            render_spec_payload.get("reason_code", "ok")
+                        ),
+                    },
+                )
+            audio_source = concatenated_audio.resolve()
         if (
             len(timeline_entries) == 1
             and str(timeline_entries[0]["asset_kind"]) == "video"

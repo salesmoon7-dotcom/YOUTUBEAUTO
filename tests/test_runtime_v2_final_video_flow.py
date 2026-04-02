@@ -395,6 +395,99 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         self.assertEqual(str(details["audio_source_path"]), str(audio_path.resolve()))
         self.assertTrue(bool(completion["final_output"]))
 
+    def test_render_worker_concats_multiple_audio_refs_before_mux(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            render_folder = root / "render_workspace"
+            image_dir = render_folder / "images"
+            output_dir = render_folder / "output"
+            image_dir.mkdir(parents=True, exist_ok=True)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            image_path = image_dir / "#01_GENS.png"
+            image_path.write_bytes(b"png")
+            audio_a = root / "speech_a.flac"
+            audio_b = root / "speech_b.flac"
+            audio_a.write_bytes(b"flac")
+            audio_b.write_bytes(b"flac")
+            voice_json = root / "voice.json"
+            voice_json.write_text(
+                json.dumps({"voice_texts": []}, ensure_ascii=True), encoding="utf-8"
+            )
+            render_spec = root / "render_spec.json"
+            render_spec.write_text(
+                json.dumps(
+                    {
+                        "contract": "render_spec",
+                        "contract_version": "1.1",
+                        "run_id": "render-run-multi-audio",
+                        "row_ref": "Sheet1!row1",
+                        "asset_refs": [str(image_path.resolve())],
+                        "audio_refs": [str(audio_a.resolve()), str(audio_b.resolve())],
+                        "thumbnail_refs": [],
+                        "timeline": [
+                            {
+                                "scene_index": 1,
+                                "asset_path": str(image_path.resolve()),
+                                "asset_kind": "image",
+                                "duration_sec": 4,
+                            }
+                        ],
+                        "reason_code": "ok",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            job = JobContract(
+                job_id="render-job-multi-audio",
+                workload="render",
+                payload={
+                    "render_folder_path": str(render_folder.resolve()),
+                    "voice_json_path": str(voice_json.resolve()),
+                    "render_spec_path": str(render_spec.resolve()),
+                },
+            )
+            commands: list[list[str]] = []
+
+            def fake_process(
+                command: list[str],
+                *,
+                cwd: Path,
+                extra_env: dict[str, str] | None = None,
+                timeout_sec: int = 3600,
+            ) -> dict[str, object]:
+                _ = extra_env
+                _ = timeout_sec
+                commands.append(command)
+                output_path = Path(str(command[-1]))
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"bin")
+                return {
+                    "command": command,
+                    "cwd": str(cwd),
+                    "exit_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "timed_out": False,
+                    "timeout_sec": 3600,
+                    "duration_sec": 0.01,
+                }
+
+            with patch(
+                "runtime_v2.stage3.render_worker.run_external_process",
+                side_effect=fake_process,
+            ):
+                result = run_render_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        details = cast(dict[object, object], result["details"])
+        self.assertEqual(str(details["render_mode"]), "timeline_ffmpeg_audio")
+        self.assertTrue(
+            str(details["audio_source_path"]).endswith("_audio_concat.flac")
+        )
+        self.assertTrue(any("concat" in command for command in commands for _ in [0]))
+
     def test_render_worker_falls_back_to_canonical_rvc_audio(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
