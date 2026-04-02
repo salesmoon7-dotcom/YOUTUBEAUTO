@@ -109,7 +109,33 @@ def build_video_plan_from_topic_spec(
 
 
 def build_live_chatgpt_prompt(topic_spec: dict[str, object]) -> str:
-    return str(topic_spec.get("topic", ""))
+    topic = str(topic_spec.get("topic", ""))
+    if str(topic_spec.get("status_snapshot", "")).strip().upper() != "OK":
+        return topic
+    return "\n".join(
+        [
+            topic,
+            "",
+            "Return only the final production blocks.",
+            "Do not propose bridge topics.",
+            "Do not explain your plan.",
+            "Do not ask follow-up questions.",
+            "Required format:",
+            "[Title]",
+            "<one title>",
+            "[Description]",
+            "<one description>",
+            "[Keywords]",
+            "<comma separated keywords>",
+            "[Voice]",
+            "1. <voice for scene 1>",
+            "2. <voice for scene 2>",
+            "[#01]",
+            "<scene prompt 1>",
+            "[#02]",
+            "<scene prompt 2>",
+        ]
+    )
 
 
 def attach_gpt_response_text_from_browser_evidence(
@@ -122,6 +148,7 @@ def attach_gpt_response_text_from_browser_evidence(
         service = str(browser_evidence.get("service", "")).strip()
         raw_port = browser_evidence.get("port", 0)
         if service == "chatgpt" and isinstance(raw_port, int) and raw_port > 0:
+            _ = reset_chatgpt_context(raw_port)
             prompt = build_live_chatgpt_prompt(topic_spec)
             result = generate_gpt_response_text(
                 prompt=prompt,

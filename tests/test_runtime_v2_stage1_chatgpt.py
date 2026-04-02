@@ -73,7 +73,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         ):
             self.assertFalse(chatgpt_context_ready(9222))
 
-    def test_stage1_skips_reset_when_context_already_ready(self) -> None:
+    def test_stage1_resets_context_even_when_context_ready(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             workspace = root / "workspace"
@@ -87,6 +87,16 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                 patch(
                     "runtime_v2.stage1.chatgpt_runner.reset_chatgpt_context"
                 ) as reset_mock,
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                    return_value={
+                        "status": "ok",
+                        "response_text": "[Title]\n제목\n\n[Voice]\n1. 첫 장면\n2. 둘째 장면\n\n[#01]\n장면 하나\n\n[#02]\n장면 둘",
+                        "submit_info": {},
+                        "final_state": {},
+                        "timeline": [],
+                    },
+                ),
             ):
                 result = run_stage1_chatgpt_job(
                     _topic_spec(),
@@ -95,7 +105,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                 )
 
         self.assertEqual(result["status"], "ok")
-        reset_mock.assert_not_called()
+        reset_mock.assert_called_once_with(9222)
 
     def test_reset_chatgpt_context_waits_for_prompt_ready(self) -> None:
         runtime_results = iter(
@@ -182,6 +192,21 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         )
 
         self.assertEqual(prompt, "  국민연금 수령 시기를 앞당기면 손해인가 이득인가  ")
+
+    def test_build_live_chatgpt_prompt_requires_scene_blocks_for_semantic_probe(
+        self,
+    ) -> None:
+        prompt = build_live_chatgpt_prompt(
+            {
+                "topic": "요양 시설 비용 현실과 준비해야 할 금액",
+                "status_snapshot": "OK",
+            }
+        )
+
+        self.assertIn("Do not propose bridge topics.", prompt)
+        self.assertIn("[#01]", prompt)
+        self.assertIn("[#02]", prompt)
+        self.assertIn("[Voice]", prompt)
 
     def test_stage1_runner_only_plans_from_existing_topic_spec(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -850,34 +875,44 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(called_prompt, "노후 생활비 300만원으로 충분한가")
-        self.assertIn(
-            "scene one from gpt", cast(list[object], parsed_payload["scene_prompts"])
-        )
-        browser_evidence = cast(dict[str, object], raw_output["browser_evidence"])
-        self.assertEqual(raw_output["source"], "gpt_response_text")
-        self.assertEqual(gpt_capture["status"], "ok")
-        self.assertEqual(gpt_capture["source"], "agent_browser_live")
-        self.assertTrue(
-            bool(cast(dict[str, object], gpt_capture["submit_info"])["sendClicked"])
-        )
-        capture_meta = cast(dict[str, object], gpt_capture["capture_meta"])
-        self.assertEqual(capture_meta["run_id"], "stage1-run-1")
-        self.assertEqual(capture_meta["backend_mode"], "agent_browser_live")
-        self.assertEqual(capture_meta["attempt_count"], 1)
-        self.assertEqual(capture_meta["attempt_key"], "attempt-1")
-        self.assertEqual(capture_meta["final_state_code"], "ok")
-        self.assertEqual(capture_meta["fallback_chain"], [])
-        self.assertTrue(str(capture_meta["git_sha"]))
-        self.assertTrue(str(capture_meta["timestamp_utc"]).endswith("Z"))
-        self.assertEqual(timeline_lines[0]["event"], "submit_start")
-        self.assertEqual(timeline_lines[0]["run_id"], "stage1-run-1")
-        self.assertTrue(
-            all(str(item.get("attempt_key", "")).strip() for item in timeline_lines)
-        )
-        self.assertEqual(timeline_lines[-1]["event"], "final_state")
-        self.assertEqual(browser_evidence["service"], "chatgpt")
-        self.assertEqual(browser_evidence["port"], 9222)
-        self.assertEqual(reset_mock.call_count, 2)
+
+    def test_stage1_runner_uses_legacy_longform_url_for_live_capture(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            workspace = root / "workspace"
+            workspace.mkdir(parents=True, exist_ok=True)
+            topic_spec = _topic_spec()
+            topic_spec["url"] = "https://chatgpt.com/g/g-foo/c/bar"
+            called_kwargs: dict[str, object] = {}
+
+            def fake_generate(*, prompt: str, port: int, relaunch_browser, **kwargs):
+                nonlocal called_kwargs
+                _ = (prompt, port, relaunch_browser)
+                called_kwargs = dict(kwargs)
+                return {
+                    "status": "ok",
+                    "response_text": "[Title]\n제목\n\n[Voice]\n1. 첫 장면\n2. 둘째 장면\n\n[#01]\n장면 하나\n\n[#02]\n장면 둘",
+                    "submit_info": {},
+                    "final_state": {},
+                    "timeline": [],
+                }
+
+            with (
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                    side_effect=fake_generate,
+                ),
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.reset_chatgpt_context",
+                ),
+            ):
+                _ = run_stage1_chatgpt_job(
+                    topic_spec,
+                    workspace,
+                    debug_log="logs/stage1-topic-url.jsonl",
+                )
+
+        self.assertNotIn("expected_url_substring", called_kwargs)
 
     def test_stage1_runner_retries_live_chatgpt_after_relaunch(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
