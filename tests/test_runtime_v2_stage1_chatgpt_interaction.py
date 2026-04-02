@@ -1334,7 +1334,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         timeline = cast(list[dict[str, object]], result["timeline"])
         event_names = [str(item["event"]) for item in timeline]
         self.assertEqual(event_names[0], "submit_start")
-        self.assertIn("submit_ok", event_names)
+        self.assertIn("submit_ambiguous", event_names)
         self.assertIn("read_failed", event_names)
         self.assertEqual(event_names[-1], "final_state")
 
@@ -1572,6 +1572,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         timeline = cast(list[dict[str, object]], result["timeline"])
         event_names = [str(item["event"]) for item in timeline]
         self.assertIn("read_retry", event_names)
+        self.assertNotIn("read_failed", event_names)
 
     def test_generate_gpt_response_text_retries_when_response_never_starts(
         self,

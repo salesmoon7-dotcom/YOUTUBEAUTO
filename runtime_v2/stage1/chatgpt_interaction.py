@@ -174,7 +174,6 @@ def generate_gpt_response_text(
                 consecutive_read_failures = 0
             except RuntimeError as exc:
                 backend_error = str(exc)
-                emit("read_failed", attempt=attempt, backend="chatgpt_backend")
                 if (
                     "timeout" in backend_error.lower()
                     and consecutive_read_failures < 3
@@ -189,6 +188,7 @@ def generate_gpt_response_text(
                     )
                     time.sleep(poll_interval_sec)
                     continue
+                emit("read_failed", attempt=attempt, backend="chatgpt_backend")
                 failed = _interaction_failure(
                     failure_stage="read",
                     error_code="CHATGPT_BACKEND_UNAVAILABLE",
