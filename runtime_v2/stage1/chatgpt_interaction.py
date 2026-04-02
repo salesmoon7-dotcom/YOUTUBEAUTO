@@ -289,7 +289,11 @@ def generate_gpt_response_text(
                     attempt=attempt,
                     backend="chatgpt_backend",
                 )
-                if attempt == 1 and relaunch_browser is not None:
+                if (
+                    attempt == 1
+                    and relaunch_browser is not None
+                    and submit_classification == "sent"
+                ):
                     emit(
                         "retry_decision",
                         attempt=attempt,
