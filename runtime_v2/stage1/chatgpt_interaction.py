@@ -263,6 +263,11 @@ def generate_gpt_response_text(
                     result["timeline"] = timeline
                     return result
             if saw_streaming and thinking_stopped and not response_text:
+                emit(
+                    "thinking_stopped",
+                    attempt=attempt,
+                    backend="chatgpt_backend",
+                )
                 if attempt >= 2 and upstream_error_retry_exhausted:
                     emit(
                         "upstream_error_retry_exhausted",
@@ -284,11 +289,6 @@ def generate_gpt_response_text(
                     )
                     failed["timeline"] = timeline
                     return failed
-                emit(
-                    "thinking_stopped",
-                    attempt=attempt,
-                    backend="chatgpt_backend",
-                )
                 if (
                     attempt == 1
                     and relaunch_browser is not None

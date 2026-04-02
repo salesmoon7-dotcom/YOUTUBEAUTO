@@ -324,6 +324,10 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "CHATGPT_UPSTREAM_ERROR_RETRY_EXHAUSTED")
         self.assertEqual(relaunch_calls, ["relaunch"])
+        timeline = cast(list[dict[str, object]], result["timeline"])
+        event_names = [str(item["event"]) for item in timeline]
+        self.assertIn("thinking_stopped", event_names)
+        self.assertIn("upstream_error_retry_exhausted", event_names)
 
     def test_agent_browser_backend_preselects_chatgpt_tab_before_eval(self) -> None:
         calls: list[list[str]] = []
