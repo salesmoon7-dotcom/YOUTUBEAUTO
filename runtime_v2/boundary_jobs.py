@@ -48,6 +48,13 @@ def _artifact_root_from_path(path: str | Path) -> Path:
     for parent in resolved.parents:
         if parent.name.lower() == "artifacts":
             return parent
+    if resolved.parent.name.lower().startswith("stage1-"):
+        probe_parent = resolved.parent.parent
+        if probe_parent.name.lower() == "probe":
+            assets_root = resolved.parent / "assets"
+            if assets_root.exists() and assets_root.is_dir():
+                return assets_root.resolve()
+            return resolved.parent
     raise ValueError("missing_artifact_root_ancestor")
 
 
@@ -106,7 +113,10 @@ def build_qwen_boundary_contract(
     boundary_suffix = boundary_suffix.replace("!", "-").replace(":", "-")
     job_id = f"qwen3-boundary-{boundary_suffix}"
     service_artifact_path = (
-        artifact_root / "qwen3_tts" / job_id / "speech.flac"
+        artifact_root
+        / "qwen3_tts"
+        / f"qwen3-{run_id or boundary_suffix}"
+        / "speech.flac"
     ).resolve()
     return build_explicit_job_contract(
         job_id=job_id,

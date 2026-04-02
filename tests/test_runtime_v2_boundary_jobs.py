@@ -45,7 +45,40 @@ class RuntimeV2BoundaryJobsTests(unittest.TestCase):
         selected = cast(dict[str, object], voice_texts[0])
         self.assertEqual(selected["col"], "#01")
         self.assertIn(
-            r"qwen3_tts\qwen3-boundary-run-123\speech.flac",
+            r"qwen3_tts\qwen3-run-123\speech.flac",
+            str(payload["service_artifact_path"]),
+        )
+
+    def test_build_qwen_boundary_contract_accepts_probe_stage1_root(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            probe_root = root / "probe" / "stage1-row15-single"
+            assets_root = probe_root / "assets"
+            assets_root.mkdir(parents=True, exist_ok=True)
+            handoff_path = probe_root / "stage1_handoff.json"
+            handoff_path.parent.mkdir(parents=True, exist_ok=True)
+            handoff_payload = {
+                "run_id": "run-123",
+                "row_ref": "Sheet1!row15",
+                "topic": "topic",
+                "voice_texts": [
+                    {"col": "#01", "text": "first", "original_voices": [1]}
+                ],
+            }
+            _ = handoff_path.write_text(
+                json.dumps(handoff_payload, ensure_ascii=True, indent=2),
+                encoding="utf-8",
+            )
+
+            contract = build_qwen_boundary_contract(stage1_handoff_path=handoff_path)
+
+        payload = cast(
+            dict[str, object], cast(dict[str, object], contract["job"])["payload"]
+        )
+        self.assertIn(
+            str(
+                (assets_root / "qwen3_tts" / "qwen3-run-123" / "speech.flac").resolve()
+            ),
             str(payload["service_artifact_path"]),
         )
 
