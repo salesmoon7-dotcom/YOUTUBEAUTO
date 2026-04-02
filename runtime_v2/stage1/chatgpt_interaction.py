@@ -125,8 +125,15 @@ def generate_gpt_response_text(
             )
             failed["timeline"] = timeline
             return failed
-        emit("submit_ok", attempt=attempt, backend="chatgpt_backend")
         submit_evidence = _decode_submit_success(submit_info, attempt=attempt)
+        submit_classification = str(
+            submit_evidence.get("classification", "sent")
+        ).strip()
+        emit(
+            "submit_ok" if submit_classification == "sent" else "submit_ambiguous",
+            attempt=attempt,
+            backend="chatgpt_backend",
+        )
         for fallback in _backend_fallbacks(submit_info):
             emit(
                 "fallback_transition",
