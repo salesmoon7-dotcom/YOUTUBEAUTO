@@ -746,6 +746,20 @@ def main() -> int:
             row_index=args.row_index,
             max_control_ticks=args.max_control_ticks,
         )
+        _ = _write_probe_result(
+            _probe_root_path(args.probe_root),
+            {
+                "run_id": run_id,
+                "mode": "stage5_row1",
+                "status": str(report.get("status", "unknown")),
+                "code": str(report.get("code", "CLI_USAGE")),
+                "exit_code": exit_code_from_status(
+                    str(report.get("code", "CLI_USAGE"))
+                ),
+                "debug_log": str(debug_log_path(config.debug_log_root, run_id)),
+                "result": report,
+            },
+        )
         _ = _write_detached_summary(
             out_root=_probe_root_path(args.probe_root),
             kind="stage5_row1",
@@ -765,6 +779,20 @@ def main() -> int:
             sheet_name=args.sheet_name,
             batch_count=args.batch_count,
             max_control_ticks=args.max_control_ticks,
+        )
+        _ = _write_probe_result(
+            _probe_root_path(args.probe_root),
+            {
+                "run_id": run_id,
+                "mode": "stage5b_5row",
+                "status": str(report.get("status", "unknown")),
+                "code": str(report.get("code", "CLI_USAGE")),
+                "exit_code": exit_code_from_status(
+                    str(report.get("code", "CLI_USAGE"))
+                ),
+                "debug_log": str(debug_log_path(config.debug_log_root, run_id)),
+                "result": report,
+            },
         )
         _ = _write_detached_summary(
             out_root=_probe_root_path(args.probe_root),
