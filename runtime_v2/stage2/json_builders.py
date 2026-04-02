@@ -67,6 +67,33 @@ def ensure_common_asset_root(asset_root: str | Path) -> Path:
     return root
 
 
+def _canonical_audio_refs(run_id: str, asset_root: Path) -> list[str]:
+    normalized_run_id = run_id.strip()
+    if not normalized_run_id:
+        return []
+    candidates = [
+        (
+            asset_root / "rvc" / f"rvc-qwen3-{normalized_run_id}" / "speech_rvc.flac"
+        ).resolve(),
+        (
+            asset_root / "rvc" / f"rvc-qwen3-{normalized_run_id}" / "speech_rvc.wav"
+        ).resolve(),
+        (
+            asset_root
+            / "rvc"
+            / f"rvc-geminigen-{normalized_run_id}"
+            / "speech_rvc.flac"
+        ).resolve(),
+        (
+            asset_root / "rvc" / f"rvc-geminigen-{normalized_run_id}" / "speech_rvc.wav"
+        ).resolve(),
+        (
+            asset_root / "qwen3_tts" / f"qwen3-{normalized_run_id}" / "speech.flac"
+        ).resolve(),
+    ]
+    return [str(path) for path in candidates if path.exists() and path.is_file()]
+
+
 def _scene_index_from_value(value: object) -> int:
     if isinstance(value, int):
         return int(str(value))
@@ -632,7 +659,7 @@ def build_stage2_jobs(
         row_ref=row_ref,
         asset_refs=asset_refs,
         timeline=timeline,
-        audio_refs=[],
+        audio_refs=_canonical_audio_refs(run_id, asset_root),
         thumbnail_refs=thumbnail_refs,
         reason_code=str(video_plan.get("reason_code", "ok")),
     )

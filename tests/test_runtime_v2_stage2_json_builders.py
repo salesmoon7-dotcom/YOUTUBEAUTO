@@ -98,6 +98,48 @@ class RuntimeV2Stage2JsonBuildersTests(unittest.TestCase):
         payload = cast(dict[str, object], canva_job["payload"])
         self.assertEqual(payload["ref_img"], str(latest_ref.resolve()))
 
+    def test_build_stage2_jobs_populates_render_audio_refs_from_canonical_audio(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            asset_root = root / "assets"
+            audio_path = asset_root / "qwen3_tts" / "qwen3-row15-run" / "speech.flac"
+            audio_path.parent.mkdir(parents=True, exist_ok=True)
+            audio_path.write_bytes(b"flac")
+            images_root = asset_root / "images"
+            images_root.mkdir(parents=True, exist_ok=True)
+            latest_ref = images_root / "ref-1-existing-run.png"
+            latest_ref.write_bytes(b"png")
+            video_plan = {
+                "run_id": "row15-run",
+                "row_ref": "Sheet1!row15",
+                "reason_code": "ok",
+                "asset_plan": {
+                    "asset_root": str(asset_root.resolve()),
+                    "common_asset_folder": str(asset_root.resolve()),
+                },
+                "scene_plan": [
+                    {"scene_index": 1, "prompt": "[인물] scene one"},
+                ],
+                "videos": ["video one prompt"],
+                "stage1_handoff": {
+                    "contract": {
+                        "run_id": "row15-run",
+                        "row_ref": "Sheet1!row15",
+                        "topic": "Boundary topic",
+                        "voice_texts": [{"col": "#01", "text": "hello"}],
+                        "ref_img_1": "",
+                        "ref_img_2": "",
+                    }
+                },
+                "use_agent_browser_services": ["canva"],
+            }
+
+            _, render_spec = build_stage2_jobs(cast(dict[str, object], video_plan))
+
+        self.assertEqual(render_spec["audio_refs"], [str(audio_path.resolve())])
+
 
 if __name__ == "__main__":
     unittest.main()
