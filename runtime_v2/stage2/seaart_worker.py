@@ -28,10 +28,30 @@ _RETRYABLE_BROWSER_ERROR_CODES = {
 }
 
 
+def _normalized_service_artifact_path(job: JobContract, artifact_root: Path) -> str:
+    raw_path = str(job.payload.get("service_artifact_path", "")).strip()
+    if not raw_path:
+        return ""
+    candidate = Path(raw_path)
+    artifact_root_resolved = artifact_root.resolve()
+    try:
+        resolved = candidate.resolve()
+    except OSError:
+        return str((artifact_root_resolved / candidate.name).resolve())
+    if resolved == artifact_root_resolved or artifact_root_resolved in resolved.parents:
+        return str(resolved)
+    return str((artifact_root_resolved / candidate.name).resolve())
+
+
 def run_seaart_job(
     job: JobContract, artifact_root: Path, registry_file: Path | None = None
 ) -> dict[str, object]:
     _ = registry_file
+    normalized_service_artifact_path = _normalized_service_artifact_path(
+        job, artifact_root
+    )
+    if normalized_service_artifact_path:
+        job.payload["service_artifact_path"] = normalized_service_artifact_path
     workspace = prepare_workspace(job, artifact_root)
     prompt = str(job.payload.get("prompt", "")).strip()
     if not prompt:

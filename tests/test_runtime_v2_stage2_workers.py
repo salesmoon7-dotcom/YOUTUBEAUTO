@@ -126,6 +126,35 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         self.assertEqual(result["error_code"], "BROWSER_UNHEALTHY")
         self.assertTrue(bool(result["retryable"]))
 
+    def test_genspark_worker_rebases_service_artifact_path_into_artifact_root(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            outside_output = root / "outside" / "scene-01.png"
+            inside_output = artifact_root / "scene-01.png"
+            job = _stage2_job("genspark")
+            job.payload["use_agent_browser"] = True
+            job.payload["service_artifact_path"] = str(outside_output.resolve())
+
+            with patch(
+                "runtime_v2.stage2.genspark_worker.run_verified_adapter_command",
+                return_value={
+                    "ok": True,
+                    "output_path": inside_output,
+                    "stdout_path": root / "stdout.log",
+                    "stderr_path": root / "stderr.log",
+                    "reused": False,
+                },
+            ) as adapter_mock:
+                _ = run_genspark_job(job, artifact_root)
+
+        kwargs = adapter_mock.call_args.kwargs
+        self.assertEqual(
+            str(kwargs["service_artifact_path"]), str(inside_output.resolve())
+        )
+
     def test_seaart_worker_marks_browser_failures_retryable(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -150,6 +179,35 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "BROWSER_BLOCKED")
         self.assertTrue(bool(result["retryable"]))
+
+    def test_seaart_worker_rebases_service_artifact_path_into_artifact_root(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            outside_output = root / "outside" / "scene-01.png"
+            inside_output = artifact_root / "scene-01.png"
+            job = _stage2_job("seaart")
+            job.payload["use_agent_browser"] = True
+            job.payload["service_artifact_path"] = str(outside_output.resolve())
+
+            with patch(
+                "runtime_v2.stage2.seaart_worker.run_verified_adapter_command",
+                return_value={
+                    "ok": True,
+                    "output_path": inside_output,
+                    "stdout_path": root / "stdout.log",
+                    "stderr_path": root / "stderr.log",
+                    "reused": False,
+                },
+            ) as adapter_mock:
+                _ = run_seaart_job(job, artifact_root)
+
+        kwargs = adapter_mock.call_args.kwargs
+        self.assertEqual(
+            str(kwargs["service_artifact_path"]), str(inside_output.resolve())
+        )
 
     def test_geminigen_worker_marks_browser_failures_retryable(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
