@@ -6,7 +6,11 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Callable, cast
 
-from runtime_v2.stage1.chatgpt_backend import AgentBrowserCdpBackend, ChatGPTBackend
+from runtime_v2.stage1.chatgpt_backend import (
+    AgentBrowserCdpBackend,
+    CHATGPT_LONGFORM_URL_SUBSTRING,
+    ChatGPTBackend,
+)
 
 CHATGPT_INPUT_SELECTORS = [
     "#prompt-textarea",
@@ -52,6 +56,7 @@ def generate_gpt_response_text(
     completion_idle_sec: float = 10.0,
     response_start_timeout_sec: float = 30.0,
     command_runner: Callable[[list[str], int], str] | None = None,
+    expected_url_substring: str = CHATGPT_LONGFORM_URL_SUBSTRING,
     session_probe: Callable[[int], dict[str, object]] | None = None,
     backend: ChatGPTBackend | None = None,
     relaunch_browser: Callable[[], None] | None = None,
@@ -85,6 +90,7 @@ def generate_gpt_response_text(
             send_selectors=CHATGPT_SEND_SELECTORS,
             stop_selectors=CHATGPT_STOP_SELECTORS,
             response_selectors=CHATGPT_RESPONSE_SELECTORS,
+            expected_url_substring=expected_url_substring,
             command_runner=command_runner,
         )
         if backend is None
@@ -246,6 +252,10 @@ def generate_gpt_response_text(
                 bool(response_text)
                 and saw_streaming
                 and ((not has_stop) or has_send_button)
+                and (
+                    not (has_stop and has_send_button)
+                    or _has_structured_stage1_content(response_text, legacy_blocks)
+                )
             )
             if response_ready:
                 if response_text == last_text:
@@ -491,6 +501,27 @@ def _response_text_from_state(text: str, legacy_blocks: object) -> str:
         if body.lower() in status_only or body in {"지금 응답 받기", "다시 시도"}:
             return ""
     return normalized
+
+
+def _has_structured_stage1_content(response_text: str, legacy_blocks: object) -> bool:
+    if isinstance(legacy_blocks, list) and any(
+        isinstance(item, dict) for item in legacy_blocks
+    ):
+        return True
+    text = response_text.strip()
+    if not text:
+        return False
+    return any(
+        marker in text
+        for marker in (
+            "[#01]",
+            "[#02]",
+            "[Voice]",
+            "[Title]",
+            "[Description]",
+            "[Keywords]",
+        )
+    )
 
 
 def _backend_fallbacks(payload: dict[str, object]) -> list[str]:

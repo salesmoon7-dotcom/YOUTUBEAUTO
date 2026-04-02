@@ -148,7 +148,11 @@ def attach_gpt_response_text_from_browser_evidence(
         service = str(browser_evidence.get("service", "")).strip()
         raw_port = browser_evidence.get("port", 0)
         if service == "chatgpt" and isinstance(raw_port, int) and raw_port > 0:
-            _ = reset_chatgpt_context(raw_port)
+            reset_error = ""
+            try:
+                _ = reset_chatgpt_context(raw_port)
+            except RuntimeError as exc:
+                reset_error = str(exc)
             prompt = build_live_chatgpt_prompt(topic_spec)
             result = generate_gpt_response_text(
                 prompt=prompt,
@@ -163,6 +167,10 @@ def attach_gpt_response_text_from_browser_evidence(
                 attempt_count=_capture_attempt_count(result),
             )
             enriched["gpt_timeline"] = result.get("timeline", [])
+            if reset_error:
+                cast(dict[str, object], enriched["gpt_capture"])["reset_warning"] = (
+                    reset_error
+                )
             if str(result.get("status", "")) == "ok":
                 enriched["gpt_response_text"] = str(result.get("response_text", ""))
                 enriched["gpt_response_source"] = "agent_browser_live"

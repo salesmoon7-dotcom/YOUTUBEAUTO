@@ -914,6 +914,48 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
 
         self.assertNotIn("expected_url_substring", called_kwargs)
 
+    def test_stage1_runner_continues_when_reset_context_fails(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            workspace = root / "workspace"
+            workspace.mkdir(parents=True, exist_ok=True)
+            topic_spec = _topic_spec()
+
+            with (
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.reset_chatgpt_context",
+                    side_effect=RuntimeError("chatgpt_prompt_not_ready"),
+                ),
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                    return_value={
+                        "status": "ok",
+                        "response_text": "[Title]\n제목\n\n[Voice]\n1. 첫 장면\n2. 둘째 장면\n\n[#01]\n장면 하나\n\n[#02]\n장면 둘",
+                        "submit_info": {},
+                        "final_state": {},
+                        "timeline": [],
+                    },
+                ),
+            ):
+                result = run_stage1_chatgpt_job(
+                    topic_spec,
+                    workspace,
+                    debug_log="logs/stage1-reset-warning.jsonl",
+                )
+
+        self.assertEqual(result["status"], "ok")
+        result_path = Path(cast(str, result["result_path"]))
+        result_payload = cast(
+            dict[str, object], json.loads(result_path.read_text(encoding="utf-8"))
+        )
+        raw_output = cast(
+            dict[str, object],
+            json.loads((workspace / "raw_output.json").read_text(encoding="utf-8")),
+        )
+        gpt_capture = cast(dict[str, object], raw_output["gpt_capture"])
+        self.assertEqual(gpt_capture["reset_warning"], "chatgpt_prompt_not_ready")
+        self.assertEqual(result_payload["status"], "ok")
+
     def test_stage1_runner_retries_live_chatgpt_after_relaunch(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

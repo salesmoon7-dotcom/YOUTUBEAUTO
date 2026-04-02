@@ -101,8 +101,6 @@ def _parse_block_response(
     scene_map = _collect_scene_map(labels)
     ordered_scene_indexes = sorted(scene_map)
     scene_prompts = [scene_map[index] for index in ordered_scene_indexes]
-    if not scene_prompts:
-        scene_prompts = _collect_voice_numbered_lines(labels)
     voice_lines = _collect_voice_numbered_lines(labels)
     ranged_voice_groups = _voice_groups_from_label_ranges(
         ordered_scene_indexes, label_voice_ranges, voice_lines
@@ -142,9 +140,9 @@ def _parse_block_response(
         "ref_img_1": _join_label(labels, "ref img 1"),
         "ref_img_2": _join_label(labels, "ref img 2"),
         "scene_map": scene_map,
-        "scene_prompts": scene_prompts or [f"{topic} opening", f"{topic} ending"],
+        "scene_prompts": scene_prompts,
         "voice_groups": voice_groups,
-        "story_outline": scene_prompts or [f"{topic} opening", f"{topic} ending"],
+        "story_outline": scene_prompts,
         "voice_lines": voice_lines,
         "videos": _collect_videos(labels),
         "shorts_description": _join_label(labels, "shorts description"),

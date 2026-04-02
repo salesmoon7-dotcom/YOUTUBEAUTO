@@ -4,6 +4,7 @@ import json
 import subprocess
 import unittest
 from unittest import mock
+from pathlib import Path
 from typing import cast
 
 from runtime_v2.stage1.chatgpt_backend import (
@@ -20,6 +21,61 @@ from runtime_v2.stage1.chatgpt_interaction import (
 
 
 class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
+    def test_default_runner_uses_tolerant_utf8_decode(self) -> None:
+        with mock.patch("runtime_v2.stage1.chatgpt_backend.subprocess.run") as run_mock:
+            run_mock.return_value = subprocess.CompletedProcess(
+                args=["agent-browser"],
+                returncode=0,
+                stdout="ok",
+                stderr="",
+            )
+
+            from runtime_v2.stage1.chatgpt_backend import _default_runner
+
+            result = _default_runner(["agent-browser", "--version"], 5)
+
+        self.assertEqual(result, "ok")
+        self.assertEqual(run_mock.call_args.kwargs["encoding"], "utf-8")
+        self.assertEqual(run_mock.call_args.kwargs["errors"], "replace")
+
+    def test_generate_gpt_response_text_passes_expected_url_substring_to_backend(
+        self,
+    ) -> None:
+        backend = mock.Mock()
+        backend.submit_prompt.return_value = {
+            "ok": True,
+            "submit_evidence": {
+                "classification": "sent",
+                "classification_reason": "send_button_clicked",
+                "retry_safe_decision": False,
+            },
+        }
+        backend.read_response_state.return_value = {
+            "has_stop": False,
+            "has_send_button": True,
+            "assistant_block_count": 1,
+            "assistant_text": "final json",
+            "legacy_blocks": [],
+        }
+
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_interaction.AgentBrowserCdpBackend",
+            return_value=backend,
+        ) as backend_ctor:
+            _ = generate_gpt_response_text(
+                prompt="hello",
+                expected_url_substring="https://chatgpt.com/g/g-foo/c/bar",
+                timeout_sec=1,
+                poll_interval_sec=0.01,
+                completion_idle_sec=0.01,
+            )
+
+        backend_ctor.assert_called_once()
+        self.assertEqual(
+            backend_ctor.call_args.kwargs["expected_url_substring"],
+            "https://chatgpt.com/g/g-foo/c/bar",
+        )
+
     def test_select_page_target_accepts_longform_conversation_url_by_title(
         self,
     ) -> None:
@@ -1147,6 +1203,42 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             timeout_sec=1,
             poll_interval_sec=0.01,
             completion_idle_sec=0.01,
+            backend=FakeBackend(),
+        )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
+
+    def test_generate_gpt_response_text_does_not_finish_on_preamble_only_stop_state(
+        self,
+    ) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                return {
+                    "ok": True,
+                    "submit_evidence": {
+                        "classification": "sent",
+                        "classification_reason": "send_button_clicked",
+                        "retry_safe_decision": False,
+                    },
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                return {
+                    "has_stop": True,
+                    "has_send_button": True,
+                    "assistant_block_count": 1,
+                    "assistant_text": "내용을 확정하기 위해 공적 자료를 확인하고 있습니다.",
+                    "legacy_blocks": [],
+                }
+
+        result = generate_gpt_response_text(
+            prompt="test prompt",
+            port=9222,
+            timeout_sec=1,
+            poll_interval_sec=0.01,
+            completion_idle_sec=0.01,
+            response_start_timeout_sec=0.1,
             backend=FakeBackend(),
         )
 

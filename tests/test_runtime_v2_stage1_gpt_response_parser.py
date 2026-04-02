@@ -286,6 +286,29 @@ Voice: 1. 첫 장면 설명\n2. 두 번째 장면 설명
             ],
         )
 
+    def test_parser_rejects_voice_only_numbered_lines_without_scene_blocks(
+        self,
+    ) -> None:
+        topic_spec: dict[str, object] = {
+            "topic": "Money flow",
+            "row_ref": "Sheet1!row1",
+            "run_id": "run-1",
+        }
+        response_text = """
+[Voice]
+1. 첫 번째 보이스
+2. 두 번째 보이스
+3. 세 번째 보이스
+
+[Title]
+머니 제목
+"""
+
+        parsed, errors = parse_gpt_response_text(topic_spec, response_text)
+
+        self.assertIsNone(parsed)
+        self.assertEqual(errors, ["missing_scene_prompts"])
+
 
 if __name__ == "__main__":
     _ = unittest.main()
