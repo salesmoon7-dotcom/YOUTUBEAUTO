@@ -1124,6 +1124,48 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertIn("submit_ambiguous", event_names)
         self.assertNotIn("submit_ok", event_names)
 
+    def test_generate_gpt_response_text_treats_missing_submit_evidence_as_ambiguous(
+        self,
+    ) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                return {
+                    "ok": True,
+                    "sendClicked": True,
+                    "submit_evidence": {},
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                return {
+                    "has_stop": False,
+                    "has_send_button": False,
+                    "assistant_block_count": 0,
+                    "assistant_text": "",
+                }
+
+        result = generate_gpt_response_text(
+            prompt="test prompt",
+            port=9222,
+            timeout_sec=1,
+            poll_interval_sec=0.01,
+            completion_idle_sec=0.01,
+            response_start_timeout_sec=0.1,
+            backend=FakeBackend(),
+        )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
+        submit_info = cast(dict[str, object], result["submit_info"])
+        submit_evidence = cast(dict[str, object], submit_info["submit_evidence"])
+        self.assertEqual(submit_evidence["classification"], "ambiguous")
+        self.assertEqual(
+            submit_evidence["classification_reason"], "submit_evidence_missing"
+        )
+        timeline = cast(list[dict[str, object]], result["timeline"])
+        event_names = [str(item["event"]) for item in timeline]
+        self.assertIn("submit_ambiguous", event_names)
+        self.assertNotIn("submit_ok", event_names)
+
     def test_generate_gpt_response_text_does_not_retry_response_not_started_after_ambiguous_submit(
         self,
     ) -> None:

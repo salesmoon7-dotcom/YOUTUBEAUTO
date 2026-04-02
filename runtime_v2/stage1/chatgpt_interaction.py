@@ -126,6 +126,8 @@ def generate_gpt_response_text(
             failed["timeline"] = timeline
             return failed
         submit_evidence = _decode_submit_success(submit_info, attempt=attempt)
+        if isinstance(submit_info, dict):
+            submit_info["submit_evidence"] = dict(submit_evidence)
         submit_classification = str(
             submit_evidence.get("classification", "sent")
         ).strip()
@@ -503,14 +505,14 @@ def _decode_submit_success(
     payload: dict[str, object], *, attempt: int
 ) -> dict[str, object]:
     raw = payload.get("submit_evidence", {})
-    if isinstance(raw, dict):
+    if isinstance(raw, dict) and raw:
         submit_evidence = dict(raw)
         submit_evidence["attempt_key"] = _attempt_key(attempt)
         return submit_evidence
     return {
         "attempt_key": _attempt_key(attempt),
-        "classification": "sent",
-        "classification_reason": "send_clicked",
+        "classification": "ambiguous",
+        "classification_reason": "submit_evidence_missing",
         "retry_safe_decision": False,
     }
 
