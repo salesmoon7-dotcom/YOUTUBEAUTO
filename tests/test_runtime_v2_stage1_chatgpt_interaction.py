@@ -1097,7 +1097,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         timeline = cast(list[dict[str, object]], result["timeline"])
         event_names = [str(item["event"]) for item in timeline]
         self.assertEqual(event_names[0], "submit_start")
-        self.assertIn("submit_ok", event_names)
+        self.assertIn("submit_ambiguous", event_names)
         self.assertIn("streaming_seen", event_names)
         self.assertIn("response_stable", event_names)
         self.assertEqual(event_names[-1], "final_state")
