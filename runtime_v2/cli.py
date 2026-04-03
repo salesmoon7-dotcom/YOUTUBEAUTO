@@ -1660,7 +1660,7 @@ def _run_stage5_row1_probe(
     control_results: list[dict[str, object]] = []
     final_metadata: dict[str, object] = {}
     readiness_snapshot: dict[str, object] = {}
-    seeded_followup_budget = 1
+    seeded_followup_budget = 3
     for _ in range(max_control_ticks):
         result = run_control_loop_once(owner=owner, config=probe_config, run_id=run_id)
         control_results.append(result)
