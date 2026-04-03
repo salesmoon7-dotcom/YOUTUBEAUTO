@@ -43,6 +43,23 @@ def _write_summary(out_root: Path, payload: dict[str, object]) -> Path:
     return summary_file
 
 
+def _write_spawn_record(out_root: Path, payload: dict[str, object]) -> Path:
+    out_root.mkdir(parents=True, exist_ok=True)
+    output_file = out_root / "spawn.json"
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=out_root,
+        prefix="spawn.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        _ = handle.write(json.dumps(payload, ensure_ascii=True))
+        temp_path = Path(handle.name)
+    _ = temp_path.replace(output_file)
+    return output_file
+
+
 def _wait_with_summary_updates(
     child: subprocess.Popen[str],
     *,
@@ -190,7 +207,7 @@ def main() -> int:
     )
     creationflags |= int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
     child = subprocess.Popen(command, creationflags=creationflags)
-    _ = _write_summary(
+    _ = _write_spawn_record(
         probe_root,
         {
             "started_at": round(time(), 3),
@@ -213,6 +230,7 @@ def main() -> int:
                 "stdout_log": str(stdout_file),
                 "stderr_log": str(stderr_file),
                 "summary_file": str(probe_root / "summary.json"),
+                "spawn_file": str(probe_root / "spawn.json"),
             },
             ensure_ascii=True,
         )

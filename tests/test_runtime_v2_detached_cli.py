@@ -74,6 +74,14 @@ class RuntimeV2DetachedCliTests(unittest.TestCase):
         written_payload = json.loads(written.read_text(encoding="utf-8"))
         self.assertEqual(written_payload["status"], "running")
 
+    def test_write_spawn_record_writes_spawn_json(self) -> None:
+        root = Path(tempfile.mkdtemp(dir=r"D:\YOUTUBEAUTO"))
+        written = _MODULE._write_spawn_record(root, {"status": "spawned", "pid": 7})
+        payload = json.loads(written.read_text(encoding="utf-8"))
+        self.assertEqual(written.name, "spawn.json")
+        self.assertEqual(payload["status"], "spawned")
+        self.assertEqual(payload["pid"], 7)
+
 
 if __name__ == "__main__":
     _ = unittest.main()
