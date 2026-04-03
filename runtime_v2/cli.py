@@ -1660,9 +1660,16 @@ def _run_stage5_row1_probe(
     control_results: list[dict[str, object]] = []
     final_metadata: dict[str, object] = {}
     readiness_snapshot: dict[str, object] = {}
+    seeded_followup_budget = 1
     for _ in range(max_control_ticks):
         result = run_control_loop_once(owner=owner, config=probe_config, run_id=run_id)
         control_results.append(result)
+        if (
+            str(result.get("status", "")).strip() == "seeded"
+            and seeded_followup_budget > 0
+        ):
+            seeded_followup_budget -= 1
+            continue
         if str(result.get("queue_status", "")).strip() == "retry":
             continue
         latest_payload_path = probe_config.result_router_file
