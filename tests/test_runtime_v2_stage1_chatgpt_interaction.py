@@ -141,6 +141,103 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
         self.assertEqual(selected["url"], CHATGPT_LONGFORM_URL_SUBSTRING)
 
+    def test_ensure_custom_gpt_page_waits_for_prompt_after_fallback_navigation(
+        self,
+    ) -> None:
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["#composer-submit-button"],
+            stop_selectors=["button[data-testid='stop-button']"],
+            response_selectors=["div[data-message-author-role='assistant']"],
+        )
+        generic = {
+            "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/test",
+            "url": "https://chatgpt.com/",
+            "title": "ChatGPT",
+        }
+
+        with (
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._select_page_target",
+                side_effect=RuntimeError("CDP_TARGET_NOT_FOUND"),
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._select_generic_chatgpt_target",
+                return_value=generic,
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_method"
+            ) as nav_mock,
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._wait_for_chatgpt_prompt_ready"
+            ) as wait_mock,
+        ):
+            backend._ensure_custom_gpt_page()
+
+        nav_mock.assert_called_once()
+        wait_mock.assert_called_once_with(
+            generic["webSocketDebuggerUrl"], timeout_sec=30.0
+        )
+
+    def test_wait_for_send_state_rechecks_prompt_when_send_missing(self) -> None:
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["#composer-submit-button"],
+            stop_selectors=["button[data-testid='stop-button']"],
+            response_selectors=["div[data-message-author-role='assistant']"],
+        )
+
+        states = [
+            {
+                "send_found": False,
+                "send_enabled": False,
+                "send_disabled": False,
+                "in_flight_marker": False,
+            },
+            {
+                "send_found": True,
+                "send_enabled": True,
+                "send_disabled": False,
+                "send_test_id": "send-button",
+                "send_aria_label": "보내기",
+                "in_flight_marker": False,
+            },
+            {
+                "send_found": False,
+                "send_enabled": False,
+                "send_disabled": False,
+                "in_flight_marker": True,
+            },
+        ]
+
+        with (
+            mock.patch.object(
+                backend,
+                "_run_eval_with_retry",
+                side_effect=[json.dumps(state, ensure_ascii=True) for state in states],
+            ),
+            mock.patch.object(
+                backend, "_ensure_chatgpt_target_selected"
+            ) as ensure_mock,
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._wait_for_chatgpt_prompt_ready"
+            ) as wait_mock,
+            mock.patch.object(
+                backend,
+                "_current_selected_tab",
+                return_value={
+                    "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/test"
+                },
+            ),
+        ):
+            result = backend._wait_for_send_state("payload")
+
+        self.assertTrue(bool(result["ok"]))
+        ensure_mock.assert_called_once()
+        wait_mock.assert_called_once()
+
     def test_response_text_from_state_prefers_legacy_blocks(self) -> None:
         response = _response_text_from_state(
             "plain text",

@@ -162,6 +162,15 @@ class AgentBrowserCdpBackend:
                 self._run_eval_with_retry(_send_control_state_script(payload))
             )
             last_state = state
+            if not bool(state.get("send_found", False)):
+                try:
+                    self._ensure_chatgpt_target_selected()
+                    _wait_for_chatgpt_prompt_ready(
+                        self._current_selected_tab().get("webSocketDebuggerUrl", ""),
+                        timeout_sec=2.0,
+                    )
+                except RuntimeError:
+                    pass
             if bool(state.get("in_flight_marker", False)):
                 submit_evidence = {
                     "attempt_key": "attempt-1",
@@ -341,6 +350,12 @@ class AgentBrowserCdpBackend:
             {"url": CHATGPT_LONGFORM_URL},
         )
         time.sleep(2.0)
+        try:
+            _wait_for_chatgpt_prompt_ready(
+                generic["webSocketDebuggerUrl"], timeout_sec=30.0
+            )
+        except RuntimeError:
+            self._record_fallback("custom_page_prompt_ready_timeout")
         self._remember_target(
             {
                 "webSocketDebuggerUrl": generic["webSocketDebuggerUrl"],
