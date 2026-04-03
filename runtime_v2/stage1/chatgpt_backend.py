@@ -209,6 +209,46 @@ class AgentBrowserCdpBackend:
                         self._run_eval_with_retry(_send_control_state_script(payload))
                     )
                 except RuntimeError as exc:
+                    try:
+                        post_state = _decode_backend_json(
+                            self._run_eval_with_retry(
+                                _send_control_state_script(payload)
+                            )
+                        )
+                        if (
+                            bool(post_state.get("in_flight_marker", False))
+                            or not bool(post_state.get("send_found", False))
+                            or not bool(post_state.get("send_enabled", False))
+                        ):
+                            submit_evidence = {
+                                "attempt_key": "attempt-1",
+                                "classification": "sent",
+                                "classification_reason": "send_state_after_click_exception",
+                                "retry_safe_decision": False,
+                                "pre": state,
+                                "post": post_state,
+                                "in_flight_observed": bool(
+                                    post_state.get("in_flight_marker", False)
+                                ),
+                                "terminal_success_observed": bool(
+                                    post_state.get("terminal_success_observed", False)
+                                ),
+                                "state_transition": bool(
+                                    post_state.get("state_transition", False)
+                                )
+                                or bool(post_state.get("in_flight_marker", False))
+                                or not bool(post_state.get("send_found", False))
+                                or not bool(post_state.get("send_enabled", False)),
+                            }
+                            return {
+                                "ok": True,
+                                "sendClicked": True,
+                                "sendTestId": str(state.get("send_test_id", "")),
+                                "sendAriaLabel": str(state.get("send_aria_label", "")),
+                                "submit_evidence": submit_evidence,
+                            }
+                    except RuntimeError:
+                        pass
                     submit_evidence = {
                         "attempt_key": "attempt-1",
                         "classification": "ambiguous",
