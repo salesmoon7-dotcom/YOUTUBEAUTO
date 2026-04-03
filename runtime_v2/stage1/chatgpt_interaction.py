@@ -157,6 +157,24 @@ def generate_gpt_response_text(
             attempt=attempt,
             backend="chatgpt_backend",
         )
+        if submit_classification != "sent":
+            failed = _interaction_failure(
+                failure_stage="submit",
+                error_code="CHATGPT_BACKEND_UNAVAILABLE",
+                backend_error=str(
+                    submit_evidence.get("classification_reason", "submit_ambiguous")
+                ),
+                submit_info=submit_info,
+                final_state=probe(port),
+            )
+            emit(
+                "final_state",
+                attempt=attempt,
+                final_state="failed",
+                final_state_code=str(failed.get("error_code", "failed")),
+            )
+            failed["timeline"] = timeline
+            return failed
         for fallback in _backend_fallbacks(submit_info):
             emit(
                 "fallback_transition",
