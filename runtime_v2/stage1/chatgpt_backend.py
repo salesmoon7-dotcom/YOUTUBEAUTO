@@ -341,6 +341,13 @@ class AgentBrowserCdpBackend:
             {"url": CHATGPT_LONGFORM_URL},
         )
         time.sleep(2.0)
+        self._remember_target(
+            {
+                "webSocketDebuggerUrl": generic["webSocketDebuggerUrl"],
+                "url": CHATGPT_LONGFORM_URL,
+                "title": generic.get("title", CHATGPT_LONGFORM_TITLE_SUBSTRING),
+            }
+        )
 
     def _chatgpt_tab_index(self) -> int | None:
         try:
@@ -370,9 +377,6 @@ class AgentBrowserCdpBackend:
             return self._remember_target(target)
         except RuntimeError:
             self._record_fallback("current_tab_http_fallback")
-            generic = _select_generic_chatgpt_target(self._port)
-            if generic is not None:
-                return self._remember_target(generic)
             return dict(self._last_selected_target)
 
     def _record_fallback(self, event: str) -> None:

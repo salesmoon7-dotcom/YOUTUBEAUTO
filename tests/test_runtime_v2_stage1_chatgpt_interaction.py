@@ -117,6 +117,30 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
         self.assertEqual(target["url"], CHATGPT_LONGFORM_URL_SUBSTRING)
 
+    def test_current_selected_tab_prefers_remembered_longform_target_after_fallback(
+        self,
+    ) -> None:
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["#composer-submit-button"],
+            stop_selectors=["button[data-testid='stop-button']"],
+            response_selectors=["div[data-message-author-role='assistant']"],
+        )
+        backend._last_selected_target = {
+            "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/test",
+            "url": CHATGPT_LONGFORM_URL_SUBSTRING,
+            "title": CHATGPT_LONGFORM_TITLE_SUBSTRING,
+        }
+
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_backend._select_page_target",
+            side_effect=RuntimeError("CDP_TARGET_NOT_FOUND"),
+        ):
+            selected = backend._current_selected_tab()
+
+        self.assertEqual(selected["url"], CHATGPT_LONGFORM_URL_SUBSTRING)
+
     def test_response_text_from_state_prefers_legacy_blocks(self) -> None:
         response = _response_text_from_state(
             "plain text",
