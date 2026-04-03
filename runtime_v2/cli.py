@@ -2257,12 +2257,12 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
     elif prompt and service == "geminigen":
         pre_actions = [
             {
-                "type": "wait",
-                "target": "textarea[placeholder*='Describe the video'], .base-prompt-input textarea",
-            },
-            {
                 "type": "eval",
                 "script": "(() => { const createTabs = Array.from(document.querySelectorAll('[id*=\"trigger-create-new\"], button, [role=tab]')); const tab = createTabs.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute && (item.getAttribute('aria-label') || ''))).trim(); return text.includes('Create New'); }); if (tab instanceof HTMLElement) { tab.click(); return JSON.stringify({ok:true, step:'selected_create_new'}); } return JSON.stringify({ok:true, step:'create_new_already_selected'}); })()",
+            },
+            {
+                "type": "wait",
+                "target": "textarea[placeholder*='Describe the video'], .base-prompt-input textarea",
             },
         ]
         actions = []

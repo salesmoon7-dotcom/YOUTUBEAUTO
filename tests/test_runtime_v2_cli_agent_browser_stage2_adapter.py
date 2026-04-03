@@ -333,10 +333,29 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             for action in captured_pre_actions
             if str(action.get("type", "")) == "wait"
         ]
+        create_new_scripts = [
+            str(action.get("script", ""))
+            for action in captured_pre_actions
+            if str(action.get("type", "")) == "eval"
+        ]
         self.assertIn(
             "textarea[placeholder*='Describe the video'], .base-prompt-input textarea",
             wait_targets,
         )
+        self.assertTrue(
+            any("selected_create_new" in script for script in create_new_scripts)
+        )
+        first_wait_index = next(
+            index
+            for index, action in enumerate(captured_pre_actions)
+            if str(action.get("type", "")) == "wait"
+        )
+        first_create_index = next(
+            index
+            for index, action in enumerate(captured_pre_actions)
+            if "selected_create_new" in str(action.get("script", ""))
+        )
+        self.assertLess(first_create_index, first_wait_index)
 
     def test_stage2_adapter_child_writes_functional_evidence_for_genspark(
         self,
