@@ -21,6 +21,8 @@ CHATGPT_LONGFORM_URL_SUBSTRING = (
 )
 CHATGPT_LONGFORM_TITLE_SUBSTRING = "롱폼"
 CHATGPT_LONGFORM_URL = f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}"
+_SEND_ACK_TIMEOUT_SEC = 2.0
+_SEND_ACK_POLL_SEC = 0.2
 
 
 class ChatGPTBackend(Protocol):
@@ -205,13 +207,43 @@ class AgentBrowserCdpBackend:
                 post_state = _decode_backend_json(
                     self._run_eval_with_retry(_send_control_state_script(payload))
                 )
+                deadline = time.time() + _SEND_ACK_TIMEOUT_SEC
+                while time.time() < deadline:
+                    in_flight_candidate = bool(
+                        post_state.get("in_flight_marker", False)
+                    )
+                    terminal_candidate = bool(
+                        post_state.get("terminal_success_observed", False)
+                    )
+                    state_transition_candidate = (
+                        bool(post_state.get("state_transition", False))
+                        or in_flight_candidate
+                    )
+                    send_found_candidate = bool(post_state.get("send_found", False))
+                    send_enabled_candidate = bool(post_state.get("send_enabled", False))
+                    if (
+                        in_flight_candidate
+                        or terminal_candidate
+                        or state_transition_candidate
+                        or not send_found_candidate
+                        or not send_enabled_candidate
+                    ):
+                        break
+                    time.sleep(_SEND_ACK_POLL_SEC)
+                    post_state = _decode_backend_json(
+                        self._run_eval_with_retry(_send_control_state_script(payload))
+                    )
                 in_flight_observed = bool(post_state.get("in_flight_marker", False))
                 terminal_success_observed = bool(
                     post_state.get("terminal_success_observed", False)
                 )
+                send_found_after_click = bool(post_state.get("send_found", False))
+                send_enabled_after_click = bool(post_state.get("send_enabled", False))
                 state_transition = (
                     bool(post_state.get("state_transition", False))
                     or in_flight_observed
+                    or not send_found_after_click
+                    or not send_enabled_after_click
                 )
                 submit_evidence = {
                     "attempt_key": "attempt-1",

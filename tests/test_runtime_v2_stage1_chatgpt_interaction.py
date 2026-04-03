@@ -313,14 +313,59 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                 "in_flight_marker": False,
                 "state_transition": False,
             },
+            {
+                "send_found": True,
+                "send_enabled": True,
+                "send_disabled": False,
+                "send_test_id": "send-button",
+                "send_aria_label": "보내기",
+                "in_flight_marker": False,
+                "state_transition": False,
+            },
+            {
+                "send_found": True,
+                "send_enabled": True,
+                "send_disabled": False,
+                "send_test_id": "send-button",
+                "send_aria_label": "보내기",
+                "in_flight_marker": False,
+                "state_transition": False,
+            },
+            {
+                "send_found": True,
+                "send_enabled": True,
+                "send_disabled": False,
+                "send_test_id": "send-button",
+                "send_aria_label": "보내기",
+                "in_flight_marker": False,
+                "state_transition": False,
+            },
+            {
+                "send_found": True,
+                "send_enabled": True,
+                "send_disabled": False,
+                "send_test_id": "send-button",
+                "send_aria_label": "보내기",
+                "in_flight_marker": False,
+                "state_transition": False,
+            },
         ]
 
-        with mock.patch.object(
-            backend,
-            "_run_eval_with_retry",
-            side_effect=[
-                json.dumps(state, ensure_ascii=True) for state in eval_payloads
-            ],
+        with (
+            mock.patch.object(
+                backend,
+                "_run_eval_with_retry",
+                side_effect=[
+                    json.dumps(state, ensure_ascii=True) for state in eval_payloads
+                ],
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend.time.sleep", return_value=None
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend.time.time",
+                side_effect=[0.0, 0.0, 0.5, 1.0, 1.5, 1.8, 2.1],
+            ),
         ):
             result = backend._wait_for_send_state("payload")
 
@@ -328,6 +373,101 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(submit_evidence["classification"], "ambiguous")
         self.assertEqual(
             submit_evidence["classification_reason"], "send_click_unconfirmed"
+        )
+
+    def test_submit_prompt_waits_for_send_ack_before_marking_sent(self) -> None:
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["button[data-testid='send-button']"],
+            stop_selectors=["button[aria-label='Stop streaming']"],
+            response_selectors=["[data-message-author-role='assistant']"],
+        )
+        eval_payloads = [
+            {
+                "send_found": True,
+                "send_enabled": True,
+                "send_disabled": False,
+                "send_test_id": "send-button",
+                "send_aria_label": "보내기",
+                "in_flight_marker": False,
+                "state_transition": False,
+            },
+            {
+                "ok": True,
+                "sendClicked": True,
+                "sendTestId": "send-button",
+                "sendAriaLabel": "보내기",
+            },
+            {
+                "send_found": True,
+                "send_enabled": True,
+                "send_disabled": False,
+                "send_test_id": "send-button",
+                "send_aria_label": "보내기",
+                "in_flight_marker": False,
+                "state_transition": False,
+            },
+            {
+                "send_found": True,
+                "send_enabled": True,
+                "send_disabled": False,
+                "send_test_id": "send-button",
+                "send_aria_label": "보내기",
+                "in_flight_marker": False,
+                "state_transition": False,
+            },
+            {
+                "send_found": False,
+                "send_enabled": False,
+                "send_disabled": False,
+                "send_test_id": "send-button",
+                "send_aria_label": "보내기",
+                "in_flight_marker": False,
+                "state_transition": False,
+            },
+            {
+                "send_found": False,
+                "send_enabled": False,
+                "send_disabled": False,
+                "send_test_id": "send-button",
+                "send_aria_label": "보내기",
+                "in_flight_marker": False,
+                "state_transition": False,
+            },
+            {
+                "send_found": False,
+                "send_enabled": False,
+                "send_disabled": False,
+                "send_test_id": "send-button",
+                "send_aria_label": "보내기",
+                "in_flight_marker": False,
+                "state_transition": False,
+            },
+        ]
+
+        with (
+            mock.patch.object(
+                backend,
+                "_run_eval_with_retry",
+                side_effect=[
+                    json.dumps(state, ensure_ascii=True) for state in eval_payloads
+                ],
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend.time.sleep", return_value=None
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend.time.time",
+                side_effect=[0.0, 0.0, 0.5, 1.0, 1.5, 1.8, 2.1],
+            ),
+        ):
+            result = backend._wait_for_send_state("payload")
+
+        submit_evidence = cast(dict[str, object], result["submit_evidence"])
+        self.assertEqual(submit_evidence["classification"], "sent")
+        self.assertEqual(
+            submit_evidence["classification_reason"], "send_button_clicked"
         )
 
     def test_response_text_from_state_prefers_legacy_blocks(self) -> None:
