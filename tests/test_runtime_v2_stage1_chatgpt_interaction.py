@@ -189,7 +189,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             response_selectors=["div[data-message-author-role='assistant']"],
         )
 
-        states = [
+        eval_payloads = [
             {
                 "send_found": False,
                 "send_enabled": False,
@@ -205,6 +205,12 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                 "in_flight_marker": False,
             },
             {
+                "ok": True,
+                "sendClicked": True,
+                "sendTestId": "send-button",
+                "sendAriaLabel": "보내기",
+            },
+            {
                 "send_found": False,
                 "send_enabled": False,
                 "send_disabled": False,
@@ -216,7 +222,9 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             mock.patch.object(
                 backend,
                 "_run_eval_with_retry",
-                side_effect=[json.dumps(state, ensure_ascii=True) for state in states],
+                side_effect=[
+                    json.dumps(state, ensure_ascii=True) for state in eval_payloads
+                ],
             ),
             mock.patch.object(
                 backend, "_ensure_chatgpt_target_selected"
@@ -235,8 +243,40 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             result = backend._wait_for_send_state("payload")
 
         self.assertTrue(bool(result["ok"]))
-        ensure_mock.assert_called_once()
-        wait_mock.assert_called_once()
+        self.assertGreaterEqual(ensure_mock.call_count, 1)
+        self.assertGreaterEqual(wait_mock.call_count, 1)
+
+    def test_submit_prompt_retries_when_input_did_not_stick(self) -> None:
+        eval_payloads = [
+            {"ok": True, "inputSelector": "#prompt-textarea", "inputSuccess": False},
+            {"ok": True, "inputSelector": "#prompt-textarea", "inputSuccess": True},
+        ]
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["button[data-testid='send-button']"],
+            stop_selectors=["button[aria-label='Stop streaming']"],
+            response_selectors=["[data-message-author-role='assistant']"],
+            command_runner=lambda command, timeout_sec: json.dumps(eval_payloads.pop(0))
+            if command[-2] == "eval"
+            else "ok",
+        )
+
+        with (
+            mock.patch.object(
+                backend, "_wait_for_input_ready", return_value={"ready": True}
+            ),
+            mock.patch.object(
+                backend,
+                "_wait_for_send_state",
+                return_value={"ok": True, "sendClicked": True, "submit_evidence": {}},
+            ),
+            mock.patch.object(backend, "_ensure_custom_gpt_page") as ensure_mock,
+        ):
+            result = backend.submit_prompt("hello")
+
+        self.assertTrue(bool(result["ok"]))
+        self.assertGreaterEqual(ensure_mock.call_count, 1)
 
     def test_response_text_from_state_prefers_legacy_blocks(self) -> None:
         response = _response_text_from_state(

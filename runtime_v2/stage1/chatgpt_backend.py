@@ -78,6 +78,11 @@ class AgentBrowserCdpBackend:
                 pass
             result = self._run_eval_with_retry(_prepare_input_script(payload))
             parsed = _decode_backend_json(result)
+            if bool(parsed.get("ok", False)) and not bool(
+                parsed.get("inputSuccess", False)
+            ):
+                parsed["ok"] = False
+                parsed["error"] = "NO_INPUT"
             if str(parsed.get("error", "")) != "NO_INPUT":
                 break
             if preflight_status:
