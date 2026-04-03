@@ -205,20 +205,40 @@ class AgentBrowserCdpBackend:
                 post_state = _decode_backend_json(
                     self._run_eval_with_retry(_send_control_state_script(payload))
                 )
+                in_flight_observed = bool(post_state.get("in_flight_marker", False))
+                terminal_success_observed = bool(
+                    post_state.get("terminal_success_observed", False)
+                )
+                state_transition = (
+                    bool(post_state.get("state_transition", False))
+                    or in_flight_observed
+                )
                 submit_evidence = {
                     "attempt_key": "attempt-1",
-                    "classification": "sent",
-                    "classification_reason": "send_button_clicked",
+                    "classification": (
+                        "sent"
+                        if (
+                            in_flight_observed
+                            or terminal_success_observed
+                            or state_transition
+                        )
+                        else "ambiguous"
+                    ),
+                    "classification_reason": (
+                        "send_button_clicked"
+                        if (
+                            in_flight_observed
+                            or terminal_success_observed
+                            or state_transition
+                        )
+                        else "send_click_unconfirmed"
+                    ),
                     "retry_safe_decision": False,
                     "pre": state,
                     "post": post_state,
-                    "in_flight_observed": bool(
-                        post_state.get("in_flight_marker", False)
-                    ),
-                    "terminal_success_observed": bool(
-                        post_state.get("in_flight_marker", False)
-                    ),
-                    "state_transition": bool(post_state.get("in_flight_marker", False)),
+                    "in_flight_observed": in_flight_observed,
+                    "terminal_success_observed": terminal_success_observed,
+                    "state_transition": state_transition,
                 }
                 return {
                     "ok": True,

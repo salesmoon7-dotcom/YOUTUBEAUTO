@@ -278,6 +278,58 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertTrue(bool(result["ok"]))
         self.assertGreaterEqual(ensure_mock.call_count, 1)
 
+    def test_submit_prompt_marks_send_click_without_transition_as_ambiguous(
+        self,
+    ) -> None:
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["button[data-testid='send-button']"],
+            stop_selectors=["button[aria-label='Stop streaming']"],
+            response_selectors=["[data-message-author-role='assistant']"],
+        )
+        eval_payloads = [
+            {
+                "send_found": True,
+                "send_enabled": True,
+                "send_disabled": False,
+                "send_test_id": "send-button",
+                "send_aria_label": "보내기",
+                "in_flight_marker": False,
+                "state_transition": False,
+            },
+            {
+                "ok": True,
+                "sendClicked": True,
+                "sendTestId": "send-button",
+                "sendAriaLabel": "보내기",
+            },
+            {
+                "send_found": True,
+                "send_enabled": True,
+                "send_disabled": False,
+                "send_test_id": "send-button",
+                "send_aria_label": "보내기",
+                "in_flight_marker": False,
+                "state_transition": False,
+            },
+        ]
+
+        with mock.patch.object(
+            backend,
+            "_run_eval_with_retry",
+            side_effect=[
+                json.dumps(state, ensure_ascii=True) for state in eval_payloads
+            ],
+        ):
+            result = backend._wait_for_send_state("payload")
+
+        submit_evidence = cast(dict[str, object], result["submit_evidence"])
+        self.assertEqual(submit_evidence["classification"], "ambiguous")
+        self.assertEqual(
+            submit_evidence["classification_reason"], "send_click_unconfirmed"
+        )
+
     def test_response_text_from_state_prefers_legacy_blocks(self) -> None:
         response = _response_text_from_state(
             "plain text",
