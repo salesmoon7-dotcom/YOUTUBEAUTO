@@ -75,10 +75,10 @@ def main() -> int:
         ]
         started_at = round(time(), 3)
         with (
-            stdout_file.open("w", encoding="utf-8") as stdout_handle,
-            stderr_file.open("w", encoding="utf-8") as stderr_handle,
+            stdout_file.open("a", encoding="utf-8", buffering=1) as stdout_handle,
+            stderr_file.open("a", encoding="utf-8", buffering=1) as stderr_handle,
         ):
-            completed = subprocess.run(
+            child = subprocess.Popen(
                 command,
                 stdout=stdout_handle,
                 stderr=stderr_handle,
@@ -87,20 +87,21 @@ def main() -> int:
                 errors="replace",
                 cwd=str(Path(__file__).resolve().parents[1]),
             )
+            completed_returncode = child.wait()
         _ = _write_summary(
             probe_root,
             {
                 "started_at": started_at,
                 "finished_at": round(time(), 3),
                 "command": command,
-                "exit_code": completed.returncode,
+                "exit_code": completed_returncode,
                 "kind": "runtime_v2_cli",
                 "probe_root": str(probe_root),
                 "stdout_log": str(stdout_file),
                 "stderr_log": str(stderr_file),
             },
         )
-        return completed.returncode
+        return completed_returncode
 
     command = [
         sys.executable,
