@@ -1,0 +1,56 @@
+from __future__ import annotations
+
+import json
+import importlib.util
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+_MODULE_PATH = (
+    Path(__file__).resolve().parents[1] / "scripts" / "runtime_v2_detached_cli.py"
+)
+_SPEC = importlib.util.spec_from_file_location("runtime_v2_detached_cli", _MODULE_PATH)
+assert _SPEC is not None and _SPEC.loader is not None
+_MODULE = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_MODULE)
+_wait_with_summary_updates = _MODULE._wait_with_summary_updates
+
+
+class _FakeChild:
+    def __init__(self) -> None:
+        self.pid = 1234
+        self._polls = [None, 0]
+
+    def poll(self) -> int | None:
+        return self._polls.pop(0)
+
+
+class RuntimeV2DetachedCliTests(unittest.TestCase):
+    def test_wait_with_summary_updates_writes_running_then_final_summary(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            stdout_file = root / "stdout.log"
+            stderr_file = root / "stderr.log"
+            child = _FakeChild()
+
+            with patch.object(_MODULE, "sleep", return_value=None):
+                returncode = _wait_with_summary_updates(
+                    child,
+                    probe_root=root,
+                    command=["python", "-m", "runtime_v2.cli", "--help"],
+                    stdout_file=stdout_file,
+                    stderr_file=stderr_file,
+                    started_at=1.0,
+                )
+
+            summary = json.loads((root / "summary.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(returncode, 0)
+        self.assertEqual(summary["exit_code"], 0)
+        self.assertEqual(summary["kind"], "runtime_v2_cli")
+        self.assertEqual(summary["pid"], 1234)
+
+
+if __name__ == "__main__":
+    _ = unittest.main()

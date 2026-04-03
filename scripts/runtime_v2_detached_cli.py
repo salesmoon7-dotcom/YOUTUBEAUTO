@@ -5,8 +5,13 @@ import json
 import subprocess
 import sys
 import tempfile
+import traceback
 from pathlib import Path
+from time import sleep
 from time import time
+
+
+_SUMMARY_HEARTBEAT_SEC = 5.0
 
 
 def _write_summary(out_root: Path, payload: dict[str, object]) -> Path:
@@ -24,6 +29,51 @@ def _write_summary(out_root: Path, payload: dict[str, object]) -> Path:
         temp_path = Path(handle.name)
     _ = temp_path.replace(summary_file)
     return summary_file
+
+
+def _wait_with_summary_updates(
+    child: subprocess.Popen[str],
+    *,
+    probe_root: Path,
+    command: list[str],
+    stdout_file: Path,
+    stderr_file: Path,
+    started_at: float,
+) -> int:
+    while True:
+        returncode = child.poll()
+        if returncode is not None:
+            _ = _write_summary(
+                probe_root,
+                {
+                    "started_at": started_at,
+                    "finished_at": round(time(), 3),
+                    "command": command,
+                    "exit_code": returncode,
+                    "kind": "runtime_v2_cli",
+                    "probe_root": str(probe_root),
+                    "stdout_log": str(stdout_file),
+                    "stderr_log": str(stderr_file),
+                    "pid": child.pid,
+                },
+            )
+            return int(returncode)
+        _ = _write_summary(
+            probe_root,
+            {
+                "started_at": started_at,
+                "finished_at": None,
+                "command": command,
+                "exit_code": None,
+                "kind": "runtime_v2_cli_running",
+                "probe_root": str(probe_root),
+                "stdout_log": str(stdout_file),
+                "stderr_log": str(stderr_file),
+                "pid": child.pid,
+                "heartbeat_at": round(time(), 3),
+            },
+        )
+        sleep(_SUMMARY_HEARTBEAT_SEC)
 
 
 def main() -> int:
@@ -74,20 +124,32 @@ def main() -> int:
             *cli_args,
         ]
         started_at = round(time(), 3)
+        completed_returncode = 1
         with (
             stdout_file.open("a", encoding="utf-8", buffering=1) as stdout_handle,
             stderr_file.open("a", encoding="utf-8", buffering=1) as stderr_handle,
         ):
-            child = subprocess.Popen(
-                command,
-                stdout=stdout_handle,
-                stderr=stderr_handle,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                cwd=str(Path(__file__).resolve().parents[1]),
-            )
-            completed_returncode = child.wait()
+            try:
+                child = subprocess.Popen(
+                    command,
+                    stdout=stdout_handle,
+                    stderr=stderr_handle,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    cwd=str(Path(__file__).resolve().parents[1]),
+                )
+                completed_returncode = _wait_with_summary_updates(
+                    child,
+                    probe_root=probe_root,
+                    command=command,
+                    stdout_file=stdout_file,
+                    stderr_file=stderr_file,
+                    started_at=started_at,
+                )
+            except Exception:
+                stderr_handle.write(traceback.format_exc())
+                stderr_handle.flush()
         _ = _write_summary(
             probe_root,
             {
@@ -105,7 +167,7 @@ def main() -> int:
 
     command = [
         sys.executable,
-        __file__,
+        str(Path(__file__).resolve()),
         "--probe-root",
         str(probe_root),
         "--worker",
@@ -116,6 +178,20 @@ def main() -> int:
     )
     creationflags |= int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
     child = subprocess.Popen(command, creationflags=creationflags)
+    _ = _write_summary(
+        probe_root,
+        {
+            "started_at": round(time(), 3),
+            "finished_at": None,
+            "command": command,
+            "exit_code": None,
+            "kind": "runtime_v2_cli_spawned",
+            "probe_root": str(probe_root),
+            "stdout_log": str(stdout_file),
+            "stderr_log": str(stderr_file),
+            "pid": child.pid,
+        },
+    )
     print(
         json.dumps(
             {
