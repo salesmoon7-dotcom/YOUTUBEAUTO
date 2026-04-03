@@ -201,12 +201,28 @@ class AgentBrowserCdpBackend:
             if bool(state.get("send_found", False)) and bool(
                 state.get("send_enabled", False)
             ):
-                click_result = _decode_backend_json(
-                    self._run_eval_with_retry(_click_send_script(payload))
-                )
-                post_state = _decode_backend_json(
-                    self._run_eval_with_retry(_send_control_state_script(payload))
-                )
+                try:
+                    click_result = _decode_backend_json(
+                        self._run_eval_with_retry(_click_send_script(payload))
+                    )
+                    post_state = _decode_backend_json(
+                        self._run_eval_with_retry(_send_control_state_script(payload))
+                    )
+                except RuntimeError as exc:
+                    submit_evidence = {
+                        "attempt_key": "attempt-1",
+                        "classification": "ambiguous",
+                        "classification_reason": str(exc),
+                        "retry_safe_decision": False,
+                        "pre": state,
+                    }
+                    return {
+                        "ok": True,
+                        "sendClicked": False,
+                        "sendTestId": str(state.get("send_test_id", "")),
+                        "sendAriaLabel": str(state.get("send_aria_label", "")),
+                        "submit_evidence": submit_evidence,
+                    }
                 deadline = time.time() + _SEND_ACK_TIMEOUT_SEC
                 while time.time() < deadline:
                     in_flight_candidate = bool(

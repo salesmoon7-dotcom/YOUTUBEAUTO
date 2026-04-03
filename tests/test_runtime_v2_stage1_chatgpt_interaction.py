@@ -485,6 +485,46 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             submit_evidence["classification_reason"], "send_button_clicked"
         )
 
+    def test_submit_prompt_treats_click_eval_exception_as_ambiguous(self) -> None:
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["button[data-testid='send-button']"],
+            stop_selectors=["button[aria-label='Stop streaming']"],
+            response_selectors=["[data-message-author-role='assistant']"],
+        )
+
+        with (
+            mock.patch.object(
+                backend, "_wait_for_input_ready", return_value={"ready": True}
+            ),
+            mock.patch.object(
+                backend,
+                "_run_eval_with_retry",
+                side_effect=[
+                    json.dumps(
+                        {
+                            "send_found": True,
+                            "send_enabled": True,
+                            "send_disabled": False,
+                            "send_test_id": "send-button",
+                            "send_aria_label": "보내기",
+                            "in_flight_marker": False,
+                            "state_transition": False,
+                        },
+                        ensure_ascii=True,
+                    ),
+                    RuntimeError("CDP_EVAL_EXCEPTION"),
+                ],
+            ),
+        ):
+            result = backend.submit_prompt("hello")
+
+        self.assertTrue(bool(result["ok"]))
+        submit_evidence = cast(dict[str, object], result["submit_evidence"])
+        self.assertEqual(submit_evidence["classification"], "ambiguous")
+        self.assertEqual(submit_evidence["classification_reason"], "CDP_EVAL_EXCEPTION")
+
     def test_response_text_from_state_prefers_legacy_blocks(self) -> None:
         response = _response_text_from_state(
             "plain text",
