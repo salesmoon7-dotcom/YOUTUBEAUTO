@@ -78,8 +78,23 @@ class AgentBrowserCdpBackend:
                 preflight_status = self._wait_for_input_ready()
             except RuntimeError:
                 pass
-            result = self._run_eval_with_retry(_prepare_input_script(payload))
-            parsed = _decode_backend_json(result)
+            try:
+                result = self._run_eval_with_retry(_prepare_input_script(payload))
+                parsed = _decode_backend_json(result)
+            except RuntimeError as exc:
+                submit_evidence = {
+                    "attempt_key": "attempt-1",
+                    "classification": "ambiguous",
+                    "classification_reason": str(exc),
+                    "retry_safe_decision": False,
+                }
+                if preflight_status:
+                    submit_evidence["preflight_status"] = preflight_status
+                return {
+                    "ok": True,
+                    "inputSelector": "",
+                    "submit_evidence": submit_evidence,
+                }
             if bool(parsed.get("ok", False)) and not bool(
                 parsed.get("inputSuccess", False)
             ):
