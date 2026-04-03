@@ -273,6 +273,71 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertFalse(any("navigated_image_agent" in script for script in scripts))
         self.assertFalse(any("selected_new_session" in script for script in scripts))
 
+    def test_geminigen_stage2_adapter_child_uses_broadened_wait_selector(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            args = CliArgs()
+            args.service = "geminigen"
+            args.port = 9555
+            args.service_artifact_path = str((root / "output.mp4").resolve())
+            request_payload = {
+                "payload": {
+                    "prompt": "video prompt",
+                }
+            }
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+
+            captured_pre_actions: list[dict[str, object]] = []
+
+            call_count = 0
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                nonlocal call_count
+                _ = artifact_root
+                call_count += 1
+                payload = cast(dict[str, object], job.payload)
+                if call_count == 1:
+                    captured_pre_actions.extend(
+                        cast(list[dict[str, object]], payload.get("actions", []))
+                    )
+                return {"status": "ok", "details": {}}
+
+            completed = cast(object, type("Completed", (), {})())
+            setattr(completed, "stdout", '{"ok":true}')
+            setattr(completed, "stderr", "")
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch(
+                    "runtime_v2.cli.write_stage2_attach_evidence",
+                    return_value=root / "attach_evidence.json",
+                ),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "geminigen", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", return_value=completed),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        wait_targets = [
+            str(action.get("target", ""))
+            for action in captured_pre_actions
+            if str(action.get("type", "")) == "wait"
+        ]
+        self.assertIn(
+            "textarea[placeholder*='Describe the video'], .base-prompt-input textarea",
+            wait_targets,
+        )
+
     def test_stage2_adapter_child_writes_functional_evidence_for_genspark(
         self,
     ) -> None:

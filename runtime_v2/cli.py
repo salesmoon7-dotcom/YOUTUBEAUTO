@@ -2258,7 +2258,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         pre_actions = [
             {
                 "type": "wait",
-                "target": "textarea[placeholder*='Describe the video']",
+                "target": "textarea[placeholder*='Describe the video'], .base-prompt-input textarea",
             },
             {
                 "type": "eval",
