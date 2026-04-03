@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from runtime_v2.result_router import _ensure_checked_at, write_result_router
 
@@ -70,6 +71,34 @@ class RuntimeV2ResultRouterTests(unittest.TestCase):
             payload = json.loads(output_file.read_text(encoding="utf-8"))
 
         self.assertIsInstance(payload["checked_at"], float)
+
+    def test_write_result_router_retries_winerror_5_on_replace(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            artifact_root.mkdir(parents=True, exist_ok=True)
+            artifact_path = artifact_root / "sample.json"
+            artifact_path.write_text('{"ok": true}', encoding="utf-8")
+            output_file = root / "result.json"
+            replace_calls = {"count": 0}
+            original_replace = Path.replace
+
+            def flaky_replace(self: Path, target: Path) -> Path:
+                if self.suffix == ".tmp" and replace_calls["count"] < 2:
+                    replace_calls["count"] += 1
+                    error = PermissionError("locked")
+                    error.winerror = 5
+                    raise error
+                return original_replace(self, target)
+
+            with patch("runtime_v2.result_router.Path.replace", new=flaky_replace):
+                written = write_result_router(
+                    [artifact_path], artifact_root, output_file
+                )
+                contents = output_file.read_text(encoding="utf-8")
+
+        self.assertEqual(written, output_file)
+        self.assertIn('"path":', contents)
 
 
 if __name__ == "__main__":
