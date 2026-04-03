@@ -685,7 +685,10 @@ def _select_page_target(
             continue
         url = str(item.get("url", ""))
         title = str(item.get("title", ""))
-        if expected_url_substring not in url:
+        if expected_url_substring == CHATGPT_LONGFORM_URL_SUBSTRING:
+            if url.rstrip("/") != expected_url_substring.rstrip("/"):
+                continue
+        elif expected_url_substring not in url:
             continue
         ws_url = str(item.get("webSocketDebuggerUrl", "")).strip()
         if not ws_url:

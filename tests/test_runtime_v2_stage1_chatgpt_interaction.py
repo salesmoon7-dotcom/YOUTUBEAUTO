@@ -97,6 +97,26 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 _ = _select_page_target(9222, CHATGPT_LONGFORM_URL_SUBSTRING)
 
+    def test_select_page_target_accepts_exact_longform_gpt_url(self) -> None:
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_backend.urllib.request.urlopen"
+        ) as urlopen:
+            payload = [
+                {
+                    "type": "page",
+                    "title": CHATGPT_LONGFORM_TITLE_SUBSTRING,
+                    "url": CHATGPT_LONGFORM_URL_SUBSTRING,
+                    "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/test",
+                }
+            ]
+            response = mock.MagicMock()
+            response.read.return_value = json.dumps(payload).encode("utf-8")
+            urlopen.return_value.__enter__.return_value = response
+
+            target = _select_page_target(9222, CHATGPT_LONGFORM_URL_SUBSTRING)
+
+        self.assertEqual(target["url"], CHATGPT_LONGFORM_URL_SUBSTRING)
+
     def test_response_text_from_state_prefers_legacy_blocks(self) -> None:
         response = _response_text_from_state(
             "plain text",
