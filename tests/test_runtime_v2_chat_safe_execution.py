@@ -275,6 +275,72 @@ class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
         self.assertTrue(bool(report["probe_success"]))
         self.assertEqual(report["code"], "OK")
 
+    def test_stage5_probe_continues_when_control_result_requests_retry(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            probe_root = root / "probe"
+            excel_path = root / "topic.xlsx"
+            workbook = Workbook()
+            sheet = cast(Worksheet, workbook.active)
+            sheet.title = "Sheet1"
+            sheet.append(["Topic", "Status"])
+            sheet.append(["Semantic row", "OK"])
+            workbook.save(excel_path)
+            workbook.close()
+            config = RuntimeConfig.from_root(root / "runtime")
+            config.result_router_file.parent.mkdir(parents=True, exist_ok=True)
+            call_counter = {"count": 0}
+
+            def fake_control_loop_once(
+                *, owner: str, config: RuntimeConfig, run_id: str
+            ):
+                _ = (owner, config, run_id)
+                call_counter["count"] += 1
+                if call_counter["count"] == 1:
+                    return {
+                        "status": "failed",
+                        "code": "BROWSER_UNHEALTHY",
+                        "queue_status": "retry",
+                    }
+                render_payload = {
+                    "metadata": {
+                        "run_id": "stage5-retry-closeout",
+                        "workload": "render",
+                        "final_output": True,
+                        "final_artifact_path": str((root / "final.mp4").resolve()),
+                    }
+                }
+                _ = config.result_router_file.write_text(
+                    json.dumps(render_payload, ensure_ascii=True),
+                    encoding="utf-8",
+                )
+                return {"status": "ok", "code": "OK", "queue_status": "completed"}
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_control_loop_once",
+                    side_effect=fake_control_loop_once,
+                ),
+                patch(
+                    "runtime_v2.cli.load_runtime_readiness",
+                    return_value={"ready": True, "code": "OK", "blockers": []},
+                ),
+            ):
+                report = _run_stage5_row1_probe(
+                    owner="runtime_v2",
+                    config=config,
+                    probe_root=probe_root,
+                    run_id="stage5-retry-closeout",
+                    excel_path=str(excel_path),
+                    sheet_name="Sheet1",
+                    row_index=0,
+                    max_control_ticks=3,
+                )
+
+        self.assertTrue(bool(report["probe_success"]))
+        self.assertEqual(report["code"], "OK")
+        self.assertEqual(call_counter["count"], 2)
+
     def test_stage5_probe_child_writes_probe_result_file(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
