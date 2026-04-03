@@ -12,6 +12,7 @@ from runtime_v2.stage1.chatgpt_backend import (
     ChatGPTBackend,
     CHATGPT_LONGFORM_TITLE_SUBSTRING,
     CHATGPT_LONGFORM_URL_SUBSTRING,
+    _prepare_input_script,
     _select_page_target,
 )
 from runtime_v2.stage1.chatgpt_interaction import (
@@ -277,6 +278,20 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
         self.assertTrue(bool(result["ok"]))
         self.assertGreaterEqual(ensure_mock.call_count, 1)
+
+    def test_prepare_input_requires_exact_prompt_match(self) -> None:
+        payload = json.dumps(
+            {
+                "prompt": "정확한 입력 문장",
+                "inputSelectors": ["#prompt-textarea"],
+            },
+            ensure_ascii=False,
+        )
+        script = _prepare_input_script(payload)
+        self.assertIn("finalText === normalize(config.prompt)", script)
+        self.assertIn(
+            "normalize(input.value || '') === normalize(config.prompt)", script
+        )
 
     def test_submit_prompt_marks_send_click_without_transition_as_ambiguous(
         self,
