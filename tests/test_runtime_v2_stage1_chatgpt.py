@@ -193,7 +193,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
 
         self.assertEqual(prompt, "  국민연금 수령 시기를 앞당기면 손해인가 이득인가  ")
 
-    def test_build_live_chatgpt_prompt_requires_scene_blocks_for_semantic_probe(
+    def test_build_live_chatgpt_prompt_ignores_status_snapshot(
         self,
     ) -> None:
         prompt = build_live_chatgpt_prompt(
@@ -203,10 +203,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             }
         )
 
-        self.assertIn("Do not propose bridge topics.", prompt)
-        self.assertIn("[#01]", prompt)
-        self.assertIn("[#02]", prompt)
-        self.assertIn("[Voice]", prompt)
+        self.assertEqual(prompt, "요양 시설 비용 현실과 준비해야 할 금액")
 
     def test_stage1_runner_only_plans_from_existing_topic_spec(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
