@@ -52,8 +52,11 @@ from runtime_v2.debug_log import (
 )
 from runtime_v2.evidence import load_runtime_readiness
 from runtime_v2.gpt_pool_monitor import tick_gpt_status
-from runtime_v2.gui_adapter import build_gui_status_payload
-from runtime_v2.latest_run import write_cli_runtime_snapshot
+from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
+from runtime_v2.latest_run import (
+    update_latest_run_pointers,
+    write_cli_runtime_snapshot,
+)
 from runtime_v2.manager import mark_excel_row_running, seed_excel_row
 from runtime_v2.excel.selector import select_pending_row_indexes
 from runtime_v2.excel.source import read_excel_row
@@ -1664,6 +1667,28 @@ def _run_stage5_row1_probe(
     for _ in range(max_control_ticks):
         result = run_control_loop_once(owner=owner, config=probe_config, run_id=run_id)
         control_results.append(result)
+        current_debug_log = str(
+            result.get("debug_log", debug_log_path(probe_config.debug_log_root, run_id))
+        )
+        _ = write_gui_status(
+            build_gui_status_payload(
+                cast(dict[str, object], result),
+                run_id=run_id,
+                mode="control_loop",
+                stage=str(result.get("workload", result.get("stage", ""))),
+                exit_code=exit_code_from_status(str(result.get("code", "SEEDED_JOB"))),
+            ),
+            probe_config.gui_status_file,
+        )
+        update_latest_run_pointers(
+            probe_config,
+            run_id=run_id,
+            mode="control_loop",
+            status=str(result.get("status", "seeded")),
+            code=str(result.get("code", "SEEDED_JOB")),
+            debug_log=current_debug_log,
+            write_completed=True,
+        )
         if (
             str(result.get("status", "")).strip() == "seeded"
             and seeded_followup_budget > 0
