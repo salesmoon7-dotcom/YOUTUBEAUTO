@@ -12,6 +12,7 @@ from time import time
 
 
 _SUMMARY_HEARTBEAT_SEC = 5.0
+_SUMMARY_REPLACE_RETRY_DELAYS = (0.05, 0.1, 0.2)
 
 
 def _write_summary(out_root: Path, payload: dict[str, object]) -> Path:
@@ -27,7 +28,18 @@ def _write_summary(out_root: Path, payload: dict[str, object]) -> Path:
     ) as handle:
         _ = handle.write(json.dumps(payload, ensure_ascii=True))
         temp_path = Path(handle.name)
-    _ = temp_path.replace(summary_file)
+    last_error: PermissionError | None = None
+    for delay in (*_SUMMARY_REPLACE_RETRY_DELAYS, None):
+        try:
+            _ = temp_path.replace(summary_file)
+            break
+        except PermissionError as exc:
+            last_error = exc
+            if getattr(exc, "winerror", None) != 5 or delay is None:
+                raise
+            sleep(delay)
+    if last_error is not None and not summary_file.exists():
+        raise last_error
     return summary_file
 
 

@@ -51,6 +51,29 @@ class RuntimeV2DetachedCliTests(unittest.TestCase):
         self.assertEqual(summary["kind"], "runtime_v2_cli")
         self.assertEqual(summary["pid"], 1234)
 
+    def test_write_summary_retries_winerror_5(self) -> None:
+        root = Path(tempfile.mkdtemp(dir=r"D:\YOUTUBEAUTO"))
+        payload = {"status": "running"}
+        original_replace = Path.replace
+        calls = {"count": 0}
+
+        def flaky_replace(self: Path, target: Path) -> Path:
+            if self.suffix == ".tmp" and calls["count"] < 2:
+                calls["count"] += 1
+                error = PermissionError("locked")
+                error.winerror = 5
+                raise error
+            return original_replace(self, target)
+
+        with (
+            patch.object(_MODULE, "sleep", return_value=None),
+            patch.object(Path, "replace", new=flaky_replace),
+        ):
+            written = _MODULE._write_summary(root, payload)
+
+        written_payload = json.loads(written.read_text(encoding="utf-8"))
+        self.assertEqual(written_payload["status"], "running")
+
 
 if __name__ == "__main__":
     _ = unittest.main()
