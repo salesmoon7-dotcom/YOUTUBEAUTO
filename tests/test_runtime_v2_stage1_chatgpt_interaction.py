@@ -76,7 +76,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             "https://chatgpt.com/g/g-foo/c/bar",
         )
 
-    def test_select_page_target_accepts_longform_conversation_url_by_title(
+    def test_select_page_target_rejects_longform_conversation_url_by_title(
         self,
     ) -> None:
         with mock.patch(
@@ -94,11 +94,8 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             response.read.return_value = json.dumps(payload).encode("utf-8")
             urlopen.return_value.__enter__.return_value = response
 
-            target = _select_page_target(9222, CHATGPT_LONGFORM_URL_SUBSTRING)
-
-        self.assertEqual(
-            target["url"], "https://chatgpt.com/c/69b1bbcd-52fc-83a4-9cc4-ced9b739cc7f"
-        )
+            with self.assertRaises(RuntimeError):
+                _ = _select_page_target(9222, CHATGPT_LONGFORM_URL_SUBSTRING)
 
     def test_response_text_from_state_prefers_legacy_blocks(self) -> None:
         response = _response_text_from_state(

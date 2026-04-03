@@ -685,10 +685,7 @@ def _select_page_target(
             continue
         url = str(item.get("url", ""))
         title = str(item.get("title", ""))
-        if expected_url_substring not in url and not (
-            url.startswith("https://chatgpt.com/c/")
-            and expected_title_substring.lower() in title.lower()
-        ):
+        if expected_url_substring not in url:
             continue
         ws_url = str(item.get("webSocketDebuggerUrl", "")).strip()
         if not ws_url:
