@@ -1506,11 +1506,12 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         )
 
         self.assertEqual(result["status"], "failed")
-        self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
+        self.assertEqual(result["error_code"], "CHATGPT_BACKEND_UNAVAILABLE")
         timeline = cast(list[dict[str, object]], result["timeline"])
         event_names = [str(item["event"]) for item in timeline]
         self.assertIn("submit_ambiguous", event_names)
         self.assertNotIn("submit_ok", event_names)
+        self.assertNotIn("read_retry", event_names)
 
     def test_generate_gpt_response_text_treats_missing_submit_evidence_as_ambiguous(
         self,
@@ -1542,7 +1543,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         )
 
         self.assertEqual(result["status"], "failed")
-        self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
+        self.assertEqual(result["error_code"], "CHATGPT_BACKEND_UNAVAILABLE")
         submit_info = cast(dict[str, object], result["submit_info"])
         submit_evidence = cast(dict[str, object], submit_info["submit_evidence"])
         self.assertEqual(submit_evidence["classification"], "ambiguous")
@@ -1589,12 +1590,12 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         )
 
         self.assertEqual(result["status"], "failed")
-        self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
+        self.assertEqual(result["error_code"], "CHATGPT_BACKEND_UNAVAILABLE")
         self.assertEqual(relaunch_calls, [])
         timeline = cast(list[dict[str, object]], result["timeline"])
         event_names = [str(item["event"]) for item in timeline]
-        self.assertIn("response_not_started", event_names)
-        self.assertEqual(event_names.count("response_not_started"), 1)
+        self.assertIn("submit_ambiguous", event_names)
+        self.assertNotIn("response_not_started", event_names)
         self.assertNotIn("retry_decision", event_names)
 
     def test_generate_gpt_response_text_reports_submit_backend_failure(self) -> None:
