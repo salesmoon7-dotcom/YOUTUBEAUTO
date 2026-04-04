@@ -269,6 +269,15 @@ def generate_gpt_response_text(
                 saw_streaming = True
                 if not has_send_button:
                     last_activity_ts = time.time()
+            elif has_send_button and _has_structured_stage1_content("", legacy_blocks):
+                if not saw_streaming:
+                    emit("streaming_seen", attempt=attempt, backend="chatgpt_backend")
+                    if isinstance(submit_evidence, dict):
+                        submit_evidence["classification"] = "sent"
+                        submit_evidence["classification_reason"] = (
+                            "legacy_blocks_observed"
+                        )
+                saw_streaming = True
             response_ready = (
                 bool(response_text)
                 and saw_streaming

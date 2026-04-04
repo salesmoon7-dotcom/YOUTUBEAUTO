@@ -1716,8 +1716,10 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         result = generate_gpt_response_text(
             prompt="test prompt",
             port=9222,
+            timeout_sec=1,
             poll_interval_sec=0.01,
             completion_idle_sec=0.01,
+            response_start_timeout_sec=0.1,
             backend=FakeBackend(),
         )
 
@@ -1752,13 +1754,27 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                     "assistant_text": "final json",
                 }
 
-        result = generate_gpt_response_text(
-            prompt="test prompt",
-            port=9222,
-            poll_interval_sec=0.01,
-            completion_idle_sec=0.01,
-            backend=FakeBackend(),
-        )
+        with (
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_interaction.time.sleep", return_value=None
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_interaction.time.time",
+                side_effect=itertools.chain(
+                    [0.0, 0.0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 1.1],
+                    itertools.repeat(1.1),
+                ),
+            ),
+        ):
+            result = generate_gpt_response_text(
+                prompt="test prompt",
+                port=9222,
+                timeout_sec=1,
+                poll_interval_sec=0.01,
+                completion_idle_sec=0.01,
+                response_start_timeout_sec=0.02,
+                backend=FakeBackend(),
+            )
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["response_text"], "final json")
@@ -1836,6 +1852,57 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
+
+    def test_generate_gpt_response_text_accepts_legacy_blocks_without_stop_gate(
+        self,
+    ) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def __init__(self) -> None:
+                self.read_calls = 0
+
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                return {
+                    "ok": True,
+                    "sendClicked": True,
+                    "sendTestId": "send-button",
+                    "submit_evidence": {
+                        "classification": "ambiguous",
+                        "classification_reason": "send_click_unconfirmed",
+                        "retry_safe_decision": False,
+                    },
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                self.read_calls += 1
+                if self.read_calls == 1:
+                    return {
+                        "has_stop": False,
+                        "has_send_button": False,
+                        "assistant_block_count": 0,
+                        "assistant_text": "",
+                        "legacy_blocks": [],
+                    }
+                return {
+                    "has_stop": False,
+                    "has_send_button": True,
+                    "assistant_block_count": 1,
+                    "assistant_text": "",
+                    "legacy_blocks": [
+                        {"label": "[Voice]", "body": "narration"},
+                        {"label": "[#01]", "body": "scene body"},
+                    ],
+                }
+
+        result = generate_gpt_response_text(
+            prompt="test prompt",
+            port=9222,
+            poll_interval_sec=0.01,
+            completion_idle_sec=0.01,
+            backend=FakeBackend(),
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("[Voice]\nnarration", str(result["response_text"]))
 
     def test_generate_gpt_response_text_marks_ambiguous_submit_boundary(self) -> None:
         class FakeBackend(ChatGPTBackend):
