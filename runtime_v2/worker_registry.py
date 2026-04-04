@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
+from time import sleep
 from time import time
+
+
+_WORKER_REGISTRY_REPLACE_RETRY_DELAYS = (0.05, 0.1, 0.2)
 
 
 def load_worker_registry(path: Path) -> dict[str, dict[str, object]]:
@@ -32,7 +36,18 @@ def write_worker_registry(path: Path, payload: dict[str, dict[str, object]]) -> 
     ) as handle:
         handle.write(json.dumps(payload, ensure_ascii=True, indent=2))
         temp_path = Path(handle.name)
-    temp_path.replace(path)
+    last_error: PermissionError | None = None
+    for delay in (*_WORKER_REGISTRY_REPLACE_RETRY_DELAYS, None):
+        try:
+            temp_path.replace(path)
+            break
+        except PermissionError as exc:
+            last_error = exc
+            if getattr(exc, "winerror", None) != 5 or delay is None:
+                raise
+            sleep(delay)
+    if last_error is not None and not path.exists():
+        raise last_error
     return path
 
 
