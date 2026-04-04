@@ -1875,6 +1875,55 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertNotIn("submit_ok", event_names)
         self.assertNotIn("read_retry", event_names)
 
+    def test_generate_gpt_response_text_allows_probe_after_send_click_unconfirmed(
+        self,
+    ) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def __init__(self) -> None:
+                self.read_calls = 0
+
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                return {
+                    "ok": True,
+                    "sendClicked": True,
+                    "sendTestId": "send-button",
+                    "submit_evidence": {
+                        "classification": "ambiguous",
+                        "classification_reason": "send_click_unconfirmed",
+                        "retry_safe_decision": False,
+                    },
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                self.read_calls += 1
+                if self.read_calls == 1:
+                    return {
+                        "has_stop": True,
+                        "has_send_button": False,
+                        "assistant_block_count": 1,
+                        "assistant_text": "draft",
+                    }
+                return {
+                    "has_stop": False,
+                    "has_send_button": True,
+                    "assistant_block_count": 1,
+                    "assistant_text": "final json",
+                }
+
+        result = generate_gpt_response_text(
+            prompt="test prompt",
+            port=9222,
+            poll_interval_sec=0.01,
+            completion_idle_sec=0.01,
+            backend=FakeBackend(),
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["response_text"], "final json")
+        submit_evidence = cast(dict[str, object], result["submit_evidence"])
+        self.assertEqual(submit_evidence["classification"], "sent")
+        self.assertEqual(submit_evidence["classification_reason"], "streaming_observed")
+
     def test_generate_gpt_response_text_treats_missing_submit_evidence_as_ambiguous(
         self,
     ) -> None:
@@ -1905,7 +1954,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         )
 
         self.assertEqual(result["status"], "failed")
-        self.assertEqual(result["error_code"], "CHATGPT_BACKEND_UNAVAILABLE")
+        self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
         submit_info = cast(dict[str, object], result["submit_info"])
         submit_evidence = cast(dict[str, object], submit_info["submit_evidence"])
         self.assertEqual(submit_evidence["classification"], "ambiguous")

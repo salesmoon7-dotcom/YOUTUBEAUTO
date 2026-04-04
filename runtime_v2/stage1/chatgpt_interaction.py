@@ -157,7 +157,10 @@ def generate_gpt_response_text(
             attempt=attempt,
             backend="chatgpt_backend",
         )
-        if submit_classification != "sent":
+        allow_submit_probe = _should_probe_after_ambiguous_submit(
+            submit_info, submit_evidence
+        )
+        if submit_classification != "sent" and not allow_submit_probe:
             failed = _interaction_failure(
                 failure_stage="submit",
                 error_code="CHATGPT_BACKEND_UNAVAILABLE",
@@ -588,6 +591,17 @@ def _decode_submit_success(
         "classification_reason": "submit_evidence_missing",
         "retry_safe_decision": False,
     }
+
+
+def _should_probe_after_ambiguous_submit(
+    submit_info: dict[str, object], submit_evidence: dict[str, object]
+) -> bool:
+    if str(submit_evidence.get("classification", "")).strip() == "sent":
+        return True
+    if not bool(submit_info.get("sendClicked", False)):
+        return False
+    reason = str(submit_evidence.get("classification_reason", "")).strip()
+    return reason in {"send_click_unconfirmed", "submit_evidence_missing"}
 
 
 def _attempt_key(attempt: int) -> str:
