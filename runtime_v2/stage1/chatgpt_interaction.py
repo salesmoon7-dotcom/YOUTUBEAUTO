@@ -62,6 +62,14 @@ def generate_gpt_response_text(
     relaunch_browser: Callable[[], None] | None = None,
 ) -> dict[str, object]:
     probe = _default_session_probe if session_probe is None else session_probe
+    deadline_ts = time.time() + timeout_sec
+
+    def _raw_cdp_timeout(default_timeout: float) -> float:
+        remaining = deadline_ts - time.time()
+        if remaining <= 0:
+            return 1.0
+        return min(default_timeout, max(1.0, remaining))
+
     timeline: list[dict[str, object]] = []
     sequence = 0
 
@@ -92,6 +100,7 @@ def generate_gpt_response_text(
             response_selectors=CHATGPT_RESPONSE_SELECTORS,
             expected_url_substring=expected_url_substring,
             command_runner=command_runner,
+            raw_cdp_timeout_resolver=_raw_cdp_timeout,
         )
         if backend is None
         else backend

@@ -43,6 +43,7 @@ class AgentBrowserCdpBackend:
         expected_url_substring: str = CHATGPT_LONGFORM_URL_SUBSTRING,
         expected_title_substring: str = CHATGPT_LONGFORM_TITLE_SUBSTRING,
         command_runner: Callable[[list[str], int], str] | None = None,
+        raw_cdp_timeout_resolver: Callable[[float], float] | None = None,
     ) -> None:
         self._port = port
         self._input_selectors = input_selectors
@@ -52,6 +53,11 @@ class AgentBrowserCdpBackend:
         self._expected_url_substring = expected_url_substring
         self._expected_title_substring = expected_title_substring
         self._runner = _default_runner if command_runner is None else command_runner
+        self._raw_cdp_timeout = (
+            (lambda default: default)
+            if raw_cdp_timeout_resolver is None
+            else raw_cdp_timeout_resolver
+        )
         self._max_retries = 2
         self._fallback_events: list[str] = []
         self._last_selected_target: dict[str, str] = {}
@@ -133,6 +139,7 @@ class AgentBrowserCdpBackend:
                     _run_raw_cdp_eval(
                         raw_target["webSocketDebuggerUrl"],
                         _prepare_input_script(payload),
+                        timeout_sec=self._raw_cdp_timeout(30.0),
                     )
                 )
                 self._record_fallback("submit_raw_cdp_fallback")
@@ -446,7 +453,11 @@ class AgentBrowserCdpBackend:
             raw_target = cached_target
             self._record_fallback("eval_cached_target_fallback")
         self._record_fallback("eval_raw_cdp_fallback")
-        return _run_raw_cdp_eval(raw_target["webSocketDebuggerUrl"], script)
+        return _run_raw_cdp_eval(
+            raw_target["webSocketDebuggerUrl"],
+            script,
+            timeout_sec=self._raw_cdp_timeout(30.0),
+        )
 
     def _ensure_chatgpt_target_selected(self) -> None:
         self._ensure_custom_gpt_page()
@@ -479,11 +490,13 @@ class AgentBrowserCdpBackend:
             generic["webSocketDebuggerUrl"],
             "Page.navigate",
             {"url": CHATGPT_LONGFORM_URL},
+            timeout_sec=self._raw_cdp_timeout(30.0),
         )
         time.sleep(2.0)
         try:
             _wait_for_chatgpt_prompt_ready(
-                generic["webSocketDebuggerUrl"], timeout_sec=30.0
+                generic["webSocketDebuggerUrl"],
+                timeout_sec=self._raw_cdp_timeout(30.0),
             )
         except RuntimeError:
             self._record_fallback("custom_page_prompt_ready_timeout")
@@ -603,10 +616,12 @@ def _wait_for_chatgpt_prompt_ready(
     )
     while time.time() < deadline:
         try:
+            remaining = max(1.0, deadline - time.time())
             payload = _run_raw_cdp_method(
                 websocket_url,
                 "Runtime.evaluate",
                 {"expression": expression, "returnByValue": True},
+                timeout_sec=remaining,
             )
             result = cast(dict[str, object], payload.get("result", {}))
             if bool(result.get("value", False)):
@@ -886,11 +901,18 @@ def _select_generic_chatgpt_target(port: int) -> dict[str, str] | None:
 
 
 def _run_raw_cdp_method(
-    ws_url: str, method: str, params: dict[str, object]
+    ws_url: str,
+    method: str,
+    params: dict[str, object],
+    *,
+    timeout_sec: float = 30.0,
 ) -> dict[str, object]:
     try:
-        ws = websocket.create_connection(ws_url, timeout=30, suppress_origin=True)
+        ws = websocket.create_connection(
+            ws_url, timeout=timeout_sec, suppress_origin=True
+        )
         try:
+            deadline_ts = time.time() + timeout_sec
             ws.send(
                 json.dumps(
                     {
@@ -902,6 +924,8 @@ def _run_raw_cdp_method(
                 )
             )
             while True:
+                if time.time() >= deadline_ts:
+                    raise RuntimeError("CDP_METHOD_TIMEOUT")
                 response = json.loads(ws.recv())
                 if response.get("id") != 1:
                     continue
@@ -919,11 +943,12 @@ def _run_raw_cdp_method(
         raise RuntimeError(str(exc)) from exc
 
 
-def _run_raw_cdp_eval(ws_url: str, script: str) -> str:
+def _run_raw_cdp_eval(ws_url: str, script: str, *, timeout_sec: float = 30.0) -> str:
     result = _run_raw_cdp_method(
         ws_url,
         "Runtime.evaluate",
         {"expression": script, "returnByValue": True},
+        timeout_sec=timeout_sec,
     )
     exception = result.get("exceptionDetails")
     if exception is not None:

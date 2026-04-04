@@ -183,6 +183,42 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             generic["webSocketDebuggerUrl"], timeout_sec=30.0
         )
 
+    def test_ensure_custom_gpt_page_uses_resolved_timeout_budget(self) -> None:
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["#composer-submit-button"],
+            stop_selectors=["button[data-testid='stop-button']"],
+            response_selectors=["div[data-message-author-role='assistant']"],
+            raw_cdp_timeout_resolver=lambda default: 7.0,
+        )
+        generic = {
+            "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/test",
+            "url": "https://chatgpt.com/",
+            "title": "ChatGPT",
+        }
+
+        with (
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._select_page_target",
+                side_effect=RuntimeError("CDP_TARGET_NOT_FOUND"),
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._select_generic_chatgpt_target",
+                return_value=generic,
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_method"
+            ) as nav_mock,
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._wait_for_chatgpt_prompt_ready"
+            ) as wait_mock,
+        ):
+            backend._ensure_custom_gpt_page()
+
+        self.assertEqual(nav_mock.call_args.kwargs["timeout_sec"], 7.0)
+        self.assertEqual(wait_mock.call_args.kwargs["timeout_sec"], 7.0)
+
     def test_wait_for_send_state_rechecks_prompt_when_send_missing(self) -> None:
         backend = AgentBrowserCdpBackend(
             port=9222,
@@ -1298,6 +1334,59 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                     {"url": "https://chatgpt.com"},
                 )
 
+    def test_raw_cdp_method_respects_deadline_during_event_stream(self) -> None:
+        from runtime_v2.stage1 import chatgpt_backend as backend_module
+
+        class _FakeSocket:
+            def send(self, payload: str) -> None:
+                _ = payload
+
+            def recv(self) -> str:
+                return json.dumps({"method": "Runtime.consoleAPICalled"})
+
+            def close(self) -> None:
+                return None
+
+        with (
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend.websocket.create_connection",
+                return_value=_FakeSocket(),
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend.time.time",
+                side_effect=[100.0, 100.0, 100.5, 101.5],
+            ),
+        ):
+            with self.assertRaises(RuntimeError) as exc_info:
+                backend_module._run_raw_cdp_method(
+                    "ws://127.0.0.1/devtools/page/test",
+                    "Page.navigate",
+                    {"url": "https://chatgpt.com"},
+                    timeout_sec=1.0,
+                )
+
+        self.assertEqual(str(exc_info.exception), "CDP_METHOD_TIMEOUT")
+
+    def test_wait_for_chatgpt_prompt_ready_passes_remaining_budget_to_cdp(self) -> None:
+        from runtime_v2.stage1 import chatgpt_backend as backend_module
+
+        with (
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_method",
+                return_value={"result": {"value": True}},
+            ) as method_mock,
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend.time.time",
+                side_effect=[100.0, 100.0, 101.5],
+            ),
+        ):
+            backend_module._wait_for_chatgpt_prompt_ready(
+                "ws://127.0.0.1/devtools/page/test",
+                timeout_sec=1.5,
+            )
+
+        self.assertEqual(method_mock.call_args.kwargs["timeout_sec"], 1.0)
+
     def test_run_raw_cdp_eval_preserves_exception_details(self) -> None:
         from runtime_v2.stage1 import chatgpt_backend as backend_module
 
@@ -1339,10 +1428,11 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                 return f"[1] Omnibox Popup - chrome://newtab\n[2] {CHATGPT_LONGFORM_TITLE_SUBSTRING} - https://{CHATGPT_LONGFORM_URL_SUBSTRING}"
             return "ok"
 
-        def fake_raw_eval(ws_url: str, script: str) -> str:
+        def fake_raw_eval(ws_url: str, script: str, **kwargs) -> str:
             nonlocal raw_eval_calls
             _ = ws_url
             _ = script
+            _ = kwargs
             raw_eval_calls += 1
             if raw_eval_calls == 1:
                 return json.dumps(
@@ -1350,6 +1440,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                         {
                             "ok": True,
                             "inputSelector": "#prompt-textarea",
+                            "inputSuccess": True,
                             "sendClicked": True,
                         }
                     )
@@ -1403,6 +1494,70 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertIn(
             "eval_raw_cdp_fallback", cast(list[object], result["backend_fallbacks"])
         )
+
+    def test_backend_raw_cdp_fallback_uses_resolved_timeout_budget(self) -> None:
+        def fake_runner(command: list[str], timeout_sec: int) -> str:
+            if command[-2:] == ["tab", "2"]:
+                return "ok"
+            if command[-2:] == ["tab", "list"]:
+                return (
+                    f"[1] Omnibox Popup - chrome://newtab\n"
+                    f"[2] {CHATGPT_LONGFORM_TITLE_SUBSTRING} - https://{CHATGPT_LONGFORM_URL_SUBSTRING}"
+                )
+            if command[-2] == "eval":
+                return json.dumps(
+                    {
+                        "ok": False,
+                        "error": "NO_SEND",
+                        "noSendEvidence": {
+                            "retry_safe": True,
+                            "send_found": False,
+                            "in_flight_marker": False,
+                        },
+                    }
+                )
+            return "ok"
+
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["button[data-testid='send-button']"],
+            stop_selectors=["button[aria-label='Stop streaming']"],
+            response_selectors=["[data-message-author-role='assistant']"],
+            command_runner=fake_runner,
+            raw_cdp_timeout_resolver=lambda default: 7.0,
+        )
+
+        with (
+            mock.patch.object(
+                backend,
+                "_wait_for_input_ready",
+                return_value={"ready": True},
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._select_page_target",
+                return_value={
+                    "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/abc",
+                    "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}",
+                },
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_eval",
+                return_value=json.dumps(
+                    json.dumps(
+                        {
+                            "ok": True,
+                            "inputSelector": "#prompt-textarea",
+                            "sendClicked": True,
+                        }
+                    )
+                ),
+            ) as raw_eval,
+            mock.patch("runtime_v2.stage1.chatgpt_backend.time.sleep"),
+        ):
+            _ = backend.submit_prompt("hello")
+
+        self.assertEqual(raw_eval.call_args.kwargs["timeout_sec"], 7.0)
 
     def test_agent_browser_backend_reuses_cached_target_when_read_target_disappears(
         self,

@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 from datetime import datetime, timezone
 from time import sleep
+from time import time
 from typing import cast
 
 from runtime_v2.browser.manager import open_browser_for_login
@@ -19,10 +20,25 @@ from runtime_v2.stage1.parsed_payload import (
 )
 from runtime_v2.stage1.chatgpt_interaction import generate_gpt_response_text
 from runtime_v2.stage1.chatgpt_backend import chatgpt_context_ready
+from runtime_v2.stage1.chatgpt_backend import _default_runner
 from runtime_v2.stage1.chatgpt_backend import reset_chatgpt_context
 from runtime_v2.stage1.result_contract import stage1_result_payload
 from runtime_v2.stage2.router import route_video_plan
 from runtime_v2.workers.job_runtime import finalize_worker_result, write_json_atomic
+
+
+_LIVE_CAPTURE_TIMEOUT_SEC = 300
+_LIVE_CAPTURE_RESPONSE_START_TIMEOUT_SEC = 30.0
+
+
+def _bounded_capture_command_runner(deadline_ts: float):
+    def _run(command: list[str], timeout_sec: int) -> str:
+        remaining = int(deadline_ts - time())
+        if remaining <= 0:
+            raise RuntimeError("capture_budget_exhausted")
+        return _default_runner(command, min(timeout_sec, remaining))
+
+    return _run
 
 
 def _scene_count(topic_spec: dict[str, object]) -> int:
@@ -128,11 +144,13 @@ def attach_gpt_response_text_from_browser_evidence(
             except RuntimeError as exc:
                 reset_error = str(exc)
             prompt = build_live_chatgpt_prompt(topic_spec)
+            deadline_ts = time() + _LIVE_CAPTURE_TIMEOUT_SEC
             result = generate_gpt_response_text(
                 prompt=prompt,
                 port=raw_port,
-                timeout_sec=300,
-                response_start_timeout_sec=30.0,
+                timeout_sec=_LIVE_CAPTURE_TIMEOUT_SEC,
+                response_start_timeout_sec=_LIVE_CAPTURE_RESPONSE_START_TIMEOUT_SEC,
+                command_runner=_bounded_capture_command_runner(deadline_ts),
                 relaunch_browser=lambda: _relaunch_chatgpt_browser(),
             )
             enriched = dict(topic_spec)

@@ -907,6 +907,55 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             generate_mock.call_args.kwargs["response_start_timeout_sec"], 30.0
         )
 
+    def test_live_browser_capture_clamps_command_runner_to_remaining_budget(
+        self,
+    ) -> None:
+        topic_spec = _topic_spec(topic="Money flow")
+        runner_calls: list[int] = []
+
+        def fake_generate(*, command_runner=None, **kwargs):
+            assert command_runner is not None
+            _ = kwargs
+            runner_calls.append(command_runner(["agent-browser", "eval"], 60))
+            return {
+                "status": "failed",
+                "error_code": "CHATGPT_RESPONSE_TIMEOUT",
+                "failure_stage": "read",
+                "details": {},
+                "submit_info": {},
+                "final_state": {},
+                "timeline": [],
+            }
+
+        with (
+            patch(
+                "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                side_effect=fake_generate,
+            ),
+            patch(
+                "runtime_v2.stage1.chatgpt_runner._default_runner",
+                side_effect=lambda command, timeout_sec: timeout_sec,
+            ),
+            patch(
+                "runtime_v2.stage1.chatgpt_runner.reset_chatgpt_context",
+                return_value={"status": "ok", "port": 9222},
+            ),
+            patch(
+                "runtime_v2.stage1.chatgpt_runner._LIVE_CAPTURE_TIMEOUT_SEC",
+                5,
+            ),
+            patch(
+                "runtime_v2.stage1.chatgpt_runner.time",
+                side_effect=[100.0, 100.0, 105.0],
+            ),
+        ):
+            _ = attach_gpt_response_text_from_browser_evidence(
+                topic_spec,
+                {"service": "chatgpt", "port": 9222},
+            )
+
+        self.assertEqual(runner_calls, [5])
+
     def test_stage1_runner_uses_legacy_longform_url_for_live_capture(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
