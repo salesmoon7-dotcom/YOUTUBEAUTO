@@ -12,7 +12,7 @@ from time import time
 
 
 _SUMMARY_HEARTBEAT_SEC = 5.0
-_SUMMARY_REPLACE_RETRY_DELAYS = (0.05, 0.1, 0.2)
+_SUMMARY_REPLACE_RETRY_DELAYS = (0.05, 0.1, 0.2, 0.5, 1.0, 2.0)
 
 
 def _write_summary(out_root: Path, payload: dict[str, object]) -> Path:
