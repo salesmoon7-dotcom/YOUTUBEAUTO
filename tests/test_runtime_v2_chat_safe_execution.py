@@ -17,6 +17,7 @@ from runtime_v2.cli import (
     _build_runtime_config,
     _copy_legacy_sessions,
     _run_stage5_row1_probe,
+    _write_probe_result,
     exit_code_from_readiness,
     exit_code_from_status,
     main,
@@ -151,6 +152,61 @@ class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
         self.assertEqual(payload["exit_code"], 0)
         self.assertEqual(payload["status"], "ok")
         self.assertEqual(payload["out_root"], str(out_root))
+
+    def test_write_detached_summary_retries_winerror_5(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            original_replace = Path.replace
+            calls = {"count": 0}
+
+            def flaky_replace(self: Path, target: Path) -> Path:
+                if self.suffix == ".tmp" and calls["count"] < 2:
+                    calls["count"] += 1
+                    error = PermissionError("locked")
+                    error.winerror = 5
+                    raise error
+                return original_replace(self, target)
+
+            with (
+                patch("runtime_v2.cli.sleep", return_value=None),
+                patch.object(Path, "replace", new=flaky_replace),
+            ):
+                summary_file = _write_detached_summary(
+                    out_root=root / "probe",
+                    kind="pytest",
+                    target="tests/test_runtime_v2_chat_safe_execution.py",
+                    exit_code=0,
+                    payload={"status": "ok"},
+                )
+
+            payload = json.loads(summary_file.read_text(encoding="utf-8"))
+        self.assertEqual(payload["status"], "ok")
+
+    def test_stage5_probe_result_write_retries_winerror_5(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            original_replace = Path.replace
+            calls = {"count": 0}
+
+            def flaky_replace(self: Path, target: Path) -> Path:
+                if self.suffix == ".tmp" and calls["count"] < 2:
+                    calls["count"] += 1
+                    error = PermissionError("locked")
+                    error.winerror = 5
+                    raise error
+                return original_replace(self, target)
+
+            with (
+                patch("runtime_v2.cli.sleep", return_value=None),
+                patch.object(Path, "replace", new=flaky_replace),
+            ):
+                result_path = _write_probe_result(
+                    root / "probe",
+                    {"status": "failed", "code": "BATCH_TIMEOUT"},
+                )
+
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["code"], "BATCH_TIMEOUT")
 
     def test_spawn_detached_probe_writes_spawn_summary(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

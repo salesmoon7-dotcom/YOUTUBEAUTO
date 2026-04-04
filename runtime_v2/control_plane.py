@@ -1324,16 +1324,40 @@ def _run_chatgpt_worker(
     workspace = artifact_root / job.workload / job.job_id
     workspace.mkdir(parents=True, exist_ok=True)
     topic_spec = _mapping_from_obj(job.payload.get("topic_spec", {})) or {}
-    return run_stage1_chatgpt_job(
-        topic_spec,
-        workspace,
-        debug_log=str(
-            debug_log_path(
-                debug_log_root,
-                str(job.payload.get("run_id", job.job_id)),
-            )
-        ),
+    run_id = str(job.payload.get("run_id", job.job_id))
+    worker_debug_log = debug_log_path(debug_log_root, run_id)
+    _ = append_debug_event(
+        worker_debug_log,
+        event="chatgpt_worker_enter",
+        payload={"job_id": job.job_id, "row_ref": str(job.payload.get("row_ref", ""))},
     )
+    try:
+        result = run_stage1_chatgpt_job(
+            topic_spec,
+            workspace,
+            debug_log=str(worker_debug_log),
+        )
+    except Exception as exc:
+        _ = append_debug_event(
+            worker_debug_log,
+            event="chatgpt_worker_exception",
+            payload={
+                "job_id": job.job_id,
+                "error": str(exc),
+                "type": type(exc).__name__,
+            },
+        )
+        raise
+    _ = append_debug_event(
+        worker_debug_log,
+        event="chatgpt_worker_exit",
+        payload={
+            "job_id": job.job_id,
+            "status": str(result.get("status", "")),
+            "error_code": str(result.get("error_code", "")),
+        },
+    )
+    return result
 
 
 def _worker_dispatch_table(

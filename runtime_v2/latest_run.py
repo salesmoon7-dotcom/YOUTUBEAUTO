@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
+from time import sleep
 from time import time
 from typing import cast
 
@@ -50,7 +51,18 @@ def write_latest_run_pointer(payload: dict[str, object], output_file: Path) -> P
     ) as handle:
         _ = handle.write(json.dumps(payload, ensure_ascii=True))
         temp_path = Path(handle.name)
-    _ = temp_path.replace(output_file)
+    last_error: PermissionError | None = None
+    for delay in (0.05, 0.1, 0.2, None):
+        try:
+            _ = temp_path.replace(output_file)
+            break
+        except PermissionError as exc:
+            last_error = exc
+            if getattr(exc, "winerror", None) != 5 or delay is None:
+                raise
+            sleep(delay)
+    if last_error is not None and not output_file.exists():
+        raise last_error
     return output_file
 
 

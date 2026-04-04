@@ -37,6 +37,27 @@ def _latest_run_config(root: Path) -> RuntimeConfig:
 
 
 class RuntimeV2LatestRunTests(unittest.TestCase):
+    def test_write_latest_run_pointer_retries_winerror_5(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            pointer_file = root / "latest_active_run.json"
+            original_replace = Path.replace
+            calls = {"count": 0}
+
+            def flaky_replace(self: Path, target: Path) -> Path:
+                if self.suffix == ".tmp" and calls["count"] < 2:
+                    calls["count"] += 1
+                    error = PermissionError("locked")
+                    error.winerror = 5
+                    raise error
+                return original_replace(self, target)
+
+            with patch.object(Path, "replace", new=flaky_replace):
+                written = write_latest_run_pointer({"run_id": "run-1"}, pointer_file)
+
+            payload = json.loads(written.read_text(encoding="utf-8"))
+        self.assertEqual(payload["run_id"], "run-1")
+
     def test_runtime_writer_modules_use_mode_specific_latest_run_apis(self) -> None:
         root = Path(r"D:\YOUTUBEAUTO")
         expectations = {

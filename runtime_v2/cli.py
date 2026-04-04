@@ -1396,7 +1396,18 @@ def _write_detached_summary(
             json.dumps(_json_safe_mapping(summary_payload), ensure_ascii=True)
         )
         temp_path = Path(handle.name)
-    _ = temp_path.replace(summary_file)
+    last_error: PermissionError | None = None
+    for delay in (0.05, 0.1, 0.2, None):
+        try:
+            _ = temp_path.replace(summary_file)
+            break
+        except PermissionError as exc:
+            last_error = exc
+            if getattr(exc, "winerror", None) != 5 or delay is None:
+                raise
+            sleep(delay)
+    if last_error is not None and not summary_file.exists():
+        raise last_error
     return summary_file
 
 
@@ -3391,7 +3402,18 @@ def _write_probe_result(probe_root: Path, payload: dict[str, object]) -> Path:
     ) as handle:
         _ = handle.write(json.dumps(payload_with_contract, ensure_ascii=True))
         temp_path = Path(handle.name)
-    _ = temp_path.replace(output_file)
+    last_error: PermissionError | None = None
+    for delay in (0.05, 0.1, 0.2, None):
+        try:
+            _ = temp_path.replace(output_file)
+            break
+        except PermissionError as exc:
+            last_error = exc
+            if getattr(exc, "winerror", None) != 5 or delay is None:
+                raise
+            sleep(delay)
+    if last_error is not None and not output_file.exists():
+        raise last_error
     return output_file
 
 

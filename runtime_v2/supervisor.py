@@ -33,6 +33,7 @@ from runtime_v2.gpt.floor import (
     ok_count,
     write_gpt_status,
 )
+from runtime_v2.debug_log import append_debug_event, debug_log_path
 from runtime_v2.worker_registry import stalled_workloads
 
 
@@ -403,9 +404,27 @@ def run_once(
             now_ts=time(),
             timeout_sec=runtime_config.progress_stall_timeout_sec,
         )
+        _ = append_debug_event(
+            debug_log_path(runtime_config.debug_log_root, run_id),
+            event="run_gated_preflight_ok",
+            payload={
+                "run_id": run_id,
+                "workload": workload,
+                "gpt_ok_count": floor_count,
+            },
+        )
         if worker_runner is None:
             return runtime_result
         if gpu_workload is not None and store is not None and lease is not None:
+            _ = append_debug_event(
+                debug_log_path(runtime_config.debug_log_root, run_id),
+                event="run_gated_worker_dispatch",
+                payload={
+                    "run_id": run_id,
+                    "workload": workload,
+                    "lease_key": lease_key,
+                },
+            )
             worker_result, lease = _run_worker_with_lease_heartbeat(
                 store,
                 lease_key,
@@ -416,6 +435,15 @@ def run_once(
                 worker_runner=worker_runner,
             )
         else:
+            _ = append_debug_event(
+                debug_log_path(runtime_config.debug_log_root, run_id),
+                event="run_gated_worker_dispatch",
+                payload={
+                    "run_id": run_id,
+                    "workload": workload,
+                    "lease_key": lease_key,
+                },
+            )
             worker_result = worker_runner()
         runtime_result["worker_result"] = worker_result
         if str(worker_result.get("error_code", "")) == "gpu_lease_renew_failed":
