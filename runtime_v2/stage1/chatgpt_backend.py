@@ -633,7 +633,7 @@ def _prepare_input_script(payload: str) -> str:
         "if (typeof input.click === 'function') input.click();"
         "input.focus();"
         "let inputSuccess = false;"
-        "const normalize = (value) => String(value || '').replace(/\r\n/g, '\n').trim();"
+        "const normalize = (value) => String(value || '').replace(/\\r\\n/g, '\\n').trim();"
         "const isProseMirror = !!(input.classList && (input.classList.contains('ProseMirror') || input.classList.contains('tiptap')));"
         "if (isProseMirror) {"
         "  const sel = window.getSelection(); const range = document.createRange(); range.selectNodeContents(input); sel.removeAllRanges(); sel.addRange(range);"
