@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import itertools
 import subprocess
 import unittest
 from unittest import mock
@@ -12,6 +13,7 @@ from runtime_v2.stage1.chatgpt_backend import (
     ChatGPTBackend,
     CHATGPT_LONGFORM_TITLE_SUBSTRING,
     CHATGPT_LONGFORM_URL_SUBSTRING,
+    _click_send_script,
     _prepare_input_script,
     _select_page_target,
 )
@@ -383,7 +385,10 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             ),
             mock.patch(
                 "runtime_v2.stage1.chatgpt_backend.time.time",
-                side_effect=[0.0, 0.0, 0.5, 1.0, 1.5, 1.8, 2.1],
+                side_effect=itertools.chain(
+                    [0.0, 0.0, 0.5, 1.0, 1.5, 1.8, 2.1],
+                    itertools.repeat(2.1),
+                ),
             ),
         ):
             result = backend._wait_for_send_state("payload")
@@ -478,7 +483,10 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             ),
             mock.patch(
                 "runtime_v2.stage1.chatgpt_backend.time.time",
-                side_effect=[0.0, 0.0, 0.5, 1.0, 1.5, 1.8, 2.1],
+                side_effect=itertools.chain(
+                    [0.0, 0.0, 0.5, 1.0, 1.5, 1.8, 2.1],
+                    itertools.repeat(2.1),
+                ),
             ),
         ):
             result = backend._wait_for_send_state("payload")
@@ -1048,6 +1056,21 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(submit_evidence["attempt_key"], "attempt-1")
         self.assertTrue(bool(submit_evidence["in_flight_observed"]))
         self.assertTrue(bool(submit_evidence["terminal_success_observed"]))
+
+    def test_click_send_script_uses_enter_key_on_input(self) -> None:
+        payload = json.dumps(
+            {
+                "prompt": "hello",
+                "inputSelectors": ["#prompt-textarea"],
+            },
+            ensure_ascii=True,
+        )
+
+        script = _click_send_script(payload)
+
+        self.assertIn("key:'Enter'", script)
+        self.assertIn("sendTestId:'enter-key'", script)
+        self.assertNotIn("send.click()", script)
 
     def test_submit_evidence_is_ambiguous_without_terminal_success_signal(self) -> None:
         backend = AgentBrowserCdpBackend(

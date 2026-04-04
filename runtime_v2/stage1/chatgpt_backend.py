@@ -21,7 +21,7 @@ CHATGPT_LONGFORM_URL_SUBSTRING = (
 )
 CHATGPT_LONGFORM_TITLE_SUBSTRING = "롱폼"
 CHATGPT_LONGFORM_URL = f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}"
-_SEND_ACK_TIMEOUT_SEC = 2.0
+_SEND_ACK_TIMEOUT_SEC = 5.0
 _SEND_ACK_POLL_SEC = 0.2
 
 
@@ -696,13 +696,14 @@ def _click_send_script(payload: str) -> str:
     return (
         "(() => {"
         f"const config = {payload};"
-        "const sendSelectors = config.sendSelectors || [];"
-        "let send = null;"
-        "for (const selector of sendSelectors) { const candidate = document.querySelector(selector); if (!candidate) continue; if (candidate.getAttribute && candidate.getAttribute('data-testid') === 'stop-button') continue; send = candidate; break; }"
-        "if (!send) return JSON.stringify({ok:false,error:'NO_SEND'});"
-        "['pointerdown','mousedown','pointerup','mouseup','click'].forEach(type => send.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,view:window})));"
-        "if (typeof send.click === 'function') send.click();"
-        "return JSON.stringify({ok:true,sendClicked:true,sendTestId: send.getAttribute ? (send.getAttribute('data-testid') || '') : '', sendAriaLabel: send.getAttribute ? (send.getAttribute('aria-label') || '') : ''});"
+        "const selectors = config.inputSelectors || [];"
+        "let input = null;"
+        "for (const selector of selectors) { try { const candidate = document.querySelector(selector); if (!candidate) continue; const visible = !!candidate && !!candidate.isConnected && (((candidate.getClientRects && candidate.getClientRects().length > 0)) || candidate.offsetParent !== null); if (visible) { input = candidate; break; } } catch (_) {} }"
+        "if (!input) { const chatInput = document.querySelector('[data-testid=\"chat-input\"]'); if (chatInput) { const editor = chatInput.querySelector('.ProseMirror, [contenteditable=\"true\"]'); const visible = !!editor && !!editor.isConnected && (((editor.getClientRects && editor.getClientRects().length > 0)) || editor.offsetParent !== null); if (visible) input = editor; } }"
+        "if (!input) return JSON.stringify({ok:false,error:'NO_SEND_INPUT'});"
+        "if (typeof input.focus === 'function') input.focus();"
+        "['keydown','keypress','keyup'].forEach(type => input.dispatchEvent(new KeyboardEvent(type,{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true,cancelable:true})));"
+        "return JSON.stringify({ok:true,sendClicked:true,sendTestId:'enter-key',sendAriaLabel:'Enter'});"
         "})()"
     )
 
