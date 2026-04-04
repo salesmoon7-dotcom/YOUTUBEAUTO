@@ -82,12 +82,15 @@ class AgentBrowserCdpBackend:
                 result = self._run_eval_with_retry(_prepare_input_script(payload))
                 parsed = _decode_backend_json(result)
             except RuntimeError as exc:
-                submit_evidence = {
-                    "attempt_key": "attempt-1",
-                    "classification": "ambiguous",
-                    "classification_reason": str(exc),
-                    "retry_safe_decision": False,
-                }
+                submit_evidence = cast(
+                    dict[str, object],
+                    {
+                        "attempt_key": "attempt-1",
+                        "classification": "ambiguous",
+                        "classification_reason": str(exc),
+                        "retry_safe_decision": False,
+                    },
+                )
                 if preflight_status:
                     submit_evidence["preflight_status"] = preflight_status
                 return {
@@ -916,7 +919,23 @@ def _run_raw_cdp_eval(ws_url: str, script: str) -> str:
     )
     exception = result.get("exceptionDetails")
     if exception is not None:
-        raise RuntimeError("CDP_EVAL_EXCEPTION")
+        detail = "CDP_EVAL_EXCEPTION"
+        if isinstance(exception, dict):
+            text = str(exception.get("text", "")).strip()
+            description = str(
+                cast(dict[str, object], exception.get("exception", {})).get(
+                    "description", ""
+                )
+            ).strip()
+            line_number = int(exception.get("lineNumber", 0) or 0)
+            column_number = int(exception.get("columnNumber", 0) or 0)
+            if description:
+                detail = f"CDP_EVAL_EXCEPTION: {description}"
+            elif text:
+                detail = f"CDP_EVAL_EXCEPTION: {text}"
+            if line_number or column_number:
+                detail = f"{detail} @ {line_number}:{column_number}"
+        raise RuntimeError(detail)
     inner = result.get("result", {})
     if not isinstance(inner, dict):
         raise RuntimeError("CDP_EVAL_INVALID")

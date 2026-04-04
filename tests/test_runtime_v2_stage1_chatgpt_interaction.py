@@ -1265,6 +1265,30 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                     {"url": "https://chatgpt.com"},
                 )
 
+    def test_run_raw_cdp_eval_preserves_exception_details(self) -> None:
+        from runtime_v2.stage1 import chatgpt_backend as backend_module
+
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_method",
+            return_value={
+                "exceptionDetails": {
+                    "text": "TypeError",
+                    "lineNumber": 7,
+                    "columnNumber": 12,
+                    "exception": {"description": "Cannot read properties of null"},
+                }
+            },
+        ):
+            with self.assertRaises(RuntimeError) as exc_info:
+                backend_module._run_raw_cdp_eval(
+                    "ws://127.0.0.1/devtools/page/test",
+                    "(() => null.click())()",
+                )
+
+        self.assertIn("CDP_EVAL_EXCEPTION:", str(exc_info.exception))
+        self.assertIn("Cannot read properties of null", str(exc_info.exception))
+        self.assertIn("@ 7:12", str(exc_info.exception))
+
     def test_agent_browser_backend_falls_back_to_raw_cdp_eval_after_retry_failures(
         self,
     ) -> None:
