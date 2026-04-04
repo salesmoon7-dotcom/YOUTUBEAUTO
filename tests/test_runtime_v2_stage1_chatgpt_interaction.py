@@ -383,11 +383,12 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             mock.patch(
                 "runtime_v2.stage1.chatgpt_backend.time.sleep", return_value=None
             ),
+            mock.patch("runtime_v2.stage1.chatgpt_backend._SEND_ACK_TIMEOUT_SEC", 0.1),
             mock.patch(
                 "runtime_v2.stage1.chatgpt_backend.time.time",
                 side_effect=itertools.chain(
-                    [0.0, 0.0, 0.5, 1.0, 1.5, 1.8, 2.1],
-                    itertools.repeat(2.1),
+                    [0.0, 0.0, 0.2],
+                    itertools.repeat(0.2),
                 ),
             ),
         ):
@@ -1057,20 +1058,25 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertTrue(bool(submit_evidence["in_flight_observed"]))
         self.assertTrue(bool(submit_evidence["terminal_success_observed"]))
 
-    def test_click_send_script_uses_enter_key_on_input(self) -> None:
+    def test_click_send_script_prefers_visible_send_button_before_enter_fallback(
+        self,
+    ) -> None:
         payload = json.dumps(
             {
                 "prompt": "hello",
                 "inputSelectors": ["#prompt-textarea"],
+                "sendSelectors": ["button[data-testid='send-button']"],
             },
             ensure_ascii=True,
         )
 
         script = _click_send_script(payload)
 
+        self.assertIn("const sendSelectors = config.sendSelectors || []", script)
+        self.assertIn("send.click()", script)
+        self.assertIn("send.getAttribute('data-testid') || 'send-button'", script)
         self.assertIn("key:'Enter'", script)
         self.assertIn("sendTestId:'enter-key'", script)
-        self.assertNotIn("send.click()", script)
 
     def test_submit_evidence_is_ambiguous_without_terminal_success_signal(self) -> None:
         backend = AgentBrowserCdpBackend(
