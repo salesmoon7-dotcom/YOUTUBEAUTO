@@ -15,6 +15,7 @@ from runtime_v2.stage1.chatgpt_backend import (
     CHATGPT_LONGFORM_URL_SUBSTRING,
     _click_send_script,
     _prepare_input_script,
+    reset_chatgpt_context,
     _select_page_target,
 )
 from runtime_v2.stage1.chatgpt_interaction import (
@@ -120,6 +121,26 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
         self.assertEqual(target["url"], CHATGPT_LONGFORM_URL_SUBSTRING)
 
+    def test_select_page_target_accepts_longform_gpt_url_with_scheme(self) -> None:
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_backend.urllib.request.urlopen"
+        ) as urlopen:
+            payload = [
+                {
+                    "type": "page",
+                    "title": CHATGPT_LONGFORM_TITLE_SUBSTRING,
+                    "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}/",
+                    "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/test",
+                }
+            ]
+            response = mock.MagicMock()
+            response.read.return_value = json.dumps(payload).encode("utf-8")
+            urlopen.return_value.__enter__.return_value = response
+
+            target = _select_page_target(9222, CHATGPT_LONGFORM_URL_SUBSTRING)
+
+        self.assertEqual(target["url"], f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}/")
+
     def test_current_selected_tab_prefers_remembered_longform_target_after_fallback(
         self,
     ) -> None:
@@ -218,6 +239,37 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
         self.assertEqual(nav_mock.call_args.kwargs["timeout_sec"], 7.0)
         self.assertEqual(wait_mock.call_args.kwargs["timeout_sec"], 7.0)
+
+    def test_reset_chatgpt_context_uses_deadline_budget(self) -> None:
+        target = {
+            "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/test",
+            "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}",
+            "title": CHATGPT_LONGFORM_TITLE_SUBSTRING,
+        }
+
+        with (
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._select_page_target",
+                return_value=target,
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._wait_for_chatgpt_prompt_ready",
+                side_effect=[RuntimeError("not_ready"), None],
+            ) as wait_mock,
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_method"
+            ) as nav_mock,
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend.time.time",
+                side_effect=[100.0, 107.0, 108.0],
+            ),
+            mock.patch("runtime_v2.stage1.chatgpt_backend.time.sleep"),
+        ):
+            _ = reset_chatgpt_context(9222, deadline_ts=110.0)
+
+        self.assertEqual(wait_mock.call_args_list[0].kwargs["timeout_sec"], 2.0)
+        self.assertEqual(nav_mock.call_args.kwargs["timeout_sec"], 10.0)
+        self.assertEqual(wait_mock.call_args_list[1].kwargs["timeout_sec"], 2.0)
 
     def test_wait_for_send_state_rechecks_prompt_when_send_missing(self) -> None:
         backend = AgentBrowserCdpBackend(

@@ -139,12 +139,12 @@ def attach_gpt_response_text_from_browser_evidence(
         raw_port = browser_evidence.get("port", 0)
         if service == "chatgpt" and isinstance(raw_port, int) and raw_port > 0:
             reset_error = ""
+            deadline_ts = time() + _LIVE_CAPTURE_TIMEOUT_SEC
             try:
-                _ = reset_chatgpt_context(raw_port)
+                _ = reset_chatgpt_context(raw_port, deadline_ts=deadline_ts)
             except RuntimeError as exc:
                 reset_error = str(exc)
             prompt = build_live_chatgpt_prompt(topic_spec)
-            deadline_ts = time() + _LIVE_CAPTURE_TIMEOUT_SEC
             result = generate_gpt_response_text(
                 prompt=prompt,
                 port=raw_port,

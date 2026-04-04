@@ -105,7 +105,9 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                 )
 
         self.assertEqual(result["status"], "ok")
-        reset_mock.assert_called_once_with(9222)
+        reset_mock.assert_called_once()
+        self.assertEqual(reset_mock.call_args.args, (9222,))
+        self.assertIn("deadline_ts", reset_mock.call_args.kwargs)
 
     def test_reset_chatgpt_context_waits_for_prompt_ready(self) -> None:
         runtime_results = iter(
@@ -604,7 +606,9 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         browser_evidence = cast(dict[str, object], raw_output["browser_evidence"])
         self.assertEqual(browser_evidence["service"], "chatgpt")
         self.assertEqual(browser_evidence["port"], 9222)
-        reset_mock.assert_called_once_with(9222)
+        reset_mock.assert_called_once()
+        self.assertEqual(reset_mock.call_args.args, (9222,))
+        self.assertIn("deadline_ts", reset_mock.call_args.kwargs)
         generate_mock.assert_called_once()
 
     def test_stage1_runner_uses_real_gpt_response_text_when_present(self) -> None:

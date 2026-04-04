@@ -551,7 +551,16 @@ def reset_chatgpt_context(
     port: int,
     *,
     expected_url_substring: str = CHATGPT_LONGFORM_URL_SUBSTRING,
+    deadline_ts: float | None = None,
 ) -> dict[str, object]:
+    def _raw_cdp_timeout(default: float) -> float:
+        if deadline_ts is None:
+            return default
+        remaining = deadline_ts - time.time()
+        if remaining <= 0:
+            return 1.0
+        return min(default, max(1.0, remaining))
+
     try:
         target = _select_page_target(port, expected_url_substring)
     except RuntimeError:
@@ -572,9 +581,15 @@ def reset_chatgpt_context(
         target["webSocketDebuggerUrl"],
         "Page.navigate",
         {"url": CHATGPT_LONGFORM_URL},
+        timeout_sec=_raw_cdp_timeout(30.0),
     )
-    time.sleep(3.0)
-    _wait_for_chatgpt_prompt_ready(target["webSocketDebuggerUrl"], timeout_sec=30.0)
+    sleep_budget = 3.0
+    if deadline_ts is not None:
+        sleep_budget = min(sleep_budget, max(0.0, deadline_ts - time.time()))
+    time.sleep(sleep_budget)
+    _wait_for_chatgpt_prompt_ready(
+        target["webSocketDebuggerUrl"], timeout_sec=_raw_cdp_timeout(30.0)
+    )
     return {
         "status": "ok",
         "port": port,
@@ -842,6 +857,14 @@ def _select_page_target(
     expected_url_substring: str,
     expected_title_substring: str = CHATGPT_LONGFORM_TITLE_SUBSTRING,
 ) -> dict[str, str]:
+    def _normalize_longform_url(value: str) -> str:
+        normalized = str(value).strip().lower()
+        if normalized.startswith("https://"):
+            normalized = normalized[len("https://") :]
+        elif normalized.startswith("http://"):
+            normalized = normalized[len("http://") :]
+        return normalized.rstrip("/")
+
     try:
         with urllib.request.urlopen(
             f"http://127.0.0.1:{port}/json/list", timeout=10
@@ -860,7 +883,9 @@ def _select_page_target(
         url = str(item.get("url", ""))
         title = str(item.get("title", ""))
         if expected_url_substring == CHATGPT_LONGFORM_URL_SUBSTRING:
-            if url.rstrip("/") != expected_url_substring.rstrip("/"):
+            if _normalize_longform_url(url) != _normalize_longform_url(
+                expected_url_substring
+            ):
                 continue
         elif expected_url_substring not in url:
             continue
