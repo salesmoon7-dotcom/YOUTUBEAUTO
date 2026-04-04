@@ -620,6 +620,7 @@ def _wait_for_chatgpt_prompt_ready(
 def _prepare_input_script(payload: str) -> str:
     return (
         "(() => {"
+        "try {"
         f"const config = {payload};"
         "const selectors = config.inputSelectors || [];"
         "let selectorError = '';"
@@ -660,6 +661,7 @@ def _prepare_input_script(payload: str) -> str:
         "}"
         "const matchedSelector = selectors.find(s => safeQuery(s)===input) || '';"
         "return JSON.stringify({ok:true,inputSelector: matchedSelector, inputSelectorError: selectorError, inputSuccess: inputSuccess});"
+        "} catch (error) { return JSON.stringify({ok:false,error:'INPUT_EVAL_EXCEPTION', detail:String((error && error.message) || error || '')}); }"
         "})()"
     )
 

@@ -295,6 +295,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertIn("replace(/\\r\\n/g, '\\n')", script)
         self.assertIn("const safeQuery = (selector)", script)
         self.assertIn("inputSelectorError", script)
+        self.assertIn("INPUT_EVAL_EXCEPTION", script)
 
     def test_submit_prompt_marks_send_click_without_transition_as_ambiguous(
         self,
