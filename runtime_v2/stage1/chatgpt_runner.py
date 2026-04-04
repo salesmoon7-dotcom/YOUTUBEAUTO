@@ -131,6 +131,8 @@ def attach_gpt_response_text_from_browser_evidence(
             result = generate_gpt_response_text(
                 prompt=prompt,
                 port=raw_port,
+                timeout_sec=300,
+                response_start_timeout_sec=30.0,
                 relaunch_browser=lambda: _relaunch_chatgpt_browser(),
             )
             enriched = dict(topic_spec)

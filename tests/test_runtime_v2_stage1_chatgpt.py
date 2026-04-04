@@ -871,7 +871,41 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             parsed_payload = cast(dict[str, object], handoff["contract"])
 
         self.assertEqual(result["status"], "ok")
-        self.assertEqual(called_prompt, "노후 생활비 300만원으로 충분한가")
+        self.assertEqual(called_prompt, "Money flow")
+
+    def test_live_browser_capture_passes_bounded_timeout_budget(self) -> None:
+        topic_spec = _topic_spec(topic="Money flow")
+
+        with (
+            patch(
+                "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                return_value={
+                    "status": "failed",
+                    "error_code": "CHATGPT_RESPONSE_TIMEOUT",
+                    "failure_stage": "read",
+                    "details": {},
+                    "submit_info": {},
+                    "final_state": {},
+                    "timeline": [],
+                },
+            ) as generate_mock,
+            patch(
+                "runtime_v2.stage1.chatgpt_runner.reset_chatgpt_context",
+                return_value={"status": "ok", "port": 9222},
+            ),
+        ):
+            enriched = attach_gpt_response_text_from_browser_evidence(
+                topic_spec,
+                {"service": "chatgpt", "port": 9222},
+            )
+
+        self.assertEqual(
+            cast(dict[str, object], enriched["gpt_capture"])["status"], "failed"
+        )
+        self.assertEqual(generate_mock.call_args.kwargs["timeout_sec"], 300)
+        self.assertEqual(
+            generate_mock.call_args.kwargs["response_start_timeout_sec"], 30.0
+        )
 
     def test_stage1_runner_uses_legacy_longform_url_for_live_capture(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
