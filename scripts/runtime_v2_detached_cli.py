@@ -13,11 +13,13 @@ from time import time
 
 _SUMMARY_HEARTBEAT_SEC = 5.0
 _SUMMARY_REPLACE_RETRY_DELAYS = (0.05, 0.1, 0.2, 0.5, 1.0, 2.0)
+_DETACHED_SUMMARY_FILE = "detached_cli_summary.json"
 
 
 def _write_summary(out_root: Path, payload: dict[str, object]) -> Path:
     out_root.mkdir(parents=True, exist_ok=True)
-    summary_file = out_root / "summary.json"
+    summary_file = out_root / _DETACHED_SUMMARY_FILE
+    payload_json = json.dumps(payload, ensure_ascii=True)
     with tempfile.NamedTemporaryFile(
         "w",
         encoding="utf-8",
@@ -26,20 +28,30 @@ def _write_summary(out_root: Path, payload: dict[str, object]) -> Path:
         suffix=".tmp",
         delete=False,
     ) as handle:
-        _ = handle.write(json.dumps(payload, ensure_ascii=True))
+        _ = handle.write(payload_json)
         temp_path = Path(handle.name)
     last_error: PermissionError | None = None
+    replaced = False
     for delay in (*_SUMMARY_REPLACE_RETRY_DELAYS, None):
         try:
             _ = temp_path.replace(summary_file)
+            replaced = True
             break
         except PermissionError as exc:
             last_error = exc
             if getattr(exc, "winerror", None) != 5 or delay is None:
-                raise
+                break
             sleep(delay)
-    if last_error is not None and not summary_file.exists():
-        raise last_error
+    if replaced:
+        return summary_file
+    if last_error is not None:
+        if getattr(last_error, "winerror", None) != 5:
+            raise last_error
+        summary_file.write_text(payload_json, encoding="utf-8")
+        try:
+            temp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
     return summary_file
 
 
@@ -229,7 +241,7 @@ def main() -> int:
                 "probe_root": str(probe_root),
                 "stdout_log": str(stdout_file),
                 "stderr_log": str(stderr_file),
-                "summary_file": str(probe_root / "summary.json"),
+                "summary_file": str(probe_root / _DETACHED_SUMMARY_FILE),
                 "spawn_file": str(probe_root / "spawn.json"),
             },
             ensure_ascii=True,

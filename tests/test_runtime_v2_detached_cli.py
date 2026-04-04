@@ -44,7 +44,9 @@ class RuntimeV2DetachedCliTests(unittest.TestCase):
                     started_at=1.0,
                 )
 
-            summary = json.loads((root / "summary.json").read_text(encoding="utf-8"))
+            summary = json.loads(
+                (root / "detached_cli_summary.json").read_text(encoding="utf-8")
+            )
 
         self.assertEqual(returncode, 0)
         self.assertEqual(summary["exit_code"], 0)
@@ -73,6 +75,7 @@ class RuntimeV2DetachedCliTests(unittest.TestCase):
 
         written_payload = json.loads(written.read_text(encoding="utf-8"))
         self.assertEqual(written_payload["status"], "running")
+        self.assertEqual(written.name, "detached_cli_summary.json")
 
     def test_write_summary_survives_longer_winerror_5_burst(self) -> None:
         root = Path(tempfile.mkdtemp(dir=r"D:\YOUTUBEAUTO"))
@@ -96,6 +99,56 @@ class RuntimeV2DetachedCliTests(unittest.TestCase):
 
         written_payload = json.loads(written.read_text(encoding="utf-8"))
         self.assertEqual(written_payload["status"], "running")
+        self.assertEqual(written.name, "detached_cli_summary.json")
+
+    def test_write_summary_falls_back_to_direct_write_after_retry_exhausted(
+        self,
+    ) -> None:
+        root = Path(tempfile.mkdtemp(dir=r"D:\YOUTUBEAUTO"))
+        payload = {"status": "running", "phase": "final"}
+
+        def always_locked_replace(self: Path, target: Path) -> Path:
+            if self.suffix == ".tmp":
+                error = PermissionError("locked")
+                error.winerror = 5
+                raise error
+            raise AssertionError("unexpected replace target")
+
+        with (
+            patch.object(_MODULE, "sleep", return_value=None),
+            patch.object(Path, "replace", new=always_locked_replace),
+        ):
+            written = _MODULE._write_summary(root, payload)
+
+        written_payload = json.loads(written.read_text(encoding="utf-8"))
+        self.assertEqual(written_payload["status"], "running")
+        self.assertEqual(written_payload["phase"], "final")
+        self.assertEqual(written.name, "detached_cli_summary.json")
+
+    def test_write_summary_does_not_fallback_after_successful_replace(self) -> None:
+        root = Path(tempfile.mkdtemp(dir=r"D:\YOUTUBEAUTO"))
+        payload = {"status": "running"}
+        original_replace = Path.replace
+        calls = {"count": 0}
+
+        def flaky_replace(self: Path, target: Path) -> Path:
+            if self.suffix == ".tmp" and calls["count"] < 2:
+                calls["count"] += 1
+                error = PermissionError("locked")
+                error.winerror = 5
+                raise error
+            return original_replace(self, target)
+
+        with (
+            patch.object(_MODULE, "sleep", return_value=None),
+            patch.object(Path, "replace", new=flaky_replace),
+            patch.object(Path, "write_text", wraps=Path.write_text) as write_text_mock,
+        ):
+            written = _MODULE._write_summary(root, payload)
+
+        written_payload = json.loads(written.read_text(encoding="utf-8"))
+        self.assertEqual(written_payload["status"], "running")
+        write_text_mock.assert_not_called()
 
     def test_write_spawn_record_writes_spawn_json(self) -> None:
         root = Path(tempfile.mkdtemp(dir=r"D:\YOUTUBEAUTO"))
