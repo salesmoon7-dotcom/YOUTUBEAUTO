@@ -636,44 +636,9 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 for script in background_eval_scripts
             )
         )
-        sidebar_openers = [
-            script
-            for script in background_eval_scripts
-            if "opened_background_sidebar" in script
-        ]
-        self.assertGreaterEqual(len(sidebar_openers), 1)
-        self.assertTrue(
-            any(
-                "Product Background" in script and "배경" in script
-                for script in sidebar_openers
-            )
-        )
-        self.assertTrue(
-            any(
-                "role=tab" in script
-                and "aria-controls" in script
-                and "KeyboardEvent('keydown'" in script
-                and "Product Background" in script
-                and "배경" in script
-                for script in sidebar_openers
-            )
-        )
-        self.assertTrue(
-            all(
-                "role=tab" in script
-                and "aria-controls" in script
-                and "KeyboardEvent('keydown'" in script
-                for script in sidebar_openers
-            )
-        )
-        self.assertTrue(
-            all(
-                "ariaSelected" in script
-                and "panelVisible" in script
-                and "iframeVisible" in script
-                and "NO_BACKGROUND_TAB_ACTIVATION" in script
-                for script in sidebar_openers
-            )
+        self.assertIn(
+            'xpath=(//button[@role="tab" and normalize-space(.)="Product Background"])[1]',
+            background_clicks,
         )
         self.assertTrue(
             any(
