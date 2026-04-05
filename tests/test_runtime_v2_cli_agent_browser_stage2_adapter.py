@@ -614,6 +614,28 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 for script in background_eval_scripts
             )
         )
+        page_selection_indices = [
+            idx
+            for idx, action in enumerate(captured_actions)
+            if str(action.get("type", "")) == "eval"
+            and "typed_current_page" in str(action.get("script", ""))
+        ]
+        background_focus_indices = [
+            idx
+            for idx, action in enumerate(captured_actions)
+            if str(action.get("step", "")) == "focused_background_canvas"
+        ]
+        self.assertTrue(page_selection_indices)
+        self.assertTrue(background_focus_indices)
+        self.assertLess(min(page_selection_indices), min(background_focus_indices))
+        self.assertTrue(
+            any(
+                "opened_background_generate_panel_legacy" in script
+                and "배경 생성" in script
+                and "Escape" in script
+                for script in background_eval_scripts
+            )
+        )
         sidebar_openers = [
             script
             for script in background_eval_scripts
@@ -641,6 +663,15 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 "role=tab" in script
                 and "aria-controls" in script
                 and "KeyboardEvent('keydown'" in script
+                for script in sidebar_openers
+            )
+        )
+        self.assertTrue(
+            all(
+                "ariaSelected" in script
+                and "panelVisible" in script
+                and "iframeVisible" in script
+                and "NO_BACKGROUND_TAB_ACTIVATION" in script
                 for script in sidebar_openers
             )
         )
