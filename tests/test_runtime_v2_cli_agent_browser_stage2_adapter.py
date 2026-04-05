@@ -620,6 +620,14 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 or "NO_BACKGROUND_GENERATE_BUTTON" in script
             )
         )
+        self.assertTrue(
+            any(
+                "backgroundCandidates" in script
+                for script in background_eval_scripts
+                if "opened_background_generate_panel" in script
+                or "NO_BACKGROUND_GENERATE_BUTTON" in script
+            )
+        )
 
     def test_stage2_adapter_child_accepts_line_ok_canva_text_result_without_applied(
         self,
