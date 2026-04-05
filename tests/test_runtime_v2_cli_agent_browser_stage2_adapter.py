@@ -608,7 +608,9 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         )
         self.assertTrue(
             any(
-                "closest('button,[role=button],[role=tab],a')" in script
+                "role=tab" in script
+                and "aria-controls" in script
+                and "KeyboardEvent('keydown'" in script
                 and "Product Background" in script
                 and "배경" in script
                 for script in sidebar_openers
