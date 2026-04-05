@@ -141,6 +141,28 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
         self.assertEqual(target["url"], f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}/")
 
+    def test_select_page_target_accepts_longform_conversation_url(self) -> None:
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_backend.urllib.request.urlopen"
+        ) as urlopen:
+            payload = [
+                {
+                    "type": "page",
+                    "title": CHATGPT_LONGFORM_TITLE_SUBSTRING,
+                    "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}/c/abc123",
+                    "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/test",
+                }
+            ]
+            response = mock.MagicMock()
+            response.read.return_value = json.dumps(payload).encode("utf-8")
+            urlopen.return_value.__enter__.return_value = response
+
+            target = _select_page_target(9222, CHATGPT_LONGFORM_URL_SUBSTRING)
+
+        self.assertEqual(
+            target["url"], f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}/c/abc123"
+        )
+
     def test_current_selected_tab_prefers_remembered_longform_target_after_fallback(
         self,
     ) -> None:

@@ -865,6 +865,16 @@ def _select_page_target(
             normalized = normalized[len("http://") :]
         return normalized.rstrip("/")
 
+    def _matches_longform_target(url: str, expected: str) -> bool:
+        normalized_url = _normalize_longform_url(url)
+        normalized_expected = _normalize_longform_url(expected)
+        if normalized_url == normalized_expected:
+            return True
+        for marker in ("/", "?", "#"):
+            if normalized_url.startswith(normalized_expected + marker):
+                return True
+        return False
+
     try:
         with urllib.request.urlopen(
             f"http://127.0.0.1:{port}/json/list", timeout=10
@@ -883,9 +893,7 @@ def _select_page_target(
         url = str(item.get("url", ""))
         title = str(item.get("title", ""))
         if expected_url_substring == CHATGPT_LONGFORM_URL_SUBSTRING:
-            if _normalize_longform_url(url) != _normalize_longform_url(
-                expected_url_substring
-            ):
+            if not _matches_longform_target(url, expected_url_substring):
                 continue
         elif expected_url_substring not in url:
             continue
