@@ -2177,8 +2177,10 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 "target": "800",
             },
             {
-                "type": "click",
+                "type": "click_box_offset",
                 "selector": 'xpath=(//button[@role="tab" and normalize-space(.)="Product Background"])[1]',
+                "x_ratio": 0.8,
+                "y_ratio": 0.5,
             },
             {
                 "type": "wait",
