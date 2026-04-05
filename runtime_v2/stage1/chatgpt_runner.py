@@ -125,18 +125,7 @@ def build_video_plan_from_topic_spec(
 
 
 def build_live_chatgpt_prompt(topic_spec: dict[str, object]) -> str:
-    topic = str(topic_spec.get("topic", "")).strip()
-    return (
-        f"Topic: {topic}\n\n"
-        "Return only these labeled blocks in plain text:\n"
-        "[Title]\n"
-        "[Description]\n"
-        "[Keywords]\n"
-        "[Voice]\n"
-        "[#01]\n"
-        "[#02] ...\n"
-        "Rules: include every scene prompt as [#NN], keep scene numbers sequential from 01 without gaps, make Voice and scene prompts match in count, and do not use placeholder values like ... or TBD."
-    )
+    return str(topic_spec.get("topic", ""))
 
 
 def attach_gpt_response_text_from_browser_evidence(

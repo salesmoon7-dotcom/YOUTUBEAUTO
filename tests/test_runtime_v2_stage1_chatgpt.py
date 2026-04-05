@@ -177,33 +177,23 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         open_browser.assert_not_called()
         popen.assert_called_once()
 
-    def test_build_live_chatgpt_prompt_requests_stage1_block_contract(self) -> None:
+    def test_build_live_chatgpt_prompt_passes_topic_only(self) -> None:
         prompt = build_live_chatgpt_prompt(
             {
                 "topic": "국민연금 수령 시기를 앞당기면 손해인가 이득인가",
             }
         )
 
-        self.assertIn("국민연금 수령 시기를 앞당기면 손해인가 이득인가", prompt)
-        self.assertIn("Return only these labeled blocks", prompt)
-        self.assertNotIn("```json", prompt)
-        self.assertIn("[Voice]", prompt)
-        self.assertIn("[Title]", prompt)
-        self.assertIn("[Description]", prompt)
-        self.assertIn("[Keywords]", prompt)
-        self.assertIn("[#01]", prompt)
-        self.assertIn("do not use placeholder values like ...", prompt)
-        self.assertIn("keep scene numbers sequential from 01", prompt)
+        self.assertEqual(prompt, "국민연금 수령 시기를 앞당기면 손해인가 이득인가")
 
-    def test_build_live_chatgpt_prompt_strips_topic_whitespace(self) -> None:
+    def test_build_live_chatgpt_prompt_preserves_topic_whitespace(self) -> None:
         prompt = build_live_chatgpt_prompt(
             {
                 "topic": "  국민연금 수령 시기를 앞당기면 손해인가 이득인가  ",
             }
         )
 
-        self.assertIn("국민연금 수령 시기를 앞당기면 손해인가 이득인가", prompt)
-        self.assertNotIn("  국민연금 수령 시기를 앞당기면 손해인가 이득인가  ", prompt)
+        self.assertEqual(prompt, "  국민연금 수령 시기를 앞당기면 손해인가 이득인가  ")
 
     def test_build_live_chatgpt_prompt_ignores_status_snapshot(
         self,
@@ -215,7 +205,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             }
         )
 
-        self.assertIn("요양 시설 비용 현실과 준비해야 할 금액", prompt)
+        self.assertEqual(prompt, "요양 시설 비용 현실과 준비해야 할 금액")
         self.assertNotIn("status_snapshot", prompt)
 
     def test_stage1_runner_only_plans_from_existing_topic_spec(self) -> None:
@@ -886,9 +876,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             parsed_payload = cast(dict[str, object], handoff["contract"])
 
         self.assertEqual(result["status"], "ok")
-        self.assertIn("Topic: Money flow", called_prompt)
-        self.assertIn("[#01]", called_prompt)
-        self.assertIn("[Voice]", called_prompt)
+        self.assertEqual(called_prompt, "Money flow")
 
     def test_live_browser_capture_passes_bounded_timeout_budget(self) -> None:
         topic_spec = _topic_spec(topic="Money flow")
