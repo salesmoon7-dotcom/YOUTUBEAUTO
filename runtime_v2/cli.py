@@ -2157,8 +2157,12 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 "target": "800",
             },
             {
-                "type": "click",
-                "selector": 'xpath=(//button[@role="tab" and contains(normalize-space(.),"Product Background")])[1]',
+                "type": "wait",
+                "target": "800",
+            },
+            {
+                "type": "eval",
+                "script": "(() => { const items = Array.from(document.querySelectorAll('button,[role=button],[role=tab],[aria-label]')); const target = items.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text === '배경' || text === 'Product Background' || text.includes('배경 배경') || text.includes('Product Background Product Background'); }); if (!(target instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_BACKGROUND_SIDEBAR_ITEM'}); target.click(); return JSON.stringify({ok:true, step:'opened_background_sidebar'}); })()",
             },
             {
                 "type": "wait",
@@ -2166,7 +2170,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
             {
                 "type": "eval",
-                "script": "(async () => { const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms)); const findExact = () => Array.from(document.querySelectorAll('button,[role=button]')).find(item => ((item.getAttribute('aria-label') || '').trim() === '배경 생성')); const hasGenerateCta = () => Array.from(document.querySelectorAll('button,[role=button]')).some(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text === '생성' || text.includes('Generate'); }); const deadline = Date.now() + 4000; while (Date.now() < deadline) { const exact = findExact(); if (exact instanceof HTMLElement) { exact.click(); return JSON.stringify({ok:true, step:'opened_background_generate_panel', source:'aria-label'}); } if (hasGenerateCta()) { return JSON.stringify({ok:true, step:'opened_background_generate_panel', source:'generate-cta-only'}); } await wait(200); } return JSON.stringify({ok:false,error:'NO_BACKGROUND_GENERATE_BUTTON'}); })()",
+                "script": "(async () => { const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms)); const describeVisibleCandidates = () => Array.from(document.querySelectorAll('button,[role=button],[role=tab],[aria-label]')).map(item => ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim()).filter(Boolean).slice(0, 20); const openSidebar = () => { const items = Array.from(document.querySelectorAll('button,[role=button],[role=tab],[aria-label]')); const target = items.find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text === '배경' || text === 'Product Background' || text.includes('배경 배경') || text.includes('Product Background Product Background'); }); if (!(target instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_BACKGROUND_SIDEBAR_ITEM', visibleCandidates: describeVisibleCandidates()}); target.click(); return JSON.stringify({ok:true, step:'opened_background_sidebar'}); }; const findExact = () => Array.from(document.querySelectorAll('button,[role=button]')).find(item => ((item.getAttribute('aria-label') || '').trim() === '배경 생성')); const hasGenerateCta = () => Array.from(document.querySelectorAll('button,[role=button]')).some(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text === '생성' || text.includes('Generate'); }); const sidebar = JSON.parse(openSidebar()); if (!sidebar.ok) return JSON.stringify(sidebar); const deadline = Date.now() + 4000; while (Date.now() < deadline) { const exact = findExact(); if (exact instanceof HTMLElement) { exact.click(); return JSON.stringify({ok:true, step:'opened_background_generate_panel', source:'aria-label'}); } if (hasGenerateCta()) { return JSON.stringify({ok:true, step:'opened_background_generate_panel', source:'generate-cta-only'}); } await wait(200); } return JSON.stringify({ok:false,error:'NO_BACKGROUND_GENERATE_BUTTON', visibleCandidates: describeVisibleCandidates()}); })()",
             },
             {
                 "type": "eval",
