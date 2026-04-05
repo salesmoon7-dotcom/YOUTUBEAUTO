@@ -2120,6 +2120,14 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         actions = [
             {
                 "type": "eval",
+                "script": "(async () => { const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms)); const title = (document.title || '').trim(); const href = String(location.href || ''); const consentButton = Array.from(document.querySelectorAll('button,[role=button]')).find(item => { const text = ((item.innerText || item.textContent || '') + ' ' + (item.getAttribute('aria-label') || '')).trim(); return text.includes('동의 및 계속하기') || text.includes('Agree and continue'); }); const isConsentGate = href.includes('/login/') || title.includes('Canva 계정에 로그인하기') || (consentButton instanceof HTMLElement); if (!isConsentGate) return JSON.stringify({ok:true, step:'canva_auth_gate_optional'}); const checkboxes = Array.from(document.querySelectorAll('input[type=checkbox],[role=checkbox]')).filter(item => item instanceof HTMLElement); for (const box of checkboxes) { if (box instanceof HTMLInputElement) { if (!box.checked) box.click(); continue; } const ariaChecked = box.getAttribute('aria-checked'); if (ariaChecked !== 'true') box.click(); } await wait(300); if (!(consentButton instanceof HTMLElement)) return JSON.stringify({ok:false,error:'CANVA_AUTH_CONSENT_REQUIRED'}); if (consentButton instanceof HTMLButtonElement && consentButton.disabled) return JSON.stringify({ok:false,error:'CANVA_AUTH_CONSENT_REQUIRED'}); consentButton.click(); return JSON.stringify({ok:true, step:'accepted_canva_auth_gate'}); })()",
+            },
+            {
+                "type": "eval",
+                "script": "(() => { const href = String(location.href || ''); const title = (document.title || '').trim(); const entry = document.querySelector('[aria-label=\"캔버스 진입점\"]'); const entryVisible = !!entry && (((entry.getClientRects && entry.getClientRects().length > 0)) || entry.offsetParent !== null); const editorReady = entryVisible || (href.includes('/design/') && title.includes('Canva 편집기') && entryVisible); if (editorReady) return JSON.stringify({ok:true, step:'canva_editor_ready'}); return JSON.stringify({ok:false,error:'CANVA_EDITOR_NOT_READY', currentUrl: href, currentTitle: title, hasCanvasEntrypoint: !!entry, entryVisible: entryVisible}); })()",
+            },
+            {
+                "type": "eval",
                 "script": _canva_page_count_script("page_count_before").replace(
                     "return JSON.stringify({ok:true, step:'page_count_before', count: totalPages});",
                     "window.__runtime_v2_canva_page_count_before = totalPages; return JSON.stringify({ok:true, step:'page_count_before', count: totalPages});",

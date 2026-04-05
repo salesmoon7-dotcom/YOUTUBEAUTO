@@ -193,6 +193,15 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertEqual(result["error_code"], "AGENT_BROWSER_COMMAND_FAILED")
         self.assertFalse(result.get("next_jobs", []))
 
+    def test_agent_browser_error_code_uses_embedded_payload_error(self) -> None:
+        from runtime_v2.workers.agent_browser_worker import _agent_browser_error_code
+
+        exc = RuntimeError(
+            'agent_browser_action_failed:{"ok": false, "error": "CANVA_AUTH_CONSENT_REQUIRED"}'
+        )
+
+        self.assertEqual(_agent_browser_error_code(exc), "CANVA_AUTH_CONSENT_REQUIRED")
+
     def test_agent_browser_worker_resolves_executable_from_appdata_npm(self) -> None:
         from runtime_v2.workers.agent_browser_worker import (
             _resolve_agent_browser_command,

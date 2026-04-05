@@ -594,6 +594,24 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             for action in captured_actions
             if str(action.get("type", "")) == "eval"
         ]
+        self.assertTrue(
+            any(
+                "Canva 계정에 로그인하기" in script
+                and "동의 및 계속하기" in script
+                and "CANVA_AUTH_CONSENT_REQUIRED" in script
+                for script in background_eval_scripts
+            )
+        )
+        self.assertTrue(
+            any(
+                "CANVA_EDITOR_NOT_READY" in script
+                and "캔버스 진입점" in script
+                and "currentUrl" in script
+                and "currentTitle" in script
+                and "getClientRects" in script
+                for script in background_eval_scripts
+            )
+        )
         sidebar_openers = [
             script
             for script in background_eval_scripts

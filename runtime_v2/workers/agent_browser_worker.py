@@ -280,7 +280,9 @@ def _run_agent_browser_actions(
             if isinstance(parsed_output, dict) and not bool(
                 parsed_output.get("ok", False)
             ):
-                raise RuntimeError(f"agent_browser_action_failed:{parsed_output}")
+                raise RuntimeError(
+                    f"agent_browser_action_failed:{json.dumps(parsed_output, ensure_ascii=True)}"
+                )
             continue
         elif action_type == "drag_box_to_box":
             source_selector = str(action.get("source_selector", "")).strip()
@@ -404,7 +406,9 @@ def _run_agent_browser_actions(
             if isinstance(parsed_output, dict) and not bool(
                 parsed_output.get("ok", False)
             ):
-                raise RuntimeError(f"agent_browser_action_failed:{parsed_output}")
+                raise RuntimeError(
+                    f"agent_browser_action_failed:{json.dumps(parsed_output, ensure_ascii=True)}"
+                )
             continue
         elif action_type == "playwright_edit_canva_text":
             output_payload = _playwright_edit_canva_colored_text(
@@ -423,7 +427,9 @@ def _run_agent_browser_actions(
                 }
             )
             if not bool(output_payload.get("ok", False)):
-                raise RuntimeError(f"agent_browser_action_failed:{output_payload}")
+                raise RuntimeError(
+                    f"agent_browser_action_failed:{json.dumps(output_payload, ensure_ascii=True)}"
+                )
             continue
         else:
             raise RuntimeError(f"unknown_agent_browser_action:{action_type}")
@@ -449,7 +455,9 @@ def _run_agent_browser_actions(
             }
         )
         if isinstance(parsed_output, dict) and not bool(parsed_output.get("ok", False)):
-            raise RuntimeError(f"agent_browser_action_failed:{parsed_output}")
+            raise RuntimeError(
+                f"agent_browser_action_failed:{json.dumps(parsed_output, ensure_ascii=True)}"
+            )
         if isinstance(parsed_output, dict) and str(parsed_output.get("step", "")) in {
             "navigated_image_agent",
             "clicked_generate",
@@ -615,6 +623,16 @@ def _agent_browser_error_code(exc: Exception) -> str:
         return "AGENT_BROWSER_TARGET_REQUIRED"
     if message == "agent_browser_matching_tab_not_found":
         return "AGENT_BROWSER_MATCHING_TAB_NOT_FOUND"
+    if message.startswith("agent_browser_action_failed:"):
+        raw_payload = message.split(":", 1)[1].strip()
+        try:
+            parsed = json.loads(raw_payload)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, dict):
+            explicit_error = str(parsed.get("error", "")).strip()
+            if explicit_error:
+                return explicit_error
     if isinstance(exc, RuntimeError):
         return "AGENT_BROWSER_COMMAND_FAILED"
     return "AGENT_BROWSER_VERIFY_FAILED"
