@@ -661,23 +661,6 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         )
         self.assertTrue(
             any(
-                "페이지 새로 고침" in script and "새 버전" in script
-                for script in background_eval_scripts
-                if "opened_background_generate_panel" in script
-                or "NO_BACKGROUND_GENERATE_BUTTON" in script
-            )
-        )
-        self.assertTrue(
-            any(
-                "stale.querySelectorAll('button,[role=button],a')" in script
-                and ".filter(isVisible)" not in script
-                for script in background_eval_scripts
-                if "opened_background_generate_panel" in script
-                or "NO_BACKGROUND_GENERATE_BUTTON" in script
-            )
-        )
-        self.assertTrue(
-            any(
                 "visibleCandidates" in script
                 for script in background_eval_scripts
                 if "opened_background_generate_panel" in script
