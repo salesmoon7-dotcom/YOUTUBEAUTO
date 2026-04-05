@@ -609,6 +609,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 and "currentUrl" in script
                 and "currentTitle" in script
                 and "getClientRects" in script
+                and "oauth/authorized" in script
+                and "await wait(" in script
                 for script in background_eval_scripts
             )
         )
