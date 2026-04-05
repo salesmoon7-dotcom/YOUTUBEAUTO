@@ -608,6 +608,14 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         )
         self.assertTrue(
             any(
+                "closest('button,[role=button],[role=tab],a')" in script
+                and "Product Background" in script
+                and "배경" in script
+                for script in sidebar_openers
+            )
+        )
+        self.assertTrue(
+            any(
                 "button[aria-label='배경 생성']" in script or "배경 생성" in script
                 for script in background_eval_scripts
             )
