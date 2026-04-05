@@ -14,17 +14,70 @@ from runtime_v2.stage1.chatgpt_backend import (
     CHATGPT_LONGFORM_TITLE_SUBSTRING,
     CHATGPT_LONGFORM_URL_SUBSTRING,
     _click_send_script,
+    _input_ready_script,
+    _normalized_no_send_evidence,
     _prepare_input_script,
     reset_chatgpt_context,
     _select_page_target,
 )
 from runtime_v2.stage1.chatgpt_interaction import (
+    CHATGPT_INPUT_SELECTORS,
     _response_text_from_state,
     generate_gpt_response_text,
 )
 
 
 class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
+    def test_normalized_no_send_evidence_preserves_no_input_diagnostics(self) -> None:
+        evidence = _normalized_no_send_evidence(
+            {
+                "error": "NO_INPUT",
+                "visibleSelectorMatches": 0,
+                "visibleChatInputEditor": False,
+                "visibleContenteditableCount": 0,
+                "visibleProseMirrorCount": 1,
+                "inputSelectorError": "",
+            }
+        )
+
+        diagnostics = cast(dict[str, object], evidence["no_input_diagnostics"])
+        self.assertEqual(diagnostics["visibleSelectorMatches"], 0)
+        self.assertEqual(diagnostics["visibleProseMirrorCount"], 1)
+
+    def test_normalized_no_send_evidence_preserves_input_success_diagnostics(
+        self,
+    ) -> None:
+        evidence = _normalized_no_send_evidence(
+            {
+                "error": "NO_INPUT",
+                "inputSuccess": False,
+                "inputFinalText": "Topic: sample\n[Voice]",
+                "inputPromptNormalized": "Topic: sample [Voice] [#01]",
+            }
+        )
+
+        diagnostics = cast(dict[str, object], evidence["input_success_diagnostics"])
+        self.assertFalse(bool(diagnostics["inputSuccess"]))
+        self.assertIn("Topic: sample", str(diagnostics["inputFinalText"]))
+
+    def test_input_ready_script_does_not_use_chatinput_only_heuristic(self) -> None:
+        script = _input_ready_script()
+
+        self.assertNotIn("!!chatInput && !ssr", script)
+        self.assertIn(
+            "const proseMirror = document.querySelector('.ProseMirror')", script
+        )
+        self.assertIn(
+            "const ready = visible(proseMirror) || visible(interactive)", script
+        )
+
+    def test_input_selectors_include_tagless_prosemirror_first(self) -> None:
+        self.assertIn(".ProseMirror[contenteditable='true']", CHATGPT_INPUT_SELECTORS)
+        self.assertLess(
+            CHATGPT_INPUT_SELECTORS.index(".ProseMirror[contenteditable='true']"),
+            CHATGPT_INPUT_SELECTORS.index("div.ProseMirror[contenteditable='true']"),
+        )
+
     def test_default_runner_uses_tolerant_utf8_decode(self) -> None:
         with mock.patch("runtime_v2.stage1.chatgpt_backend.subprocess.run") as run_mock:
             run_mock.return_value = subprocess.CompletedProcess(
@@ -401,6 +454,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         )
         script = _prepare_input_script(payload)
         self.assertIn("finalText === normalize(config.prompt)", script)
+        self.assertIn("replace(/\\n{2,}/g, '\\n')", script)
         self.assertIn(
             "normalize(input.value || '') === normalize(config.prompt)", script
         )
@@ -408,6 +462,46 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertIn("const safeQuery = (selector)", script)
         self.assertIn("inputSelectorError", script)
         self.assertIn("INPUT_EVAL_EXCEPTION", script)
+
+    def test_prepare_and_click_scripts_include_plain_prosemirror_fallback(self) -> None:
+        payload = json.dumps(
+            {
+                "prompt": "정확한 입력 문장",
+                "inputSelectors": ["#prompt-textarea"],
+                "sendSelectors": ["button[data-testid='send-button']"],
+            },
+            ensure_ascii=False,
+        )
+
+        prepare_script = _prepare_input_script(payload)
+        click_script = _click_send_script(payload)
+
+        self.assertIn("document.querySelectorAll('.ProseMirror')", prepare_script)
+        self.assertIn("document.querySelectorAll('.ProseMirror')", click_script)
+        self.assertIn(
+            "const proseMirrors = Array.from(document.querySelectorAll('.ProseMirror')).filter((el) => el && el.isConnected && (((el.getClientRects && el.getClientRects().length > 0)) || el.offsetParent !== null) && !el.closest('[data-message-author-role=\"assistant\"]'))",
+            prepare_script,
+        )
+        self.assertIn(
+            "const proseMirrors = Array.from(document.querySelectorAll('.ProseMirror')).filter((el) => el && el.isConnected && (((el.getClientRects && el.getClientRects().length > 0)) || el.offsetParent !== null) && !el.closest('[data-message-author-role=\"assistant\"]'))",
+            click_script,
+        )
+
+    def test_prepare_input_no_input_returns_candidate_counts(self) -> None:
+        payload = json.dumps(
+            {
+                "prompt": "정확한 입력 문장",
+                "inputSelectors": ["#prompt-textarea"],
+            },
+            ensure_ascii=False,
+        )
+
+        script = _prepare_input_script(payload)
+
+        self.assertIn("visibleSelectorMatches", script)
+        self.assertIn("visibleContenteditableCount", script)
+        self.assertIn("visibleProseMirrorCount", script)
+        self.assertIn("visibleChatInputEditor", script)
 
     def test_submit_prompt_marks_send_click_without_transition_as_ambiguous(
         self,

@@ -659,14 +659,21 @@ def _prepare_input_script(payload: str) -> str:
         "const closeSelectors=['button[aria-label=\"닫기\"]','button[aria-label=\"Close\"]','button[aria-label*=\"close\"]','button[aria-label*=\"dismiss\"]','.modal-close','[data-testid*=\"close\"]','[data-testid*=\"dismiss\"]'];"
         "for (const selector of closeSelectors) { for (const btn of Array.from(document.querySelectorAll(selector))) { try { const visible = !!btn && !!btn.isConnected && (((btn.getClientRects && btn.getClientRects().length > 0)) || btn.offsetParent !== null); if (visible) btn.click(); } catch (_) {} } }"
         "let input = null;"
+        "let visibleSelectorMatches = 0;"
         "for (const selector of selectors) { const candidate = safeQuery(selector); const visible = !!candidate && !!candidate.isConnected && (((candidate.getClientRects && candidate.getClientRects().length > 0)) || candidate.offsetParent !== null); if (visible) { input = candidate; break; } }"
-        "if (!input) { const chatInput = document.querySelector('[data-testid=\"chat-input\"]'); if (chatInput) { const editor = chatInput.querySelector('.ProseMirror, [contenteditable=\"true\"]'); const visible = !!editor && !!editor.isConnected && (((editor.getClientRects && editor.getClientRects().length > 0)) || editor.offsetParent !== null); if (visible) input = editor; } }"
-        "if (!input) { const editors = Array.from(document.querySelectorAll('[contenteditable=\"true\"]')).filter((el) => el && el.isConnected && (((el.getClientRects && el.getClientRects().length > 0)) || el.offsetParent !== null) && !el.closest('article') && !el.closest('[data-message-author-role=\"assistant\"]')); if (editors.length) input = editors[0]; }"
-        "if (!input) return JSON.stringify({ok:false,error: selectorError ? 'INPUT_SELECTOR_ERROR' : 'NO_INPUT', inputSelectorError: selectorError});"
+        "for (const selector of selectors) { const candidate = safeQuery(selector); const visible = !!candidate && !!candidate.isConnected && (((candidate.getClientRects && candidate.getClientRects().length > 0)) || candidate.offsetParent !== null); if (visible) visibleSelectorMatches += 1; }"
+        "const chatInput = document.querySelector('[data-testid=\"chat-input\"]');"
+        "let visibleChatInputEditor = false;"
+        "if (!input && chatInput) { const editor = chatInput.querySelector('.ProseMirror, [contenteditable=\"true\"]'); const visible = !!editor && !!editor.isConnected && (((editor.getClientRects && editor.getClientRects().length > 0)) || editor.offsetParent !== null); visibleChatInputEditor = visible; if (visible) input = editor; }"
+        "const editors = Array.from(document.querySelectorAll('[contenteditable=\"true\"]')).filter((el) => el && el.isConnected && (((el.getClientRects && el.getClientRects().length > 0)) || el.offsetParent !== null) && !el.closest('article') && !el.closest('[data-message-author-role=\"assistant\"]'));"
+        "if (!input && editors.length) input = editors[0];"
+        "const proseMirrors = Array.from(document.querySelectorAll('.ProseMirror')).filter((el) => el && el.isConnected && (((el.getClientRects && el.getClientRects().length > 0)) || el.offsetParent !== null) && !el.closest('[data-message-author-role=\"assistant\"]'));"
+        "if (!input && proseMirrors.length) input = proseMirrors[0];"
+        "if (!input) return JSON.stringify({ok:false,error: selectorError ? 'INPUT_SELECTOR_ERROR' : 'NO_INPUT', inputSelectorError: selectorError, visibleSelectorMatches: visibleSelectorMatches, visibleChatInputEditor: visibleChatInputEditor, visibleContenteditableCount: editors.length, visibleProseMirrorCount: proseMirrors.length});"
         "if (typeof input.click === 'function') input.click();"
         "input.focus();"
         "let inputSuccess = false;"
-        "const normalize = (value) => String(value || '').replace(/\\r\\n/g, '\\n').trim();"
+        "const normalize = (value) => String(value || '').replace(/\\r\\n/g, '\\n').replace(/\\n{2,}/g, '\\n').trim();"
         "const isProseMirror = !!(input.classList && (input.classList.contains('ProseMirror') || input.classList.contains('tiptap')));"
         "if (isProseMirror) {"
         "  const sel = window.getSelection(); const range = document.createRange(); range.selectNodeContents(input); sel.removeAllRanges(); sel.addRange(range);"
@@ -678,19 +685,22 @@ def _prepare_input_script(payload: str) -> str:
         "  input.dispatchEvent(new KeyboardEvent('keyup',{bubbles:true,key:'a'}));"
         "  const finalText = normalize(input.innerText || input.textContent || '');"
         "  inputSuccess = finalText === normalize(config.prompt);"
+        "  var inputFinalText = finalText;"
         "} else if (input.tagName === 'TEXTAREA') {"
         "  input.value = config.prompt;"
         "  input.dispatchEvent(new InputEvent('input',{bubbles:true,cancelable:true,data:config.prompt,inputType:'insertText'}));"
         "  input.dispatchEvent(new Event('change',{bubbles:true}));"
         "  inputSuccess = normalize(input.value || '') === normalize(config.prompt);"
+        "  var inputFinalText = normalize(input.value || '');"
         "} else {"
         "  input.innerText = config.prompt;"
         "  input.dispatchEvent(new InputEvent('input',{bubbles:true,cancelable:true,data:config.prompt,inputType:'insertText'}));"
         "  input.dispatchEvent(new Event('change',{bubbles:true}));"
         "  inputSuccess = normalize(input.innerText || input.textContent || '') === normalize(config.prompt);"
+        "  var inputFinalText = normalize(input.innerText || input.textContent || '');"
         "}"
         "const matchedSelector = selectors.find(s => safeQuery(s)===input) || '';"
-        "return JSON.stringify({ok:true,inputSelector: matchedSelector, inputSelectorError: selectorError, inputSuccess: inputSuccess});"
+        "return JSON.stringify({ok:true,inputSelector: matchedSelector, inputSelectorError: selectorError, inputSuccess: inputSuccess, inputFinalText: inputFinalText || '', inputPromptNormalized: normalize(config.prompt)});"
         "} catch (error) { return JSON.stringify({ok:false,error:'INPUT_EVAL_EXCEPTION', detail:String((error && error.message) || error || '')}); }"
         "})()"
     )
@@ -731,6 +741,7 @@ def _click_send_script(payload: str) -> str:
         "let input = null;"
         "for (const selector of selectors) { try { const candidate = document.querySelector(selector); if (!candidate) continue; const visible = !!candidate && !!candidate.isConnected && (((candidate.getClientRects && candidate.getClientRects().length > 0)) || candidate.offsetParent !== null); if (visible) { input = candidate; break; } } catch (_) {} }"
         "if (!input) { const chatInput = document.querySelector('[data-testid=\"chat-input\"]'); if (chatInput) { const editor = chatInput.querySelector('.ProseMirror, [contenteditable=\"true\"]'); const visible = !!editor && !!editor.isConnected && (((editor.getClientRects && editor.getClientRects().length > 0)) || editor.offsetParent !== null); if (visible) input = editor; } }"
+        "if (!input) { const proseMirrors = Array.from(document.querySelectorAll('.ProseMirror')).filter((el) => el && el.isConnected && (((el.getClientRects && el.getClientRects().length > 0)) || el.offsetParent !== null) && !el.closest('[data-message-author-role=\"assistant\"]')); if (proseMirrors.length) input = proseMirrors[0]; }"
         "if (!input) return JSON.stringify({ok:false,error:'NO_SEND_INPUT'});"
         "if (typeof input.focus === 'function') input.focus();"
         "for (const selector of sendSelectors) { try { const send = document.querySelector(selector); if (!send) continue; const visible = !!send && !!send.isConnected && (((send.getClientRects && send.getClientRects().length > 0)) || send.offsetParent !== null); const disabled = !!send.disabled || (send.getAttribute && send.getAttribute('aria-disabled') === 'true'); if (!visible || disabled) continue; if (typeof send.focus === 'function') send.focus(); if (typeof send.click === 'function') send.click(); return JSON.stringify({ok:true,sendClicked:true,sendTestId:(send.getAttribute ? (send.getAttribute('data-testid') || 'send-button') : 'send-button'),sendAriaLabel:(send.getAttribute ? (send.getAttribute('aria-label') || '') : '')}); } catch (_) {} }"
@@ -773,9 +784,10 @@ def _input_ready_script() -> str:
         "const interactive = document.querySelector('[data-testid=\"prompt-input-ssr-interactive\"]');"
         "const ssr = document.querySelector('[data-testid=\"chat-input-ssr\"]');"
         "const chatInput = document.querySelector('[data-testid=\"chat-input\"]');"
-        "const proseMirror = document.querySelector('.ProseMirror[contenteditable=\"true\"]');"
+        "const proseMirror = document.querySelector('.ProseMirror');"
         "const visible = (el) => !!el && !!el.isConnected && (((el.getClientRects && el.getClientRects().length > 0)) || el.offsetParent !== null);"
-        "const ready = visible(proseMirror) || visible(interactive) || (!!chatInput && !ssr);"
+        "const chatInputEditor = chatInput ? chatInput.querySelector('.ProseMirror, [contenteditable=\"true\"]') : null;"
+        "const ready = visible(proseMirror) || visible(interactive) || visible(chatInputEditor);"
         "return JSON.stringify({ready, hasInteractive: !!interactive, hasSsr: !!ssr, hasChatInput: !!chatInput, hasProseMirror: !!proseMirror});"
         "})()"
     )
@@ -1059,20 +1071,56 @@ def _normalized_no_send_evidence(parsed: dict[str, object]) -> dict[str, object]
                 "state_transition": False,
                 "retry_safe": False,
             }
-    return {
-        "send_found": bool(raw.get("send_found", False)),
-        "send_disabled": bool(raw.get("send_disabled", False)),
-        "aria_disabled": str(raw.get("aria_disabled", "")),
-        "aria_busy": str(raw.get("aria_busy", "")),
-        "class_name": str(raw.get("class_name", "")),
-        "button_text": str(raw.get("button_text", "")),
-        "pointer_events": str(raw.get("pointer_events", "")),
-        "visible": bool(raw.get("visible", False)),
-        "is_connected": bool(raw.get("is_connected", False)),
-        "in_flight_marker": bool(raw.get("in_flight_marker", False)),
-        "state_transition": bool(raw.get("state_transition", False)),
-        "retry_safe": bool(raw.get("retry_safe", False)),
+    normalized = cast(
+        dict[str, object],
+        {
+            "send_found": bool(raw.get("send_found", False)),
+            "send_disabled": bool(raw.get("send_disabled", False)),
+            "aria_disabled": str(raw.get("aria_disabled", "")),
+            "aria_busy": str(raw.get("aria_busy", "")),
+            "class_name": str(raw.get("class_name", "")),
+            "button_text": str(raw.get("button_text", "")),
+            "pointer_events": str(raw.get("pointer_events", "")),
+            "visible": bool(raw.get("visible", False)),
+            "is_connected": bool(raw.get("is_connected", False)),
+            "in_flight_marker": bool(raw.get("in_flight_marker", False)),
+            "state_transition": bool(raw.get("state_transition", False)),
+            "retry_safe": bool(raw.get("retry_safe", False)),
+        },
+    )
+    diagnostics_keys = {
+        "visibleSelectorMatches",
+        "visibleChatInputEditor",
+        "visibleContenteditableCount",
+        "visibleProseMirrorCount",
+        "inputSelectorError",
     }
+    diagnostics = cast(
+        dict[str, object],
+        {
+            key: parsed.get(key)
+            for key in diagnostics_keys
+            if key in parsed and parsed.get(key) is not None
+        },
+    )
+    if diagnostics:
+        normalized["no_input_diagnostics"] = diagnostics
+    input_success_keys = {
+        "inputSuccess",
+        "inputFinalText",
+        "inputPromptNormalized",
+    }
+    input_success_diagnostics = cast(
+        dict[str, object],
+        {
+            key: parsed.get(key)
+            for key in input_success_keys
+            if key in parsed and parsed.get(key) is not None
+        },
+    )
+    if input_success_diagnostics:
+        normalized["input_success_diagnostics"] = input_success_diagnostics
+    return normalized
 
 
 def _submit_evidence_record(

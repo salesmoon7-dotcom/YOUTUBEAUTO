@@ -14,6 +14,7 @@ from runtime_v2.stage1.chatgpt_backend import (
 
 CHATGPT_INPUT_SELECTORS = [
     "#prompt-textarea",
+    ".ProseMirror[contenteditable='true']",
     "div.ProseMirror[contenteditable='true']",
     "div[contenteditable='true'][id='prompt-textarea']",
     "div[contenteditable='true']",
