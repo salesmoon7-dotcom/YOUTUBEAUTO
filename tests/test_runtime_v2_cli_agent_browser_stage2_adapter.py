@@ -628,6 +628,19 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertTrue(page_selection_indices)
         self.assertTrue(background_focus_indices)
         self.assertLess(min(page_selection_indices), min(background_focus_indices))
+        page_count_after_scripts = [
+            str(action.get("script", ""))
+            for action in captured_actions
+            if str(action.get("type", "")) == "eval"
+            and "step:'page_count_after'" in str(action.get("script", ""))
+        ]
+        self.assertTrue(page_count_after_scripts)
+        self.assertFalse(
+            any("addBtn.click()" in script for script in page_count_after_scripts)
+        )
+        self.assertFalse(
+            any("key:'v'" in script for script in page_count_after_scripts)
+        )
         self.assertTrue(
             any(
                 "opened_background_generate_panel_legacy" in script
