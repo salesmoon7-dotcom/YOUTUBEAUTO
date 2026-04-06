@@ -196,7 +196,7 @@
   - `stage1_handoff.contract`는 이제 항상 `stage1_handoff.v1.0` + `voice_texts/ref_img_1/ref_img_2`를 포함합니다.
   - live `browser_evidence(service=chatgpt, port)`는 `raw_output.json.gpt_capture`를 남기고, 실패 시 fail-close 됩니다.
   - `system/runtime_v2_probe/first-test-real-live-06/` 기준 실제 live 시도는 `CHATGPT_BACKEND_UNAVAILABLE`로 fail-close 되었고, evidence chain은 남았습니다.
-  - live ChatGPT 경로는 legacy-style longform production prompt를 canonical builder로 사용합니다.
+- live ChatGPT 경로는 runtime_v2 기본 경로에서 topic text 자체를 canonical builder로 사용합니다. 레거시 `chatgpt_automation.py`는 별도 `request_text` wrapper를 조립해 전송하므로, 두 경로를 같은 의미의 topic-only로 취급하지 않습니다.
   - `AgentBrowserCdpBackend`는 `tab preselect + retry` 하드닝이 반영되었습니다.
   - `NO_SEND`/`SEND_DISABLED`지만 stop-button이 보이는 경우는 `submit in-flight`로 해석하도록 stop-gate 하드닝을 반영했습니다.
   - 완료 판정은 `stop-button`이 나타났다 사라진 뒤 텍스트가 안정화될 때만 성공으로 처리합니다.

@@ -2227,6 +2227,61 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertIn("[Voice]\nnarration", str(result["response_text"]))
 
+    def test_generate_gpt_response_text_does_not_finish_on_non_scene_legacy_blocks(
+        self,
+    ) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def __init__(self) -> None:
+                self.read_calls = 0
+
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                return {
+                    "ok": True,
+                    "sendClicked": True,
+                    "sendTestId": "send-button",
+                    "submit_evidence": {
+                        "classification": "ambiguous",
+                        "classification_reason": "send_click_unconfirmed",
+                        "retry_safe_decision": False,
+                    },
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                self.read_calls += 1
+                if self.read_calls == 1:
+                    return {
+                        "has_stop": False,
+                        "has_send_button": False,
+                        "assistant_block_count": 0,
+                        "assistant_text": "",
+                        "legacy_blocks": [],
+                    }
+                return {
+                    "has_stop": False,
+                    "has_send_button": True,
+                    "assistant_block_count": 1,
+                    "assistant_text": "",
+                    "legacy_blocks": [
+                        {"label": "[Voice]", "body": "narration"},
+                        {"label": "[Title]", "body": "money title"},
+                        {"label": "[Description]", "body": "desc"},
+                        {"label": "[Keywords]", "body": "kw1, kw2"},
+                    ],
+                }
+
+        result = generate_gpt_response_text(
+            prompt="test prompt",
+            port=9222,
+            timeout_sec=1,
+            poll_interval_sec=0.01,
+            completion_idle_sec=0.01,
+            response_start_timeout_sec=0.1,
+            backend=FakeBackend(),
+        )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
+
     def test_generate_gpt_response_text_marks_ambiguous_submit_boundary(self) -> None:
         class FakeBackend(ChatGPTBackend):
             def submit_prompt(self, prompt: str) -> dict[str, object]:

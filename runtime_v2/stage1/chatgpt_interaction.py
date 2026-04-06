@@ -544,10 +544,13 @@ def _response_text_from_state(text: str, legacy_blocks: object) -> str:
 
 
 def _has_structured_stage1_content(response_text: str, legacy_blocks: object) -> bool:
-    if isinstance(legacy_blocks, list) and any(
-        isinstance(item, dict) for item in legacy_blocks
-    ):
-        return True
+    if isinstance(legacy_blocks, list):
+        for item in legacy_blocks:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label", "")).strip()
+            if label.startswith("[#") or label.lower().startswith("[scene"):
+                return True
     text = response_text.strip()
     if not text:
         return False
@@ -556,10 +559,8 @@ def _has_structured_stage1_content(response_text: str, legacy_blocks: object) ->
         for marker in (
             "[#01]",
             "[#02]",
-            "[Voice]",
-            "[Title]",
-            "[Description]",
-            "[Keywords]",
+            "[Scene 1]",
+            "[Scene 2]",
         )
     )
 
