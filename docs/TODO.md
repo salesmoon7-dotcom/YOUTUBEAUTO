@@ -135,6 +135,11 @@
   - 최신 failure grade는 broad command failure가 아니라 `CANVA_TRUTHFUL_ARTIFACT_GATE_FAILED`로 좁혀졌습니다.
   - live DOM 기준 현재 작업 페이지에는 노란/흰 텍스트 레이어가 아예 없을 수 있어, `playwright_edit_canva_text`는 그 경우 정상적으로 실패합니다.
   - 따라서 현재 남은 single blocker는 `runtime_v2` 일반 상호작용이 아니라 `현재 작업 템플릿/페이지의 텍스트 레이어 존재 여부`입니다.
+- 2026-04-06 canva product-background truthful stop point:
+  - 최신 fresh live adapter(`canva-live-check-20260406-k2`)와 direct helper execution 모두 `PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE`를 일관되게 반환했습니다.
+  - 현재 live Canva에서는 `Product Background` 탭이 열리지만 생성 UI가 top DOM에 나타나지 않고, panel 내부는 iframe-hosted app state로만 노출됩니다.
+  - current tooling 기준 Playwright/CDP로 해당 iframe `content_frame()` 접근이 안정적으로 되지 않아, 지금 단계의 truthful blocker는 opener/button selector가 아니라 `Product Background iframe UI 접근 불가`입니다.
+  - 따라서 동일 세션/템플릿 상태에서 추가 top-DOM opener 수정은 중단하고, 다음 세션은 (1) Canva 상태가 바뀌어 top DOM generate UI가 노출되는지 확인하거나, (2) iframe 내부 접근 전략을 별도 배치로 설계하는 방향으로 이어갑니다.
 - 오라클 shortest-path 전략(현재 SSOT):
   - 남은 검증은 semantic target row(`Sheet1` row 16 / CLI `--row-index 14`)에 대한 `Stage 5 detached run` **1회**만 수행합니다.
   - 그 전에 `python -m runtime_v2.cli --readiness-check`만 확인하고, readiness fail이면 Stage 5를 시작하지 않습니다.
