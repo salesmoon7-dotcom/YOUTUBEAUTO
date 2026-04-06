@@ -2128,6 +2128,10 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
             {
                 "type": "eval",
+                "script": _build_canva_cleanup_pages_script(),
+            },
+            {
+                "type": "eval",
                 "script": _canva_page_count_script("page_count_before").replace(
                     "return JSON.stringify({ok:true, step:'page_count_before', count: totalPages});",
                     "window.__runtime_v2_canva_page_count_before = totalPages; return JSON.stringify({ok:true, step:'page_count_before', count: totalPages});",
@@ -3528,6 +3532,28 @@ def _build_canva_background_generate_script() -> str:
         "const sidebar = JSON.parse(openSidebar()); if (!sidebar.ok) return JSON.stringify(sidebar); "
         "const deadline = Date.now() + 4000; while (Date.now() < deadline) { const exact = findExact(); if (exact instanceof HTMLElement) { exact.click(); return JSON.stringify({ok:true, step:'opened_background_generate_panel', source:'aria-label'}); } if (hasGenerateCta()) { return JSON.stringify({ok:true, step:'opened_background_generate_panel', source:'generate-cta-only'}); } if (sidebar.iframeVisible) { return JSON.stringify({ok:false,error:'PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE', visibleCandidates: describeVisibleCandidates(), backgroundCandidates: describeBackgroundCandidates(), iframeVisible: true}); } await wait(200); } "
         "return JSON.stringify({ok:false,error:'NO_BACKGROUND_GENERATE_BUTTON', visibleCandidates: describeVisibleCandidates(), backgroundCandidates: describeBackgroundCandidates()}); "
+        "})()"
+    )
+
+
+def _build_canva_cleanup_pages_script() -> str:
+    return (
+        "(async () => { "
+        "const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms)); "
+        'const visibleDeleteButtons = () => Array.from(document.querySelectorAll(\'button[aria-label="페이지 삭제"], button[aria-label="Delete page"]\')).filter(el => ((el.getClientRects&&el.getClientRects().length>0)||el.offsetParent!==null)); '
+        "const deadline = Date.now() + 8000; "
+        "const maxIterations = 8; "
+        "let deleted = 0; "
+        "let iterations = 0; "
+        "while (visibleDeleteButtons().length > 1 && iterations < maxIterations && Date.now() < deadline) { "
+        "iterations += 1; "
+        "const buttons = visibleDeleteButtons(); const btn = buttons[buttons.length - 1]; btn.click(); deleted += 1; await wait(500); "
+        "const confirm = Array.from(document.querySelectorAll('button,[role=button]')).find(el => { const text = ((el.innerText||el.textContent||'')+' '+(el.getAttribute('aria-label')||'')).trim(); return text === '삭제' || text === 'Delete'; }); "
+        "if (confirm instanceof HTMLElement) { confirm.click(); await wait(600); } "
+        "} "
+        "const remaining = visibleDeleteButtons().length; "
+        "if (remaining > 1) return JSON.stringify({ok:false,error:'CANVA_PAGE_CLEANUP_INCOMPLETE', deleted, remaining, iterations}); "
+        "return JSON.stringify({ok:true, step:'cleanup_extra_pages_before_duplicate', deleted, iterations}); "
         "})()"
     )
 

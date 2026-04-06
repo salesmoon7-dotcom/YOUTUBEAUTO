@@ -614,6 +614,37 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 for script in background_eval_scripts
             )
         )
+        cleanup_indices = [
+            idx
+            for idx, action in enumerate(captured_actions)
+            if str(action.get("type", "")) == "eval"
+            and "cleanup_extra_pages_before_duplicate" in str(action.get("script", ""))
+        ]
+        duplicate_indices = [
+            idx
+            for idx, action in enumerate(captured_actions)
+            if str(action.get("type", "")) == "eval"
+            and "duplicated_template_page" in str(action.get("script", ""))
+        ]
+        self.assertTrue(cleanup_indices)
+        self.assertTrue(duplicate_indices)
+        self.assertLess(min(cleanup_indices), min(duplicate_indices))
+        cleanup_scripts = [
+            str(action.get("script", ""))
+            for action in captured_actions
+            if str(action.get("type", "")) == "eval"
+            and "cleanup_extra_pages_before_duplicate" in str(action.get("script", ""))
+        ]
+        self.assertTrue(cleanup_scripts)
+        self.assertTrue(
+            any("CANVA_PAGE_CLEANUP_INCOMPLETE" in script for script in cleanup_scripts)
+        )
+        self.assertTrue(
+            any("text === 'Delete'" in script for script in cleanup_scripts)
+        )
+        self.assertFalse(
+            any("text.includes('Delete')" in script for script in cleanup_scripts)
+        )
         page_selection_indices = [
             idx
             for idx, action in enumerate(captured_actions)
