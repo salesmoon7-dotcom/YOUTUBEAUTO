@@ -2159,8 +2159,8 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
             {
                 "type": "click_box_offset",
-                "selector": '[aria-label="캔버스 진입점"]',
-                "x_ratio": 0.5,
+                "selector": 'xpath=(//*[@role="application"])[last()]',
+                "x_ratio": 0.15,
                 "y_ratio": 0.15,
                 "step": "focused_background_canvas",
             },

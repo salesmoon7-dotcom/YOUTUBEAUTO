@@ -659,6 +659,10 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             if str(action.get("type", "")) == "click_box_offset"
         ]
         self.assertIn(
+            ('xpath=(//*[@role="application"])[last()]', "0.15", "0.15"),
+            tab_offset_clicks,
+        )
+        self.assertIn(
             (
                 'xpath=(//button[@role="tab" and normalize-space(.)="Product Background"])[1]',
                 "0.8",
