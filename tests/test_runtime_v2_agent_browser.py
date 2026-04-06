@@ -202,6 +202,39 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
 
         self.assertEqual(_agent_browser_error_code(exc), "CANVA_AUTH_CONSENT_REQUIRED")
 
+    def test_run_agent_browser_actions_dispatches_playwright_canva_background_generate(
+        self,
+    ) -> None:
+        from runtime_v2.workers import agent_browser_worker as worker_module
+
+        transcript: list[dict[str, object]] = []
+
+        with patch(
+            "runtime_v2.workers.agent_browser_worker._playwright_canva_background_generate",
+            return_value={"ok": True, "step": "submitted_background_generate_iframe"},
+        ) as helper:
+            worker_module._run_agent_browser_actions(
+                service="canva",
+                port=9666,
+                transcript=transcript,
+                actions=[
+                    {
+                        "type": "playwright_canva_background_generate",
+                        "bg_prompt": "quiet waiting area",
+                    }
+                ],
+                timeout_sec=30,
+            )
+
+        helper.assert_called_once_with(
+            port=9666,
+            bg_prompt="quiet waiting area",
+            timeout_sec=30,
+        )
+        self.assertEqual(
+            transcript[0]["command"], ["playwright-canva-background-generate"]
+        )
+
     def test_agent_browser_worker_resolves_executable_from_appdata_npm(self) -> None:
         from runtime_v2.workers.agent_browser_worker import (
             _resolve_agent_browser_command,

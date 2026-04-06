@@ -177,6 +177,59 @@ def _playwright_edit_canva_colored_text(
         browser.close()
 
 
+def _playwright_canva_background_generate(
+    *, port: int, bg_prompt: str, timeout_sec: int
+) -> dict[str, object]:
+    browser, page = _select_canva_page(port)
+    try:
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(500)
+
+        tab = page.locator('button[role="tab"]', has_text="Product Background").first
+        tab.click(timeout=5000)
+        page.wait_for_timeout(1500)
+
+        iframe = page.locator('iframe[title="Product Background"]').first
+        if iframe.count() == 0:
+            return {
+                "ok": False,
+                "error": "PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE",
+            }
+
+        handle = iframe.element_handle(timeout=3000)
+        frame = handle.content_frame() if handle is not None else None
+        if frame is None:
+            return {
+                "ok": False,
+                "error": "PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE",
+            }
+
+        prompt_input = frame.locator("textarea,[role=textbox],input[type=text]").first
+        prompt_visible = False
+        if prompt_input.count() > 0:
+            try:
+                prompt_visible = bool(prompt_input.bounding_box())
+            except Exception:
+                prompt_visible = False
+
+        if not prompt_visible:
+            file_select = frame.get_by_role("button", name="파일 선택하기")
+            generate = frame.get_by_role("button", name="생성")
+            return {
+                "ok": False,
+                "error": "CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT",
+                "file_select_visible": bool(file_select.count()),
+                "generate_visible": bool(generate.count()),
+            }
+
+        prompt_input.fill(bg_prompt, timeout=timeout_sec * 1000)
+        generate_button = frame.get_by_role("button", name="생성")
+        generate_button.click(timeout=5000)
+        return {"ok": True, "step": "submitted_background_generate_iframe"}
+    finally:
+        browser.close()
+
+
 def _run_agent_browser_actions(
     *,
     service: str,
@@ -419,6 +472,26 @@ def _run_agent_browser_actions(
             )
             output = json.dumps(output_payload, ensure_ascii=True)
             command = ["playwright-edit-canva-text"]
+            transcript.append(
+                {
+                    "command": command,
+                    "output": output,
+                    "action_index": index,
+                }
+            )
+            if not bool(output_payload.get("ok", False)):
+                raise RuntimeError(
+                    f"agent_browser_action_failed:{json.dumps(output_payload, ensure_ascii=True)}"
+                )
+            continue
+        elif action_type == "playwright_canva_background_generate":
+            output_payload = _playwright_canva_background_generate(
+                port=port,
+                bg_prompt=str(action.get("bg_prompt", "")),
+                timeout_sec=timeout_sec,
+            )
+            output = json.dumps(output_payload, ensure_ascii=True)
+            command = ["playwright-canva-background-generate"]
             transcript.append(
                 {
                     "command": command,

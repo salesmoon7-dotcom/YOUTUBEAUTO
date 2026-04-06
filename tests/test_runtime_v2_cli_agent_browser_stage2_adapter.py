@@ -672,21 +672,23 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 for script in background_eval_scripts
             )
         )
-        self.assertTrue(
+        iframe_actions = [
+            action
+            for action in captured_actions
+            if str(action.get("type", "")) == "playwright_canva_background_generate"
+        ]
+        self.assertEqual(len(iframe_actions), 1)
+        self.assertEqual(str(iframe_actions[0].get("bg_prompt", "")), "scene three")
+        self.assertFalse(
             any(
-                "visibleCandidates" in script
-                for script in background_eval_scripts
-                if "opened_background_generate_panel" in script
+                "filled_background_prompt" in script
+                or "submitted_background_generate" in script
                 or "NO_BACKGROUND_GENERATE_BUTTON" in script
+                for script in background_eval_scripts
             )
         )
-        self.assertTrue(
-            any(
-                "backgroundCandidates" in script
-                for script in background_eval_scripts
-                if "opened_background_generate_panel" in script
-                or "NO_BACKGROUND_GENERATE_BUTTON" in script
-            )
+        self.assertNotIn(
+            "NO_BACKGROUND_GENERATE_BUTTON", "\n".join(background_eval_scripts)
         )
 
     def test_stage2_adapter_child_accepts_line_ok_canva_text_result_without_applied(
