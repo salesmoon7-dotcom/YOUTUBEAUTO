@@ -592,6 +592,64 @@ class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
         self.assertEqual(probe_result["status"], "failed")
         self.assertEqual(probe_result["code"], "BATCH_TIMEOUT")
 
+    def test_stage5_probe_child_writes_probe_result_on_unhandled_exception(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            probe_root = root / "probe"
+            excel_path = root / "topic.xlsx"
+            workbook = Workbook()
+            sheet = cast(Worksheet, workbook.active)
+            sheet.title = "Sheet1"
+            sheet.append(["Topic", "Status"])
+            sheet.append(["Semantic row", "OK"])
+            workbook.save(excel_path)
+            workbook.close()
+
+            config = RuntimeConfig.from_root(root / "runtime")
+
+            with (
+                patch("runtime_v2.cli._build_runtime_config", return_value=config),
+                patch(
+                    "runtime_v2.cli._run_stage5_row1_probe",
+                    side_effect=RuntimeError("chatgpt timeout exploded"),
+                ),
+                patch(
+                    "sys.argv",
+                    [
+                        "runtime_v2.cli",
+                        "--stage5-row1-probe-child",
+                        "--owner",
+                        "runtime_v2",
+                        "--probe-root",
+                        str(probe_root),
+                        "--excel-path",
+                        str(excel_path),
+                        "--sheet-name",
+                        "Sheet1",
+                        "--row-index",
+                        "0",
+                        "--max-control-ticks",
+                        "1",
+                    ],
+                ),
+            ):
+                exit_code = main()
+
+            probe_result = json.loads(
+                (probe_root / "probe_result.json").read_text(encoding="utf-8")
+            )
+            detached_summary = json.loads(
+                (probe_root / "summary.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(exit_code, exit_codes.CLI_USAGE)
+        self.assertEqual(probe_result["status"], "failed")
+        self.assertEqual(probe_result["code"], "UNHANDLED_EXCEPTION")
+        self.assertEqual(detached_summary["status"], "failed")
+        self.assertEqual(detached_summary["code"], "UNHANDLED_EXCEPTION")
+
     def test_spawn_detached_probe_for_stage5b_forwards_batch_arguments(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

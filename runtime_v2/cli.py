@@ -739,18 +739,40 @@ def main() -> int:
         print(final_report(report))
         return exit_code_from_status(str(report.get("code", "CLI_USAGE")))
     if args.stage5_row1_probe_child:
-        report = _run_stage5_row1_probe(
-            owner=args.owner,
-            config=config,
-            probe_root=_probe_root_path(args.probe_root),
-            run_id=run_id,
-            excel_path=args.excel_path,
-            sheet_name=args.sheet_name,
-            row_index=args.row_index,
-            max_control_ticks=args.max_control_ticks,
-        )
+        probe_root = _probe_root_path(args.probe_root)
+        try:
+            report = _run_stage5_row1_probe(
+                owner=args.owner,
+                config=config,
+                probe_root=probe_root,
+                run_id=run_id,
+                excel_path=args.excel_path,
+                sheet_name=args.sheet_name,
+                row_index=args.row_index,
+                max_control_ticks=args.max_control_ticks,
+            )
+        except Exception as exc:
+            report: dict[str, object] = {
+                "run_id": run_id,
+                "mode": "stage5_row1",
+                "status": "failed",
+                "code": "UNHANDLED_EXCEPTION",
+                "exit_code": exit_codes.CLI_USAGE,
+                "debug_log": str(debug_log_path(config.debug_log_root, run_id)),
+                "error": exception_payload(exc),
+            }
+            _ = _write_probe_result(probe_root, report)
+            _ = _write_detached_summary(
+                out_root=probe_root,
+                kind="stage5_row1",
+                target="runtime_v2.cli --stage5-row1-probe-child",
+                exit_code=exit_codes.CLI_USAGE,
+                payload=report,
+            )
+            print(final_report(report))
+            return exit_codes.CLI_USAGE
         _ = _write_probe_result(
-            _probe_root_path(args.probe_root),
+            probe_root,
             {
                 "run_id": run_id,
                 "mode": "stage5_row1",
@@ -764,7 +786,7 @@ def main() -> int:
             },
         )
         _ = _write_detached_summary(
-            out_root=_probe_root_path(args.probe_root),
+            out_root=probe_root,
             kind="stage5_row1",
             target="runtime_v2.cli --stage5-row1-probe-child",
             exit_code=exit_code_from_status(str(report.get("code", "CLI_USAGE"))),
@@ -921,7 +943,49 @@ def main() -> int:
             "status": "failed",
             "code": "UNHANDLED_EXCEPTION",
             "exit_code": exit_codes.CLI_USAGE,
+            "error": exception_payload(exc),
         }
+        if (
+            args.selftest_probe_child
+            or args.control_once_probe_child
+            or args.stage2_row1_probe_child
+            or args.stage5_row1_probe_child
+            or args.stage5b_5row_probe_child
+        ):
+            probe_root = _probe_root_path(args.probe_root)
+            _ = _write_probe_result(
+                probe_root,
+                {
+                    "run_id": run_id,
+                    "mode": mode,
+                    "status": "failed",
+                    "code": "UNHANDLED_EXCEPTION",
+                    "exit_code": exit_codes.CLI_USAGE,
+                    "debug_log": str(debug_log),
+                    "error": exception_payload(exc),
+                },
+            )
+            probe_kind = {
+                "selftest": args.selftest_probe_child,
+                "control_once": args.control_once_probe_child,
+                "stage2_row1": args.stage2_row1_probe_child,
+                "stage5_row1": args.stage5_row1_probe_child,
+                "stage5b_5row": args.stage5b_5row_probe_child,
+            }
+            selected_kind = next(key for key, enabled in probe_kind.items() if enabled)
+            _ = _write_detached_summary(
+                out_root=probe_root,
+                kind=selected_kind,
+                target=f"runtime_v2.cli --{selected_kind.replace('_', '-')}-probe-child",
+                exit_code=exit_codes.CLI_USAGE,
+                payload={
+                    "run_id": run_id,
+                    "status": "failed",
+                    "code": "UNHANDLED_EXCEPTION",
+                    "probe_result": str(probe_root / "probe_result.json"),
+                    "debug_log": str(debug_log),
+                },
+            )
         print(final_report(summarize_cli_report(failure_report, debug_log)))
         return exit_codes.CLI_USAGE
     summary = summarize_runtime_result(result)
@@ -1966,7 +2030,14 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         )
     )
     workspace.mkdir(parents=True, exist_ok=True)
-    artifact_root = workspace / "agent_browser_adapter_artifacts"
+    runtime_root = (
+        Path(args.runtime_root).resolve() if args.runtime_root.strip() else None
+    )
+    artifact_root = (
+        RuntimeConfig.from_root(runtime_root).artifact_root
+        if runtime_root is not None
+        else workspace / "agent_browser_adapter_artifacts"
+    )
     attach_evidence = workspace / "attach_evidence.json"
     if attach_evidence.exists():
         attach_evidence.unlink()
