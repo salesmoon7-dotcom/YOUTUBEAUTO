@@ -490,6 +490,69 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             )
         )
 
+    def test_seed_declared_next_jobs_injects_runtime_root_into_stage2_jobs(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            asset_root = config.artifact_root / "chatgpt" / "chatgpt-seed"
+            asset_root.mkdir(parents=True, exist_ok=True)
+            parent_job = JobContract(
+                job_id="chatgpt-seed",
+                workload="chatgpt",
+                checkpoint_key="seed:chatgpt-seed",
+                payload={
+                    "run_id": "runtime-root-run",
+                    "row_ref": "Sheet1!row15",
+                    "chain_depth": 0,
+                },
+            )
+            worker_result = {
+                "status": "ok",
+                "stage": "chatgpt",
+                "error_code": "",
+                "retryable": False,
+                "next_jobs": [
+                    build_explicit_job_contract(
+                        job_id="genspark-runtime-root",
+                        workload="genspark",
+                        checkpoint_key="stage2:genspark:Sheet1!row15:1",
+                        payload={
+                            "run_id": "runtime-root-run",
+                            "row_ref": "Sheet1!row15",
+                            "prompt": "scene one",
+                            "service_artifact_path": str(
+                                (
+                                    config.artifact_root / "images" / "scene-01.png"
+                                ).resolve()
+                            ),
+                            "use_agent_browser": True,
+                        },
+                        chain_step=1,
+                        parent_job_id=parent_job.job_id,
+                    )
+                ],
+                "completion": {"state": "routed", "final_output": False},
+            }
+            jobs: list[JobContract] = []
+
+            seeded = _seed_declared_next_jobs(
+                config.queue_store_file,
+                jobs,
+                cast(dict[str, object], worker_result),
+                parent_job,
+                config.control_plane_events_file,
+                run_id="control-run-runtime-root-seed",
+                artifact_root=config.artifact_root,
+            )
+
+        self.assertEqual(len(seeded), 1)
+        self.assertEqual(
+            str(seeded[0].payload.get("runtime_root", "")),
+            str(config.artifact_root.parent.resolve()),
+        )
+
     def test_run_worker_rejects_unsupported_workload_explicitly(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             job = JobContract(

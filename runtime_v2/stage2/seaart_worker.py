@@ -73,6 +73,7 @@ def run_seaart_job(
         adapter_command_raw = build_stage2_agent_browser_adapter_command(
             service="seaart",
             service_artifact_path=str(job.payload.get("service_artifact_path", "")),
+            runtime_root=str(job.payload.get("runtime_root", "")),
             expected_url_substring=str(job.payload.get("expected_url_substring", "")),
             expected_title_substring=str(
                 job.payload.get("expected_title_substring", "")

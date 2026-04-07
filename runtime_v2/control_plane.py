@@ -1671,6 +1671,8 @@ def _seed_declared_next_jobs(
                 )
                 continue
             next_job.payload["row_ref"] = expected_row_ref
+        if next_job.workload in {"genspark", "seaart", "canva", "geminigen"}:
+            next_job.payload["runtime_root"] = str(artifact_root.parent.resolve())
         replaced_job_id = ""
         if next_job.workload == "rvc":
             replaced_job_id = _normalize_rvc_next_job(

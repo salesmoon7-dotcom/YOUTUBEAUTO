@@ -398,6 +398,47 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             self.assertFalse(bool(evidence["recovery_attempted"]))
             self.assertFalse(bool(evidence["placeholder_artifact"]))
 
+    def test_stage2_adapter_child_uses_runtime_root_artifact_root_for_verify(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            runtime_root = root / "probe_root"
+            output_path = root / "exports" / "scene-01.png"
+            args = CliArgs()
+            args.service = "genspark"
+            args.port = 9333
+            args.runtime_root = str(runtime_root)
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "genspark.ai"
+            args.expected_title_substring = "Genspark"
+            captured_artifact_root: list[Path] = []
+            completed = cast(object, type("Completed", (), {})())
+            setattr(completed, "stdout", '{"ok":true}')
+            setattr(completed, "stderr", "")
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                _ = job
+                captured_artifact_root.append(artifact_root)
+                return {"status": "ok", "details": {}}
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "genspark", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", return_value=completed),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        self.assertEqual(captured_artifact_root, [runtime_root / "artifacts"])
+
     def test_stage2_adapter_child_records_canva_clone_counts(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

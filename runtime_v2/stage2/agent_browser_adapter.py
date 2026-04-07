@@ -21,6 +21,7 @@ def build_stage2_agent_browser_adapter_command(
     *,
     service: str,
     service_artifact_path: str,
+    runtime_root: str = "",
     port: int | None = None,
     expected_url_substring: str = "",
     expected_title_substring: str = "",
@@ -45,7 +46,9 @@ def build_stage2_agent_browser_adapter_command(
         "--service-artifact-path",
         str(Path(service_artifact_path)),
         "--runtime-root",
-        str(_default_runtime_root()),
+        str(Path(runtime_root).resolve())
+        if runtime_root.strip()
+        else str(_default_runtime_root()),
     ]
     if resolved_url:
         command.extend(["--expected-url-substring", resolved_url])

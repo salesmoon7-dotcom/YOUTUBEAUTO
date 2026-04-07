@@ -101,6 +101,37 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         self.assertIn("PYTHONPATH", extra_env)
         self.assertTrue(extra_env["PYTHONPATH"].startswith(str(REPO_ROOT.resolve())))
 
+    def test_genspark_worker_passes_runtime_root_to_agent_browser_child(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = root / "exports" / "scene-01.png"
+            runtime_root = root / "probe_root"
+            job = _stage2_job("genspark")
+            job.payload["use_agent_browser"] = True
+            job.payload["service_artifact_path"] = str(output_path)
+            job.payload["runtime_root"] = str(runtime_root)
+
+            with patch(
+                "runtime_v2.stage2.genspark_worker.run_verified_adapter_command",
+                return_value={
+                    "ok": True,
+                    "output_path": output_path,
+                    "stdout_path": root / "stdout.log",
+                    "stderr_path": root / "stderr.log",
+                    "reused": False,
+                },
+            ) as adapter_mock:
+                _ = run_genspark_job(job, artifact_root)
+
+        adapter_command = cast(
+            list[str], adapter_mock.call_args.kwargs["adapter_command"]
+        )
+        runtime_root_arg_index = adapter_command.index("--runtime-root") + 1
+        self.assertEqual(
+            adapter_command[runtime_root_arg_index], str(runtime_root.resolve())
+        )
+
     def test_genspark_worker_marks_browser_failures_retryable(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
