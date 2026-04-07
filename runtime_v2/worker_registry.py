@@ -2,12 +2,25 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
 from pathlib import Path
 from time import sleep
 from time import time
 
 
-_WORKER_REGISTRY_REPLACE_RETRY_DELAYS = (0.05, 0.1, 0.2)
+_WORKER_REGISTRY_REPLACE_RETRY_DELAYS = (0.05, 0.1, 0.2, 0.5, 1.0)
+_WORKER_REGISTRY_LOCKS: dict[str, threading.Lock] = {}
+_WORKER_REGISTRY_LOCKS_GUARD = threading.Lock()
+
+
+def _worker_registry_lock(path: Path) -> threading.Lock:
+    key = str(path.resolve()).lower()
+    with _WORKER_REGISTRY_LOCKS_GUARD:
+        lock = _WORKER_REGISTRY_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _WORKER_REGISTRY_LOCKS[key] = lock
+        return lock
 
 
 def load_worker_registry(path: Path) -> dict[str, dict[str, object]]:
@@ -26,6 +39,7 @@ def load_worker_registry(path: Path) -> dict[str, dict[str, object]]:
 
 def write_worker_registry(path: Path, payload: dict[str, dict[str, object]]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
+    payload_text = json.dumps(payload, ensure_ascii=True, indent=2)
     with tempfile.NamedTemporaryFile(
         "w",
         encoding="utf-8",
@@ -34,7 +48,7 @@ def write_worker_registry(path: Path, payload: dict[str, dict[str, object]]) -> 
         suffix=".tmp",
         delete=False,
     ) as handle:
-        handle.write(json.dumps(payload, ensure_ascii=True, indent=2))
+        handle.write(payload_text)
         temp_path = Path(handle.name)
     last_error: PermissionError | None = None
     for delay in (*_WORKER_REGISTRY_REPLACE_RETRY_DELAYS, None):
@@ -44,6 +58,10 @@ def write_worker_registry(path: Path, payload: dict[str, dict[str, object]]) -> 
         except PermissionError as exc:
             last_error = exc
             if getattr(exc, "winerror", None) != 5 or delay is None:
+                if getattr(exc, "winerror", None) == 5 and delay is None:
+                    path.write_text(payload_text, encoding="utf-8")
+                    temp_path.unlink(missing_ok=True)
+                    break
                 raise
             sleep(delay)
     if last_error is not None and not path.exists():
@@ -59,19 +77,20 @@ def update_worker_state(
     run_id: str,
     progress_ts: float | None = None,
 ) -> Path:
-    registry = load_worker_registry(path)
-    existing = registry.get(workload, {})
-    existing.update(
-        {
-            "workload": workload,
-            "state": state,
-            "run_id": run_id,
-            "last_seen": round(time(), 3),
-            "progress_ts": round(time() if progress_ts is None else progress_ts, 3),
-        }
-    )
-    registry[workload] = existing
-    return write_worker_registry(path, registry)
+    with _worker_registry_lock(path):
+        registry = load_worker_registry(path)
+        existing = registry.get(workload, {})
+        existing.update(
+            {
+                "workload": workload,
+                "state": state,
+                "run_id": run_id,
+                "last_seen": round(time(), 3),
+                "progress_ts": round(time() if progress_ts is None else progress_ts, 3),
+            }
+        )
+        registry[workload] = existing
+        return write_worker_registry(path, registry)
 
 
 def has_progress_stall(
