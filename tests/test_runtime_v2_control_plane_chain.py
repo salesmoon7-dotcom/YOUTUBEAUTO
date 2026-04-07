@@ -2429,6 +2429,70 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             run_gated_mock.call_args.kwargs["force_unhealthy_service"], "genspark"
         )
 
+    def test_stale_running_recovery_retries_immediately_on_next_control_once(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            stale_job = JobContract(
+                job_id="chatgpt-stale-running-job",
+                workload="chatgpt",
+                status="running",
+                attempts=0,
+                checkpoint_key="seed:chatgpt-stale-running-job",
+                payload={
+                    "run_id": "chatgpt-stale-running-run",
+                    "row_ref": "Sheet1!row15",
+                    "next_attempt_at": time.time() + 999,
+                    "topic_spec": {"topic": "stale-running"},
+                },
+            )
+            stale_job.updated_at = time.time() - (config.running_stale_sec + 5)
+            seed_control_job(stale_job, config=config)
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={
+                    "status": "ok",
+                    "code": "OK",
+                    "worker_result": {
+                        "status": "ok",
+                        "stage": "chatgpt",
+                        "error_code": "",
+                        "retryable": False,
+                        "next_jobs": [],
+                        "details": {},
+                        "completion": {"state": "succeeded", "final_output": False},
+                    },
+                },
+            ) as run_gated_mock:
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-stale-retry-immediate",
+                )
+
+            queue_payload = cast(
+                list[object],
+                json.loads(config.queue_store_file.read_text(encoding="utf-8")),
+            )
+            queue_items = [
+                cast(dict[str, object], item)
+                for item in queue_payload
+                if isinstance(item, dict)
+            ]
+            job_payload = next(
+                item
+                for item in queue_items
+                if str(item["job_id"]) == "chatgpt-stale-running-job"
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["code"], "OK")
+        self.assertEqual(str(job_payload["status"]), "completed")
+        self.assertEqual(run_gated_mock.call_count, 1)
+
     def test_control_plane_holds_gpt_floor_failure_with_fixed_backoff(
         self,
     ) -> None:

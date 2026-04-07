@@ -1133,9 +1133,7 @@ def _recover_stale_running_jobs(
         job.status = recovery_action
         job.attempts += 1
         if recovery_action == "retry":
-            job.payload["next_attempt_at"] = round(
-                now + recovery_policy.next_backoff_sec(job.attempts), 3
-            )
+            job.payload["next_attempt_at"] = now
         else:
             _ = job.payload.pop("next_attempt_at", None)
             job.payload["last_error_code"] = "WORKER_STALL_DETECTED"
