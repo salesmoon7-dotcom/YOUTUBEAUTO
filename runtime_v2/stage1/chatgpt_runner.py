@@ -125,24 +125,7 @@ def build_video_plan_from_topic_spec(
 
 
 def build_live_chatgpt_prompt(topic_spec: dict[str, object]) -> str:
-    topic = str(topic_spec.get("topic", "")).strip()
-    return (
-        "Return only one fenced JSON object for the topic below.\n"
-        "Do not add commentary outside the JSON fence.\n"
-        "Required JSON keys: story_outline, scene_prompts, voice_groups.\n"
-        "Rules:\n"
-        "- story_outline: array of concise scene summaries\n"
-        "- scene_prompts: array with the same length as story_outline\n"
-        "- voice_groups: array with the same length as scene_prompts\n"
-        "- each voice_groups item must be an object with integer scene_index starting at 1 and non-empty voice\n"
-        "- every value must be in Japanese\n"
-        "- include at least 6 scenes\n"
-        "Format exactly:\n"
-        "```json\n"
-        '{"story_outline":["..."],"scene_prompts":["..."],"voice_groups":[{"scene_index":1,"voice":"..."}]}'
-        "\n```\n"
-        f"Topic: {topic}"
-    )
+    return str(topic_spec.get("topic", "")).strip()
 
 
 def attach_gpt_response_text_from_browser_evidence(

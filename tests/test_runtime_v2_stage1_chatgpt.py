@@ -177,18 +177,14 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         open_browser.assert_not_called()
         popen.assert_called_once()
 
-    def test_build_live_chatgpt_prompt_includes_stage1_json_contract(self) -> None:
+    def test_build_live_chatgpt_prompt_passes_topic_only(self) -> None:
         prompt = build_live_chatgpt_prompt(
             {
                 "topic": "국민연금 수령 시기를 앞당기면 손해인가 이득인가",
             }
         )
 
-        self.assertIn("```json", prompt)
-        self.assertIn("story_outline", prompt)
-        self.assertIn("scene_prompts", prompt)
-        self.assertIn("voice_groups", prompt)
-        self.assertIn("Topic: 국민연금 수령 시기를 앞당기면 손해인가 이득인가", prompt)
+        self.assertEqual(prompt, "국민연금 수령 시기를 앞당기면 손해인가 이득인가")
 
     def test_build_live_chatgpt_prompt_strips_topic_whitespace(self) -> None:
         prompt = build_live_chatgpt_prompt(
@@ -197,10 +193,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             }
         )
 
-        self.assertIn("Topic: 국민연금 수령 시기를 앞당기면 손해인가 이득인가", prompt)
-        self.assertNotIn(
-            "Topic:   국민연금 수령 시기를 앞당기면 손해인가 이득인가  ", prompt
-        )
+        self.assertEqual(prompt, "국민연금 수령 시기를 앞당기면 손해인가 이득인가")
 
     def test_build_live_chatgpt_prompt_ignores_status_snapshot(
         self,
@@ -212,7 +205,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             }
         )
 
-        self.assertIn("Topic: 요양 시설 비용 현실과 준비해야 할 금액", prompt)
+        self.assertEqual(prompt, "요양 시설 비용 현실과 준비해야 할 금액")
         self.assertNotIn("status_snapshot", prompt)
 
     def test_stage1_runner_only_plans_from_existing_topic_spec(self) -> None:
@@ -883,11 +876,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             parsed_payload = cast(dict[str, object], handoff["contract"])
 
         self.assertEqual(result["status"], "ok")
-        self.assertIn("```json", called_prompt)
-        self.assertIn("story_outline", called_prompt)
-        self.assertIn("scene_prompts", called_prompt)
-        self.assertIn("voice_groups", called_prompt)
-        self.assertIn("Topic: Money flow", called_prompt)
+        self.assertEqual(called_prompt, "Money flow")
         self.assertEqual(raw_output["prompt_text"], called_prompt)
         self.assertEqual(gpt_capture["prompt_text"], called_prompt)
 
@@ -1274,7 +1263,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             capture_meta["final_state_code"], "CHATGPT_BACKEND_UNAVAILABLE"
         )
         self.assertIn("prompt_text", capture_meta)
-        self.assertIn("Topic: Money flow", str(capture_meta["prompt_text"]))
+        self.assertEqual(str(capture_meta["prompt_text"]), "Money flow")
         self.assertTrue(str(capture_meta["git_sha"]))
         self.assertTrue(str(capture_meta["timestamp_utc"]).endswith("Z"))
         event_names = [str(item["event"]) for item in timeline_lines]
@@ -1285,7 +1274,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertIn("read_failed", event_names)
         self.assertEqual(event_names[-1], "final_state")
         self.assertEqual(raw_output["source"], "gpt_capture_only")
-        self.assertIn("Topic: Money flow", str(raw_output["prompt_text"]))
+        self.assertEqual(str(raw_output["prompt_text"]), "Money flow")
         self.assertEqual(
             cast(dict[str, object], raw_output["gpt_capture"])["status"], "failed"
         )
