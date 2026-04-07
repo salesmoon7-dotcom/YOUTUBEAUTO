@@ -125,7 +125,24 @@ def build_video_plan_from_topic_spec(
 
 
 def build_live_chatgpt_prompt(topic_spec: dict[str, object]) -> str:
-    return str(topic_spec.get("topic", ""))
+    topic = str(topic_spec.get("topic", "")).strip()
+    return (
+        "Return only one fenced JSON object for the topic below.\n"
+        "Do not add commentary outside the JSON fence.\n"
+        "Required JSON keys: story_outline, scene_prompts, voice_groups.\n"
+        "Rules:\n"
+        "- story_outline: array of concise scene summaries\n"
+        "- scene_prompts: array with the same length as story_outline\n"
+        "- voice_groups: array with the same length as scene_prompts\n"
+        "- each voice_groups item must be an object with integer scene_index starting at 1 and non-empty voice\n"
+        "- every value must be in Japanese\n"
+        "- include at least 6 scenes\n"
+        "Format exactly:\n"
+        "```json\n"
+        '{"story_outline":["..."],"scene_prompts":["..."],"voice_groups":[{"scene_index":1,"voice":"..."}]}'
+        "\n```\n"
+        f"Topic: {topic}"
+    )
 
 
 def attach_gpt_response_text_from_browser_evidence(
@@ -154,12 +171,14 @@ def attach_gpt_response_text_from_browser_evidence(
                 relaunch_browser=lambda: _relaunch_chatgpt_browser(),
             )
             enriched = dict(topic_spec)
+            enriched["gpt_prompt_text"] = prompt
             enriched["gpt_capture"] = _canonical_gpt_capture(
                 result,
                 source="agent_browser_live",
-                topic_spec=topic_spec,
+                topic_spec=enriched,
                 attempt_count=_capture_attempt_count(result),
             )
+            cast(dict[str, object], enriched["gpt_capture"])["prompt_text"] = prompt
             enriched["gpt_timeline"] = result.get("timeline", [])
             if reset_error:
                 cast(dict[str, object], enriched["gpt_capture"])["reset_warning"] = (
@@ -289,6 +308,7 @@ def _capture_meta(
         "run_id": str(topic_spec.get("run_id", "")).strip(),
         "git_sha": _git_sha(),
         "backend_mode": source,
+        "prompt_text": str(topic_spec.get("gpt_prompt_text", "")),
         "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "attempt_count": attempt_count,
         "attempt_key": _capture_attempt_key(result, attempt_count=attempt_count),

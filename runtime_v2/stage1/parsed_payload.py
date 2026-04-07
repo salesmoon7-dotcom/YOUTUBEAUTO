@@ -24,6 +24,9 @@ def build_stage1_raw_output_artifact(
     gpt_capture = topic_spec.get("gpt_capture")
     if isinstance(gpt_capture, dict):
         payload["gpt_capture"] = cast(dict[str, object], gpt_capture)
+    prompt_text = str(topic_spec.get("gpt_prompt_text", ""))
+    if prompt_text:
+        payload["prompt_text"] = prompt_text
     response_text = str(topic_spec.get("gpt_response_text", "")).strip()
     if response_text:
         payload["source"] = "gpt_response_text"
