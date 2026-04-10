@@ -2919,14 +2919,14 @@ def _attach_genspark_ref_images_via_filechooser(
                     ):
                         page = candidate
             if page is None:
-                return
+                raise RuntimeError("NO_UPLOAD_TARGET")
             page.bring_to_front()
             try:
                 with page.expect_file_chooser(timeout=5000) as chooser_info:
                     page.locator("button.upload-button").first.click()
                     page.get_by_text("로컬 파일 찾기", exact=False).first.click()
-            except (PlaywrightTimeoutError, RuntimeError):
-                return
+            except (PlaywrightTimeoutError, RuntimeError) as exc:
+                raise RuntimeError("NO_FILE_INPUT") from exc
             chooser = chooser_info.value
             chooser.set_files([str(Path(path).resolve()) for path in file_paths])
         finally:

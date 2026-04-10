@@ -1620,10 +1620,50 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         with patch(
             "playwright.sync_api.sync_playwright", return_value=_PlaywrightContext()
         ):
-            _attach_genspark_ref_images_via_filechooser(
-                port=9333,
-                file_paths=[r"D:\tmp\ref1.png"],
-            )
+            with self.assertRaisesRegex(RuntimeError, "NO_FILE_INPUT"):
+                _attach_genspark_ref_images_via_filechooser(
+                    port=9333,
+                    file_paths=[r"D:\tmp\ref1.png"],
+                )
+
+    def test_attach_genspark_ref_images_fails_closed_when_target_page_missing(
+        self,
+    ) -> None:
+        class _Context:
+            def __init__(self) -> None:
+                self.pages: list[object] = []
+
+        class _Browser:
+            def __init__(self) -> None:
+                self.contexts = [_Context()]
+
+            def close(self) -> None:
+                return None
+
+        class _Chromium:
+            def connect_over_cdp(self, endpoint: str) -> _Browser:
+                _ = endpoint
+                return _Browser()
+
+        class _Playwright:
+            chromium = _Chromium()
+
+        class _PlaywrightContext:
+            def __enter__(self) -> _Playwright:
+                return _Playwright()
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+                _ = (exc_type, exc, tb)
+                return False
+
+        with patch(
+            "playwright.sync_api.sync_playwright", return_value=_PlaywrightContext()
+        ):
+            with self.assertRaisesRegex(RuntimeError, "NO_UPLOAD_TARGET"):
+                _attach_genspark_ref_images_via_filechooser(
+                    port=9333,
+                    file_paths=[r"D:\tmp\ref1.png"],
+                )
 
     def test_attach_seaart_ref_images_uses_playwright_input_files(self) -> None:
         class _Locator:
