@@ -92,11 +92,13 @@ class RuntimeV2DevLoopTests(unittest.TestCase):
                     artifact_root=artifact_root,
                     registry_file=registry_file,
                 )
+            registry = json.loads(registry_file.read_text(encoding="utf-8"))
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(run_impl.call_args.kwargs["artifact_root"], artifact_root)
         passed_config = run_impl.call_args.kwargs["config"]
         self.assertEqual(passed_config.artifact_root, expected_config.artifact_root)
+        self.assertEqual(str(registry["dev_implement"]["state"]), "idle")
 
     def test_dev_loop_failure_seeds_replan_job_with_same_run_id(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -137,12 +139,30 @@ class RuntimeV2DevLoopTests(unittest.TestCase):
                 run_id="control-run-dev-implement",
                 allow_runtime_side_effects=False,
             )
-            result_verify = run_control_loop_once(
-                owner="runtime_v2",
-                config=config,
-                run_id="control-run-dev-verify",
-                allow_runtime_side_effects=False,
-            )
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={
+                    "status": "blocked",
+                    "code": "GPU_LEASE_BUSY",
+                    "worker_result": {
+                        "status": "blocked",
+                        "stage": "agent_browser_verify",
+                        "error_code": "GPU_LEASE_BUSY",
+                        "retryable": True,
+                        "details": {"service": "chatgpt", "safe_mode": True},
+                        "completion": {
+                            "state": "blocked",
+                            "final_output": False,
+                        },
+                    },
+                },
+            ):
+                result_verify = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-dev-verify",
+                    allow_runtime_side_effects=False,
+                )
 
             queue_payload = json.loads(
                 config.queue_store_file.read_text(encoding="utf-8")
@@ -156,7 +176,7 @@ class RuntimeV2DevLoopTests(unittest.TestCase):
 
         self.assertEqual(result_plan["status"], "ok")
         self.assertEqual(result_implement["status"], "ok")
-        self.assertEqual(result_verify["code"], "BROWSER_BLOCKED")
+        self.assertEqual(result_verify["code"], "GPU_LEASE_BUSY")
         self.assertEqual(str(replan_job["status"]), "queued")
         self.assertEqual(str(replan_job["payload"]["run_id"]), "dev-run-1")
 

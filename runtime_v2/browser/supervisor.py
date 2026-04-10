@@ -436,5 +436,6 @@ class BrowserSupervisor:
                 "sessions": final_sessions,
             },
         )
+        result["browser_event_records"] = output_rows
         result["events"] = output_rows
         return result

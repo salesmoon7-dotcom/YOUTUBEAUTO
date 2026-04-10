@@ -75,6 +75,68 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class RuntimeV2Stage2WorkerTests(unittest.TestCase):
+    def test_run_worker_dispatches_stage2_workloads_via_shared_dispatch_path(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            registry_file = root / "health" / "worker_registry.json"
+            dispatched: list[str] = []
+
+            def _result_for(workload: str) -> dict[str, object]:
+                return {"status": "ok", "stage": workload}
+
+            with (
+                patch(
+                    "runtime_v2.control_plane.run_genspark_job",
+                    side_effect=lambda *args, **kwargs: _result_for("genspark"),
+                ) as genspark_mock,
+                patch(
+                    "runtime_v2.control_plane.run_seaart_job",
+                    side_effect=lambda *args, **kwargs: _result_for("seaart"),
+                ) as seaart_mock,
+                patch(
+                    "runtime_v2.control_plane.run_geminigen_job",
+                    side_effect=lambda *args, **kwargs: _result_for("geminigen"),
+                ) as geminigen_mock,
+                patch(
+                    "runtime_v2.control_plane.run_canva_job",
+                    side_effect=lambda *args, **kwargs: _result_for("canva"),
+                ) as canva_mock,
+            ):
+                for workload, worker_mock in (
+                    ("genspark", genspark_mock),
+                    ("seaart", seaart_mock),
+                    ("geminigen", geminigen_mock),
+                    ("canva", canva_mock),
+                ):
+                    job = _stage2_job(cast(Stage2Workload, workload))
+                    object.__setattr__(job, "job_id", f"{workload}-dispatch-job")
+                    job.payload["run_id"] = f"{workload}-dispatch-run"
+
+                    result = run_worker(
+                        job,
+                        artifact_root=artifact_root,
+                        registry_file=registry_file,
+                    )
+
+                    registry = json.loads(registry_file.read_text(encoding="utf-8"))
+                    entry = cast(dict[str, object], registry[workload])
+                    dispatched.append(workload)
+
+                    self.assertEqual(result["stage"], workload)
+                    self.assertEqual(str(entry["state"]), "idle")
+                    self.assertEqual(str(entry["run_id"]), f"{workload}-dispatch-run")
+                    self.assertEqual(
+                        worker_mock.call_args.kwargs["artifact_root"], artifact_root
+                    )
+                    self.assertEqual(
+                        worker_mock.call_args.kwargs["registry_file"], registry_file
+                    )
+
+        self.assertEqual(dispatched, ["genspark", "seaart", "geminigen", "canva"])
+
     def test_genspark_worker_injects_pythonpath_for_agent_browser_child(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -377,7 +439,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         self.assertIn("--service", command)
         self.assertIn("genspark", command)
         self.assertIn("--service-artifact-path", command)
-        self.assertIn("genspark.ai", command)
+        self.assertTrue(any("genspark.ai" in part for part in command))
 
     def test_geminigen_worker_processes_one_item_via_explicit_adapter_command(
         self,
@@ -487,33 +549,22 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             output_path = artifact_root / "exports" / "canva-thumb-01.png"
             job = _stage2_job("canva")
             job.payload["service_artifact_path"] = str(output_path)
+            attach_evidence = (
+                artifact_root / "canva" / job.job_id / "attach_evidence.json"
+            )
             job.payload["adapter_command"] = [
                 sys.executable,
                 "-c",
                 (
                     "from pathlib import Path; "
                     f"p=Path(r'{str(output_path)}'); "
+                    f"a=Path(r'{str(attach_evidence)}'); "
                     "p.parent.mkdir(parents=True, exist_ok=True); "
-                    "p.write_bytes(b'png')"
+                    "a.parent.mkdir(parents=True, exist_ok=True); "
+                    "p.write_bytes(b'png'); "
+                    'a.write_text(\'{"status":"ok","error_code":"","placeholder_artifact":false,"current_url":"https://www.canva.com/design/foo/edit","current_title":"Canva design"}\', encoding=\'utf-8\')'
                 ),
             ]
-            attach_evidence = (
-                artifact_root / "canva" / job.job_id / "attach_evidence.json"
-            )
-            attach_evidence.parent.mkdir(parents=True, exist_ok=True)
-            _ = attach_evidence.write_text(
-                json.dumps(
-                    {
-                        "status": "ok",
-                        "error_code": "",
-                        "placeholder_artifact": False,
-                        "current_url": "https://www.canva.com/design/foo/edit",
-                        "current_title": "Canva design",
-                    },
-                    ensure_ascii=True,
-                ),
-                encoding="utf-8",
-            )
 
             result = run_canva_job(job, artifact_root)
 
@@ -808,7 +859,8 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             browser_jobs = [
                 cast(dict[str, object], job["job"])
                 for job in jobs
-                if cast(dict[str, object], job["job"])["worker"] != "render"
+                if cast(dict[str, object], job["job"])["worker"]
+                in {"genspark", "seaart", "geminigen", "canva"}
             ]
 
             self.assertEqual(
@@ -870,7 +922,8 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         details = cast(dict[str, object], result["details"])
         self.assertEqual(str(details["execution_mode"]), "native_only")
         self.assertEqual(
-            details["service_artifact_path"], str(root / "shared" / "output.png")
+            details["service_artifact_path"],
+            str((root / "artifacts" / "output.png").resolve()),
         )
 
     def test_genspark_worker_can_use_agent_browser_adapter_mode(self) -> None:
@@ -1023,14 +1076,18 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             _ = stdout_path.write_text("", encoding="utf-8")
             _ = stderr_path.write_text("", encoding="utf-8")
 
-            with patch(
-                "runtime_v2.stage2.canva_worker.run_verified_adapter_command",
-                return_value={
+            def adapter_result(*args, **kwargs):
+                _ = attach_evidence.write_text('{"status":"ok"}', encoding="utf-8")
+                return {
                     "ok": True,
                     "stdout_path": stdout_path,
                     "stderr_path": stderr_path,
                     "output_path": output_path,
-                },
+                }
+
+            with patch(
+                "runtime_v2.stage2.canva_worker.run_verified_adapter_command",
+                side_effect=adapter_result,
             ) as run_adapter:
                 result = run_canva_job(job, root / "artifacts")
 
@@ -1092,14 +1149,46 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             _ = stdout_path.write_text("", encoding="utf-8")
             _ = stderr_path.write_text("", encoding="utf-8")
 
-            with patch(
-                "runtime_v2.stage2.canva_worker.run_verified_adapter_command",
-                return_value={
+            def adapter_result(*args, **kwargs):
+                _ = attach_evidence.write_text(
+                    json.dumps(
+                        {
+                            "status": "ok",
+                            "details": {
+                                "page_count_before": 1,
+                                "page_count_after": 2,
+                                "clone_ok": True,
+                                "background_generate_ok": True,
+                                "upload_tab_ok": True,
+                                "ref_image_requested": "D:/ref.png",
+                                "ref_image_upload_ok": True,
+                                "remove_background_ok": True,
+                                "position_ok": True,
+                                "text_edit_ok": True,
+                                "current_page_selection_ok": True,
+                                "download_options_ok": True,
+                                "download_sequence_ok": True,
+                                "cleanup_ok": True,
+                                "bg_prompt": "legacy background",
+                                "line1": "Legacy",
+                                "line2": "Thumb",
+                                "transcript_path": "D:/trace/agent_browser_transcript.json",
+                            },
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                return {
                     "ok": True,
                     "stdout_path": stdout_path,
                     "stderr_path": stderr_path,
                     "output_path": output_path,
-                },
+                }
+
+            with patch(
+                "runtime_v2.stage2.canva_worker.run_verified_adapter_command",
+                side_effect=adapter_result,
             ):
                 result = run_canva_job(job, root / "artifacts")
 

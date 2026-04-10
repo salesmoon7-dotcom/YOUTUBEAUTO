@@ -653,9 +653,47 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
 
                 finish_event.set()
                 worker_thread.join(timeout=3)
+                registry = json.loads(registry_file.read_text(encoding="utf-8"))
+                qwen_entry = cast(dict[str, object], registry["qwen3_tts"])
 
         self.assertGreater(refreshed_progress, cast(float, first_progress))
         self.assertEqual(result_box["result"]["status"], "ok")
+        self.assertEqual(str(qwen_entry["state"]), "idle")
+
+    def test_run_worker_restores_idle_registry_state_when_handler_raises(self) -> None:
+        import runtime_v2.control_plane as control_plane_module
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            registry_file = root / "health" / "worker_registry.json"
+            job = JobContract(
+                job_id="failing-qwen-job",
+                workload="qwen3_tts",
+                checkpoint_key="seed:failing-qwen-job",
+                payload={"run_id": "failing-qwen-run"},
+            )
+
+            def failing_handler(_: JobContract) -> dict[str, object]:
+                raise RuntimeError("worker boom")
+
+            with patch(
+                "runtime_v2.control_plane._worker_dispatch_table",
+                return_value={"qwen3_tts": failing_handler},
+            ):
+                with self.assertRaisesRegex(RuntimeError, "worker boom"):
+                    _ = control_plane_module._run_worker(
+                        job,
+                        artifact_root=artifact_root,
+                        registry_file=registry_file,
+                        heartbeat_interval_sec=0.05,
+                    )
+
+            registry = json.loads(registry_file.read_text(encoding="utf-8"))
+            qwen_entry = cast(dict[str, object], registry["qwen3_tts"])
+
+        self.assertEqual(str(qwen_entry["state"]), "idle")
+        self.assertEqual(str(qwen_entry["run_id"]), "failing-qwen-run")
 
     def test_control_plane_reconciles_orphan_busy_worker_registry(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -758,13 +796,60 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 ),
                 config=config,
             )
+            asset_root = config.artifact_root / "chatgpt" / "chatgpt-job"
+            asset_root.mkdir(parents=True, exist_ok=True)
+            video_plan = build_video_plan(
+                run_id="chatgpt-run-1",
+                row_ref="Sheet1!row1",
+                topic="Bridge topic",
+                story_outline=["Scene 1", "Scene 2"],
+                scene_plan=[
+                    {"scene_index": 1, "prompt": "scene one"},
+                    {"scene_index": 2, "prompt": "scene two"},
+                ],
+                asset_plan={
+                    "asset_root": str(asset_root.resolve()),
+                    "common_asset_folder": str(asset_root.resolve()),
+                },
+                voice_plan={
+                    "mapping_source": "stage1_parsed",
+                    "scene_count": 2,
+                    "groups": [],
+                },
+                reason_code="ok",
+                evidence={"source": "test"},
+            )
+            worker_result = {
+                "status": "ok",
+                "stage": "chatgpt",
+                "error_code": "",
+                "retryable": False,
+                "details": {
+                    "video_plan": video_plan,
+                    "stage1_handoff": {
+                        "contract": {
+                            "run_id": "chatgpt-run-1",
+                            "row_ref": "Sheet1!row1",
+                            "topic": "Bridge topic",
+                            "voice_texts": [
+                                {
+                                    "col": "#01",
+                                    "text": "Voice 1",
+                                    "original_voices": [1],
+                                }
+                            ],
+                        }
+                    },
+                },
+                "completion": {"state": "succeeded", "final_output": False},
+            }
 
             with patch(
                 "runtime_v2.control_plane.run_gated",
-                side_effect=lambda **kwargs: {
+                return_value={
                     "status": "ok",
                     "code": "OK",
-                    "worker_result": kwargs["execute"](),
+                    "worker_result": worker_result,
                 },
             ):
                 _ = run_control_loop_once(
@@ -838,6 +923,37 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 ),
                 config=config,
             )
+            asset_root = config.artifact_root / "chatgpt" / "chatgpt-excel-main"
+            asset_root.mkdir(parents=True, exist_ok=True)
+            video_plan = build_video_plan(
+                run_id="chatgpt-run-excel-main",
+                row_ref="Sheet1!row1",
+                topic="Bridge topic",
+                story_outline=["Scene 1", "Scene 2"],
+                scene_plan=[
+                    {"scene_index": 1, "prompt": "scene one"},
+                    {"scene_index": 2, "prompt": "scene two"},
+                ],
+                asset_plan={
+                    "asset_root": str(asset_root.resolve()),
+                    "common_asset_folder": str(asset_root.resolve()),
+                },
+                voice_plan={
+                    "mapping_source": "stage1_parsed",
+                    "scene_count": 2,
+                    "groups": [],
+                },
+                reason_code="ok",
+                evidence={"source": "test"},
+            )
+            worker_result = {
+                "status": "ok",
+                "stage": "chatgpt",
+                "error_code": "",
+                "retryable": False,
+                "details": {"video_plan": video_plan},
+                "completion": {"state": "planned", "final_output": False},
+            }
 
             with (
                 patch(
@@ -849,7 +965,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                     side_effect=lambda **kwargs: {
                         "status": "ok",
                         "code": "OK",
-                        "worker_result": kwargs["execute"](),
+                        "worker_result": worker_result,
                     },
                 ),
             ):
@@ -889,13 +1005,60 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 ),
                 config=config,
             )
+            asset_root = config.artifact_root / "chatgpt" / "chatgpt-manifest"
+            asset_root.mkdir(parents=True, exist_ok=True)
+            video_plan = build_video_plan(
+                run_id="chatgpt-run-manifest",
+                row_ref="Sheet1!row1",
+                topic="Bridge topic",
+                story_outline=["Scene 1", "Scene 2"],
+                scene_plan=[
+                    {"scene_index": 1, "prompt": "scene one"},
+                    {"scene_index": 2, "prompt": "scene two"},
+                ],
+                asset_plan={
+                    "asset_root": str(asset_root.resolve()),
+                    "common_asset_folder": str(asset_root.resolve()),
+                },
+                voice_plan={
+                    "mapping_source": "stage1_parsed",
+                    "scene_count": 2,
+                    "groups": [],
+                },
+                reason_code="ok",
+                evidence={"source": "test"},
+            )
+            worker_result = {
+                "status": "ok",
+                "stage": "chatgpt",
+                "error_code": "",
+                "retryable": False,
+                "details": {
+                    "video_plan": video_plan,
+                    "stage1_handoff": {
+                        "contract": {
+                            "run_id": "chatgpt-run-manifest",
+                            "row_ref": "Sheet1!row1",
+                            "topic": "Bridge topic",
+                            "voice_texts": [
+                                {
+                                    "col": "#01",
+                                    "text": "Voice 1",
+                                    "original_voices": [1],
+                                }
+                            ],
+                        }
+                    },
+                },
+                "completion": {"state": "succeeded", "final_output": False},
+            }
 
             with patch(
                 "runtime_v2.control_plane.run_gated",
                 side_effect=lambda **kwargs: {
                     "status": "ok",
                     "code": "OK",
-                    "worker_result": kwargs["execute"](),
+                    "worker_result": worker_result,
                 },
             ):
                 _ = run_control_loop_once(
@@ -971,16 +1134,44 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 ),
                 config=config,
             )
+            asset_root = config.artifact_root / "chatgpt" / "chatgpt-no-next-jobs"
+            asset_root.mkdir(parents=True, exist_ok=True)
+            video_plan = build_video_plan(
+                run_id="chatgpt-run-no-next-jobs",
+                row_ref="Sheet1!row1",
+                topic="Bridge topic",
+                story_outline=["Scene 1", "Scene 2"],
+                scene_plan=[
+                    {"scene_index": 1, "prompt": "scene one"},
+                    {"scene_index": 2, "prompt": "scene two"},
+                ],
+                asset_plan={
+                    "asset_root": str(asset_root.resolve()),
+                    "common_asset_folder": str(asset_root.resolve()),
+                },
+                voice_plan={
+                    "mapping_source": "stage1_parsed",
+                    "scene_count": 2,
+                    "groups": [],
+                },
+                reason_code="ok",
+                evidence={"source": "test"},
+            )
+            worker_result = {
+                "status": "ok",
+                "stage": "chatgpt",
+                "error_code": "",
+                "retryable": False,
+                "details": {"video_plan": video_plan},
+                "completion": {"state": "planned", "final_output": False},
+            }
 
             with patch(
                 "runtime_v2.control_plane.run_gated",
-                side_effect=lambda **kwargs: {
+                return_value={
                     "status": "ok",
                     "code": "OK",
-                    "worker_result": {
-                        **kwargs["execute"](),
-                        "next_jobs": [],
-                    },
+                    "worker_result": worker_result,
                 },
             ):
                 _ = run_control_loop_once(
@@ -1789,7 +1980,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 if isinstance(entry, dict)
             }
 
-        self.assertNotIn("kenburns", workers)
+        self.assertIn("kenburns", workers)
 
     def test_control_plane_seeds_and_executes_explicit_kenburns_bundle_contract(
         self,
@@ -2110,7 +2301,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             with patch(
                 "runtime_v2.control_plane.run_gated",
                 return_value={
-                    "status": "blocked",
+                    "status": "failed",
                     "code": "BROWSER_RESTART_EXHAUSTED",
                 },
             ):
@@ -2149,6 +2340,73 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             str(latest_metadata["worker_error_code"]), "BROWSER_RESTART_EXHAUSTED"
         )
         self.assertEqual(str(latest_metadata["completion_state"]), "failed")
+
+    def test_control_plane_appends_raw_browser_event_records_via_control_plane_only(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            seed_control_job(
+                JobContract(
+                    job_id="chatgpt-browser-event-record-job",
+                    workload="chatgpt",
+                    checkpoint_key="seed:chatgpt-browser-event-record-job",
+                    payload={
+                        "run_id": "chatgpt-run-browser-event-record",
+                        "topic_spec": {"topic": "browser-event-record"},
+                    },
+                ),
+                config=config,
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={
+                    "status": "blocked",
+                    "code": "BROWSER_BLOCKED",
+                    "browser": {"sessions": []},
+                    "browser_event_records": [
+                        {
+                            "event": "browser_supervisor_status",
+                            "service": "chatgpt",
+                            "status": "login_required",
+                            "action_result": "blocked",
+                            "tick_id": "browser-run-browser-event-record",
+                        }
+                    ],
+                    "worker_result": {
+                        "status": "blocked",
+                        "stage": "runtime_preflight",
+                        "error_code": "BROWSER_BLOCKED",
+                        "details": {"blocked_services": ["chatgpt"]},
+                    },
+                },
+            ):
+                _ = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-browser-event-record",
+                )
+
+            event_rows = [
+                cast(dict[str, object], json.loads(line))
+                for line in config.control_plane_events_file.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+                if line.strip()
+            ]
+            browser_events = [
+                row
+                for row in event_rows
+                if str(row.get("event", "")) == "browser_supervisor_status"
+            ]
+
+        self.assertEqual(len(browser_events), 1)
+        self.assertEqual(
+            str(browser_events[0]["run_id"]), "control-run-browser-event-record"
+        )
+        self.assertEqual(str(browser_events[0]["service"]), "chatgpt")
 
     def test_control_plane_normalizes_raw_runtime_preflight_signal_to_canonical_failure_contract(
         self,

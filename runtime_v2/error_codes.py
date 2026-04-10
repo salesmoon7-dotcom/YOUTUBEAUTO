@@ -70,3 +70,50 @@ def select_worker_error_code(metadata: dict[str, object]) -> str:
     ):
         return explicit_worker_error_code
     return normalize_error_code(metadata.get("error_code", ""))
+
+
+def runtime_preflight_contract(
+    raw_code: object, *, workload: str = ""
+) -> dict[str, object]:
+    error_code = normalize_error_code(raw_code)
+    contract: dict[str, object] = {
+        "error_code": error_code,
+        "status": "failed",
+        "retryable": True,
+        "completion_state": "failed",
+        "terminal": False,
+    }
+    if error_code == "BROWSER_RESTART_EXHAUSTED":
+        contract.update(
+            {
+                "status": "failed",
+                "retryable": False,
+                "completion_state": "failed",
+                "terminal": True,
+            }
+        )
+        return contract
+    if workload == "agent_browser_verify" and error_code == "BROWSER_BLOCKED":
+        contract.update(
+            {
+                "status": "failed",
+                "retryable": False,
+                "completion_state": "failed",
+                "terminal": True,
+            }
+        )
+        return contract
+    if error_code in {
+        "BROWSER_BLOCKED",
+        "GPU_LEASE_BUSY",
+        "GPT_FLOOR_FAIL",
+    }:
+        contract.update(
+            {
+                "status": "blocked",
+                "retryable": True,
+                "completion_state": "blocked",
+                "terminal": False,
+            }
+        )
+    return contract

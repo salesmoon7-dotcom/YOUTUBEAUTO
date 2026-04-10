@@ -22,7 +22,11 @@ from runtime_v2.control_plane_feeder import (
     seed_local_jobs,
 )
 from runtime_v2.debug_log import append_debug_event, debug_log_path
-from runtime_v2.error_codes import normalize_error_code, select_worker_error_code
+from runtime_v2.error_codes import (
+    normalize_error_code,
+    runtime_preflight_contract,
+    select_worker_error_code,
+)
 from runtime_v2.gui_adapter import build_gui_status_payload
 from runtime_v2.latest_run import (
     normalize_runtime_snapshot_metadata,
@@ -473,9 +477,12 @@ def run_control_loop_once(
             allow_runtime_side_effects=allow_runtime_side_effects,
         )
     browser_payload = _mapping_from_obj(result.get("browser", {}))
-    browser_events_obj: object = (
-        [] if browser_payload is None else browser_payload.get("events", [])
-    )
+    browser_events_obj = result.get("browser_event_records")
+    if browser_events_obj is None and browser_payload is not None:
+        browser_events_obj = browser_payload.get(
+            "browser_event_records",
+            browser_payload.get("events", []),
+        )
     if isinstance(browser_events_obj, list):
         browser_events = cast(list[object], browser_events_obj)
         for raw_event in browser_events:
@@ -484,7 +491,7 @@ def run_control_loop_once(
                 continue
             browser_event["run_id"] = run_id
             _ = _append_control_event(browser_event, events_file, run_id=run_id)
-    worker_result = _worker_result_from_runtime(result)
+    worker_result = _worker_result_from_runtime(result, workload=job.workload)
     artifact_path: Path | None = None
     worker_contract = _worker_result_contract(worker_result)
     runtime_error_code = normalize_error_code(str(result.get("code", "FAILED")).strip())
@@ -557,8 +564,9 @@ def run_control_loop_once(
                 )
     elif not success:
         restart_exhausted_terminal_block = bool(
-            str(worker_contract.get("error_code", "")) == "BROWSER_RESTART_EXHAUSTED"
-            and result.get("status") == "blocked"
+            runtime_preflight_contract(
+                worker_contract.get("error_code", ""), workload=job.workload
+            ).get("terminal", False)
         )
         failure_next_jobs = worker_contract.get("next_jobs", [])
         if restart_exhausted_terminal_block:
@@ -1253,17 +1261,43 @@ def _run_worker(
         registry_file=resolved_registry_file,
         debug_log_root=default_config.debug_log_root,
     )
-    handler = dispatch.get(job.workload)
-    if handler is None:
-        raise ValueError(f"unsupported_workload:{job.workload}")
+    handler = _resolve_worker_dispatch(dispatch, workload=job.workload)
     run_id = str(job.payload.get("run_id", job.job_id))
+    return _run_worker_with_registry_heartbeat(
+        job,
+        handler,
+        registry_file=resolved_registry_file,
+        run_id=run_id,
+        heartbeat_interval_sec=heartbeat_interval_sec,
+        renew_interval_sec=float(default_config.renew_interval_sec),
+    )
+
+
+def _resolve_worker_dispatch(
+    dispatch: dict[str, WorkerDispatchHandler], *, workload: str
+) -> WorkerDispatchHandler:
+    handler = dispatch.get(workload)
+    if handler is None:
+        raise ValueError(f"unsupported_workload:{workload}")
+    return handler
+
+
+def _run_worker_with_registry_heartbeat(
+    job: JobContract,
+    handler: WorkerDispatchHandler,
+    *,
+    registry_file: Path,
+    run_id: str,
+    heartbeat_interval_sec: float | None,
+    renew_interval_sec: float,
+) -> dict[str, object]:
     heartbeat_done = threading.Event()
     heartbeat_interval = max(
         0.05,
         float(
             heartbeat_interval_sec
             if heartbeat_interval_sec is not None
-            else max(1.0, float(default_config.renew_interval_sec))
+            else max(1.0, renew_interval_sec)
         ),
     )
 
@@ -1271,7 +1305,7 @@ def _run_worker(
         while not heartbeat_done.wait(timeout=heartbeat_interval):
             try:
                 _ = update_worker_state(
-                    resolved_registry_file,
+                    registry_file,
                     workload=job.workload,
                     state="busy",
                     run_id=run_id,
@@ -1280,7 +1314,7 @@ def _run_worker(
                 continue
 
     _ = update_worker_state(
-        resolved_registry_file,
+        registry_file,
         workload=job.workload,
         state="busy",
         run_id=run_id,
@@ -1297,7 +1331,7 @@ def _run_worker(
         heartbeat_done.set()
         heartbeat_thread.join(timeout=max(1.0, heartbeat_interval * 2))
         _ = update_worker_state(
-            resolved_registry_file,
+            registry_file,
             workload=job.workload,
             state="idle",
             run_id=run_id,
@@ -1361,20 +1395,21 @@ def _run_chatgpt_worker(
 def _worker_dispatch_table(
     *, artifact_root: Path, registry_file: Path, debug_log_root: Path
 ) -> dict[str, WorkerDispatchHandler]:
-    return {
+    stage2_dispatch = {
+        workload: _registry_worker_dispatch(
+            worker_runner,
+            artifact_root=artifact_root,
+            registry_file=registry_file,
+        )
+        for workload, worker_runner in {
+            "genspark": run_genspark_job,
+            "seaart": run_seaart_job,
+            "geminigen": run_geminigen_job,
+            "canva": run_canva_job,
+        }.items()
+    }
+    dispatch: dict[str, WorkerDispatchHandler] = {
         "chatgpt": lambda job: _run_chatgpt_worker(job, artifact_root, debug_log_root),
-        "genspark": lambda job: run_genspark_job(
-            job, artifact_root, registry_file=registry_file
-        ),
-        "seaart": lambda job: run_seaart_job(
-            job, artifact_root, registry_file=registry_file
-        ),
-        "geminigen": lambda job: run_geminigen_job(
-            job, artifact_root, registry_file=registry_file
-        ),
-        "canva": lambda job: run_canva_job(
-            job, artifact_root, registry_file=registry_file
-        ),
         "agent_browser_verify": lambda job: run_agent_browser_verify_job(
             job,
             artifact_root,
@@ -1392,6 +1427,21 @@ def _worker_dispatch_table(
         ),
         "dev_replan": lambda job: run_dev_replan_job(job, artifact_root),
     }
+    dispatch.update(stage2_dispatch)
+    return dispatch
+
+
+def _registry_worker_dispatch(
+    worker_runner: Callable[..., dict[str, object]],
+    *,
+    artifact_root: Path,
+    registry_file: Path,
+) -> WorkerDispatchHandler:
+    return lambda job: worker_runner(
+        job,
+        artifact_root=artifact_root,
+        registry_file=registry_file,
+    )
 
 
 def _run_mock_chain_worker(job: JobContract, artifact_root: Path) -> dict[str, object]:
@@ -2120,22 +2170,23 @@ def _worker_result_contract(worker_result: dict[str, object]) -> dict[str, objec
     return worker_result
 
 
-def _worker_result_from_runtime(runtime_result: dict[str, object]) -> dict[str, object]:
+def _worker_result_from_runtime(
+    runtime_result: dict[str, object], *, workload: str = ""
+) -> dict[str, object]:
     worker_result = _mapping_from_obj(runtime_result.get("worker_result"))
     if worker_result is not None:
         return worker_result
-    runtime_code = str(runtime_result.get("code", "RUNTIME_PRECHECK_FAILED"))
-    completion_state, retryable, worker_status = _runtime_preflight_contract(
-        runtime_code
+    contract = runtime_preflight_contract(
+        runtime_result.get("code", "RUNTIME_PRECHECK_FAILED"), workload=workload
     )
     return {
-        "status": worker_status,
+        "status": str(contract["status"]),
         "stage": "runtime_preflight",
-        "error_code": runtime_code,
-        "retryable": retryable,
+        "error_code": str(contract["error_code"]),
+        "retryable": bool(contract["retryable"]),
         "next_jobs": [],
         "completion": {
-            "state": completion_state,
+            "state": str(contract["completion_state"]),
             "final_output": False,
         },
     }
@@ -2144,18 +2195,12 @@ def _worker_result_from_runtime(runtime_result: dict[str, object]) -> dict[str, 
 def _runtime_preflight_contract(
     runtime_code: str, *, workload: str = ""
 ) -> tuple[str, bool, str]:
-    normalized_code = normalize_error_code(runtime_code)
-    if normalized_code == "BROWSER_RESTART_EXHAUSTED":
-        return ("failed", False, "failed")
-    if workload == "agent_browser_verify" and normalized_code == "BROWSER_BLOCKED":
-        return ("failed", False, "failed")
-    if normalized_code in {
-        "BROWSER_BLOCKED",
-        "GPU_LEASE_BUSY",
-        "GPT_FLOOR_FAIL",
-    }:
-        return ("blocked", True, "blocked")
-    return ("failed", True, "failed")
+    contract = runtime_preflight_contract(runtime_code, workload=workload)
+    return (
+        str(contract["completion_state"]),
+        bool(contract["retryable"]),
+        str(contract["status"]),
+    )
 
 
 def _normalize_runtime_failure_contract(

@@ -90,6 +90,10 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                     "runtime_v2.browser.manager._probe_local_port",
                     side_effect=[False, True],
                 ),
+                patch(
+                    "runtime_v2.browser.manager._debug_endpoint_ready",
+                    return_value=True,
+                ),
                 patch("runtime_v2.browser.manager.sleep", return_value=None),
                 patch(
                     "runtime_v2.browser.manager._resolve_browser_executable",
@@ -191,6 +195,10 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                     "runtime_v2.browser.manager._probe_local_port",
                     side_effect=[False, True],
                 ),
+                patch(
+                    "runtime_v2.browser.manager._debug_endpoint_ready",
+                    return_value=True,
+                ),
                 patch("runtime_v2.browser.manager.sleep", return_value=None),
                 patch(
                     "runtime_v2.browser.manager._resolve_browser_executable",
@@ -227,6 +235,10 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                 patch(
                     "runtime_v2.browser.manager._probe_local_port",
                     side_effect=[False, True, True],
+                ),
+                patch(
+                    "runtime_v2.browser.manager._debug_endpoint_ready",
+                    return_value=True,
                 ),
                 patch("runtime_v2.browser.manager.sleep", return_value=None),
                 patch(
@@ -502,6 +514,10 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                     "runtime_v2.browser.manager._probe_local_port", return_value=True
                 ),
                 patch(
+                    "runtime_v2.browser.manager._debug_endpoint_ready",
+                    return_value=True,
+                ),
+                patch(
                     "runtime_v2.browser.manager._list_debug_tabs",
                     return_value=[
                         {"url": "https://www.genspark.ai/login", "title": "login"}
@@ -544,6 +560,10 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                     "runtime_v2.browser.manager._probe_local_port", return_value=True
                 ),
                 patch(
+                    "runtime_v2.browser.manager._debug_endpoint_ready",
+                    return_value=True,
+                ),
+                patch(
                     "runtime_v2.browser.manager._list_debug_tabs",
                     return_value=[
                         {"url": "https://www.genspark.ai/login", "title": "login"}
@@ -567,6 +587,85 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertEqual(str(latest["action_result"]), "blocked")
         self.assertEqual(str(latest["tick_id"]), "browser-run-event-login-required")
         self.assertEqual(str(latest["error"]), "")
+
+    def test_supervisor_tick_exposes_raw_browser_event_records_without_direct_file_write(
+        self,
+    ) -> None:
+        with self._temp_dir() as tmp_dir:
+            profile_dir = Path(tmp_dir) / "genspark-primary"
+            profile_dir.mkdir(parents=True, exist_ok=True)
+            events_file = Path(tmp_dir) / "control_plane_events.jsonl"
+            session = BrowserSession(
+                service="genspark",
+                group="llm",
+                session_id="primary",
+                port=9230,
+                profile_dir=str(profile_dir.resolve()),
+                status="running",
+            )
+            manager = BrowserManager(sessions=[session])
+            manager.running = True
+            supervisor = BrowserSupervisor(manager)
+            with (
+                patch(
+                    "runtime_v2.browser.manager._probe_local_port", return_value=True
+                ),
+                patch(
+                    "runtime_v2.browser.manager._debug_endpoint_ready",
+                    return_value=True,
+                ),
+                patch(
+                    "runtime_v2.browser.manager._list_debug_tabs",
+                    return_value=[
+                        {"url": "https://www.genspark.ai/login", "title": "login"}
+                    ],
+                ),
+            ):
+                result = supervisor.tick(
+                    registry_file=Path(tmp_dir) / "browser_session_registry.json",
+                    health_file=Path(tmp_dir) / "browser_health.json",
+                    events_file=events_file,
+                    run_id="browser-run-event-records",
+                    recover_unhealthy=True,
+                    restart_threshold=1,
+                    cooldown_sec=0,
+                )
+
+        event_records = cast(list[object], result["browser_event_records"])
+        self.assertTrue(bool(event_records))
+        self.assertFalse(events_file.exists())
+
+    def test_run_once_surfaces_browser_event_records_without_reinterpreting_them(
+        self,
+    ) -> None:
+        browser_runtime = {
+            "sessions": [{"service": "genspark", "healthy": True, "status": "running"}],
+            "browser_event_records": [
+                {
+                    "event": "browser_supervisor_status",
+                    "service": "genspark",
+                    "status": "login_required",
+                    "action_result": "blocked",
+                    "tick_id": "browser-run-raw-record",
+                }
+            ],
+        }
+        with patch("runtime_v2.supervisor.BrowserManager.start"):
+            with patch(
+                "runtime_v2.supervisor.BrowserSupervisor.tick",
+                return_value=browser_runtime,
+            ):
+                result = run_once(
+                    owner="runtime_v2",
+                    run_id="browser-run-raw-record",
+                    workload="genspark",
+                    config=RuntimeConfig(),
+                    worker_runner=lambda: {"status": "ok"},
+                )
+
+        self.assertEqual(
+            result["browser_event_records"], browser_runtime["browser_event_records"]
+        )
 
     def test_supervisor_writes_recovery_event_for_stale_lock_recovery(self) -> None:
         with self._temp_dir() as tmp_dir:
@@ -878,10 +977,11 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         release_restart = threading.Event()
         calls: list[str] = []
 
-        def slow_restart(service: str) -> None:
+        def slow_restart(service: str) -> bool:
             calls.append(service)
             restart_started.set()
             release_restart.wait(timeout=2)
+            return True
 
         with patch.object(manager, "restart", side_effect=slow_restart):
             first_result: list[bool] = []
@@ -1116,7 +1216,9 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertEqual(result["code"], "BROWSER_UNHEALTHY")
         self.assertEqual(str(worker_result["stage"]), "runtime_preflight")
         self.assertEqual(str(worker_result["error_code"]), "BROWSER_UNHEALTHY")
-        self.assertNotIn("completion", worker_result)
+        completion = cast(dict[object, object], worker_result["completion"])
+        self.assertEqual(str(completion["state"]), "failed")
+        self.assertFalse(bool(completion["final_output"]))
 
     def test_run_once_blocks_browser_workload_when_restart_budget_is_exhausted(
         self,
@@ -1145,12 +1247,51 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                     worker_runner=lambda: {"status": "ok"},
                 )
 
-        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["status"], "failed")
         self.assertEqual(result["code"], "BROWSER_RESTART_EXHAUSTED")
         worker_result = cast(dict[object, object], result["worker_result"])
         details = cast(dict[object, object], worker_result["details"])
+        completion = cast(dict[object, object], worker_result["completion"])
         self.assertEqual(details["blocked_services"], ["chatgpt"])
-        self.assertEqual(str(worker_result["error_code"]), "restart_exhausted")
+        self.assertEqual(str(worker_result["status"]), "failed")
+        self.assertEqual(str(worker_result["error_code"]), "BROWSER_RESTART_EXHAUSTED")
+        self.assertFalse(bool(worker_result["retryable"]))
+        self.assertEqual(str(completion["state"]), "failed")
+
+    def test_run_once_blocks_browser_workload_with_retryable_backoff_contract(
+        self,
+    ) -> None:
+        browser_runtime = {
+            "sessions": [
+                {
+                    "service": "chatgpt",
+                    "healthy": False,
+                    "status": "login_required",
+                    "lock_state": "free",
+                }
+            ]
+        }
+        with patch("runtime_v2.supervisor.BrowserManager.start"):
+            with patch(
+                "runtime_v2.supervisor.BrowserSupervisor.tick",
+                return_value=browser_runtime,
+            ):
+                result = run_once(
+                    owner="runtime_v2",
+                    run_id="chatgpt-run-browser-blocked",
+                    workload="chatgpt",
+                    config=RuntimeConfig(),
+                    worker_runner=lambda: {"status": "ok"},
+                )
+
+        worker_result = cast(dict[object, object], result["worker_result"])
+        completion = cast(dict[object, object], worker_result["completion"])
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["code"], "BROWSER_BLOCKED")
+        self.assertEqual(str(worker_result["status"]), "blocked")
+        self.assertEqual(str(worker_result["error_code"]), "BROWSER_BLOCKED")
+        self.assertTrue(bool(worker_result["retryable"]))
+        self.assertEqual(str(completion["state"]), "blocked")
 
     def test_profile_storage_policy_reports_in_project_vs_external_paths(self) -> None:
         policy = build_profile_storage_report()
@@ -1292,7 +1433,12 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
 
             def debug_tabs_for(session: BrowserSession) -> list[dict[str, str]]:
                 if session.service == "chatgpt":
-                    return [{"url": "https://chatgpt.com/", "title": "ChatGPT"}]
+                    return [
+                        {
+                            "url": "https://chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom",
+                            "title": "ChatGPT",
+                        }
+                    ]
                 return [
                     {
                         "url": "https://www.seaart.ai/ko/create/image?id=d4kssode878c7387fae0&model_ver_no=ef24b47a8d618127c9342fd0635aedb9",
@@ -1303,6 +1449,10 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             with (
                 patch(
                     "runtime_v2.browser.manager._probe_local_port", return_value=True
+                ),
+                patch(
+                    "runtime_v2.browser.manager._debug_endpoint_ready",
+                    return_value=True,
                 ),
                 patch(
                     "runtime_v2.browser.manager._launch_debug_browser",
@@ -1382,6 +1532,7 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                 "final_summary",
                 "sessions",
                 "events",
+                "browser_event_records",
             },
         )
         self.assertNotIn("retryable", result)

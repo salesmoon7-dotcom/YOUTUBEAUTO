@@ -34,6 +34,7 @@ from runtime_v2.gpt.floor import (
     write_gpt_status,
 )
 from runtime_v2.debug_log import append_debug_event, debug_log_path
+from runtime_v2.error_codes import runtime_preflight_contract
 from runtime_v2.worker_registry import stalled_workloads
 
 
@@ -53,6 +54,26 @@ def _runtime_signal_payload(
     }
     if details:
         payload["details"] = details
+    return payload
+
+
+def _runtime_preflight_signal_payload(
+    *,
+    stage: str,
+    error_code: str,
+    workload: str,
+    details: dict[str, object] | None = None,
+) -> dict[str, object]:
+    contract = runtime_preflight_contract(error_code, workload=workload)
+    payload = _runtime_signal_payload(
+        stage=stage, error_code=str(contract["error_code"]), details=details
+    )
+    payload["status"] = str(contract["status"])
+    payload["retryable"] = bool(contract["retryable"])
+    payload["completion"] = {
+        "state": str(contract["completion_state"]),
+        "final_output": False,
+    }
     return payload
 
 
@@ -224,13 +245,17 @@ def run_once(
 ) -> dict[str, object]:
     runtime_config = config or RuntimeConfig()
     if workload == "agent_browser_verify" and not allow_runtime_side_effects:
+        blocked_contract = runtime_preflight_contract(
+            "browser_side_effects_disabled", workload=workload
+        )
         return {
-            "status": "blocked",
-            "code": "BROWSER_BLOCKED",
+            "status": str(blocked_contract["status"]),
+            "code": str(blocked_contract["error_code"]),
             "workload": workload,
-            "worker_result": _runtime_signal_payload(
+            "worker_result": _runtime_preflight_signal_payload(
                 stage="runtime_preflight",
                 error_code="browser_side_effects_disabled",
+                workload=workload,
                 details={"reason": "browser_side_effects_disabled"},
             ),
             "browser": {
@@ -269,6 +294,12 @@ def run_once(
             },
         )
     browser_sessions = _as_browser_sessions(browser_runtime.get("sessions"))
+    browser_event_records = _as_browser_event_records(
+        browser_runtime.get(
+            "browser_event_records",
+            browser_runtime.get("events", []),
+        )
+    )
     browser_summary = _required_browser_summary(
         browser_runtime, required_browser_services(workload)
     )
@@ -296,17 +327,22 @@ def run_once(
             _persist_gpu_health_runtime_state(
                 runtime_config, gpu_workload, lease_key, snapshot, event="lock_busy"
             )
+            blocked_contract = runtime_preflight_contract(
+                "GPU_LEASE_BUSY", workload=workload
+            )
             return {
-                "status": "blocked",
-                "code": "GPU_LEASE_BUSY",
+                "status": str(blocked_contract["status"]),
+                "code": str(blocked_contract["error_code"]),
                 "workload": workload,
                 "lock_key": lease_key,
                 "browser": browser_runtime,
+                "browser_event_records": browser_event_records,
                 "browser_sessions": browser_sessions,
                 "lease": snapshot.to_dict() if snapshot is not None else None,
-                "worker_result": _runtime_signal_payload(
+                "worker_result": _runtime_preflight_signal_payload(
                     stage="runtime_preflight",
                     error_code="GPU_LEASE_BUSY",
+                    workload=workload,
                 ),
             }
 
@@ -328,19 +364,24 @@ def run_once(
                 blocked_code = _browser_block_code(
                     browser_runtime, required_browser_services(workload)
                 )
+                blocked_contract = runtime_preflight_contract(
+                    blocked_code, workload=workload
+                )
                 return {
-                    "status": "blocked",
-                    "code": blocked_code,
+                    "status": str(blocked_contract["status"]),
+                    "code": str(blocked_contract["error_code"]),
                     "gpt_ok_count": 0,
                     "workload": workload,
                     "lock_key": lease_key,
                     "browser": browser_runtime,
+                    "browser_event_records": browser_event_records,
                     "browser_sessions": browser_sessions,
-                    "worker_result": _runtime_signal_payload(
+                    "worker_result": _runtime_preflight_signal_payload(
                         stage="runtime_preflight",
                         error_code="restart_exhausted"
                         if blocked_code == "BROWSER_RESTART_EXHAUSTED"
                         else "BROWSER_BLOCKED",
+                        workload=workload,
                         details={"blocked_services": blocked},
                     ),
                 }
@@ -351,10 +392,12 @@ def run_once(
                 "workload": workload,
                 "lock_key": lease_key,
                 "browser": browser_runtime,
+                "browser_event_records": browser_event_records,
                 "browser_sessions": browser_sessions,
-                "worker_result": _runtime_signal_payload(
+                "worker_result": _runtime_preflight_signal_payload(
                     stage="runtime_preflight",
                     error_code="BROWSER_UNHEALTHY",
+                    workload=workload,
                 ),
             }
 
@@ -372,19 +415,24 @@ def run_once(
         floor_ok = floor_count >= runtime_config.gpt_floor_min_ok
         lease_payload = None if lease is None else lease.to_dict()
         if workload_requires_gpt_floor(workload) and not floor_ok:
+            blocked_contract = runtime_preflight_contract(
+                "GPT_FLOOR_FAIL", workload=workload
+            )
             return {
-                "status": "blocked",
-                "code": "GPT_FLOOR_FAIL",
+                "status": str(blocked_contract["status"]),
+                "code": str(blocked_contract["error_code"]),
                 "gpt_ok_count": floor_count,
                 "gpt_status": gpt_status,
                 "workload": workload,
                 "lock_key": lease_key,
                 "browser": browser_runtime,
+                "browser_event_records": browser_event_records,
                 "browser_sessions": browser_sessions,
                 "lease": lease_payload,
-                "worker_result": _runtime_signal_payload(
+                "worker_result": _runtime_preflight_signal_payload(
                     stage="runtime_preflight",
                     error_code="GPT_FLOOR_FAIL",
+                    workload=workload,
                 ),
             }
 
@@ -396,6 +444,7 @@ def run_once(
             "workload": workload,
             "lock_key": lease_key,
             "browser": browser_runtime,
+            "browser_event_records": browser_event_records,
             "browser_sessions": browser_sessions,
             "lease": lease_payload,
         }
@@ -550,6 +599,18 @@ def _as_browser_sessions(value: object) -> list[dict[str, object]]:
                 session[str(raw_key)] = item[raw_key]
             sessions.append(session)
     return sessions
+
+
+def _as_browser_event_records(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    raw_items = cast(list[object], value)
+    records: list[dict[str, object]] = []
+    for raw_item in raw_items:
+        if isinstance(raw_item, dict):
+            item = cast(dict[object, object], raw_item)
+            records.append({str(key): entry for key, entry in item.items()})
+    return records
 
 
 def _persist_gpt_runtime_state(
