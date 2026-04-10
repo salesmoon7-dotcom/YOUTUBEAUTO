@@ -2090,6 +2090,19 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 ref_images_resolved = [ref_img]
             elif service == "canva" and not ref_img:
                 ref_images_requested, ref_images_resolved = [], []
+            elif service == "geminigen" and first_frame_path:
+                ref_images_requested = [first_frame_path]
+                asset_root = str(request_payload_obj.get("asset_root", "")).strip()
+                asset_root_path = Path(asset_root).resolve() if asset_root else None
+                candidate = Path(first_frame_path)
+                if not candidate.is_absolute():
+                    if asset_root_path is None:
+                        raise RuntimeError("REF_IMAGE_UPLOAD_FAILED")
+                    candidate = asset_root_path / candidate
+                candidate = candidate.resolve()
+                if not candidate.exists() or not candidate.is_file():
+                    raise RuntimeError("REF_IMAGE_UPLOAD_FAILED")
+                ref_images_resolved = [str(candidate)]
             else:
                 ref_images_requested, ref_images_resolved = (
                     _resolve_stage2_ref_image_paths(request_payload_obj)
@@ -2103,7 +2116,11 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 probe_debug_only=True,
                 recovery_attempted=False,
                 placeholder_artifact=False,
-                ref_images_requested=[ref_img_1, ref_img_2],
+                ref_images_requested=(
+                    [ref_img] if service == "canva" and ref_img else [first_frame_path]
+                )
+                if service == "geminigen"
+                else [ref_img_1, ref_img_2],
                 ref_images_resolved=[],
                 ref_images_attach_attempted=True,
                 ref_upload_error_code="REF_IMAGE_UPLOAD_FAILED",
@@ -2466,8 +2483,9 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             return exit_codes.BROWSER_UNHEALTHY
     ref_upload_error_code = ""
     ref_images_attach_attempted = False
-    if service in {"genspark", "seaart", "canva"} and (
+    if service in {"genspark", "seaart", "canva", "geminigen"} and (
         (service == "canva" and bool(ref_img))
+        or (service == "geminigen" and bool(first_frame_path))
         or (service != "canva" and bool(ref_img_1 or ref_img_2))
     ):
         try:
@@ -2483,6 +2501,11 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         except Exception:
             ref_upload_error_code = "REF_IMAGE_UPLOAD_FAILED"
             canva_requested = [ref_img] if service == "canva" and ref_img else []
+            geminigen_requested = (
+                [first_frame_path]
+                if service == "geminigen" and first_frame_path
+                else []
+            )
             write_stage2_attach_evidence(
                 workspace=workspace,
                 service=service,
@@ -2495,7 +2518,11 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 recovery_attempted=False,
                 placeholder_artifact=False,
                 ref_images_requested=(
-                    canva_requested if service == "canva" else ref_images_requested
+                    canva_requested
+                    if service == "canva"
+                    else geminigen_requested
+                    if service == "geminigen"
+                    else ref_images_requested
                 ),
                 ref_images_resolved=(
                     canva_requested if service == "canva" else ref_images_resolved

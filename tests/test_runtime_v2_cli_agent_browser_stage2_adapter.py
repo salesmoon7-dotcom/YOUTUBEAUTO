@@ -4355,10 +4355,18 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                     "runtime_v2.cli.write_functional_evidence_bundle",
                     side_effect=fake_bundle,
                 ),
+                patch(
+                    "runtime_v2.cli._attach_stage2_ref_images",
+                ) as attach_mock,
             ):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
         self.assertEqual(exit_code, exit_codes.SUCCESS)
+        attach_mock.assert_called_once_with(
+            port=9555,
+            expected_url_substring="geminigen.ai",
+            file_paths=[str(first_frame.resolve())],
+        )
         uploads = [
             action for action in captured_actions if action.get("type") == "upload"
         ]
@@ -4366,6 +4374,98 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertEqual(uploads, [])
         self.assertTrue(any("selected_create_new" in script for script in scripts))
         self.assertTrue(any("clicked_generate" in script for script in scripts))
+
+    def test_stage2_adapter_child_fails_closed_when_geminigen_first_frame_upload_fails(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "geminigen-scene-01.mp4"
+            first_frame = root / "assets" / "frame.png"
+            first_frame.parent.mkdir(parents=True, exist_ok=True)
+            _ = first_frame.write_bytes(b"png")
+            request_payload = {
+                "payload": {
+                    "prompt": "video prompt one",
+                    "first_frame_path": str(first_frame.resolve()),
+                }
+            }
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "geminigen"
+            args.port = 9555
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "geminigen.ai"
+            args.expected_title_substring = "Gemini"
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli._attach_stage2_ref_images",
+                    side_effect=RuntimeError("NO_FILE_INPUT"),
+                ),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok"},
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+            evidence = json.loads(
+                (root / "attach_evidence.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(evidence["service"], "geminigen")
+            self.assertEqual(evidence["status"], "failed")
+            self.assertEqual(evidence["error_code"], "REF_IMAGE_UPLOAD_FAILED")
+            self.assertEqual(
+                evidence["ref_upload_error_code"], "REF_IMAGE_UPLOAD_FAILED"
+            )
+            self.assertTrue(bool(evidence["ref_images_attach_attempted"]))
+            self.assertEqual(
+                evidence["ref_images_requested"], [str(first_frame.resolve())]
+            )
+
+    def test_stage2_adapter_child_fails_closed_when_geminigen_first_frame_is_missing(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "geminigen-scene-01.mp4"
+            missing_frame = root / "assets" / "missing-frame.png"
+            request_payload = {
+                "payload": {
+                    "prompt": "video prompt one",
+                    "first_frame_path": str(missing_frame.resolve()),
+                }
+            }
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "geminigen"
+            args.port = 9555
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "geminigen.ai"
+            args.expected_title_substring = "Gemini"
+
+            with patch("runtime_v2.cli.Path.cwd", return_value=root):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+            evidence = json.loads(
+                (root / "attach_evidence.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(evidence["service"], "geminigen")
+            self.assertEqual(evidence["status"], "failed")
+            self.assertEqual(evidence["error_code"], "REF_IMAGE_UPLOAD_FAILED")
+            self.assertEqual(
+                evidence["ref_images_requested"], [str(missing_frame.resolve())]
+            )
+            self.assertEqual(evidence["ref_images_resolved"], [])
+            self.assertTrue(bool(evidence["ref_images_attach_attempted"]))
 
     def test_stage2_row1_probe_records_all_browser_results(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
