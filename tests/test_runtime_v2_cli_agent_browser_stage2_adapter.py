@@ -1198,7 +1198,12 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 _ = artifact_root
                 payload = cast(dict[str, object], job.payload)
                 captured_expected.append(str(payload.get("expected_url_substring", "")))
-                return {"status": "ok"}
+                return {
+                    "status": "ok",
+                    "details": {
+                        "current_url": "https://www.genspark.ai/agents?id=result123"
+                    },
+                }
 
             with (
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
@@ -1333,6 +1338,208 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertEqual(exit_code, exit_codes.SUCCESS)
         scripts = [str(action.get("script", "")) for action in captured_actions]
         self.assertTrue(any("selected_new_session" in script for script in scripts))
+
+    def test_stage2_adapter_child_uses_latest_genspark_result_tab_for_capture(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "scene-01.png"
+            request_payload = {"payload": {"prompt": "scene one"}}
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "genspark"
+            args.port = 9333
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "genspark.ai"
+            args.expected_title_substring = "Genspark"
+            captured_capture_urls: list[str] = []
+            responses: list[object] = []
+            for payload in [
+                '{"ok":true,"src":"https://www.genspark.ai/api/files/example.png"}',
+                '{"ok":true}',
+            ]:
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", payload)
+                setattr(completed, "stderr", "")
+                responses.append(completed)
+
+            class _JsonListResponse:
+                def __init__(self, payload: object) -> None:
+                    self._payload = payload
+
+                def read(self) -> bytes:
+                    return json.dumps(self._payload, ensure_ascii=True).encode("utf-8")
+
+                def __enter__(self) -> "_JsonListResponse":
+                    return self
+
+                def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+                    _ = (exc_type, exc, tb)
+                    return False
+
+            def fake_run(*args_: object, **kwargs: object) -> object:
+                _ = args_
+                _ = kwargs
+                if responses:
+                    return responses.pop(0)
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", '{"ok":true}')
+                setattr(completed, "stderr", "")
+                return completed
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                _ = (job, artifact_root)
+                return {
+                    "status": "ok",
+                    "details": {
+                        "current_url": "https://www.genspark.ai/agents?type=image_generation_agent"
+                    },
+                }
+
+            def fake_write_bundle(**kwargs: object) -> dict[str, object]:
+                captured_capture_urls.append(str(kwargs["expected_url_substring"]))
+                return {"service": "genspark", "sha256": "ok"}
+
+            def fake_urlopen(url: str, timeout: int = 10) -> _JsonListResponse:
+                _ = timeout
+                self.assertEqual(url, "http://127.0.0.1:9333/json/list")
+                return _JsonListResponse(
+                    [
+                        {
+                            "type": "page",
+                            "url": "https://www.genspark.ai/agents?type=image_generation_agent",
+                        },
+                        {
+                            "type": "page",
+                            "url": "https://www.genspark.ai/agents?id=result123",
+                        },
+                    ]
+                )
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli.sleep"),
+                patch("runtime_v2.cli._close_genspark_result_tabs"),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    side_effect=fake_write_bundle,
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+                patch(
+                    "runtime_v2.cli.urllib.request.urlopen", side_effect=fake_urlopen
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        self.assertEqual(
+            captured_capture_urls,
+            ["https://www.genspark.ai/agents?id=result123"],
+        )
+
+    def test_stage2_adapter_child_fails_closed_when_genspark_result_tab_is_unpinned(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "scene-01.png"
+            request_payload = {"payload": {"prompt": "scene one"}}
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "genspark"
+            args.port = 9333
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "genspark.ai"
+            args.expected_title_substring = "Genspark"
+            responses: list[object] = []
+            for payload in [
+                '{"ok":true,"src":"https://www.genspark.ai/api/files/example.png"}',
+                '{"ok":true}',
+            ]:
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", payload)
+                setattr(completed, "stderr", "")
+                responses.append(completed)
+
+            class _JsonListResponse:
+                def __init__(self, payload: object) -> None:
+                    self._payload = payload
+
+                def read(self) -> bytes:
+                    return json.dumps(self._payload, ensure_ascii=True).encode("utf-8")
+
+                def __enter__(self) -> "_JsonListResponse":
+                    return self
+
+                def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+                    _ = (exc_type, exc, tb)
+                    return False
+
+            def fake_run(*args_: object, **kwargs: object) -> object:
+                _ = args_
+                _ = kwargs
+                if responses:
+                    return responses.pop(0)
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", '{"ok":true}')
+                setattr(completed, "stderr", "")
+                return completed
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                _ = (job, artifact_root)
+                return {
+                    "status": "ok",
+                    "details": {
+                        "current_url": "https://www.genspark.ai/agents?type=image_generation_agent"
+                    },
+                }
+
+            def fake_urlopen(url: str, timeout: int = 10) -> _JsonListResponse:
+                _ = timeout
+                self.assertEqual(url, "http://127.0.0.1:9333/json/list")
+                return _JsonListResponse(
+                    [
+                        {
+                            "type": "page",
+                            "url": "https://www.genspark.ai/agents?type=image_generation_agent",
+                        }
+                    ]
+                )
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli.sleep"),
+                patch("runtime_v2.cli._close_genspark_result_tabs"),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "genspark", "sha256": "ok"},
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+                patch(
+                    "runtime_v2.cli.urllib.request.urlopen", side_effect=fake_urlopen
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+            evidence = json.loads(
+                (root / "attach_evidence.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(evidence["status"], "failed")
+            self.assertEqual(evidence["error_code"], "GENSPARK_RESULT_TAB_UNPINNED")
 
     def test_attach_stage2_ref_images_uses_genspark_filechooser_helper(self) -> None:
         with patch(

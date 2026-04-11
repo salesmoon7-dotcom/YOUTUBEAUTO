@@ -2771,6 +2771,10 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 or expected_url_substring
             )
             if service == "genspark":
+                if not capture_url.startswith("https://www.genspark.ai/agents?id="):
+                    capture_url = _latest_genspark_result_url(args.port)
+                if not capture_url.startswith("https://www.genspark.ai/agents?id="):
+                    raise RuntimeError("GENSPARK_RESULT_TAB_UNPINNED")
                 _ = write_functional_evidence_bundle(
                     workspace=workspace,
                     service=service,
@@ -2802,6 +2806,10 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             if service == "canva" and str(exc) == "CANVA_TRUTHFUL_ARTIFACT_GATE_FAILED":
                 failure_result = dict(result)
                 failure_result["error_code"] = "CANVA_TRUTHFUL_ARTIFACT_GATE_FAILED"
+            if service == "genspark" and str(exc) == "GENSPARK_RESULT_TAB_UNPINNED":
+                failure_result = dict(result)
+                failure_result["status"] = "failed"
+                failure_result["error_code"] = "GENSPARK_RESULT_TAB_UNPINNED"
             if service == "genspark":
                 debug_state_path = _write_stage2_adapter_debug_state(
                     workspace=workspace,
@@ -3121,6 +3129,25 @@ def _close_genspark_result_tabs(port: int) -> None:
                 pass
         except Exception:
             continue
+
+
+def _latest_genspark_result_url(port: int) -> str:
+    with urllib.request.urlopen(
+        f"http://127.0.0.1:{port}/json/list", timeout=10
+    ) as response:
+        payload = cast(
+            list[object], json.loads(response.read().decode("utf-8", "ignore"))
+        )
+    pages = [
+        cast(dict[str, object], item)
+        for item in payload
+        if isinstance(item, dict) and str(item.get("type", "")) == "page"
+    ]
+    for item in reversed(pages):
+        url = str(item.get("url", "")).strip()
+        if url.startswith("https://www.genspark.ai/agents?id="):
+            return url
+    return ""
 
 
 def _resolve_stage2_ref_image_paths(
