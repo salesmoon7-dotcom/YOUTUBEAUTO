@@ -1534,7 +1534,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             ):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
-            self.assertEqual(exit_code, exit_codes.CLI_USAGE)
+            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
             evidence = json.loads(
                 (root / "attach_evidence.json").read_text(encoding="utf-8")
             )

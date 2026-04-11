@@ -230,7 +230,7 @@ class RuntimeV2CdpCaptureTests(unittest.TestCase):
 
         self.assertEqual(len(sha256), 64)
 
-    def test_capture_primary_image_asset_prefers_newest_genspark_result_tab(
+    def test_capture_primary_image_asset_uses_pinned_genspark_result_tab(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -311,7 +311,7 @@ class RuntimeV2CdpCaptureTests(unittest.TestCase):
             ):
                 asset_path, _ = capture_primary_image_asset(
                     9333,
-                    "genspark.ai/agents?type=image_generation_agent",
+                    "https://www.genspark.ai/agents?id=fresh",
                     output_path,
                     service="genspark",
                 )

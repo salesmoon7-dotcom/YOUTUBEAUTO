@@ -286,16 +286,6 @@ def _select_page_target(port: int, expected_url_substring: str) -> dict[str, str
         for item in cast(list[object], payload)
         if isinstance(item, dict)
     ]
-    if expected_url_substring == expected_url_substring_for_service("genspark"):
-        for item in reversed(pages):
-            if str(item.get("type", "")) != "page":
-                continue
-            url = str(item.get("url", ""))
-            if url.startswith("https://www.genspark.ai/agents?id="):
-                return {
-                    "webSocketDebuggerUrl": str(item.get("webSocketDebuggerUrl", "")),
-                    "url": url,
-                }
     if expected_url_substring == expected_url_substring_for_service("canva"):
         for item in reversed(pages):
             if str(item.get("type", "")) != "page":
@@ -310,10 +300,7 @@ def _select_page_target(port: int, expected_url_substring: str) -> dict[str, str
         if str(item.get("type", "")) != "page":
             continue
         url = str(item.get("url", ""))
-        if expected_url_substring in url or (
-            expected_url_substring == expected_url_substring_for_service("genspark")
-            and url.startswith("https://www.genspark.ai/agents?id=")
-        ):
+        if expected_url_substring in url:
             return {
                 "webSocketDebuggerUrl": str(item.get("webSocketDebuggerUrl", "")),
                 "url": url,
