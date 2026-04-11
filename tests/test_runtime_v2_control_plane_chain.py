@@ -602,6 +602,9 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
             registry_file = root / "health" / "worker_registry.json"
+            config = _runtime_config(root)
+            config.control_plane_events_file.parent.mkdir(parents=True, exist_ok=True)
+            config.control_plane_events_file.write_text("", encoding="utf-8")
             job = JobContract(
                 job_id="long-qwen-job",
                 workload="qwen3_tts",
@@ -622,6 +625,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                     artifact_root=artifact_root,
                     registry_file=registry_file,
                     heartbeat_interval_sec=0.05,
+                    runtime_config=config,
                 )
 
             with patch(
@@ -655,10 +659,23 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 worker_thread.join(timeout=3)
                 registry = json.loads(registry_file.read_text(encoding="utf-8"))
                 qwen_entry = cast(dict[str, object], registry["qwen3_tts"])
+                heartbeat_events = [
+                    json.loads(line)
+                    for line in config.control_plane_events_file.read_text(
+                        encoding="utf-8"
+                    ).splitlines()
+                    if line.strip()
+                ]
 
         self.assertGreater(refreshed_progress, cast(float, first_progress))
         self.assertEqual(result_box["result"]["status"], "ok")
         self.assertEqual(str(qwen_entry["state"]), "idle")
+        self.assertTrue(
+            any(
+                str(event.get("event", "")) == "worker_heartbeat"
+                for event in heartbeat_events
+            )
+        )
 
     def test_run_worker_restores_idle_registry_state_when_handler_raises(self) -> None:
         import runtime_v2.control_plane as control_plane_module

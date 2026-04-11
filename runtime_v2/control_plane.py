@@ -1247,8 +1247,9 @@ def _run_worker(
     registry_file: Path | None = None,
     allow_mock_chain: bool = False,
     heartbeat_interval_sec: float | None = None,
+    runtime_config: RuntimeConfig | None = None,
 ) -> dict[str, object]:
-    default_config = RuntimeConfig()
+    default_config = runtime_config or RuntimeConfig()
     if _mock_chain_enabled(job, allow_mock_chain=allow_mock_chain):
         if artifact_root is None:
             artifact_root = default_config.artifact_root
@@ -1270,6 +1271,7 @@ def _run_worker(
         run_id=run_id,
         heartbeat_interval_sec=heartbeat_interval_sec,
         renew_interval_sec=float(default_config.renew_interval_sec),
+        events_file=default_config.control_plane_events_file,
     )
 
 
@@ -1290,6 +1292,7 @@ def _run_worker_with_registry_heartbeat(
     run_id: str,
     heartbeat_interval_sec: float | None,
     renew_interval_sec: float,
+    events_file: Path | None = None,
 ) -> dict[str, object]:
     heartbeat_done = threading.Event()
     heartbeat_interval = max(
@@ -1310,6 +1313,17 @@ def _run_worker_with_registry_heartbeat(
                     state="busy",
                     run_id=run_id,
                 )
+                if events_file is not None:
+                    _ = _append_control_event(
+                        {
+                            "event": "worker_heartbeat",
+                            "job_id": job.job_id,
+                            "workload": job.workload,
+                            "status": "running",
+                        },
+                        events_file,
+                        run_id=run_id,
+                    )
             except OSError:
                 continue
 
