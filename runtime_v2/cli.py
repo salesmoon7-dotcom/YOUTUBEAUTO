@@ -2868,9 +2868,29 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             )
             return exit_codes.BROWSER_UNHEALTHY
     else:
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        _write_stage2_placeholder_artifact(target_path)
-        placeholder_artifact = True
+        write_stage2_attach_evidence(
+            workspace=workspace,
+            service=service,
+            port=args.port,
+            result={
+                "status": "failed",
+                "stage": "agent_browser_verify",
+                "error_code": "STAGE2_PLACEHOLDER_FORBIDDEN",
+                "details": {
+                    "failure_reason": "unsupported_stage2_service",
+                    "current_url": args.expected_url_substring.strip(),
+                    "current_title": args.expected_title_substring.strip(),
+                },
+            },
+            probe_debug_only=True,
+            recovery_attempted=False,
+            placeholder_artifact=False,
+            ref_images_requested=ref_images_requested,
+            ref_images_resolved=ref_images_resolved,
+            ref_images_attach_attempted=bool(ref_images_requested),
+            ref_upload_error_code=ref_upload_error_code,
+        )
+        return exit_codes.CLI_USAGE
     write_stage2_attach_evidence(
         workspace=workspace,
         service=service,
@@ -3509,17 +3529,6 @@ def _run_rvc_adapter_child(args: CliArgs) -> int:
     if completed.returncode != 0 or not target_path.exists():
         return exit_codes.ADAPTER_FAIL
     return exit_codes.SUCCESS
-
-
-def _write_stage2_placeholder_artifact(path: Path) -> None:
-    suffix = path.suffix.lower()
-    if suffix == ".mp4":
-        _ = path.write_bytes(b"agent-browser-stage2-placeholder\n")
-        return
-    if suffix == ".png":
-        _ = path.write_bytes(b"agent-browser-stage2-placeholder\n")
-        return
-    _ = path.write_text("agent-browser-stage2-placeholder\n", encoding="utf-8")
 
 
 def _write_probe_result(probe_root: Path, payload: dict[str, object]) -> Path:

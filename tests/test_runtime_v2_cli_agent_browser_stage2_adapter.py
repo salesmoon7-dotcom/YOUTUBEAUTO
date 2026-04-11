@@ -1534,7 +1534,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             ):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
-            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+            self.assertEqual(exit_code, exit_codes.CLI_USAGE)
             evidence = json.loads(
                 (root / "attach_evidence.json").read_text(encoding="utf-8")
             )
@@ -1579,10 +1579,16 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             args.expected_url_substring = "seaart.ai"
             args.expected_title_substring = "SeaArt"
 
-            with patch("runtime_v2.cli.Path.cwd", return_value=root):
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok", "details": {}},
+                ),
+            ):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
-            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+            self.assertEqual(exit_code, exit_codes.CLI_USAGE)
             evidence = json.loads(
                 (root / "attach_evidence.json").read_text(encoding="utf-8")
             )
@@ -1591,6 +1597,41 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 evidence["ref_upload_error_code"], "REF_IMAGE_UPLOAD_FAILED"
             )
             self.assertTrue(bool(evidence["ref_images_attach_attempted"]))
+
+    def test_stage2_adapter_child_forbids_placeholder_success_for_unsupported_service(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "scene-01.png"
+            request_payload = {"payload": {"prompt": "scene one"}}
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "unknown-service"
+            args.port = 9777
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "unknown.example"
+            args.expected_title_substring = "Unknown"
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={"status": "ok", "details": {}},
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+            self.assertEqual(exit_code, exit_codes.CLI_USAGE)
+            self.assertFalse(output_path.exists())
+            evidence = json.loads(
+                (root / "attach_evidence.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(evidence["status"], "failed")
+            self.assertEqual(evidence["error_code"], "STAGE2_PLACEHOLDER_FORBIDDEN")
+            self.assertFalse(bool(evidence["placeholder_artifact"]))
 
     def test_stage2_adapter_child_fails_closed_when_genspark_ref_upload_fails(
         self,
