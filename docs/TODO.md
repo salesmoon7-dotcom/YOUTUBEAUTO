@@ -4,6 +4,7 @@
 - 위 원칙은 점진적으로 적용합니다. 기존 긴 evidence/history 블록은 후속 정리 배치에서 축소합니다.
 - interruption/search 규칙의 정본은 `docs/sop/SOP_runtime_v2_development_guardrails.md`와 `docs/sop/SOP_chat_interruption_repo_triage.md`입니다.
 - `docs/plans/2026-03-11-runtime-v2-residual-drift-remediation-plan.md` - 최신 배치(Task 1~4 성격) 구현/검증은 반영 완료되었습니다. 이번 배치로 `single writer`, `failure contract canonical mapping`, `_run_worker dispatch cleanup`를 코드/테스트 기준으로 잠갔고, final verification gate(`control_plane_chain/evidence/browser_plane/error_codes/latest_run/debug_log + py_compile`)를 통과했습니다. 다음 active goal은 broad rerun이 아니라 `single scene/service` 기준의 MVP 1회 산출 증거를 닫는 것입니다.
+- `docs/plans/2026-04-01-runtime-v2-closeout-retest-result.md` - `Sheet1!row15` detached closeout 1회는 `D:\YOUTUBEAUTO_RUNTIME\probe\semantic-row-closeout-20260411-02\probe_result.json` + `evidence\failure_summary.json`으로 계약상 닫혔습니다. 현재 reading은 `closed failed retest`이며, 다음 active goal은 broad rerun이 아니라 이 closeout이 드러낸 단일 blocker `missing_scene_prompts`를 stage1 truth boundary에서 해결하는 것입니다.
 - `docs/plans/2026-03-11-runtime-v2-chat-safe-execution-remediation-plan.md` - 완료됨. 상세 실행/정리 결과는 해당 plan, `docs/plans/2026-03-11-chat-interruption-structure-remediation-plan.md`, `docs/plans/2026-03-11-chat-interruption-remediation-batches-plan.md`, `docs/COMPLETED.md`를 기준으로 봅니다.
 - `docs/plans/2026-03-11-runtime-v2-repo-root-dependency-remediation-plan.md` - 진행 예정. 정밀 재판정 기준으로 `브라우저 세션 외부화는 상당 부분 완료`, `런타임 상태/아티팩트 repo-root 기본값은 잔존`으로 분리해 후속 정리를 진행합니다.
 
