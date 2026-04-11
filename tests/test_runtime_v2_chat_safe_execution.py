@@ -541,6 +541,47 @@ class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
         self.assertEqual(report["code"], "OK")
         self.assertEqual(latest_active["code"], "OK")
 
+    def test_stage5_probe_writes_failure_summary_for_terminal_failure(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            probe_root = root / "probe"
+            excel_path = root / "topic.xlsx"
+            workbook = Workbook()
+            sheet = cast(Worksheet, workbook.active)
+            sheet.title = "Sheet1"
+            sheet.append(["Topic", "Status"])
+            sheet.append(["Semantic row", "OK"])
+            workbook.save(excel_path)
+            workbook.close()
+            config = RuntimeConfig.from_root(root / "runtime")
+
+            with patch(
+                "runtime_v2.cli.run_control_loop_once",
+                return_value={
+                    "status": "failed",
+                    "code": "missing_scene_prompts",
+                    "queue_status": "failed",
+                },
+            ):
+                report = _run_stage5_row1_probe(
+                    owner="runtime_v2",
+                    config=config,
+                    probe_root=probe_root,
+                    run_id="stage5-terminal-failure",
+                    excel_path=str(excel_path),
+                    sheet_name="Sheet1",
+                    row_index=0,
+                    max_control_ticks=1,
+                )
+
+            failure_summary_path = str(report.get("failure_summary_path", "")).strip()
+            failure_summary_exists = Path(failure_summary_path).exists()
+
+        self.assertEqual(report["status"], "failed")
+        self.assertEqual(report["code"], "missing_scene_prompts")
+        self.assertTrue(bool(failure_summary_path))
+        self.assertTrue(failure_summary_exists)
+
     def test_stage5_probe_child_writes_probe_result_file(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

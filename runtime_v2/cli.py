@@ -56,6 +56,7 @@ from runtime_v2.latest_run import (
     write_cli_runtime_snapshot,
 )
 from runtime_v2.manager import mark_excel_row_running, seed_excel_row
+from runtime_v2.manager import write_failure_summary
 from runtime_v2.excel.selector import select_pending_row_indexes
 from runtime_v2.excel.source import read_excel_row
 from runtime_v2.control_plane_feeder import job_from_explicit_payload
@@ -1707,6 +1708,25 @@ def _run_stage5_row1_probe(
     row_index: int,
     max_control_ticks: int,
 ) -> dict[str, object]:
+    def _write_stage5_failure_summary(
+        *,
+        reason_code: str,
+        summary: str,
+        final_artifact_path: str = "",
+    ) -> str:
+        evidence_refs = [str(probe_root / "probe_result.json")]
+        if final_artifact_path:
+            evidence_refs.append(final_artifact_path)
+        failure_path = write_failure_summary(
+            probe_config,
+            run_id=run_id,
+            reason_code=reason_code,
+            summary=summary,
+            evidence_refs=evidence_refs,
+            debug_log=str(probe_root / "logs" / f"{run_id}.jsonl"),
+        )
+        return str(failure_path)
+
     probe_config = config.replace(stable_file_age_sec=0)
     seed_result = seed_excel_row(
         config=probe_config,
@@ -1731,6 +1751,10 @@ def _run_stage5_row1_probe(
             "control_results": [],
             "placeholder_services": [],
         }
+        report["failure_summary_path"] = _write_stage5_failure_summary(
+            reason_code=str(report["code"]),
+            summary="stage5 row seed did not produce a seeded job",
+        )
         _ = _write_probe_result(probe_root, report)
         return report
     control_results: list[dict[str, object]] = []
@@ -1807,6 +1831,11 @@ def _run_stage5_row1_probe(
                     ),
                     "readiness": readiness_snapshot,
                 }
+                report["failure_summary_path"] = _write_stage5_failure_summary(
+                    reason_code=str(report["code"]),
+                    summary="stage5 row reached render output but readiness remained blocked",
+                    final_artifact_path=str(report.get("final_artifact_path", "")),
+                )
                 _ = _write_probe_result(probe_root, report)
                 return report
             report: dict[str, object] = {
@@ -1846,6 +1875,11 @@ def _run_stage5_row1_probe(
                 ),
                 "readiness": readiness_snapshot,
             }
+            report["failure_summary_path"] = _write_stage5_failure_summary(
+                reason_code=str(report["code"]),
+                summary="stage5 row terminated with failed or blocked control result",
+                final_artifact_path=str(report.get("final_artifact_path", "")),
+            )
             _ = _write_probe_result(probe_root, report)
             return report
     report: dict[str, object] = {
@@ -1862,6 +1896,11 @@ def _run_stage5_row1_probe(
         "final_artifact_path": str(final_metadata.get("final_artifact_path", "")),
         "readiness": readiness_snapshot,
     }
+    report["failure_summary_path"] = _write_stage5_failure_summary(
+        reason_code=str(report["code"]),
+        summary="stage5 row timed out before terminal success or fail-close artifact",
+        final_artifact_path=str(report.get("final_artifact_path", "")),
+    )
     _ = _write_probe_result(probe_root, report)
     return report
 
