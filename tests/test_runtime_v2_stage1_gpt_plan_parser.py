@@ -63,6 +63,39 @@ Footer text
                 }
             )
 
+    def test_parse_stage1_gpt_plan_normalizes_zero_based_voice_indexes(self) -> None:
+        parsed = parse_stage1_gpt_plan(
+            {
+                "story_outline": ["opening", "closing"],
+                "scene_prompts": ["scene one", "scene two"],
+                "voice_groups": [
+                    {"scene_index": 0, "voice": "narration one"},
+                    {"scene_index": 1, "voice": "narration two"},
+                ],
+            }
+        )
+
+        self.assertEqual(
+            parsed["voice_groups"],
+            [
+                {"scene_index": 1, "voice": "narration one"},
+                {"scene_index": 2, "voice": "narration two"},
+            ],
+        )
+
+    def test_parse_stage1_gpt_plan_rejects_mixed_voice_index_bases(self) -> None:
+        with self.assertRaisesRegex(ValueError, "invalid_voice_groups"):
+            _ = parse_stage1_gpt_plan(
+                {
+                    "story_outline": ["opening", "closing"],
+                    "scene_prompts": ["scene one", "scene two"],
+                    "voice_groups": [
+                        {"scene_index": 0, "voice": "narration one"},
+                        {"scene_index": 2, "voice": "narration two"},
+                    ],
+                }
+            )
+
     def test_map_stage1_plan_to_topic_spec_adds_strict_stage1_fields(self) -> None:
         parsed_plan = parse_stage1_gpt_plan(
             {

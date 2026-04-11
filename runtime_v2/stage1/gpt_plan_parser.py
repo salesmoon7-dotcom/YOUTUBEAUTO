@@ -55,6 +55,7 @@ def parse_stage1_gpt_plan(payload: dict[str, object]) -> dict[str, object]:
         normalized_prompts.append(item.strip())
 
     normalized_voice_groups: list[dict[str, object]] = []
+    raw_scene_indexes: list[int] = []
     for item_obj in typed_voice_groups:
         if not isinstance(item_obj, dict):
             raise ValueError("invalid_voice_groups")
@@ -62,12 +63,23 @@ def parse_stage1_gpt_plan(payload: dict[str, object]) -> dict[str, object]:
         scene_index = item.get("scene_index")
         voice = item.get("voice")
         if not isinstance(scene_index, int) or scene_index <= 0:
-            raise ValueError("invalid_voice_groups")
+            if not isinstance(scene_index, int):
+                raise ValueError("invalid_voice_groups")
         if not isinstance(voice, str) or not voice.strip():
             raise ValueError("invalid_voice_groups")
+        raw_scene_indexes.append(scene_index)
         normalized_voice_groups.append(
             {"scene_index": scene_index, "voice": voice.strip()}
         )
+
+    if normalized_voice_groups:
+        zero_based = list(range(len(normalized_voice_groups)))
+        one_based = list(range(1, len(normalized_voice_groups) + 1))
+        if raw_scene_indexes == zero_based:
+            for offset, item in enumerate(normalized_voice_groups, start=1):
+                item["scene_index"] = offset
+        elif raw_scene_indexes != one_based:
+            raise ValueError("invalid_voice_groups")
 
     if len(normalized_prompts) != len(normalized_voice_groups):
         raise ValueError("scene_voice_count_mismatch")
