@@ -1747,6 +1747,238 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             ],
         )
 
+    def test_attach_seaart_ref_images_prefers_create_image_page(self) -> None:
+        class _Locator:
+            def __init__(self, name: str, count: int = 1) -> None:
+                self.name = name
+                self.calls: list[list[str]] = []
+                self._count = count
+
+            def nth(self, index: int) -> "_Locator":
+                _ = index
+                return self
+
+            def count(self) -> int:
+                return self._count
+
+            def set_input_files(self, files: list[str]) -> None:
+                self.calls.append(files)
+
+        class _Page:
+            def __init__(self, url: str, locator: _Locator) -> None:
+                self.url = url
+                self._locator = locator
+
+            def bring_to_front(self) -> None:
+                return None
+
+            def locator(self, selector: str) -> _Locator:
+                _ = selector
+                return self._locator
+
+        class _Context:
+            def __init__(self, pages: list[_Page]) -> None:
+                self.pages = pages
+
+        class _Browser:
+            def __init__(self, context: _Context) -> None:
+                self.contexts = [context]
+
+            def close(self) -> None:
+                return None
+
+        class _Chromium:
+            def __init__(self, browser: _Browser) -> None:
+                self._browser = browser
+
+            def connect_over_cdp(self, endpoint: str) -> _Browser:
+                _ = endpoint
+                return self._browser
+
+        class _Playwright:
+            def __init__(self, chromium: _Chromium) -> None:
+                self.chromium = chromium
+
+        class _PlaywrightContext:
+            def __init__(self, playwright: _Playwright) -> None:
+                self._playwright = playwright
+
+            def __enter__(self) -> _Playwright:
+                return self._playwright
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+                _ = (exc_type, exc, tb)
+                return False
+
+        generic_locator = _Locator("generic")
+        create_locator = _Locator("create")
+        pages = [
+            _Page("https://www.seaart.ai/home", generic_locator),
+            _Page("https://www.seaart.ai/ko/create/image?id=abc", create_locator),
+        ]
+        browser = _Browser(_Context(pages))
+        playwright_context = _PlaywrightContext(_Playwright(_Chromium(browser)))
+
+        with patch(
+            "playwright.sync_api.sync_playwright", return_value=playwright_context
+        ):
+            _attach_seaart_ref_images_via_playwright(
+                port=9444,
+                file_paths=[r"D:\tmp\ref1.png"],
+            )
+
+        self.assertEqual(generic_locator.calls, [])
+        self.assertEqual(
+            create_locator.calls,
+            [[str(Path(r"D:\tmp\ref1.png").resolve())]],
+        )
+
+    def test_attach_seaart_ref_images_keeps_both_files_when_single_input_exists(
+        self,
+    ) -> None:
+        class _Locator:
+            def __init__(self) -> None:
+                self.calls: list[list[str]] = []
+
+            def nth(self, index: int) -> "_Locator":
+                _ = index
+                return self
+
+            def count(self) -> int:
+                return 1
+
+            def set_input_files(self, files: list[str]) -> None:
+                self.calls.append(files)
+
+        class _Page:
+            def __init__(self, locator: _Locator) -> None:
+                self.url = "https://www.seaart.ai/ko/create/image?id=abc"
+                self._locator = locator
+
+            def bring_to_front(self) -> None:
+                return None
+
+            def locator(self, selector: str) -> _Locator:
+                _ = selector
+                return self._locator
+
+        class _Context:
+            def __init__(self, page: _Page) -> None:
+                self.pages = [page]
+
+        class _Browser:
+            def __init__(self, context: _Context) -> None:
+                self.contexts = [context]
+
+            def close(self) -> None:
+                return None
+
+        class _Chromium:
+            def __init__(self, browser: _Browser) -> None:
+                self._browser = browser
+
+            def connect_over_cdp(self, endpoint: str) -> _Browser:
+                _ = endpoint
+                return self._browser
+
+        class _Playwright:
+            def __init__(self, chromium: _Chromium) -> None:
+                self.chromium = chromium
+
+        class _PlaywrightContext:
+            def __init__(self, playwright: _Playwright) -> None:
+                self._playwright = playwright
+
+            def __enter__(self) -> _Playwright:
+                return self._playwright
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+                _ = (exc_type, exc, tb)
+                return False
+
+        locator = _Locator()
+        page = _Page(locator)
+        browser = _Browser(_Context(page))
+        playwright_context = _PlaywrightContext(_Playwright(_Chromium(browser)))
+
+        with patch(
+            "playwright.sync_api.sync_playwright", return_value=playwright_context
+        ):
+            _attach_seaart_ref_images_via_playwright(
+                port=9444,
+                file_paths=[r"D:\tmp\ref1.png", r"D:\tmp\ref2.png"],
+            )
+
+        self.assertEqual(
+            locator.calls,
+            [
+                [
+                    str(Path(r"D:\tmp\ref1.png").resolve()),
+                    str(Path(r"D:\tmp\ref2.png").resolve()),
+                ]
+            ],
+        )
+
+    def test_stage2_adapter_child_navigates_seaart_to_create_image_before_prompt(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "seaart-scene-01.png"
+            request_payload = {"payload": {"prompt": "seaart prompt"}}
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "seaart"
+            args.port = 9444
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "seaart.ai"
+            args.expected_title_substring = "SeaArt"
+            captured_pre_actions: list[dict[str, object]] = []
+            call_count = 0
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                nonlocal call_count
+                _ = artifact_root
+                payload = cast(dict[str, object], job.payload)
+                actions = cast(list[dict[str, object]], payload.get("actions", []))
+                call_count += 1
+                if call_count == 1:
+                    captured_pre_actions.extend(actions)
+                    return {"status": "ok"}
+                return {"status": "ok"}
+
+            def fake_bundle(**kwargs: object) -> dict[str, object]:
+                target = Path(str(kwargs["service_artifact_path"]))
+                target.parent.mkdir(parents=True, exist_ok=True)
+                _ = target.write_bytes(b"png")
+                return {"service": "seaart", "sha256": "ok"}
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    side_effect=fake_bundle,
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        self.assertEqual(call_count, 2)
+        self.assertEqual(captured_pre_actions[0]["type"], "eval")
+        self.assertIn(
+            "/ko/create/image", str(captured_pre_actions[0].get("script", ""))
+        )
+        self.assertEqual(
+            captured_pre_actions[1],
+            {"type": "wait", "target": "textarea.el-textarea__inner"},
+        )
+
     def test_attach_canva_ref_images_opens_upload_tab_and_uses_file_input(self) -> None:
         class _Locator:
             def __init__(self) -> None:

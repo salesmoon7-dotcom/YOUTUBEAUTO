@@ -2169,7 +2169,16 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
         ]
     elif prompt and service == "seaart":
-        pre_actions = []
+        pre_actions = [
+            {
+                "type": "eval",
+                "script": "(() => { const href = String(location.href || ''); if (href.includes('/create/image')) return JSON.stringify({ok:true, step:'already_on_create_image'}); location.href = 'https://www.seaart.ai/ko/create/image'; return JSON.stringify({ok:true, step:'navigated_create_image'}); })()",
+            },
+            {
+                "type": "wait",
+                "target": "textarea.el-textarea__inner",
+            },
+        ]
         actions = [
             {
                 "type": "wait",
@@ -2969,13 +2978,20 @@ def _attach_seaart_ref_images_via_playwright(
         browser = playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
         try:
             page = None
+            fallback_page = None
             for context in browser.contexts:
                 for candidate in context.pages:
-                    if candidate.url.startswith("https://www.seaart.ai/"):
+                    if not candidate.url.startswith("https://www.seaart.ai/"):
+                        continue
+                    if fallback_page is None:
+                        fallback_page = candidate
+                    if "/create/image" in candidate.url:
                         page = candidate
                         break
                 if page is not None:
                     break
+            if page is None:
+                page = fallback_page
             if page is None:
                 raise RuntimeError("NO_UPLOAD_TARGET")
             page.bring_to_front()
@@ -2985,7 +3001,7 @@ def _attach_seaart_ref_images_via_playwright(
             if count <= 0:
                 raise RuntimeError("NO_FILE_INPUT")
             if count == 1:
-                locator.nth(0).set_input_files([resolved_files[0]])
+                locator.nth(0).set_input_files(resolved_files)
                 return
             for index, file_path in enumerate(resolved_files[:count]):
                 locator.nth(index).set_input_files([file_path])
