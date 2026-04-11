@@ -4,6 +4,7 @@ import json
 import time
 import urllib.request
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Callable, cast
 
 from runtime_v2.stage1.chatgpt_backend import (
@@ -61,6 +62,8 @@ def generate_gpt_response_text(
     session_probe: Callable[[int], dict[str, object]] | None = None,
     backend: ChatGPTBackend | None = None,
     relaunch_browser: Callable[[], None] | None = None,
+    timeline_path: Path | None = None,
+    state_path: Path | None = None,
 ) -> dict[str, object]:
     probe = _default_session_probe if session_probe is None else session_probe
     deadline_ts = time.time() + timeout_sec
@@ -83,14 +86,43 @@ def generate_gpt_response_text(
                 raw_attempt = fields.get("attempt_from")
             if isinstance(raw_attempt, int):
                 fields["attempt_key"] = _attempt_key(raw_attempt)
-        timeline.append(
-            {
-                "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-                "seq": sequence,
-                "event": event,
-                **fields,
-            }
-        )
+        record = {
+            "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "seq": sequence,
+            "event": event,
+            **fields,
+        }
+        timeline.append(record)
+        if timeline_path is not None:
+            try:
+                timeline_path.parent.mkdir(parents=True, exist_ok=True)
+                with timeline_path.open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps(record, ensure_ascii=True) + "\n")
+            except OSError:
+                pass
+
+    def write_state_snapshot(state: dict[str, object]) -> None:
+        if state_path is None:
+            return
+        payload = {
+            "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "assistant_text_len": len(str(state.get("assistant_text", "")).strip()),
+            "assistant_block_count": int(state.get("assistant_block_count", 0) or 0),
+            "has_stop": bool(state.get("has_stop", False)),
+            "has_send_button": bool(state.get("has_send_button", False)),
+            "thinking_stopped": bool(state.get("thinking_stopped", False)),
+            "current_url": str(state.get("current_url", "")).strip(),
+            "current_title": str(state.get("current_title", "")).strip(),
+        }
+        tmp_path = state_path.with_suffix(state_path.suffix + ".tmp")
+        try:
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path.write_text(
+                json.dumps(payload, ensure_ascii=True), encoding="utf-8"
+            )
+            tmp_path.replace(state_path)
+        except OSError:
+            pass
 
     interaction_backend = (
         AgentBrowserCdpBackend(
@@ -242,6 +274,7 @@ def generate_gpt_response_text(
                 failed["timeline"] = timeline
                 return failed
             last_state = state
+            write_state_snapshot(state)
             for fallback in _backend_fallbacks(state):
                 emit(
                     "fallback_transition",
@@ -291,7 +324,6 @@ def generate_gpt_response_text(
             response_ready = (
                 bool(response_text)
                 and saw_streaming
-                and ((not has_stop) or has_send_button)
                 and (
                     not (has_stop and has_send_button)
                     or _has_structured_stage1_content(response_text, legacy_blocks)

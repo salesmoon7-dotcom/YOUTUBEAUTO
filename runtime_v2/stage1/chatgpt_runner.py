@@ -129,8 +129,13 @@ def build_live_chatgpt_prompt(topic_spec: dict[str, object]) -> str:
 
 
 def attach_gpt_response_text_from_browser_evidence(
-    topic_spec: dict[str, object], browser_evidence: dict[str, object]
+    topic_spec: dict[str, object],
+    browser_evidence: dict[str, object],
+    *,
+    workspace: Path | None = None,
 ) -> dict[str, object]:
+    run_id = str(topic_spec.get("run_id", "")).strip()
+    row_ref = str(topic_spec.get("row_ref", "")).strip()
     if str(topic_spec.get("gpt_response_text", "")).strip():
         return dict(topic_spec)
     snapshot_path = str(browser_evidence.get("snapshot_path", "")).strip()
@@ -145,6 +150,22 @@ def attach_gpt_response_text_from_browser_evidence(
             except RuntimeError as exc:
                 reset_error = str(exc)
             prompt = build_live_chatgpt_prompt(topic_spec)
+            capture_started_path = None
+            timeline_path = None
+            state_path = None
+            if workspace is not None:
+                capture_started_path = workspace / "chatgpt_capture_started.json"
+                timeline_path = workspace / "chatgpt_timeline.jsonl"
+                state_path = workspace / "chatgpt_live_state.json"
+                _ = write_json_atomic(
+                    capture_started_path,
+                    {
+                        "status": "started",
+                        "run_id": run_id,
+                        "row_ref": row_ref,
+                        "source": "agent_browser_live",
+                    },
+                )
             result = generate_gpt_response_text(
                 prompt=prompt,
                 port=raw_port,
@@ -152,6 +173,8 @@ def attach_gpt_response_text_from_browser_evidence(
                 response_start_timeout_sec=_LIVE_CAPTURE_RESPONSE_START_TIMEOUT_SEC,
                 command_runner=_bounded_capture_command_runner(deadline_ts),
                 relaunch_browser=lambda: _relaunch_chatgpt_browser(),
+                timeline_path=timeline_path,
+                state_path=state_path,
             )
             enriched = dict(topic_spec)
             enriched["gpt_prompt_text"] = prompt
@@ -163,6 +186,14 @@ def attach_gpt_response_text_from_browser_evidence(
             )
             cast(dict[str, object], enriched["gpt_capture"])["prompt_text"] = prompt
             enriched["gpt_timeline"] = result.get("timeline", [])
+            if capture_started_path is not None:
+                cast(dict[str, object], enriched["gpt_capture"])[
+                    "capture_started_path"
+                ] = str(capture_started_path.resolve())
+            if state_path is not None:
+                cast(dict[str, object], enriched["gpt_capture"])["state_path"] = str(
+                    state_path.resolve()
+                )
             if reset_error:
                 cast(dict[str, object], enriched["gpt_capture"])["reset_warning"] = (
                     reset_error
@@ -513,7 +544,7 @@ def run_stage1_chatgpt_job(
         browser_evidence = cast(dict[str, object], {"service": "chatgpt", "port": 9222})
         topic_spec = {**topic_spec, "browser_evidence": browser_evidence}
     topic_spec = attach_gpt_response_text_from_browser_evidence(
-        topic_spec, browser_evidence
+        topic_spec, browser_evidence, workspace=workspace
     )
     run_id = str(topic_spec.get("run_id", "")).strip()
     row_ref = str(topic_spec.get("row_ref", "")).strip()

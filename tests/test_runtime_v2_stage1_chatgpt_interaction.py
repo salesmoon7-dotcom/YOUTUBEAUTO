@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import itertools
 import subprocess
+import tempfile
 import unittest
 from unittest import mock
 from pathlib import Path
@@ -2115,6 +2116,57 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
+
+    def test_generate_gpt_response_text_writes_live_timeline_and_state_files(
+        self,
+    ) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                _ = prompt
+                return {
+                    "ok": True,
+                    "inputSelector": "#prompt-textarea",
+                    "sendClicked": True,
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                return {
+                    "has_stop": False,
+                    "has_send_button": False,
+                    "assistant_block_count": 1,
+                    "assistant_text": "final json",
+                    "current_url": "https://chatgpt.com/g/example",
+                    "current_title": "ChatGPT",
+                }
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            timeline_path = root / "chatgpt_timeline.jsonl"
+            state_path = root / "chatgpt_live_state.json"
+
+            result = generate_gpt_response_text(
+                prompt="test prompt",
+                port=9222,
+                timeout_sec=1,
+                poll_interval_sec=0.01,
+                completion_idle_sec=0.01,
+                backend=FakeBackend(),
+                timeline_path=timeline_path,
+                state_path=state_path,
+            )
+
+            timeline_lines = [
+                json.loads(line)
+                for line in timeline_path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            state_payload = json.loads(state_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
+        self.assertIn("submit_start", [str(item["event"]) for item in timeline_lines])
+        self.assertEqual(state_payload["assistant_text_len"], len("final json"))
+        self.assertEqual(state_payload["current_title"], "ChatGPT")
 
     def test_generate_gpt_response_text_does_not_finish_on_preamble_only_stop_state(
         self,

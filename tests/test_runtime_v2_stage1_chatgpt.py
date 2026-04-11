@@ -869,6 +869,10 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                 for line in timeline_path.read_text(encoding="utf-8").splitlines()
                 if line.strip()
             ]
+            capture_started_exists = Path(
+                str(gpt_capture["capture_started_path"])
+            ).exists()
+            state_path_value = str(gpt_capture["state_path"])
             handoff = cast(
                 dict[str, object],
                 cast(dict[str, object], result_payload["details"])["stage1_handoff"],
@@ -879,6 +883,8 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertEqual(called_prompt, "Money flow")
         self.assertEqual(raw_output["prompt_text"], called_prompt)
         self.assertEqual(gpt_capture["prompt_text"], called_prompt)
+        self.assertTrue(capture_started_exists)
+        self.assertTrue(state_path_value.endswith("chatgpt_live_state.json"))
 
     def test_live_browser_capture_passes_bounded_timeout_budget(self) -> None:
         topic_spec = _topic_spec(topic="Money flow")
