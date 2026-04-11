@@ -1727,7 +1727,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
         self.assertEqual(raw_eval.call_args.kwargs["timeout_sec"], 7.0)
 
-    def test_agent_browser_backend_reuses_cached_target_when_read_target_disappears(
+    def test_agent_browser_backend_fails_closed_when_read_target_disappears(
         self,
     ) -> None:
         def fake_runner(command: list[str], timeout_sec: int) -> str:
@@ -1763,35 +1763,11 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                 "runtime_v2.stage1.chatgpt_backend._select_generic_chatgpt_target",
                 return_value=None,
             ),
-            mock.patch(
-                "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_eval",
-                return_value=json.dumps(
-                    json.dumps(
-                        {
-                            "has_stop": False,
-                            "has_send_button": True,
-                            "assistant_text": "final json",
-                            "assistant_block_count": 1,
-                            "legacy_blocks": [],
-                        }
-                    )
-                ),
-            ) as raw_eval,
         ):
-            state = backend.read_response_state()
+            with self.assertRaises(RuntimeError) as raised:
+                _ = backend.read_response_state()
 
-        self.assertEqual(state["assistant_text"], "final json")
-        self.assertEqual(
-            cast(dict[str, object], state["selected_tab"])["url"],
-            f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}",
-        )
-        self.assertIn(
-            "eval_cached_target_fallback",
-            cast(list[object], state["backend_fallbacks"]),
-        )
-        raw_eval.assert_called_once_with(
-            selected_target["webSocketDebuggerUrl"], mock.ANY
-        )
+        self.assertIn("CDP_TARGET_NOT_FOUND", str(raised.exception))
 
     def test_raw_cdp_eval_suppresses_origin_header(self) -> None:
         sent_messages: list[str] = []

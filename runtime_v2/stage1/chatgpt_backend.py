@@ -447,11 +447,7 @@ class AgentBrowserCdpBackend:
             raw_target = _select_page_target(self._port, self._expected_url_substring)
             self._remember_target(raw_target)
         except RuntimeError:
-            cached_target = dict(self._last_selected_target)
-            if not cached_target:
-                raise
-            raw_target = cached_target
-            self._record_fallback("eval_cached_target_fallback")
+            raise
         self._record_fallback("eval_raw_cdp_fallback")
         return _run_raw_cdp_eval(
             raw_target["webSocketDebuggerUrl"],
