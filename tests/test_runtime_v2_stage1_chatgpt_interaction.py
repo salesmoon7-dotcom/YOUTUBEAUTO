@@ -951,6 +951,18 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertIn("나의 말:", script)
         self.assertIn("의 말:", script)
 
+    def test_response_script_excludes_stop_labeled_composer_button_from_send(
+        self,
+    ) -> None:
+        from runtime_v2.stage1.chatgpt_backend import _response_script
+
+        script = _response_script(
+            '{"stopSelectors":["button[aria-label="Stop streaming"]"],"sendSelectors":["#composer-submit-button"],"responseSelectors":[]}'
+        )
+
+        self.assertIn("!isStopLike(el)", script)
+        self.assertIn("if (!hasSendButton && isSendLike(composerBtn))", script)
+
     def test_generate_gpt_response_text_retries_once_when_thinking_stops(self) -> None:
         class FakeBackend(ChatGPTBackend):
             def __init__(self) -> None:
