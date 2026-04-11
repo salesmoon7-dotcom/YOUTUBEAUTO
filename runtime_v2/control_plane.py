@@ -107,6 +107,12 @@ def _write_closeout_state(
     _ = write_json_atomic(config.closeout_state_file, payload)
 
 
+def _prepare_workspace_for_job(job: JobContract, artifact_root: Path) -> Path:
+    from runtime_v2.workers.job_runtime import prepare_workspace
+
+    return prepare_workspace(job, artifact_root)
+
+
 MAX_CHAIN_DEPTH = 4
 MAX_NEXT_JOBS = 4
 MAX_STAGE1_DECLARED_NEXT_JOBS = 256
@@ -1369,8 +1375,7 @@ WorkerDispatchHandler = Callable[[JobContract], dict[str, object]]
 def _run_chatgpt_worker(
     job: JobContract, artifact_root: Path, debug_log_root: Path
 ) -> dict[str, object]:
-    workspace = artifact_root / job.workload / job.job_id
-    workspace.mkdir(parents=True, exist_ok=True)
+    workspace = _prepare_workspace_for_job(job, artifact_root)
     topic_spec = _mapping_from_obj(job.payload.get("topic_spec", {})) or {}
     run_id = str(job.payload.get("run_id", job.job_id))
     worker_debug_log = debug_log_path(debug_log_root, run_id)
