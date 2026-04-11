@@ -534,12 +534,74 @@ class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
                     max_control_ticks=3,
                 )
 
-            latest_active = json.loads(
-                config.latest_active_run_file.read_text(encoding="utf-8")
+            latest_probe = json.loads(
+                (probe_root / "probe_result.json").read_text(encoding="utf-8")
             )
 
         self.assertEqual(report["code"], "OK")
-        self.assertEqual(latest_active["code"], "OK")
+        self.assertEqual(latest_probe["code"], "OK")
+
+    def test_stage5_probe_writes_progress_probe_result_before_terminal_state(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            probe_root = root / "probe"
+            excel_path = root / "topic.xlsx"
+            workbook = Workbook()
+            sheet = cast(Worksheet, workbook.active)
+            sheet.title = "Sheet1"
+            sheet.append(["Topic", "Status"])
+            sheet.append(["Semantic row", "OK"])
+            workbook.save(excel_path)
+            workbook.close()
+            config = RuntimeConfig.from_root(root / "runtime")
+
+            call_counter = {"count": 0}
+
+            def fake_control_loop_once(
+                *, owner: str, config: RuntimeConfig, run_id: str
+            ):
+                _ = (owner, config, run_id)
+                call_counter["count"] += 1
+                if call_counter["count"] == 1:
+                    return {
+                        "status": "seeded",
+                        "code": "SEEDED_JOB",
+                        "queue_status": "seeded",
+                    }
+                return {
+                    "status": "failed",
+                    "code": "missing_scene_prompts",
+                    "queue_status": "failed",
+                }
+
+            with patch(
+                "runtime_v2.cli.run_control_loop_once",
+                side_effect=fake_control_loop_once,
+            ):
+                report = _run_stage5_row1_probe(
+                    owner="runtime_v2",
+                    config=config,
+                    probe_root=probe_root,
+                    run_id="stage5-progress-probe",
+                    excel_path=str(excel_path),
+                    sheet_name="Sheet1",
+                    row_index=0,
+                    max_control_ticks=2,
+                )
+
+            probe_payload = json.loads(
+                (probe_root / "probe_result.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(report["status"], "failed")
+        self.assertEqual(probe_payload["mode"], "stage5_row1")
+        self.assertEqual(probe_payload["code"], "missing_scene_prompts")
+        self.assertEqual(probe_payload["ticks"], 2)
+        self.assertEqual(
+            probe_payload["control_results"][-1]["code"], "missing_scene_prompts"
+        )
 
     def test_stage5_probe_writes_failure_summary_for_terminal_failure(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

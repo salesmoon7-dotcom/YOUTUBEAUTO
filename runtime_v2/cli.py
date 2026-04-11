@@ -1728,6 +1728,28 @@ def _run_stage5_row1_probe(
         return str(failure_path)
 
     probe_config = config.replace(stable_file_age_sec=0)
+
+    def _write_stage5_progress_report(
+        *,
+        status: str,
+        code: str,
+        result: dict[str, object],
+    ) -> None:
+        progress_report: dict[str, object] = {
+            "run_id": run_id,
+            "mode": "stage5_row1",
+            "status": status,
+            "code": code,
+            "exit_code": 0,
+            "probe_success": False,
+            "seed_result": seed_result,
+            "ticks": len(control_results),
+            "control_results": control_results[-3:],
+            "placeholder_services": [],
+            "latest_result": result,
+        }
+        _ = _write_probe_result(probe_root, progress_report)
+
     seed_result = seed_excel_row(
         config=probe_config,
         run_id=run_id,
@@ -1764,6 +1786,11 @@ def _run_stage5_row1_probe(
     for _ in range(max_control_ticks):
         result = run_control_loop_once(owner=owner, config=probe_config, run_id=run_id)
         control_results.append(result)
+        _write_stage5_progress_report(
+            status=str(result.get("status", "running") or "running"),
+            code=str(result.get("code", "PROBE_RUNNING") or "PROBE_RUNNING"),
+            result=result,
+        )
         _ = write_gui_status(
             build_gui_status_payload(
                 cast(dict[str, object], result),
@@ -1779,6 +1806,11 @@ def _run_stage5_row1_probe(
             and seeded_followup_budget > 0
         ):
             seeded_followup_budget -= 1
+            _write_stage5_progress_report(
+                status="running",
+                code="PROBE_RUNNING",
+                result=result,
+            )
             continue
         if str(result.get("queue_status", "")).strip() == "retry":
             continue
