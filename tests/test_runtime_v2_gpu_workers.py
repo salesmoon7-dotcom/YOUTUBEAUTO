@@ -9,6 +9,7 @@ from typing import cast
 from unittest.mock import patch
 
 from runtime_v2.contracts.job_contract import JobContract
+from runtime_v2.stage2.genspark_worker import run_genspark_job
 from runtime_v2.stage2.geminigen_worker import run_geminigen_job
 from runtime_v2.workers.kenburns_worker import run_kenburns_job
 from runtime_v2.workers.qwen3_worker import run_qwen3_job
@@ -1840,6 +1841,58 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         next_jobs = cast(list[object], result["next_jobs"])
         self.assertEqual(len(next_jobs), 1)
+
+    def test_genspark_worker_clears_stale_attach_evidence_before_adapter_run(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = artifact_root / "exports" / "genspark-ref-01.png"
+            stdout_path = artifact_root / "adapter_stdout.log"
+            stderr_path = artifact_root / "adapter_stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+            job = JobContract(
+                job_id="genspark-ref-stale-attach",
+                workload="genspark",
+                payload={
+                    "prompt": "ref prompt",
+                    "service_artifact_path": str(output_path),
+                    "use_agent_browser": True,
+                    "adapter_command": [sys.executable, "-c", "pass"],
+                },
+            )
+
+            workspace = artifact_root / "genspark" / job.job_id
+            workspace.mkdir(parents=True, exist_ok=True)
+            (workspace / "attach_evidence.json").write_text(
+                json.dumps({"status": "failed"}, ensure_ascii=True),
+                encoding="utf-8",
+            )
+
+            def fake_run_adapter(*args: object, **kwargs: object) -> dict[str, object]:
+                workspace = Path(str(args[0]))
+                stale_attach = workspace / "attach_evidence.json"
+                self.assertFalse(stale_attach.exists())
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                _ = output_path.write_bytes(b"png")
+                return {
+                    "ok": True,
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "output_path": output_path,
+                    "reused": False,
+                }
+
+            with patch(
+                "runtime_v2.stage2.genspark_worker.run_verified_adapter_command",
+                side_effect=fake_run_adapter,
+            ):
+                result = run_genspark_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
 
     def test_kenburns_worker_fails_closed_on_invalid_scene_bundle_map(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

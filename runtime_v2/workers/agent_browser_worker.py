@@ -831,13 +831,13 @@ def run_agent_browser_verify_job(
             )
             tabs = parse_tab_list_output(tab_list_output)
         except RuntimeError as exc:
-            if service in {"genspark", "seaart"} and not recovery_attempted:
-                raise RuntimeError(str(exc))
             if service == "chatgpt":
                 raise
             try:
                 tabs = _http_cdp_tab_list(port)
             except Exception as fallback_exc:
+                if service in {"genspark", "seaart"} and not recovery_attempted:
+                    raise RuntimeError(str(exc)) from exc
                 raise RuntimeError(str(fallback_exc)) from fallback_exc
             used_http_fallback = True
             local_transcript.append(

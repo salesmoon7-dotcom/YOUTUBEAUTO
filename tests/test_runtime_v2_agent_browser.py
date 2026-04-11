@@ -801,6 +801,64 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
             "https://www.genspark.ai/agents?id=result123",
         )
 
+    def test_genspark_uses_http_fallback_before_recovery_on_tab_list_failure(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "artifacts"
+            job = JobContract(
+                job_id="agent-browser-genspark-http-fallback",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-genspark-http-fallback",
+                payload={
+                    "service": "genspark",
+                    "port": 9333,
+                    "expected_url_substring": "genspark.ai/agents?type=image_generation_agent",
+                    "expected_title_substring": "Genspark",
+                    "capture_snapshot": False,
+                },
+            )
+
+            outputs = iter([RuntimeError("No page found")])
+
+            def fake_run(command: list[str], *, timeout_sec: int = 30) -> str:
+                _ = (command, timeout_sec)
+                value = next(outputs)
+                if isinstance(value, Exception):
+                    raise value
+                return value
+
+            with (
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                    side_effect=fake_run,
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._http_cdp_tab_list",
+                    return_value=[
+                        {
+                            "type": "page",
+                            "url": "https://www.genspark.ai/agents?id=result123",
+                            "title": "Genspark Agents",
+                        }
+                    ],
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._recover_agent_browser_service"
+                ) as recover_mock,
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        recover_mock.assert_not_called()
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(
+            str(details["current_url"]),
+            "https://www.genspark.ai/agents?id=result123",
+        )
+
     def test_seaart_retries_after_browser_recovery_on_tab_list_failure(self) -> None:
         from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
 
