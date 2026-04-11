@@ -286,7 +286,7 @@ Voice: 1. 첫 장면 설명\n2. 두 번째 장면 설명
             ],
         )
 
-    def test_parser_rejects_voice_only_numbered_lines_without_scene_blocks(
+    def test_parser_uses_voice_only_numbered_lines_as_scene_fallback(
         self,
     ) -> None:
         topic_spec: dict[str, object] = {
@@ -306,8 +306,21 @@ Voice: 1. 첫 장면 설명\n2. 두 번째 장면 설명
 
         parsed, errors = parse_gpt_response_text(topic_spec, response_text)
 
-        self.assertIsNone(parsed)
-        self.assertEqual(errors, ["missing_scene_prompts"])
+        self.assertEqual(errors, [])
+        self.assertIsNotNone(parsed)
+        typed = cast(dict[str, object], parsed)
+        self.assertEqual(
+            typed["scene_prompts"],
+            ["첫 번째 보이스", "두 번째 보이스", "세 번째 보이스"],
+        )
+        self.assertEqual(
+            typed["voice_groups"],
+            [
+                {"scene_index": 1, "voice": "첫 번째 보이스", "original_voices": [1]},
+                {"scene_index": 2, "voice": "두 번째 보이스", "original_voices": [2]},
+                {"scene_index": 3, "voice": "세 번째 보이스", "original_voices": [3]},
+            ],
+        )
 
 
 if __name__ == "__main__":

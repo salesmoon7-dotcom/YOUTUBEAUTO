@@ -102,6 +102,9 @@ def _parse_block_response(
     ordered_scene_indexes = sorted(scene_map)
     scene_prompts = [scene_map[index] for index in ordered_scene_indexes]
     voice_lines = _collect_voice_numbered_lines(labels)
+    if not scene_prompts and voice_lines:
+        scene_prompts = voice_lines
+        ordered_scene_indexes = list(range(1, len(scene_prompts) + 1))
     ranged_voice_groups = _voice_groups_from_label_ranges(
         ordered_scene_indexes, label_voice_ranges, voice_lines
     )
