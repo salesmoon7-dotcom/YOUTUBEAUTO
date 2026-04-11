@@ -434,6 +434,7 @@ def run_control_loop_once(
                 runtime_config.artifact_root,
                 registry_file=runtime_config.worker_registry_file,
                 allow_mock_chain=runtime_config.allow_mock_chain,
+                runtime_config=runtime_config,
             ),
         }
     elif (
@@ -468,6 +469,7 @@ def run_control_loop_once(
                 runtime_config.artifact_root,
                 registry_file=runtime_config.worker_registry_file,
                 allow_mock_chain=runtime_config.allow_mock_chain,
+                runtime_config=runtime_config,
             ),
             workload=job.workload,
             config=runtime_config,
