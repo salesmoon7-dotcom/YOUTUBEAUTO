@@ -155,7 +155,7 @@
     - verdict: `CHATGPT_BACKEND_UNAVAILABLE` fail-close
     - browser/gpt floor 자체는 healthy였지만, 실제 ChatGPT submit 경로에서 `os error 10060`이 재현되었습니다.
     - 따라서 real-first gate는 아직 `No`, but evidence chain is now preserved even on failure.
-- prompt alignment applied: runtime_v2 live ChatGPT 경로는 topic text 자체를 canonical builder로 전송합니다. 레거시 `chatgpt_automation.py`는 `request_text` wrapper를 조립해 보내지만, 현재 runtime_v2 기본 경로는 그 wrapper를 런타임에서 재조립하지 않습니다. longform production contract는 custom GPT 내부 지시와 downstream parser contract가 담당합니다.
+- prompt alignment updated: runtime_v2 live ChatGPT 경로는 now topic text를 explicit JSON output contract wrapper로 감싸 전송합니다. 레거시 `chatgpt_automation.py`의 free-form `request_text` 전체를 재현하지는 않지만, 현재 runtime_v2 기본 경로도 `story_outline/scene_prompts/voice_groups`를 요구하는 구조적 래퍼를 사용합니다.
 - backend hardening applied: `AgentBrowserCdpBackend`는 `tab list -> best tab select -> tab <idx> -> eval` 흐름과 retryable `os error 10060/timeout` 재시도를 사용합니다.
   - submit stop-gate hardening applied: `NO_SEND`/`SEND_DISABLED`라도 stop-button이 보이면 이미 전송된 in-flight 상태로 간주해 read 단계로 넘깁니다.
   - completion rule hardened: ChatGPT 완료 판정은 `stop-button`이 실제로 나타났다가 사라진 뒤 텍스트가 안정화될 때만 성공으로 봅니다.

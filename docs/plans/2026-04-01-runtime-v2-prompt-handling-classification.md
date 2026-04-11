@@ -18,7 +18,7 @@
 
 | Subprogram | Class | Current contract evidence |
 |---|---|---|
-| `chatgpt` | `pass-through` | `runtime_v2/stage1/chatgpt_runner.py` `build_live_chatgpt_prompt()` forwards only the single-line topic text on the current runtime_v2 path. |
+| `chatgpt` | `structural-transform` | `runtime_v2/stage1/chatgpt_runner.py` `build_live_chatgpt_prompt()` now wraps the topic in an explicit JSON output contract that requires `story_outline`, `scene_prompts`, and `voice_groups`, while still avoiding hidden semantic enrichment beyond that structure. |
 | `genspark` | `pass-through` | `runtime_v2/stage2/request_builders.py` `build_image_prompt_file()` writes `payload.prompt` directly into `native_prompt.json`; `runtime_v2/cli.py` fills the browser input from the same prompt value without extra semantic text. |
 | `seaart` | `pass-through` | same `build_image_prompt_file()` path as `genspark`; no service-specific semantic strengthening layer is added before adapter execution. |
 | `geminigen` | `structural-transform` | `runtime_v2/stage2/request_builders.py` `build_geminigen_prompt_file()` places `payload.prompt` into `video_tasks[].prompt` and carries `first_frame_path` as a separate contract field. |
@@ -28,7 +28,7 @@
 
 - `genspark` and `seaart` must stay `pass-through` unless legacy evidence proves a minimal confirmation step is required.
 - `geminigen` and `canva` may remain `structural-transform` because the transform is explicit in contract fields, not hidden free-text injection.
-- `chatgpt` stays `pass-through` at the browser input boundary and sends only the single-line topic text.
+- `chatgpt` remains a structural-transform path: it wraps the topic with output-shape requirements, but does not inject downstream semantic content for specific scenes beyond the declared contract fields.
 - historical `genspark` semantic injection existed in older runtime drift, but it is not part of the current default path.
 
 ## Guardrails

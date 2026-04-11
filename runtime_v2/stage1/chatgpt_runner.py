@@ -125,7 +125,23 @@ def build_video_plan_from_topic_spec(
 
 
 def build_live_chatgpt_prompt(topic_spec: dict[str, object]) -> str:
-    return str(topic_spec.get("topic", "")).strip()
+    topic = str(topic_spec.get("topic", "")).strip()
+    return "\n".join(
+        [
+            f"Topic: {topic}",
+            "",
+            "Return exactly one JSON object.",
+            "Required keys:",
+            '- "story_outline": array of scene summary strings',
+            '- "scene_prompts": array of visual prompt strings matching each scene',
+            '- "voice_groups": array of objects with {"scene_index": number, "voice": string}',
+            "",
+            "Rules:",
+            "- scene_prompts must not be empty",
+            "- voice_groups length must equal scene_prompts length",
+            "- do not add markdown fences or extra explanation",
+        ]
+    ).strip()
 
 
 def attach_gpt_response_text_from_browser_evidence(

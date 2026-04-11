@@ -177,14 +177,18 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         open_browser.assert_not_called()
         popen.assert_called_once()
 
-    def test_build_live_chatgpt_prompt_passes_topic_only(self) -> None:
+    def test_build_live_chatgpt_prompt_wraps_topic_with_structured_contract(
+        self,
+    ) -> None:
         prompt = build_live_chatgpt_prompt(
             {
                 "topic": "국민연금 수령 시기를 앞당기면 손해인가 이득인가",
             }
         )
 
-        self.assertEqual(prompt, "국민연금 수령 시기를 앞당기면 손해인가 이득인가")
+        self.assertIn("Topic: 국민연금 수령 시기를 앞당기면 손해인가 이득인가", prompt)
+        self.assertIn('"scene_prompts": array of visual prompt strings', prompt)
+        self.assertIn("Return exactly one JSON object.", prompt)
 
     def test_build_live_chatgpt_prompt_strips_topic_whitespace(self) -> None:
         prompt = build_live_chatgpt_prompt(
@@ -193,7 +197,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(prompt, "국민연금 수령 시기를 앞당기면 손해인가 이득인가")
+        self.assertIn("Topic: 국민연금 수령 시기를 앞당기면 손해인가 이득인가", prompt)
 
     def test_build_live_chatgpt_prompt_ignores_status_snapshot(
         self,
@@ -205,8 +209,9 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(prompt, "요양 시설 비용 현실과 준비해야 할 금액")
+        self.assertIn("Topic: 요양 시설 비용 현실과 준비해야 할 금액", prompt)
         self.assertNotIn("status_snapshot", prompt)
+        self.assertNotIn("OK", prompt)
 
     def test_stage1_runner_only_plans_from_existing_topic_spec(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
