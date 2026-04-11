@@ -9,6 +9,7 @@ from runtime_v2.stage2.agent_browser_adapter import (
     attach_evidence_path,
     build_stage2_agent_browser_adapter_command,
     canonical_stage2_adapter_env,
+    load_stage2_attach_evidence,
 )
 from runtime_v2.stage2.request_builders import build_geminigen_prompt_file
 from runtime_v2.workers.external_process import run_verified_adapter_command
@@ -27,6 +28,14 @@ _RETRYABLE_BROWSER_ERROR_CODES = {
     "AGENT_BROWSER_TIMEOUT",
 }
 
+_GEMINIGEN_LOGIN_URL_PATTERNS = (
+    "auth/login",
+    "/login",
+    "signin",
+    "sign-in",
+    "accounts.google.com",
+)
+
 
 def _int_value(raw_value: object, default: int) -> int:
     if isinstance(raw_value, bool):
@@ -40,6 +49,34 @@ def _int_value(raw_value: object, default: int) -> int:
         if text:
             return int(text)
     return default
+
+
+def _geminigen_session_proof_failure(
+    workspace: Path, *, use_agent_browser: bool
+) -> tuple[str, dict[str, object]] | None:
+    if not use_agent_browser:
+        return None
+    attach_evidence = load_stage2_attach_evidence(workspace)
+    if not attach_evidence:
+        return "GEMINIGEN_LOGIN_UNPROVEN", {
+            "reason": "missing_attach_evidence",
+        }
+    current_url = str(attach_evidence.get("current_url", "")).strip()
+    current_title = str(attach_evidence.get("current_title", "")).strip()
+    normalized_url = current_url.lower()
+    if not normalized_url or "geminigen.ai" not in normalized_url:
+        return "GEMINIGEN_LOGIN_UNPROVEN", {
+            "reason": "missing_geminigen_runtime_url",
+            "current_url": current_url,
+            "current_title": current_title,
+        }
+    if any(pattern in normalized_url for pattern in _GEMINIGEN_LOGIN_URL_PATTERNS):
+        return "GEMINIGEN_LOGIN_REQUIRED", {
+            "reason": "login_url_detected",
+            "current_url": current_url,
+            "current_title": current_title,
+        }
+    return None
 
 
 def run_geminigen_job(
@@ -73,6 +110,7 @@ def run_geminigen_job(
             ),
         )
     if isinstance(adapter_command_raw, list) and adapter_command_raw:
+        use_agent_browser = bool(job.payload.get("use_agent_browser", False))
         adapter_command_items = cast(list[object], adapter_command_raw)
         adapter_command = [str(item) for item in adapter_command_items]
         adapter_result = run_verified_adapter_command(
@@ -104,6 +142,27 @@ def run_geminigen_job(
                 error_code=adapter_error_code,
                 retryable=adapter_error_code in _RETRYABLE_BROWSER_ERROR_CODES,
                 details=cast(dict[str, object], adapter_result.get("details", {})),
+                completion={"state": "failed", "final_output": False},
+            )
+        session_proof_failure = _geminigen_session_proof_failure(
+            workspace, use_agent_browser=use_agent_browser
+        )
+        if session_proof_failure is not None:
+            session_error_code, session_details = session_proof_failure
+            return finalize_worker_result(
+                workspace,
+                status="failed",
+                stage="geminigen_session",
+                artifacts=[
+                    request_path,
+                    prompt_path,
+                    stdout_path,
+                    stderr_path,
+                    *([attach_evidence] if attach_evidence.exists() else []),
+                ],
+                error_code=session_error_code,
+                retryable=False,
+                details=session_details,
                 completion={"state": "failed", "final_output": False},
             )
         verified_output = Path(str(adapter_result["output_path"]))

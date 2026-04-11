@@ -1687,6 +1687,160 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(str(next_job_block["job_id"]), "rvc-geminigen-job-1")
         self.assertEqual(str(next_payload["audio_path"]), str(output_path.resolve()))
 
+    def test_geminigen_worker_fails_closed_when_login_proof_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = artifact_root / "exports" / "geminigen-scene-01.mp4"
+            stdout_path = artifact_root / "adapter_stdout.log"
+            stderr_path = artifact_root / "adapter_stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+            job = JobContract(
+                job_id="geminigen-login-proof-missing",
+                workload="geminigen",
+                payload={
+                    "prompt": "video prompt one",
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "use_agent_browser": True,
+                    "adapter_command": [sys.executable, "-c", "pass"],
+                },
+            )
+
+            with patch(
+                "runtime_v2.stage2.geminigen_worker.run_verified_adapter_command",
+                return_value={
+                    "ok": True,
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "output_path": output_path,
+                    "reused": False,
+                },
+            ):
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                _ = output_path.write_bytes(b"mp4")
+                result = run_geminigen_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "GEMINIGEN_LOGIN_UNPROVEN")
+        self.assertEqual(result.get("next_jobs", []), [])
+
+    def test_geminigen_worker_fails_closed_when_login_url_is_detected(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = artifact_root / "exports" / "geminigen-scene-01.mp4"
+            stdout_path = artifact_root / "adapter_stdout.log"
+            stderr_path = artifact_root / "adapter_stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+            job = JobContract(
+                job_id="geminigen-login-required",
+                workload="geminigen",
+                payload={
+                    "prompt": "video prompt one",
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "use_agent_browser": True,
+                    "adapter_command": [sys.executable, "-c", "pass"],
+                },
+            )
+
+            def fake_run_adapter(*args: object, **kwargs: object) -> dict[str, object]:
+                workspace = Path(str(args[0]))
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                _ = output_path.write_bytes(b"mp4")
+                attach_evidence = workspace / "attach_evidence.json"
+                attach_evidence.write_text(
+                    json.dumps(
+                        {
+                            "service": "geminigen",
+                            "status": "ok",
+                            "current_url": "https://geminigen.ai/auth/login",
+                            "current_title": "Login",
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                return {
+                    "ok": True,
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "output_path": output_path,
+                    "reused": False,
+                }
+
+            with patch(
+                "runtime_v2.stage2.geminigen_worker.run_verified_adapter_command",
+                side_effect=fake_run_adapter,
+            ):
+                result = run_geminigen_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "GEMINIGEN_LOGIN_REQUIRED")
+        self.assertEqual(result.get("next_jobs", []), [])
+
+    def test_geminigen_worker_emits_next_job_only_with_session_proof(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = artifact_root / "exports" / "geminigen-scene-01.mp4"
+            stdout_path = artifact_root / "adapter_stdout.log"
+            stderr_path = artifact_root / "adapter_stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+            job = JobContract(
+                job_id="geminigen-login-proven",
+                workload="geminigen",
+                payload={
+                    "prompt": "video prompt one",
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "use_agent_browser": True,
+                    "adapter_command": [sys.executable, "-c", "pass"],
+                },
+            )
+
+            def fake_run_adapter(*args: object, **kwargs: object) -> dict[str, object]:
+                workspace = Path(str(args[0]))
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                _ = output_path.write_bytes(b"mp4")
+                attach_evidence = workspace / "attach_evidence.json"
+                attach_evidence.write_text(
+                    json.dumps(
+                        {
+                            "service": "geminigen",
+                            "status": "ok",
+                            "current_url": "https://geminigen.ai/app/video-gen",
+                            "current_title": "Grok",
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                return {
+                    "ok": True,
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "output_path": output_path,
+                    "reused": False,
+                }
+
+            with patch(
+                "runtime_v2.stage2.geminigen_worker.run_verified_adapter_command",
+                side_effect=fake_run_adapter,
+            ):
+                result = run_geminigen_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        next_jobs = cast(list[object], result["next_jobs"])
+        self.assertEqual(len(next_jobs), 1)
+
     def test_kenburns_worker_fails_closed_on_invalid_scene_bundle_map(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
