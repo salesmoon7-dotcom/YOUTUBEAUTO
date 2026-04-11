@@ -2785,11 +2785,11 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         )
 
         self.assertEqual(result["status"], "failed")
-        self.assertEqual(relaunch_calls, ["chatgpt"])
+        self.assertEqual(relaunch_calls, [])
         timeline = cast(list[dict[str, object]], result["timeline"])
         event_names = [str(item["event"]) for item in timeline]
         self.assertIn("response_not_started", event_names)
-        self.assertIn("retry_decision", event_names)
+        self.assertNotIn("retry_decision", event_names)
 
     def test_generate_gpt_response_text_accepts_response_when_send_button_returns(
         self,

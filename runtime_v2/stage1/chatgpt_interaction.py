@@ -395,19 +395,6 @@ def generate_gpt_response_text(
                         backend="chatgpt_backend",
                     )
                     response_not_started_emitted = True
-                if (
-                    attempt == 1
-                    and relaunch_browser is not None
-                    and submit_classification == "sent"
-                ):
-                    emit(
-                        "retry_decision",
-                        attempt=attempt,
-                        backend="chatgpt_backend",
-                        reason="response_not_started",
-                    )
-                    relaunch_browser()
-                    break
             time.sleep(poll_interval_sec)
         else:
             emit(
