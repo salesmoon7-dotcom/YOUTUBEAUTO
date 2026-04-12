@@ -1049,6 +1049,67 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertEqual(gpt_capture["reset_warning"], "chatgpt_prompt_not_ready")
         self.assertEqual(result_payload["status"], "ok")
 
+    def test_stage1_runner_reprompts_once_when_scene_prompts_are_missing(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            workspace = root / "workspace"
+            workspace.mkdir(parents=True, exist_ok=True)
+            topic_spec = _topic_spec(topic="Money flow")
+            topic_spec["browser_evidence"] = {"service": "chatgpt", "port": 9222}
+
+            with (
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                    side_effect=[
+                        {
+                            "status": "ok",
+                            "response_text": "주제를 정리하고 있습니다.",
+                            "submit_info": {},
+                            "final_state": {},
+                            "timeline": [],
+                        },
+                        {
+                            "status": "ok",
+                            "response_text": '```json\n{"story_outline":["scene one","scene two"],"scene_prompts":["scene one","scene two"],"voice_groups":[{"scene_index":1,"voice":"voice one"},{"scene_index":2,"voice":"voice two"}]}\n```',
+                            "submit_info": {},
+                            "final_state": {},
+                            "timeline": [],
+                        },
+                    ],
+                ) as generate_mock,
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.reset_chatgpt_context",
+                    return_value={"status": "ok", "port": 9222},
+                ),
+            ):
+                result = run_stage1_chatgpt_job(
+                    topic_spec,
+                    workspace,
+                    debug_log="logs/stage1-reprompt.jsonl",
+                )
+
+                reprompt_prompt = cast(
+                    str, generate_mock.call_args_list[1].kwargs["prompt"]
+                )
+
+            result_path = Path(cast(str, result["result_path"]))
+            result_payload = cast(
+                dict[str, object], json.loads(result_path.read_text(encoding="utf-8"))
+            )
+            handoff = cast(
+                dict[str, object],
+                cast(dict[str, object], result_payload["details"])["stage1_handoff"],
+            )
+            parsed_payload = cast(dict[str, object], handoff["contract"])
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(generate_mock.call_count, 2)
+        self.assertIn("```json fenced block", reprompt_prompt)
+        self.assertEqual(
+            cast(list[object], parsed_payload["scene_prompts"]),
+            ["scene one", "scene two"],
+        )
+
     def test_stage1_runner_retries_live_chatgpt_after_relaunch(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
