@@ -137,7 +137,10 @@ def _format_stage1_contract_reprompt(topic_spec: dict[str, object]) -> str:
         f"Return exactly {scene_count} items in scene_prompts and {scene_count} items in voice_groups.\n"
         "Required keys: story_outline, scene_prompts, voice_groups.\n"
         "voice_groups items must contain scene_index (1-based) and voice.\n"
-        "No explanation outside the JSON block."
+        "Also include a legacy block version after the JSON using this exact shape:\n"
+        "[Voice]\n1. ...\n2. ...\n"
+        "[#01]\n...\n[#02]\n...\n"
+        "No explanation outside the JSON block or legacy blocks."
     )
 
 
@@ -649,6 +652,7 @@ def run_stage1_chatgpt_job(
             error_code="invalid_topic_spec",
             reason_code="invalid_topic_spec",
         )
+    parsed_payload: dict[str, object] | None = None
     try:
         parsed_payload = build_stage1_parsed_payload_from_topic_spec(topic_spec)
     except ValueError as exc:
@@ -683,7 +687,19 @@ def run_stage1_chatgpt_job(
                 evidence={"raw_output_path": str(raw_output_path.resolve())},
                 raw_output_path=str(raw_output_path.resolve()),
             )
-    errors = validate_stage1_parsed_payload(parsed_payload)
+    if parsed_payload is None:
+        return _stage1_failed(
+            workspace,
+            debug_log=debug_log,
+            run_id=run_id,
+            row_ref=row_ref,
+            error_code="invalid_stage1_output",
+            reason_code="invalid_stage1_output",
+            evidence={"raw_output_path": str(raw_output_path.resolve())},
+            raw_output_path=str(raw_output_path.resolve()),
+        )
+    final_parsed_payload = parsed_payload
+    errors = validate_stage1_parsed_payload(final_parsed_payload)
     if errors:
         return _stage1_failed(
             workspace,
@@ -695,19 +711,19 @@ def run_stage1_chatgpt_job(
             evidence={"raw_output_path": str(raw_output_path.resolve())},
             raw_output_path=str(raw_output_path.resolve()),
         )
-    _ = write_json_atomic(parsed_payload_path, parsed_payload)
+    _ = write_json_atomic(parsed_payload_path, final_parsed_payload)
     handoff = build_stage1_handoff(
         raw_output_path=str(raw_output_path.resolve()),
         parsed_payload_path=str(parsed_payload_path.resolve()),
-        parsed_payload=parsed_payload,
+        parsed_payload=final_parsed_payload,
     )
     _ = write_json_atomic(handoff_path, handoff)
     try:
         video_plan = build_video_plan_from_stage1_parsed_payload(
-            parsed_payload, workspace
+            final_parsed_payload, workspace
         )
         video_plan["stage1_handoff"] = handoff
-        video_plan["parsed_payload"] = parsed_payload
+        video_plan["parsed_payload"] = final_parsed_payload
         _ = write_json_atomic(workspace / "video_plan.json", video_plan)
     except ValueError as exc:
         error_code = str(exc) or "invalid_topic_spec"
