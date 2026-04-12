@@ -128,22 +128,6 @@ def build_live_chatgpt_prompt(topic_spec: dict[str, object]) -> str:
     return str(topic_spec.get("topic", "")).strip()
 
 
-def _format_stage1_contract_reprompt(topic_spec: dict[str, object]) -> str:
-    topic = str(topic_spec.get("topic", "")).strip()
-    scene_count = max(1, _scene_count(topic_spec))
-    return (
-        "Please rewrite the answer in exactly one ```json fenced block.\n"
-        f"Topic: {topic}\n"
-        f"Return exactly {scene_count} items in scene_prompts and {scene_count} items in voice_groups.\n"
-        "Required keys: story_outline, scene_prompts, voice_groups.\n"
-        "voice_groups items must contain scene_index (1-based) and voice.\n"
-        "Also include a legacy block version after the JSON using this exact shape:\n"
-        "[Voice]\n1. ...\n2. ...\n"
-        "[#01]\n...\n[#02]\n...\n"
-        "No explanation outside the JSON block or legacy blocks."
-    )
-
-
 def attach_gpt_response_text_from_browser_evidence(
     topic_spec: dict[str, object],
     browser_evidence: dict[str, object],
@@ -266,50 +250,6 @@ def _should_retry_chatgpt_interaction(result: dict[str, object]) -> bool:
         return False
     failure_stage = str(result.get("failure_stage", "")).strip()
     return failure_stage in {"submit", "read"}
-
-
-def _reprompt_stage1_contract_from_live_browser(
-    topic_spec: dict[str, object],
-    browser_evidence: dict[str, object],
-    *,
-    workspace: Path,
-) -> dict[str, object]:
-    service = str(browser_evidence.get("service", "")).strip()
-    raw_port = browser_evidence.get("port", 0)
-    if service != "chatgpt" or not isinstance(raw_port, int) or raw_port <= 0:
-        return dict(topic_spec)
-    deadline_ts = time() + _LIVE_CAPTURE_TIMEOUT_SEC
-    prompt = _format_stage1_contract_reprompt(topic_spec)
-    timeline_path = workspace / "chatgpt_timeline.jsonl"
-    state_path = workspace / "chatgpt_live_state.json"
-    result = generate_gpt_response_text(
-        prompt=prompt,
-        port=raw_port,
-        timeout_sec=_LIVE_CAPTURE_TIMEOUT_SEC,
-        response_start_timeout_sec=_LIVE_CAPTURE_RESPONSE_START_TIMEOUT_SEC,
-        command_runner=_bounded_capture_command_runner(deadline_ts),
-        relaunch_browser=lambda: _relaunch_chatgpt_browser(),
-        timeline_path=timeline_path,
-        state_path=state_path,
-    )
-    enriched = dict(topic_spec)
-    enriched["gpt_prompt_text"] = prompt
-    enriched["gpt_capture"] = _canonical_gpt_capture(
-        result,
-        source="agent_browser_live_reprompt",
-        topic_spec=enriched,
-        attempt_count=_capture_attempt_count(result),
-    )
-    cast(dict[str, object], enriched["gpt_capture"])["prompt_text"] = prompt
-    enriched["gpt_timeline"] = result.get("timeline", [])
-    cast(dict[str, object], enriched["gpt_capture"])["state_path"] = str(
-        state_path.resolve()
-    )
-    if str(result.get("status", "")) == "ok":
-        enriched["gpt_response_text"] = str(result.get("response_text", ""))
-        enriched["gpt_response_source"] = "agent_browser_live_reprompt"
-        enriched["gpt_response_meta"] = result.get("final_state", {})
-    return enriched
 
 
 def _relaunch_chatgpt_browser() -> None:
@@ -652,49 +592,17 @@ def run_stage1_chatgpt_job(
             error_code="invalid_topic_spec",
             reason_code="invalid_topic_spec",
         )
-    parsed_payload: dict[str, object] | None = None
     try:
         parsed_payload = build_stage1_parsed_payload_from_topic_spec(topic_spec)
     except ValueError as exc:
         error_code = str(exc) or "invalid_stage1_output"
-        if error_code == "missing_scene_prompts" and _requires_live_chatgpt_capture(
-            browser_evidence
-        ):
-            topic_spec = _reprompt_stage1_contract_from_live_browser(
-                topic_spec,
-                browser_evidence,
-                workspace=workspace,
-            )
-            raw_output = build_stage1_raw_output_artifact(topic_spec)
-            _ = write_json_atomic(raw_output_path, raw_output)
-            _ = _write_gpt_timeline_if_present(topic_spec, timeline_path)
-            try:
-                parsed_payload = build_stage1_parsed_payload_from_topic_spec(topic_spec)
-            except ValueError as retry_exc:
-                error_code = str(retry_exc) or "invalid_stage1_output"
-            else:
-                error_code = ""
-        if not error_code:
-            pass
-        else:
-            return _stage1_failed(
-                workspace,
-                debug_log=debug_log,
-                run_id=run_id,
-                row_ref=row_ref,
-                error_code=error_code,
-                reason_code=error_code,
-                evidence={"raw_output_path": str(raw_output_path.resolve())},
-                raw_output_path=str(raw_output_path.resolve()),
-            )
-    if parsed_payload is None:
         return _stage1_failed(
             workspace,
             debug_log=debug_log,
             run_id=run_id,
             row_ref=row_ref,
-            error_code="invalid_stage1_output",
-            reason_code="invalid_stage1_output",
+            error_code=error_code,
+            reason_code=error_code,
             evidence={"raw_output_path": str(raw_output_path.resolve())},
             raw_output_path=str(raw_output_path.resolve()),
         )
