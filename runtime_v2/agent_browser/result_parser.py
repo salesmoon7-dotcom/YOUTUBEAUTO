@@ -47,10 +47,12 @@ def select_best_tab(
     expected_url_substring: str = "",
     expected_title_substring: str = "",
 ) -> int | None:
-    best_index: int | None = None
-    best_score = -1
     expected_url = expected_url_substring.strip().lower()
     expected_title = expected_title_substring.strip().lower()
+    if expected_url:
+        tabs = [tab for tab in tabs if expected_url in str(tab.get("url", "")).lower()]
+    best_index: int | None = None
+    best_score = -1
     for tab in tabs:
         url = str(tab.get("url", "")).lower()
         title = str(tab.get("title", "")).lower()

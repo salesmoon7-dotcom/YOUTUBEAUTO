@@ -94,6 +94,33 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertEqual(len(tabs), 1)
         self.assertEqual(index, 0)
 
+    def test_select_best_tab_prefers_url_match_over_title_only_match(self) -> None:
+        from runtime_v2.agent_browser.result_parser import select_best_tab
+
+        tabs = cast(
+            list[dict[str, object]],
+            [
+                {
+                    "index": 0,
+                    "title": "ChatGPT - 롱폼",
+                    "url": "https://chatgpt.com/c/legacy-thread",
+                },
+                {
+                    "index": 1,
+                    "title": "ChatGPT",
+                    "url": "https://chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom/c/active-thread",
+                },
+            ],
+        )
+
+        index = select_best_tab(
+            tabs,
+            expected_url_substring="chatgpt.com/g/g-696a6d74fbd48191a1ffdc5f8ea90a1b-rongpom",
+            expected_title_substring="롱폼",
+        )
+
+        self.assertEqual(index, 1)
+
     def test_run_worker_dispatches_agent_browser_verify(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             artifact_root = Path(tmp_dir) / "artifacts"
