@@ -29,11 +29,11 @@ class RuntimeV2Stage2JsonBuildersTests(unittest.TestCase):
         ref_jobs, ref_img_1_path, ref_img_2_path = _build_ref_jobs(
             run_id="run-1",
             row_ref="Sheet1!row15",
-            asset_root=Path(r"D:\YOUTUBEAUTO\tmp_ref_jobs"),
+            asset_root=Path(r"D:/YOUTUBEAUTO/tmp_ref_jobs"),
             stage1_handoff=None,
             stage1_contract={
-                "ref_img_1": "Refer to attached character image.\nWarm gray sweater portrait",
-                "ref_img_2": "Use attached images as reference.\nBright office background",
+                "ref_img_1": "He wears gray mock neck sweater.\nRefer to attached character image.\nHe wears warm gray mock neck sweater.",
+                "ref_img_2": "Bright office background.\nUse attached images as reference.\nSoft daylight.",
             },
             reason_code="ok",
             agent_browser_services={"genspark", "seaart"},
@@ -46,8 +46,14 @@ class RuntimeV2Stage2JsonBuildersTests(unittest.TestCase):
         ref2_payload = cast(
             dict[str, object], cast(dict[str, object], ref_jobs[1]["job"])["payload"]
         )
-        self.assertEqual(ref1_payload["prompt"], "Warm gray sweater portrait")
-        self.assertEqual(ref2_payload["prompt"], "Bright office background")
+        self.assertEqual(
+            ref1_payload["prompt"],
+            "He wears gray mock neck sweater.\nHe wears warm gray mock neck sweater.",
+        )
+        self.assertEqual(
+            ref2_payload["prompt"],
+            "Bright office background.\nSoft daylight.",
+        )
         self.assertTrue(ref_img_1_path.endswith("ref-1-run-1.png"))
         self.assertTrue(ref_img_2_path.endswith("ref-2-run-1.png"))
 

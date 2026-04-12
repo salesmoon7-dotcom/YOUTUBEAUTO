@@ -362,12 +362,15 @@ def _select_ref_images_from_stage1(
 
 
 def _sanitize_ref_job_prompt(prompt: str) -> str:
-    text = prompt.strip()
-    prefixes = [
+    prefixes = {
         "Refer to attached character image.",
         "Refer to attached background image.",
         "Use attached images as reference.",
+    }
+    lines = [
+        line for line in prompt.strip().splitlines() if line.strip() not in prefixes
     ]
+    text = "\n".join(lines).strip()
     changed = True
     while changed:
         changed = False
@@ -376,7 +379,6 @@ def _sanitize_ref_job_prompt(prompt: str) -> str:
                 text = text[len(prefix) :].lstrip()
                 changed = True
     return text
-
 
 def _build_ref_jobs(
     *,
