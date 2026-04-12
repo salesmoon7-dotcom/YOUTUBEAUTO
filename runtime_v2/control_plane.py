@@ -2093,6 +2093,14 @@ def _declared_stage1_qwen_job(
         )
     if not voice_texts:
         return None
+    artifact_root_parts = {part.lower() for part in artifact_root.resolve().parts}
+    if "probe" in artifact_root_parts:
+        for entry in voice_texts:
+            if str(entry.get("col", "")).strip() == "#01":
+                voice_texts = [entry]
+                break
+        else:
+            voice_texts = [voice_texts[0]]
     run_id = str(parent_job.payload.get("run_id", "")).strip()
     row_ref = str(parent_job.payload.get("row_ref", "")).strip()
     excel_path = str(parent_job.payload.get("excel_path", "")).strip()

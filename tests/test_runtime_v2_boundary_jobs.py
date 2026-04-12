@@ -127,3 +127,51 @@ class RuntimeV2BoundaryJobsTests(unittest.TestCase):
         typed_voice_texts = cast(list[object], payload["voice_texts"])
         self.assertEqual(str(job["job_id"]), "qwen3-run-123")
         self.assertEqual(len(typed_voice_texts), 2)
+
+    def test_declared_stage1_qwen_job_uses_boundary_voice_for_probe_artifact_root(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "probe" / "semantic-row-closeout" / "artifacts"
+            artifact_root.mkdir(parents=True, exist_ok=True)
+            parent_job = JobContract(
+                job_id="chatgpt-row15",
+                workload="chatgpt",
+                payload={
+                    "run_id": "run-123",
+                    "row_ref": "Sheet1!row15",
+                    "excel_path": str(root / "topic.xlsx"),
+                    "sheet_name": "Sheet1",
+                    "row_index": 14,
+                    "model_name": "voice-model-a",
+                },
+            )
+            voice_texts = [
+                {"col": "#02", "text": "second", "original_voices": [2]},
+                {"col": "#01", "text": "first", "original_voices": [1]},
+            ]
+            details = cast(
+                dict[str, object],
+                {
+                    "stage1_handoff": {
+                        "contract": {
+                            "run_id": "run-123",
+                            "row_ref": "Sheet1!row15",
+                            "topic": "topic",
+                            "voice_texts": voice_texts,
+                        }
+                    }
+                },
+            )
+
+            contract = _declared_stage1_qwen_job(details, parent_job, artifact_root)
+
+        self.assertIsNotNone(contract)
+        typed_contract = cast(dict[str, object], contract)
+        payload = cast(
+            dict[str, object], cast(dict[str, object], typed_contract["job"])["payload"]
+        )
+        typed_voice_texts = cast(list[object], payload["voice_texts"])
+        self.assertEqual(len(typed_voice_texts), 1)
+        self.assertEqual(cast(dict[str, object], typed_voice_texts[0])["col"], "#01")
