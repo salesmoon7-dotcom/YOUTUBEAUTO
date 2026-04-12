@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
+from time import sleep
 from time import time
 from typing import cast
 
@@ -52,7 +53,18 @@ class QueueStore:
         ) as handle:
             _ = handle.write(json.dumps(payload, ensure_ascii=True))
             temp_path = Path(handle.name)
-        _ = temp_path.replace(self.queue_file)
+        last_error: PermissionError | None = None
+        for attempt in range(5):
+            try:
+                _ = temp_path.replace(self.queue_file)
+                break
+            except PermissionError as exc:
+                last_error = exc
+                if attempt == 4:
+                    raise
+                sleep(0.05 * (attempt + 1))
+        if last_error is not None and not self.queue_file.exists():
+            raise last_error
         return self.queue_file
 
     def next_queued(self) -> JobContract | None:

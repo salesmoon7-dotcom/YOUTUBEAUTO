@@ -756,6 +756,28 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             with self.assertRaises(QueueStoreError):
                 _ = QueueStore(queue_file).load()
 
+    def test_queue_store_save_retries_permission_error_on_replace(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            queue_file = Path(tmp_dir) / "job_queue.json"
+            queue_store = QueueStore(queue_file)
+            job = JobContract(job_id="job-1", workload="chatgpt")
+            original_replace = Path.replace
+            call_count = {"count": 0}
+
+            def flaky_replace(self: Path, target: Path) -> Path:
+                call_count["count"] += 1
+                if call_count["count"] < 3:
+                    error = PermissionError("locked")
+                    error.winerror = 5
+                    raise error
+                return original_replace(self, target)
+
+            with patch.object(Path, "replace", new=flaky_replace):
+                saved_path = queue_store.save([job])
+
+        self.assertEqual(saved_path, queue_file)
+        self.assertEqual(call_count["count"], 3)
+
     def test_control_plane_reports_invalid_queue_store_as_failed(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
