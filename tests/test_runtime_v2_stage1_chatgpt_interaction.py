@@ -337,14 +337,17 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             ) as nav_mock,
             mock.patch(
                 "runtime_v2.stage1.chatgpt_backend.time.time",
-                side_effect=[100.0, 107.0, 108.0],
+                side_effect=[100.0, 107.0, 108.0, 108.0],
             ),
             mock.patch("runtime_v2.stage1.chatgpt_backend.time.sleep"),
         ):
             _ = reset_chatgpt_context(9222, deadline_ts=110.0)
 
         self.assertEqual(wait_mock.call_args_list[0].kwargs["timeout_sec"], 2.0)
-        self.assertEqual(nav_mock.call_args.kwargs["timeout_sec"], 10.0)
+        self.assertEqual(nav_mock.call_args_list[0].kwargs["timeout_sec"], 10.0)
+        self.assertEqual(nav_mock.call_args_list[0].args[1], "Page.navigate")
+        self.assertEqual(nav_mock.call_args_list[1].args[1], "Page.reload")
+        self.assertEqual(nav_mock.call_args_list[1].args[2], {"ignoreCache": True})
         self.assertEqual(wait_mock.call_args_list[1].kwargs["timeout_sec"], 2.0)
 
     def test_wait_for_send_state_rechecks_prompt_when_send_missing(self) -> None:

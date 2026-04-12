@@ -566,18 +566,18 @@ def reset_chatgpt_context(
             raise RuntimeError("chatgpt_context_target_missing")
     try:
         _wait_for_chatgpt_prompt_ready(target["webSocketDebuggerUrl"], timeout_sec=2.0)
-        return {
-            "status": "ok",
-            "port": port,
-            "target_url": target_url,
-            "target": target,
-        }
     except RuntimeError:
         pass
     _run_raw_cdp_method(
         target["webSocketDebuggerUrl"],
         "Page.navigate",
         {"url": target_url},
+        timeout_sec=_raw_cdp_timeout(30.0),
+    )
+    _run_raw_cdp_method(
+        target["webSocketDebuggerUrl"],
+        "Page.reload",
+        {"ignoreCache": True},
         timeout_sec=_raw_cdp_timeout(30.0),
     )
     sleep_budget = 3.0
