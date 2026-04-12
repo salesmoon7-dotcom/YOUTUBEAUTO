@@ -2017,8 +2017,8 @@ def _run_browser_recovery_probe(
         events_file=config.control_plane_events_file,
         run_id=run_id,
         recover_unhealthy=True,
-        restart_threshold=2,
-        cooldown_sec=60,
+        restart_threshold=1,
+        cooldown_sec=0,
     )
     gpt_status = tick_gpt_status(config.gpt_status_file, config)
     final_summary_raw = browser_runtime.get("final_summary", {})

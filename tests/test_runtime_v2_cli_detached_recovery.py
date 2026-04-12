@@ -70,6 +70,8 @@ class RuntimeV2CliDetachedRecoveryTests(unittest.TestCase):
                     run_id="browser-recover-run-1",
                 )
 
+                tick_kwargs = supervisor_instance.tick.call_args.kwargs
+
             payload = json.loads(
                 (probe_root / "probe_result.json").read_text(encoding="utf-8")
             )
@@ -79,6 +81,8 @@ class RuntimeV2CliDetachedRecoveryTests(unittest.TestCase):
         self.assertEqual(payload["mode"], "browser_recover")
         self.assertEqual(payload["restarted_services"], ["seaart", "geminigen"])
         self.assertEqual(payload["gpt_status"]["ok_count"], 2)
+        self.assertEqual(tick_kwargs["restart_threshold"], 1)
+        self.assertEqual(tick_kwargs["cooldown_sec"], 0)
 
     def test_run_browser_recovery_probe_surfaces_restart_exhausted_code(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
