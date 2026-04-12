@@ -547,6 +547,7 @@ def reset_chatgpt_context(
     port: int,
     *,
     expected_url_substring: str = CHATGPT_LONGFORM_URL_SUBSTRING,
+    target_url: str = CHATGPT_LONGFORM_URL,
     deadline_ts: float | None = None,
 ) -> dict[str, object]:
     def _raw_cdp_timeout(default: float) -> float:
@@ -568,7 +569,7 @@ def reset_chatgpt_context(
         return {
             "status": "ok",
             "port": port,
-            "target_url": CHATGPT_LONGFORM_URL,
+            "target_url": target_url,
             "target": target,
         }
     except RuntimeError:
@@ -576,7 +577,7 @@ def reset_chatgpt_context(
     _run_raw_cdp_method(
         target["webSocketDebuggerUrl"],
         "Page.navigate",
-        {"url": CHATGPT_LONGFORM_URL},
+        {"url": target_url},
         timeout_sec=_raw_cdp_timeout(30.0),
     )
     sleep_budget = 3.0
@@ -589,7 +590,7 @@ def reset_chatgpt_context(
     return {
         "status": "ok",
         "port": port,
-        "target_url": CHATGPT_LONGFORM_URL,
+        "target_url": target_url,
         "target": target,
     }
 

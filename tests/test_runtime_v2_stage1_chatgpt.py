@@ -997,7 +997,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                 ),
                 patch(
                     "runtime_v2.stage1.chatgpt_runner.reset_chatgpt_context",
-                ),
+                ) as reset_mock,
             ):
                 _ = run_stage1_chatgpt_job(
                     topic_spec,
@@ -1005,7 +1005,19 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                     debug_log="logs/stage1-topic-url.jsonl",
                 )
 
-        self.assertNotIn("expected_url_substring", called_kwargs)
+                reset_kwargs = reset_mock.call_args.kwargs
+
+        self.assertEqual(
+            called_kwargs["expected_url_substring"],
+            "https://chatgpt.com/g/g-foo/c/bar",
+        )
+        self.assertEqual(
+            reset_kwargs["expected_url_substring"],
+            "https://chatgpt.com/g/g-foo/c/bar",
+        )
+        self.assertEqual(
+            reset_kwargs["target_url"], "https://chatgpt.com/g/g-foo/c/bar"
+        )
 
     def test_stage1_runner_continues_when_reset_context_fails(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

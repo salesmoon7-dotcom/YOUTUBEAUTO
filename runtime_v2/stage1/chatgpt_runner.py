@@ -145,8 +145,19 @@ def attach_gpt_response_text_from_browser_evidence(
         if service == "chatgpt" and isinstance(raw_port, int) and raw_port > 0:
             reset_error = ""
             deadline_ts = time() + _LIVE_CAPTURE_TIMEOUT_SEC
+            topic_url = str(topic_spec.get("url", "")).strip()
+            expected_url_substring = (
+                topic_url
+                or browser_evidence.get("expected_url_substring", "")
+                or CHATGPT_LONGFORM_URL_SUBSTRING
+            )
             try:
-                _ = reset_chatgpt_context(raw_port, deadline_ts=deadline_ts)
+                _ = reset_chatgpt_context(
+                    raw_port,
+                    expected_url_substring=str(expected_url_substring),
+                    target_url=topic_url or CHATGPT_LONGFORM_URL,
+                    deadline_ts=deadline_ts,
+                )
             except RuntimeError as exc:
                 reset_error = str(exc)
             prompt = build_live_chatgpt_prompt(topic_spec)
@@ -173,6 +184,7 @@ def attach_gpt_response_text_from_browser_evidence(
                 response_start_timeout_sec=_LIVE_CAPTURE_RESPONSE_START_TIMEOUT_SEC,
                 command_runner=_bounded_capture_command_runner(deadline_ts),
                 relaunch_browser=lambda: _relaunch_chatgpt_browser(),
+                expected_url_substring=str(expected_url_substring),
                 timeline_path=timeline_path,
                 state_path=state_path,
             )
