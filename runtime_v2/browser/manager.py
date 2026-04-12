@@ -1112,7 +1112,17 @@ def _evaluate_session_health(session: BrowserSession) -> tuple[bool, str]:
     if not port_healthy:
         _clear_session_ready_marker(session)
         if not _manager_owns_browser(session.service):
-            _clear_lock_result(session)
+            lock_result = inspect_profile_lock(
+                session.profile_dir,
+                service=session.service,
+                session_id=session.session_id,
+                port=session.port,
+            )
+            _apply_lock_result(session, lock_result)
+            if session.lock_state == "busy":
+                return False, "busy_lock"
+            if session.lock_state == "unknown":
+                return False, "unknown_lock"
             return False, "external"
         lock_result = inspect_profile_lock(
             session.profile_dir,

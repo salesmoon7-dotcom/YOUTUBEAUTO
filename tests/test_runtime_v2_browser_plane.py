@@ -1160,6 +1160,52 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         session = cast(dict[object, object], snapshots[0])
         self.assertFalse(bool(session["healthy"]))
 
+    def test_external_genspark_port_down_surfaces_busy_lock_instead_of_external(
+        self,
+    ) -> None:
+        with self._temp_dir() as tmp_dir:
+            profile_dir = Path(tmp_dir) / "genspark-primary"
+            profile_dir.mkdir(parents=True, exist_ok=True)
+            manager = BrowserManager(
+                sessions=[
+                    BrowserSession(
+                        service="genspark",
+                        group="llm",
+                        session_id="primary",
+                        port=9333,
+                        profile_dir=str(profile_dir.resolve()),
+                        status="external",
+                    )
+                ]
+            )
+            manager.running = True
+
+            with (
+                patch(
+                    "runtime_v2.browser.manager._probe_local_port", return_value=False
+                ),
+                patch(
+                    "runtime_v2.browser.manager._manager_owns_browser",
+                    return_value=False,
+                ),
+                patch(
+                    "runtime_v2.browser.manager.inspect_profile_lock",
+                    return_value={
+                        "lock_state": "busy",
+                        "pid_alive": True,
+                        "port_open": False,
+                        "metadata_valid": True,
+                        "lock_age_sec": 1.0,
+                    },
+                ),
+            ):
+                snapshots = manager.session_snapshots()
+
+        session = cast(dict[object, object], snapshots[0])
+        self.assertFalse(bool(session["healthy"]))
+        self.assertEqual(str(session["status"]), "busy_lock")
+        self.assertEqual(str(session["lock_state"]), "busy")
+
     def test_run_once_blocks_browser_workload_when_login_is_required(self) -> None:
         browser_runtime = {
             "sessions": [
