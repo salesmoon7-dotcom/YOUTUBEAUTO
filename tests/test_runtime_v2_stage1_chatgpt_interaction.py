@@ -888,6 +888,17 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertIn("[#01]\n첫 번째 장면 설명", response)
         self.assertIn("[#02]\n두 번째 장면 설명", response)
 
+    def test_response_script_collects_heading_and_pre_legacy_blocks(self) -> None:
+        from runtime_v2.stage1.chatgpt_backend import _response_script
+
+        script = _response_script(
+            '{"stopSelectors":[],"sendSelectors":[],"responseSelectors":[]}'
+        )
+
+        self.assertIn("document.querySelectorAll('h1,h2,h3,p,pre')", script)
+        self.assertIn("const label = lastSubLabel || currentHeading || ''", script)
+        self.assertIn("legacyBlocks.push({label: label, body: textValue})", script)
+
     def test_response_text_from_state_ignores_status_only_assistant_text(self) -> None:
         self.assertEqual(_response_text_from_state("생각 중지됨", []), "")
         self.assertEqual(_response_text_from_state("롱폼의 말:\n생각 중지됨", []), "")
