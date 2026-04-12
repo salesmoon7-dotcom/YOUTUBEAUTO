@@ -310,8 +310,6 @@ def generate_gpt_response_text(
                         reason="streaming_active",
                     )
                 saw_streaming = True
-                if not has_send_button:
-                    last_activity_ts = time.time()
             elif has_send_button and _has_structured_stage1_content("", legacy_blocks):
                 if not saw_streaming:
                     emit("streaming_seen", attempt=attempt, backend="chatgpt_backend")

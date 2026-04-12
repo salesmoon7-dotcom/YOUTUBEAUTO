@@ -2129,6 +2129,54 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
 
+    def test_generate_gpt_response_text_finishes_after_idle_with_stop_only(
+        self,
+    ) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                return {
+                    "ok": True,
+                    "inputSelector": "#prompt-textarea",
+                    "sendClicked": True,
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                return {
+                    "has_stop": True,
+                    "has_send_button": False,
+                    "assistant_block_count": 1,
+                    "assistant_text": "final json",
+                }
+
+        with (
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_interaction.time.sleep", return_value=None
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_interaction.time.time",
+                side_effect=itertools.chain(
+                    [0.0, 0.0, 0.01, 0.02, 0.03, 0.04, 0.05, 1.1],
+                    itertools.repeat(1.1),
+                ),
+            ),
+        ):
+            result = generate_gpt_response_text(
+                prompt="test prompt",
+                port=9222,
+                timeout_sec=1,
+                poll_interval_sec=0.01,
+                completion_idle_sec=0.01,
+                response_start_timeout_sec=0.02,
+                backend=FakeBackend(),
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["response_text"], "final json")
+        timeline = cast(list[dict[str, object]], result["timeline"])
+        event_names = [str(item["event"]) for item in timeline]
+        self.assertIn("streaming_seen", event_names)
+        self.assertIn("response_stable", event_names)
+
     def test_generate_gpt_response_text_writes_live_timeline_and_state_files(
         self,
     ) -> None:
