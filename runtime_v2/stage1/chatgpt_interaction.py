@@ -534,22 +534,41 @@ def _select_chatgpt_tab(tabs: list[dict[str, object]]) -> dict[str, object]:
 
 
 def _response_text_from_state(text: str, legacy_blocks: object) -> str:
+    normalized = text.strip()
+    newline = chr(10)
     if isinstance(legacy_blocks, list):
         parts: list[str] = []
+        labels: list[str] = []
         for item in legacy_blocks:
             if not isinstance(item, dict):
                 continue
             label = str(item.get("label", "")).strip()
             body = str(item.get("body", "")).strip()
+            if label:
+                labels.append(label)
             if label and body:
-                if body.startswith("COPY\n"):
-                    body = body[len("COPY\n") :]
-                parts.append(f"{label}\n{body}")
-            elif label and "\n" in label:
+                if body.startswith("COPY" + newline):
+                    body = body[len("COPY" + newline) :]
+                parts.append(label + newline + body)
+            elif label and newline in label:
                 parts.append(label)
         if parts:
-            return "\n\n".join(parts)
-    normalized = text.strip()
+            joined = (newline + newline).join(parts)
+            has_voice_or_scene = any(
+                label.lower().startswith("[voice")
+                or label.lower().startswith("[#")
+                or label.lower().startswith("[scene")
+                for label in labels
+            )
+            assistant_has_structure = (
+                "[Voice]" in normalized
+                or "[#" in normalized
+                or "[Scene" in normalized
+                or (newline + "1.") in normalized
+            )
+            if not has_voice_or_scene and assistant_has_structure and normalized:
+                return joined + newline + newline + normalized
+            return joined
     lowered = normalized.lower()
     status_only = {"생각 중지됨", "stopped thinking", "문서 읽는 중"}
     if lowered in status_only:
@@ -559,7 +578,6 @@ def _response_text_from_state(text: str, legacy_blocks: object) -> str:
         if body.lower() in status_only or body in {"지금 응답 받기", "다시 시도"}:
             return ""
     return normalized
-
 
 def _has_structured_stage1_content(response_text: str, legacy_blocks: object) -> bool:
     if isinstance(legacy_blocks, list):

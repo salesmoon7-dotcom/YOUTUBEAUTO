@@ -133,6 +133,21 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
 
+    def test_response_text_from_state_prefers_assistant_text_when_legacy_blocks_are_incomplete(
+        self,
+    ) -> None:
+        assistant_text = "[Voice]" + chr(10) + "1. first line" + chr(10) + "2. second line"
+        legacy_blocks = [
+            {"label": "[Title]", "body": "Example title"},
+            {"label": "[Keywords]", "body": "money, pension"},
+        ]
+
+        response_text = _response_text_from_state(assistant_text, legacy_blocks)
+
+        self.assertIn("[Voice]", response_text)
+        self.assertIn("1. first line", response_text)
+        self.assertIn("[Title]", response_text)
+
     def test_generate_gpt_response_text_passes_expected_url_substring_to_backend(
         self,
     ) -> None:
