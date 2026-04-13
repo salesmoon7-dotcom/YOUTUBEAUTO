@@ -156,6 +156,47 @@ class RuntimeV2BrowserManagerRuntimeTests(unittest.TestCase):
 
         self.assertFalse(ok)
 
+    def test_browser_manager_restart_reclaims_foreign_chatgpt_port_once(self) -> None:
+        manager = BrowserManager(
+            sessions=[
+                BrowserSession(
+                    service="chatgpt",
+                    group="llm",
+                    session_id="primary",
+                    port=9222,
+                    profile_dir=r"D:\YOUTUBEAUTO_RUNTIME\sessions\chatgpt-primary",
+                    status="stopped",
+                    browser_family="chrome",
+                )
+            ]
+        )
+
+        def launch_side_effect(session: BrowserSession) -> bool:
+            if session.blocked_reason:
+                return True
+            session.blocked_reason = "port_open_foreign_tabs"
+            return False
+
+        with (
+            patch(
+                "runtime_v2.browser.manager.ensure_browser_plane_ownership",
+                return_value={"owned": True},
+            ),
+            patch(
+                "runtime_v2.browser.manager._launch_debug_browser",
+                side_effect=launch_side_effect,
+            ) as launch_mock,
+            patch(
+                "runtime_v2.browser.manager._reclaim_foreign_debug_port",
+                return_value=True,
+            ) as reclaim_mock,
+        ):
+            ok = manager.restart("chatgpt")
+
+        self.assertTrue(ok)
+        self.assertEqual(launch_mock.call_count, 2)
+        reclaim_mock.assert_called_once()
+
     def test_browser_supervisor_restart_session_respects_failed_launch(self) -> None:
         supervisor = BrowserSupervisor(BrowserManager())
 

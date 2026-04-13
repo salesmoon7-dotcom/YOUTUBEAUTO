@@ -10,6 +10,7 @@ from time import sleep, time
 from typing import Mapping
 import urllib.request
 
+import websocket
 from runtime_v2.config import RuntimeConfig, browser_session_root
 
 
@@ -884,6 +885,85 @@ def open_browser_for_login(
     }
 
 
+
+
+
+def _reclaim_foreign_debug_port(session: BrowserSession) -> bool:
+    if session.service != "chatgpt":
+        return False
+    expected = expected_url_substring_for_service(session.service).strip().lower()
+    tabs = _list_debug_tabs(session)
+    if expected and any(
+        expected in str(tab.get("url", "")).strip().lower() for tab in tabs
+    ):
+        return False
+    payload: dict[str, object] = {}
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{session.port}/json/version", timeout=3
+        ) as response:
+            raw_payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        raw_payload = {}
+    if isinstance(raw_payload, dict):
+        payload = raw_payload
+    ws_url = str(payload.get("webSocketDebuggerUrl", "")).strip()
+    if ws_url.startswith(("ws://", "wss://")):
+        try:
+            ws = websocket.create_connection(ws_url, timeout=10, suppress_origin=True)
+            try:
+                ws.send(json.dumps({"id": 1, "method": "Browser.close", "params": {}}, ensure_ascii=True))
+                _ = ws.recv()
+            finally:
+                ws.close()
+        except Exception:
+            pass
+        for _ in range(10):
+            sleep(0.3)
+            if not _probe_local_port(session.port):
+                return True
+    if os.name == "nt":
+        try:
+            result = subprocess.run(
+                ["cmd", "/c", f"netstat -ano -p tcp | findstr LISTENING | findstr :{session.port}"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=5,
+                check=False,
+                creationflags=int(getattr(subprocess, "CREATE_NO_WINDOW", 0)),
+            )
+        except (OSError, subprocess.SubprocessError):
+            result = None
+        if result is not None:
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if not parts:
+                    continue
+                pid = parts[-1]
+                if not pid.isdigit():
+                    continue
+                try:
+                    _ = subprocess.run(
+                        ["taskkill", "/PID", pid, "/T", "/F"],
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                        timeout=10,
+                        check=False,
+                        creationflags=int(getattr(subprocess, "CREATE_NO_WINDOW", 0)),
+                    )
+                except (OSError, subprocess.SubprocessError):
+                    continue
+                for _ in range(10):
+                    sleep(0.3)
+                    if not _probe_local_port(session.port):
+                        return True
+                break
+    return not _probe_local_port(session.port)
+
 class BrowserManager:
     def __init__(self, sessions: list[BrowserSession] | None = None) -> None:
         self.running: bool = False
@@ -922,6 +1002,15 @@ class BrowserManager:
         session.status = "running"
         session.blocked_reason = ""
         launched = _launch_debug_browser(session)
+        if (
+            not launched
+            and service == "chatgpt"
+            and session.blocked_reason == "port_open_foreign_tabs"
+            and _reclaim_foreign_debug_port(session)
+        ):
+            launched = _launch_debug_browser(session)
+            if launched:
+                session.blocked_reason = ""
         if not launched:
             session.status = "unhealthy"
         return launched
