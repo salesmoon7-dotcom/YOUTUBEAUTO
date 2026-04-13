@@ -96,6 +96,43 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(run_mock.call_args.kwargs["encoding"], "utf-8")
         self.assertEqual(run_mock.call_args.kwargs["errors"], "replace")
 
+    def test_generate_gpt_response_text_does_not_complete_while_stop_button_remains(
+        self,
+    ) -> None:
+        backend = mock.Mock()
+        backend.submit_prompt.return_value = {
+            "ok": True,
+            "submit_evidence": {
+                "classification": "sent",
+                "classification_reason": "send_button_clicked",
+                "retry_safe_decision": False,
+            },
+        }
+        backend.read_response_state.return_value = {
+            "has_stop": True,
+            "has_send_button": False,
+            "assistant_block_count": 1,
+            "assistant_text": "generic intro",
+            "legacy_blocks": [],
+            "thinking_stopped": False,
+            "recovery_clicked": False,
+            "upstream_error_retry_exhausted": False,
+        }
+
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_interaction.AgentBrowserCdpBackend",
+            return_value=backend,
+        ):
+            result = generate_gpt_response_text(
+                prompt="hello",
+                timeout_sec=1,
+                poll_interval_sec=0.01,
+                completion_idle_sec=0.01,
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
+
     def test_generate_gpt_response_text_passes_expected_url_substring_to_backend(
         self,
     ) -> None:
