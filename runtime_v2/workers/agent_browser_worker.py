@@ -979,6 +979,20 @@ def run_agent_browser_verify_job(
             if service in {"genspark", "seaart"} and not recovery_attempted:
                 recovery_attempted = True
                 _recover_agent_browser_service(service)
+                try:
+                    transcript, selected_tab, current_url, current_title, snapshot_path = (
+                        _run_verify_once()
+                    )
+                except RuntimeError:
+                    transcript.append(
+                        {
+                            "command": ["recovery"],
+                            "output": "service_recovery_failed",
+                            "recovery_attempted": True,
+                            "agent_browser_error": str(exc),
+                        }
+                    )
+                    raise
                 transcript.append(
                     {
                         "command": ["recovery"],
@@ -986,9 +1000,6 @@ def run_agent_browser_verify_job(
                         "recovery_attempted": True,
                         "agent_browser_error": str(exc),
                     }
-                )
-                transcript, selected_tab, current_url, current_title, snapshot_path = (
-                    _run_verify_once()
                 )
             else:
                 raise

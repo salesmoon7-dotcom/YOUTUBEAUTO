@@ -476,6 +476,56 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertEqual(result["error_code"], "AGENT_BROWSER_VERIFY_FAILED")
         self.assertEqual(str(details["exception_type"]), "TypeError")
 
+    def test_agent_browser_verify_does_not_claim_service_recovered_when_retry_still_fails(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "artifacts"
+            job = JobContract(
+                job_id="agent-browser-genspark-recovery-retry-fails",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-genspark-recovery-retry-fails",
+                payload={
+                    "service": "genspark",
+                    "port": 9333,
+                    "expected_url_substring": "genspark.ai/agents?type=image_generation_agent",
+                    "expected_title_substring": "Genspark",
+                    "capture_snapshot": False,
+                },
+            )
+
+            with (
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                    side_effect=RuntimeError(
+                        "Failed to connect via CDP to http://localhost:9333"
+                    ),
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._http_cdp_tab_list",
+                    side_effect=ConnectionRefusedError("WinError 10061"),
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._recover_agent_browser_service"
+                ),
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+            transcript_path = Path(
+                str(cast(dict[str, object], result["details"])["transcript_path"])
+            )
+            transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "AGENT_BROWSER_COMMAND_FAILED")
+        self.assertEqual(len(cast(list[object], transcript["steps"])), 1)
+        step = cast(dict[str, object], cast(list[object], transcript["steps"])[0])
+        self.assertEqual(step["command"], ["recovery"])
+        self.assertEqual(step["output"], "service_recovery_failed")
+        self.assertTrue(bool(step["recovery_attempted"]))
+
     def test_agent_browser_verify_marks_probe_browser_unhealthy_on_attach_failure(
         self,
     ) -> None:
@@ -528,6 +578,10 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
                 patch(
                     "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
                     side_effect=RuntimeError("connect ECONNREFUSED 127.0.0.1:9333"),
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._http_cdp_tab_list",
+                    side_effect=ConnectionRefusedError("WinError 10061"),
                 ),
                 patch(
                     "runtime_v2.workers.agent_browser_worker._recover_agent_browser_service"
