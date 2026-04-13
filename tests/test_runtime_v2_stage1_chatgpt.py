@@ -114,11 +114,17 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             [
                 {"result": {"value": False}},
                 {"result": {"value": True}},
+                {"result": {"value": True}},
             ]
         )
 
-        def _fake_run_raw(ws_url: str, method: str, params: dict[str, object]):
+        def _fake_run_raw(
+            ws_url: str, method: str, params: dict[str, object], **kwargs: object
+        ):
             if method == "Runtime.evaluate":
+                expression = str(params.get("expression", ""))
+                if "New chat" in expression or "새 채팅" in expression:
+                    return {"result": {"value": '{"clicked": true, "selector": "label_match"}'}}
                 return next(runtime_results)
             return {}
 
@@ -135,6 +141,10 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                 "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_method",
                 side_effect=_fake_run_raw,
             ) as run_raw,
+            patch(
+                "runtime_v2.stage1.chatgpt_backend._start_new_chat",
+                return_value={"clicked": True, "selector": "label_match"},
+            ),
         ):
             result = reset_chatgpt_context(9222)
 

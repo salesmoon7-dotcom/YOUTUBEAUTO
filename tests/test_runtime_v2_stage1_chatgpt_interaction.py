@@ -316,6 +316,34 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(nav_mock.call_args.kwargs["timeout_sec"], 7.0)
         self.assertEqual(wait_mock.call_args.kwargs["timeout_sec"], 7.0)
 
+    def test_reset_chatgpt_context_requires_new_chat_click(self) -> None:
+        target = {
+            "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/test",
+            "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}",
+            "title": CHATGPT_LONGFORM_TITLE_SUBSTRING,
+        }
+
+        with (
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._select_page_target",
+                return_value=target,
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._wait_for_chatgpt_prompt_ready",
+                side_effect=[None, None],
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._start_new_chat",
+                return_value={"clicked": False},
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_method"
+            ),
+            mock.patch("runtime_v2.stage1.chatgpt_backend.time.sleep"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "chatgpt_new_chat_unavailable"):
+                _ = reset_chatgpt_context(9222)
+
     def test_reset_chatgpt_context_uses_deadline_budget(self) -> None:
         target = {
             "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/test",
@@ -336,8 +364,12 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                 "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_method"
             ) as nav_mock,
             mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._start_new_chat",
+                return_value={"clicked": True, "selector": "label_match"},
+            ),
+            mock.patch(
                 "runtime_v2.stage1.chatgpt_backend.time.time",
-                side_effect=[100.0, 107.0, 108.0, 108.0],
+                side_effect=[100.0, 107.0, 108.0, 108.0, 108.0],
             ),
             mock.patch("runtime_v2.stage1.chatgpt_backend.time.sleep"),
         ):

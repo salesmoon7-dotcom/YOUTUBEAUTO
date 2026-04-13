@@ -21,6 +21,43 @@ CHATGPT_LONGFORM_URL_SUBSTRING = (
 )
 CHATGPT_LONGFORM_TITLE_SUBSTRING = "롱폼"
 CHATGPT_LONGFORM_URL = f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}"
+
+
+def _start_new_chat(websocket_url: str, *, timeout_sec: float) -> dict[str, object]:
+    expression = (
+        "(() => {"
+        "const visible = (node) => { if (!node) return false; const rects = typeof node.getClientRects === 'function' ? node.getClientRects() : []; const shown = !!node.isConnected && ((rects && rects.length > 0) || node.offsetParent !== null); if (!shown) return false; const style = window.getComputedStyle ? window.getComputedStyle(node) : null; return !style || (style.visibility !== 'hidden' && style.display !== 'none'); };"
+        "const clickIfVisible = (node) => { if (!visible(node)) return false; if (typeof node.click === 'function') node.click(); return true; };"
+        'const sidebarToggles = ["button[aria-label*=\"sidebar\" i]", "button[aria-label*=\"사이드바\" i]", "button[data-testid*=\"sidebar\"]"];'
+        "for (const selector of sidebarToggles) { try { const node = document.querySelector(selector); if (node && !visible(document.querySelector('nav'))) { clickIfVisible(node); } } catch (_) {} }"
+        'const selectors = ["a[href*=\"/g/\"][href$=\"/new\"]", "a[href*=\"/new\"]", "button[data-testid*=\"new-chat\"]", "button[aria-label*=\"New chat\" i]", "button[aria-label*=\"새 채팅\" i]"];'
+        "for (const selector of selectors) { try { const node = document.querySelector(selector); if (clickIfVisible(node)) { return JSON.stringify({clicked:true, selector:selector}); } } catch (_) {} }"
+        "const labels = ['New chat', '새 채팅', 'New conversation', '새 대화'];"
+        "const candidates = Array.from(document.querySelectorAll('button,a')).filter((node) => visible(node));"
+        "for (const node of candidates) { const text = String(node.innerText || node.textContent || '').trim(); const aria = node.getAttribute ? String(node.getAttribute('aria-label') || '').trim() : ''; if (labels.some((label) => text.includes(label) || aria.includes(label))) { node.click(); return JSON.stringify({clicked:true, selector:'label_match', label:text || aria}); } }"
+        "return JSON.stringify({clicked:false});"
+        "})()"
+    )
+    payload = _run_raw_cdp_method(
+        websocket_url,
+        "Runtime.evaluate",
+        {"expression": expression, "returnByValue": True},
+        timeout_sec=timeout_sec,
+    )
+    result = cast(dict[str, object], payload.get("result", {}))
+    value = result.get("value", {})
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return {"clicked": False, "raw": value}
+        return (
+            cast(dict[str, object], decoded)
+            if isinstance(decoded, dict)
+            else {"clicked": False}
+        )
+    return cast(dict[str, object], value) if isinstance(value, dict) else {"clicked": False}
+
 _SEND_ACK_TIMEOUT_SEC = 5.0
 _SEND_ACK_POLL_SEC = 0.2
 
@@ -580,6 +617,11 @@ def reset_chatgpt_context(
         {"ignoreCache": True},
         timeout_sec=_raw_cdp_timeout(30.0),
     )
+    new_chat = _start_new_chat(
+        target["webSocketDebuggerUrl"], timeout_sec=_raw_cdp_timeout(10.0)
+    )
+    if not bool(new_chat.get("clicked", False)):
+        raise RuntimeError("chatgpt_new_chat_unavailable")
     sleep_budget = 3.0
     if deadline_ts is not None:
         sleep_budget = min(sleep_budget, max(0.0, deadline_ts - time.time()))
