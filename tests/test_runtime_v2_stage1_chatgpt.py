@@ -16,7 +16,7 @@ from runtime_v2.stage1.chatgpt_runner import (
     build_video_plan_from_topic_spec,
     run_stage1_chatgpt_job,
 )
-from runtime_v2.stage1.chatgpt_backend import reset_chatgpt_context
+from runtime_v2.stage1.chatgpt_backend import CHATGPT_LONGFORM_URL, CHATGPT_LONGFORM_URL_SUBSTRING, reset_chatgpt_context
 from runtime_v2.stage1.chatgpt_backend import chatgpt_context_ready
 from runtime_v2.stage1.parsed_payload import build_stage1_parsed_payload_from_topic_spec
 
@@ -72,6 +72,44 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             side_effect=RuntimeError("missing"),
         ):
             self.assertFalse(chatgpt_context_ready(9222))
+
+    def test_stage1_live_capture_uses_gpt_root_target_not_old_chat_url(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            workspace = root / "workspace"
+            workspace.mkdir(parents=True, exist_ok=True)
+            topic_spec = _topic_spec()
+            topic_spec["url"] = "https://chatgpt.com/g/g-foo/c/old-chat-id"
+            browser_evidence: dict[str, object] = {"service": "chatgpt", "port": 9222}
+
+            with (
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.reset_chatgpt_context"
+                ) as reset_mock,
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                    return_value={
+                        "status": "ok",
+                        "response_text": _gpt_response_text(),
+                        "submit_info": {},
+                        "final_state": {},
+                        "timeline": [],
+                    },
+                ),
+            ):
+                enriched = attach_gpt_response_text_from_browser_evidence(
+                    topic_spec, browser_evidence, workspace=workspace
+                )
+
+        self.assertIn("gpt_response_text", enriched)
+        self.assertEqual(
+            reset_mock.call_args.kwargs["expected_url_substring"],
+            CHATGPT_LONGFORM_URL_SUBSTRING,
+        )
+        self.assertEqual(
+            reset_mock.call_args.kwargs["target_url"],
+            CHATGPT_LONGFORM_URL,
+        )
 
     def test_stage1_resets_context_even_when_context_ready(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

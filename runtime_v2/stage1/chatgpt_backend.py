@@ -617,6 +617,9 @@ def reset_chatgpt_context(
         {"ignoreCache": True},
         timeout_sec=_raw_cdp_timeout(30.0),
     )
+    _wait_for_chatgpt_prompt_ready(
+        target["webSocketDebuggerUrl"], timeout_sec=_raw_cdp_timeout(10.0)
+    )
     new_chat = _start_new_chat(
         target["webSocketDebuggerUrl"], timeout_sec=_raw_cdp_timeout(10.0)
     )

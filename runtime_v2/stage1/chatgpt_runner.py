@@ -21,7 +21,11 @@ from runtime_v2.stage1.parsed_payload import (
 from runtime_v2.stage1.chatgpt_interaction import generate_gpt_response_text
 from runtime_v2.stage1.chatgpt_backend import chatgpt_context_ready
 from runtime_v2.stage1.chatgpt_backend import _default_runner
-from runtime_v2.stage1.chatgpt_backend import reset_chatgpt_context
+from runtime_v2.stage1.chatgpt_backend import (
+    CHATGPT_LONGFORM_URL,
+    CHATGPT_LONGFORM_URL_SUBSTRING,
+    reset_chatgpt_context,
+)
 from runtime_v2.stage1.result_contract import stage1_result_payload
 from runtime_v2.stage2.router import route_video_plan
 from runtime_v2.workers.job_runtime import finalize_worker_result, write_json_atomic
@@ -146,16 +150,15 @@ def attach_gpt_response_text_from_browser_evidence(
             reset_error = ""
             deadline_ts = time() + _LIVE_CAPTURE_TIMEOUT_SEC
             topic_url = str(topic_spec.get("url", "")).strip()
-            expected_url_substring = (
-                topic_url
-                or browser_evidence.get("expected_url_substring", "")
+            expected_url_substring = str(
+                browser_evidence.get("expected_url_substring", "")
                 or CHATGPT_LONGFORM_URL_SUBSTRING
             )
             try:
                 _ = reset_chatgpt_context(
                     raw_port,
-                    expected_url_substring=str(expected_url_substring),
-                    target_url=topic_url or CHATGPT_LONGFORM_URL,
+                    expected_url_substring=expected_url_substring,
+                    target_url=CHATGPT_LONGFORM_URL,
                     deadline_ts=deadline_ts,
                 )
             except RuntimeError as exc:
