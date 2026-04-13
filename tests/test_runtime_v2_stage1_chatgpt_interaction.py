@@ -148,6 +148,46 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertIn("1. first line", response_text)
         self.assertIn("[Title]", response_text)
 
+    def test_generate_gpt_response_text_completes_with_structured_legacy_blocks_even_if_stop_remains(
+        self,
+    ) -> None:
+        backend = mock.Mock()
+        backend.submit_prompt.return_value = {
+            "ok": True,
+            "submit_evidence": {
+                "classification": "sent",
+                "classification_reason": "send_button_clicked",
+                "retry_safe_decision": False,
+            },
+        }
+        backend.read_response_state.return_value = {
+            "has_stop": True,
+            "has_send_button": False,
+            "assistant_block_count": 1,
+            "assistant_text": "[Voice]" + chr(10) + "1. voice line",
+            "legacy_blocks": [
+                {"label": "[Voice]", "body": "1. voice line"},
+                {"label": "[#01]", "body": "scene one"},
+            ],
+            "thinking_stopped": False,
+            "recovery_clicked": False,
+            "upstream_error_retry_exhausted": False,
+        }
+
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_interaction.AgentBrowserCdpBackend",
+            return_value=backend,
+        ):
+            result = generate_gpt_response_text(
+                prompt="hello",
+                timeout_sec=1,
+                poll_interval_sec=0.01,
+                completion_idle_sec=0.01,
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("[#01]", str(result["response_text"]))
+
     def test_generate_gpt_response_text_passes_expected_url_substring_to_backend(
         self,
     ) -> None:

@@ -319,13 +319,16 @@ def generate_gpt_response_text(
                             "legacy_blocks_observed"
                         )
                 saw_streaming = True
+            structured_stage1_content = _has_structured_stage1_content(
+                response_text, legacy_blocks
+            )
             response_ready = (
                 bool(response_text)
                 and saw_streaming
-                and not has_stop
+                and ((not has_stop) or structured_stage1_content)
                 and (
                     not (has_stop and has_send_button)
-                    or _has_structured_stage1_content(response_text, legacy_blocks)
+                    or structured_stage1_content
                 )
             )
             if response_ready:
@@ -585,7 +588,12 @@ def _has_structured_stage1_content(response_text: str, legacy_blocks: object) ->
             if not isinstance(item, dict):
                 continue
             label = str(item.get("label", "")).strip()
-            if label.startswith("[#") or label.lower().startswith("[scene"):
+            normalized_label = label.lower()
+            if (
+                label.startswith("[#")
+                or normalized_label.startswith("[scene")
+                or normalized_label.startswith("[voice")
+            ):
                 return True
     text = response_text.strip()
     if not text:
@@ -597,6 +605,8 @@ def _has_structured_stage1_content(response_text: str, legacy_blocks: object) ->
             "[#02]",
             "[Scene 1]",
             "[Scene 2]",
+            "[Voice]",
+            chr(10) + "1.",
         )
     )
 
