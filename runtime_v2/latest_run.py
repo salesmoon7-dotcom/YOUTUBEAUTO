@@ -75,6 +75,7 @@ def update_latest_run_pointers(
     code: str,
     debug_log: str,
     write_completed: bool,
+    write_active: bool = True,
 ) -> None:
     pointer = build_latest_run_pointer(
         run_id=run_id,
@@ -86,7 +87,8 @@ def update_latest_run_pointers(
         gui_status_path=str(config.gui_status_file),
         events_path=str(config.control_plane_events_file),
     )
-    _ = write_latest_run_pointer(pointer, config.latest_active_run_file)
+    if write_active:
+        _ = write_latest_run_pointer(pointer, config.latest_active_run_file)
     if write_completed:
         _ = write_latest_run_pointer(pointer, config.latest_completed_run_file)
 
@@ -344,6 +346,16 @@ def write_excel_sync_runtime_snapshot(
         write_completed=True,
         artifact_root=artifact_root,
         update_pointers=False,
+    )
+    update_latest_run_pointers(
+        config,
+        run_id=run_id,
+        mode="excel_sync",
+        status=status,
+        code=code,
+        debug_log=debug_log,
+        write_completed=True,
+        write_active=False,
     )
 
 

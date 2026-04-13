@@ -1842,6 +1842,49 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         next_jobs = cast(list[object], result["next_jobs"])
         self.assertEqual(len(next_jobs), 1)
 
+    def test_genspark_worker_uses_shorter_adapter_timeout_for_probe_artifacts(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "probe" / "semantic-row-closeout-test" / "artifacts"
+            output_path = artifact_root / "exports" / "genspark-probe.png"
+            stdout_path = artifact_root / "adapter_stdout.log"
+            stderr_path = artifact_root / "adapter_stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+            job = JobContract(
+                job_id="genspark-probe-timeout",
+                workload="genspark",
+                payload={
+                    "prompt": "probe prompt",
+                    "service_artifact_path": str(output_path),
+                    "use_agent_browser": True,
+                    "adapter_command": [sys.executable, "-c", "pass"],
+                },
+            )
+
+            def fake_run_adapter(*args: object, **kwargs: object) -> dict[str, object]:
+                self.assertEqual(kwargs["timeout_sec"], 1200)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                _ = output_path.write_bytes(b"png")
+                return {
+                    "ok": True,
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "output_path": output_path,
+                    "reused": False,
+                }
+
+            with patch(
+                "runtime_v2.stage2.genspark_worker.run_verified_adapter_command",
+                side_effect=fake_run_adapter,
+            ):
+                result = run_genspark_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+
     def test_genspark_worker_clears_stale_attach_evidence_before_adapter_run(
         self,
     ) -> None:

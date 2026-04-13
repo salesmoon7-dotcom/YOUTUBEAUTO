@@ -43,6 +43,11 @@ def _normalized_service_artifact_path(job: JobContract, artifact_root: Path) -> 
     return str((artifact_root_resolved / candidate.name).resolve())
 
 
+def _genspark_adapter_timeout_sec(artifact_root: Path) -> int:
+    resolved = artifact_root.resolve()
+    return 1200 if "probe" in {part.lower() for part in resolved.parts} else 3600
+
+
 def run_genspark_job(
     job: JobContract, artifact_root: Path, registry_file: Path | None = None
 ) -> dict[str, object]:
@@ -92,6 +97,7 @@ def run_genspark_job(
             service_artifact_path=str(job.payload.get("service_artifact_path", "")),
             adapter_error_code="genspark_adapter_failed",
             extra_env=canonical_stage2_adapter_env(),
+            timeout_sec=_genspark_adapter_timeout_sec(artifact_root),
         )
         stdout_path = Path(str(adapter_result["stdout_path"]))
         stderr_path = Path(str(adapter_result["stderr_path"]))
