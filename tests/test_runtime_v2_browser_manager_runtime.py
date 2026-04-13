@@ -55,6 +55,42 @@ class RuntimeV2BrowserManagerRuntimeTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(ready_mock.call_count, 3)
 
+    def test_launch_debug_browser_does_not_short_circuit_on_foreign_open_port(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            session = BrowserSession(
+                service="chatgpt",
+                group="llm",
+                session_id="primary",
+                port=9222,
+                profile_dir=str(Path(tmp_dir) / "profile"),
+                status="stopped",
+                browser_family="chrome",
+            )
+
+            with (
+                patch(
+                    "runtime_v2.browser.manager._probe_local_port",
+                    return_value=True,
+                ),
+                patch(
+                    "runtime_v2.browser.manager._list_debug_tabs",
+                    return_value=[{"url": "https://www.seaart.ai/ko/create/image"}],
+                ),
+                patch(
+                    "runtime_v2.browser.manager.acquire_profile_lock"
+                ) as acquire_lock,
+                patch(
+                    "runtime_v2.browser.manager.subprocess.Popen"
+                ) as popen_mock,
+            ):
+                ok = browser_manager._launch_debug_browser(session)
+
+        self.assertFalse(ok)
+        acquire_lock.assert_not_called()
+        popen_mock.assert_not_called()
+
     def test_session_snapshots_exposes_cdp_endpoint_truth(self) -> None:
         manager = BrowserManager()
         manager.running = True

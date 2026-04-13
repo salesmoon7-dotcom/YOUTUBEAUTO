@@ -1188,8 +1188,15 @@ def expected_title_substring_for_service(service: str) -> str:
 
 def _launch_debug_browser(session: BrowserSession) -> bool:
     if _probe_local_port(session.port):
-        _clear_lock_result(session)
-        return True
+        tabs = _list_debug_tabs(session)
+        for tab in tabs:
+            raw_url = str(tab.get("url", "")).strip()
+            if _tab_matches_ready_rules(session.service, raw_url):
+                _clear_lock_result(session)
+                return True
+        session.status = "unhealthy"
+        session.blocked_reason = "port_open_foreign_tabs"
+        return False
     executable = _resolve_browser_executable(session.service)
     if executable is None:
         session.status = "stopped"
