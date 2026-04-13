@@ -720,6 +720,7 @@ def _recover_agent_browser_service(service: str) -> None:
         registry_file=cfg.browser_registry_file,
         health_file=cfg.browser_health_file,
         run_id=f"agent-browser-recover-{service}",
+        force_unhealthy_service=service,
         recover_unhealthy=True,
         restart_threshold=1,
         cooldown_sec=0,

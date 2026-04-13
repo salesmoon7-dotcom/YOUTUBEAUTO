@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import cast
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from runtime_v2.stage2.agent_browser_adapter import (
     build_stage2_agent_browser_adapter_command,
@@ -16,6 +16,32 @@ from runtime_v2.control_plane import _run_worker
 
 
 class RuntimeV2AgentBrowserTests(unittest.TestCase):
+    def test_recover_agent_browser_service_forces_target_service_unhealthy(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import _recover_agent_browser_service
+
+        manager = MagicMock()
+        supervisor = MagicMock()
+
+        with (
+            patch(
+                "runtime_v2.workers.agent_browser_worker.BrowserManager",
+                return_value=manager,
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker.BrowserSupervisor",
+                return_value=supervisor,
+            ),
+        ):
+            _recover_agent_browser_service("genspark")
+
+        manager.start.assert_called_once_with()
+        tick_kwargs = supervisor.tick.call_args.kwargs
+        self.assertEqual(tick_kwargs["force_unhealthy_service"], "genspark")
+        self.assertEqual(tick_kwargs["restart_threshold"], 1)
+        self.assertEqual(tick_kwargs["cooldown_sec"], 0)
+
     def test_agent_browser_workload_is_registered(self) -> None:
         self.assertIn("agent_browser_verify", allowed_workloads())
 
