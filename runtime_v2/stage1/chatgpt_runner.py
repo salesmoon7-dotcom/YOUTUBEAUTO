@@ -31,7 +31,7 @@ from runtime_v2.stage2.router import route_video_plan
 from runtime_v2.workers.job_runtime import finalize_worker_result, write_json_atomic
 
 
-_LIVE_CAPTURE_TIMEOUT_SEC = 300
+_LIVE_CAPTURE_TIMEOUT_SEC = 600
 _LIVE_CAPTURE_RESPONSE_START_TIMEOUT_SEC = 30.0
 
 

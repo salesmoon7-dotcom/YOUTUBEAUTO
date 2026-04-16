@@ -963,7 +963,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertEqual(
             cast(dict[str, object], enriched["gpt_capture"])["status"], "failed"
         )
-        self.assertEqual(generate_mock.call_args.kwargs["timeout_sec"], 300)
+        self.assertEqual(generate_mock.call_args.kwargs["timeout_sec"], 600)
         self.assertEqual(
             generate_mock.call_args.kwargs["response_start_timeout_sec"], 30.0
         )
