@@ -731,11 +731,15 @@ def _agent_browser_error_code(exc: Exception) -> str:
     return "AGENT_BROWSER_VERIFY_FAILED"
 
 
-def _recover_agent_browser_service(service: str) -> None:
+def _recover_agent_browser_service(service: str, *, artifact_root: Path | None = None) -> None:
     manager = BrowserManager()
     manager.start()
     supervisor = BrowserSupervisor(manager)
-    cfg = RuntimeConfig()
+    if artifact_root is None:
+        cfg = RuntimeConfig()
+    else:
+        probe_root = artifact_root.parent if artifact_root.name == "artifacts" else artifact_root
+        cfg = RuntimeConfig.from_root(probe_root)
     _ = supervisor.tick(
         registry_file=cfg.browser_registry_file,
         health_file=cfg.browser_health_file,
@@ -999,7 +1003,7 @@ def run_agent_browser_verify_job(
         except RuntimeError as exc:
             if service in {"genspark", "seaart"} and not recovery_attempted:
                 recovery_attempted = True
-                _recover_agent_browser_service(service)
+                _recover_agent_browser_service(service, artifact_root=artifact_root)
                 try:
                     transcript, selected_tab, current_url, current_title, snapshot_path = (
                         _run_verify_once()

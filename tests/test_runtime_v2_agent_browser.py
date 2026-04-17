@@ -16,6 +16,41 @@ from runtime_v2.control_plane import _run_worker
 
 
 class RuntimeV2AgentBrowserTests(unittest.TestCase):
+    def test_recover_agent_browser_service_uses_probe_root_runtime_config(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import _recover_agent_browser_service
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            manager = MagicMock()
+            supervisor = MagicMock()
+            cfg = MagicMock()
+            cfg.browser_registry_file = root / "health" / "browser_session_registry.json"
+            cfg.browser_health_file = root / "health" / "browser_health.json"
+
+            with (
+                patch(
+                    "runtime_v2.workers.agent_browser_worker.BrowserManager",
+                    return_value=manager,
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker.BrowserSupervisor",
+                    return_value=supervisor,
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker.RuntimeConfig.from_root",
+                    return_value=cfg,
+                ) as from_root_mock,
+            ):
+                _recover_agent_browser_service("genspark", artifact_root=artifact_root)
+
+        from_root_mock.assert_called_once_with(root)
+        tick_kwargs = supervisor.tick.call_args.kwargs
+        self.assertEqual(tick_kwargs["registry_file"], cfg.browser_registry_file)
+        self.assertEqual(tick_kwargs["health_file"], cfg.browser_health_file)
+
     def test_recover_agent_browser_service_forces_target_service_unhealthy(
         self,
     ) -> None:
