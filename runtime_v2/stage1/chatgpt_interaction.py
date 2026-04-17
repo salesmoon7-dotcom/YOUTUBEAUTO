@@ -339,12 +339,13 @@ def generate_gpt_response_text(
                     last_activity_ts = time.time()
                 last_text = response_text
                 idle_elapsed = time.time() - last_activity_ts
-                if stable_count >= 1 and idle_elapsed >= completion_idle_sec:
+                terminal_stage1_blocks = _has_terminal_stage1_blocks(legacy_blocks)
+                if terminal_stage1_blocks or (stable_count >= 1 and idle_elapsed >= completion_idle_sec):
                     emit(
                         "response_stable",
                         attempt=attempt,
                         backend="chatgpt_backend",
-                        final_state_code="ok",
+                        final_state_code="ok_terminal_blocks" if terminal_stage1_blocks else "ok",
                     )
                     result: dict[str, object] = {
                         "status": "ok",
@@ -357,7 +358,7 @@ def generate_gpt_response_text(
                         "final_state",
                         attempt=attempt,
                         final_state="success",
-                        final_state_code="ok",
+                        final_state_code="ok_terminal_blocks" if terminal_stage1_blocks else "ok",
                     )
                     result["timeline"] = timeline
                     return result
@@ -581,6 +582,23 @@ def _response_text_from_state(text: str, legacy_blocks: object) -> str:
         if body.lower() in status_only or body in {"지금 응답 받기", "다시 시도"}:
             return ""
     return normalized
+
+def _has_terminal_stage1_blocks(legacy_blocks: object) -> bool:
+    if not isinstance(legacy_blocks, list):
+        return False
+    labels = {
+        str(item.get("label", "")).strip().lower()
+        for item in legacy_blocks
+        if isinstance(item, dict)
+    }
+    has_scene = any(label.startswith("[#") or label.startswith("[scene") for label in labels)
+    has_voice = any(label.startswith("[voice") for label in labels)
+    has_terminal = any(
+        label.startswith("[shorts voice") or label.startswith("[shorts clip mapping")
+        for label in labels
+    )
+    return has_scene and has_voice and has_terminal
+
 
 def _has_structured_stage1_content(response_text: str, legacy_blocks: object) -> bool:
     if isinstance(legacy_blocks, list):
