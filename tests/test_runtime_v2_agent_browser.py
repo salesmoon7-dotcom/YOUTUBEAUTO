@@ -344,6 +344,113 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
 
         self.assertIs(target, last_visible)
 
+    def test_canva_background_generate_reuses_visible_iframe_before_tab_click(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import _playwright_canva_background_generate
+
+        class FakeNode:
+            def __init__(self, box) -> None:
+                self._box = box
+                self.clicked = False
+                self.filled = ""
+
+            def bounding_box(self):
+                return self._box
+
+            def click(self, timeout=None, force=False):
+                self.clicked = True
+
+            def fill(self, value: str, timeout=None):
+                self.filled = value
+
+            @property
+            def first(self):
+                return self
+
+            def count(self) -> int:
+                return 1
+
+        class FakeLocatorList:
+            def __init__(self, items) -> None:
+                self._items = items
+
+            def count(self) -> int:
+                return len(self._items)
+
+            def nth(self, index: int):
+                return self._items[index]
+
+            @property
+            def first(self):
+                return self._items[0]
+
+        class FakeFrame:
+            def __init__(self) -> None:
+                self.input = FakeNode({"width": 100, "height": 20})
+                self.generate = FakeNode({"width": 80, "height": 20})
+
+            def locator(self, selector: str):
+                if selector == "textarea,[role=textbox],input[type=text]":
+                    return FakeLocatorList([self.input])
+                raise AssertionError(selector)
+
+            def get_by_role(self, role: str, name: str):
+                if role == "button" and name == "생성":
+                    return self.generate
+                raise AssertionError((role, name))
+
+        class FakeHandle:
+            def __init__(self, frame):
+                self._frame = frame
+
+            def content_frame(self):
+                return self._frame
+
+        class FakeIframe:
+            @property
+            def first(self):
+                return self
+
+            def count(self) -> int:
+                return 1
+
+            def element_handle(self, timeout=None):
+                return FakeHandle(frame)
+
+        class FakePage:
+            def __init__(self) -> None:
+                self.keyboard = MagicMock()
+                self.tab = FakeNode({"width": 90, "height": 20})
+                self.wait_calls = 0
+
+            def wait_for_timeout(self, ms: int):
+                self.wait_calls += 1
+                return None
+
+            def locator(self, selector: str, has_text=None):
+                if selector == 'button[role="tab"]':
+                    return self.tab
+                if selector == 'iframe[title="Product Background"]':
+                    return FakeIframe()
+                raise AssertionError((selector, has_text))
+
+        frame = FakeFrame()
+        page = FakePage()
+        browser = MagicMock()
+
+        with patch(
+            "runtime_v2.workers.agent_browser_worker._select_canva_page",
+            return_value=(browser, page),
+        ):
+            result = _playwright_canva_background_generate(
+                port=9666, bg_prompt="hello", timeout_sec=30
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertFalse(page.tab.clicked)
+        self.assertEqual(frame.input.filled, "hello")
+
     def test_agent_browser_verify_skips_snapshot_for_non_chatgpt_services(self) -> None:
         from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
 

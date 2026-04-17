@@ -194,15 +194,21 @@ def _playwright_canva_background_generate(
 ) -> dict[str, object]:
     browser, page = _select_canva_page(port)
     try:
-        page.keyboard.press("Escape")
-        page.wait_for_timeout(500)
-
-        tab = page.locator('button[role="tab"]', has_text="Product Background").first
-        tab.click(timeout=5000)
-        page.wait_for_timeout(1500)
-
         iframe = page.locator('iframe[title="Product Background"]').first
         frame = None
+        if iframe.count() > 0:
+            handle = iframe.element_handle(timeout=3000)
+            frame = handle.content_frame() if handle is not None else None
+
+        if frame is None:
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(500)
+
+            tab = page.locator('button[role="tab"]', has_text="Product Background").first
+            tab.click(timeout=5000)
+            page.wait_for_timeout(1500)
+
+            iframe = page.locator('iframe[title="Product Background"]').first
         for index in range(10):
             if iframe.count() > 0:
                 handle = iframe.element_handle(timeout=3000)
