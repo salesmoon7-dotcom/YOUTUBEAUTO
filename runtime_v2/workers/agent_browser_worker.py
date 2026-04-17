@@ -177,6 +177,18 @@ def _playwright_edit_canva_colored_text(
         browser.close()
 
 
+def _click_visible_page_locator(page, selector: str, *, has_text: str | None = None) -> bool:
+    try:
+        locator = page.locator(selector, has_text=has_text) if has_text is not None else page.locator(selector)
+    except Exception:
+        return False
+    target = _last_visible_locator(locator)
+    if target is None:
+        return False
+    target.click(timeout=3000)
+    return True
+
+
 def _playwright_canva_background_generate(
     *, port: int, bg_prompt: str, timeout_sec: int
 ) -> dict[str, object]:
@@ -190,27 +202,29 @@ def _playwright_canva_background_generate(
         page.wait_for_timeout(1500)
 
         iframe = page.locator('iframe[title="Product Background"]').first
-        if iframe.count() == 0:
-            return {
-                "ok": False,
-                "error": "PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE",
-            }
-
-        handle = iframe.element_handle(timeout=3000)
-        frame = handle.content_frame() if handle is not None else None
+        frame = None
+        for index in range(10):
+            if iframe.count() > 0:
+                handle = iframe.element_handle(timeout=3000)
+                frame = handle.content_frame() if handle is not None else None
+                if frame is not None:
+                    break
+            if index == 1:
+                if _click_visible_page_locator(page, '[aria-label="캔버스 진입점"]'):
+                    page.wait_for_timeout(800)
+                for label in ("배경 생성", "Create background", "Background generator"):
+                    if _click_visible_page_locator(page, 'button,[role=button]', has_text=label):
+                        break
+            page.wait_for_timeout(500)
         if frame is None:
             return {
                 "ok": False,
                 "error": "PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE",
             }
 
-        prompt_input = frame.locator("textarea,[role=textbox],input[type=text]").first
-        prompt_visible = False
-        if prompt_input.count() > 0:
-            try:
-                prompt_visible = bool(prompt_input.bounding_box())
-            except Exception:
-                prompt_visible = False
+        prompt_candidates = frame.locator("textarea,[role=textbox],input[type=text]")
+        prompt_input = _last_visible_locator(prompt_candidates)
+        prompt_visible = prompt_input is not None
 
         if not prompt_visible:
             file_select = frame.get_by_role("button", name="파일 선택하기")
