@@ -1080,6 +1080,8 @@ def run_agent_browser_verify_job(
                 "port": port,
                 "transcript_path": str(transcript_path.resolve()),
                 "failure_reason": str(exc),
+                "current_url": current_url,
+                "current_title": current_title,
             },
             completion={"state": "blocked", "final_output": False},
         )
@@ -1107,6 +1109,8 @@ def run_agent_browser_verify_job(
                 "transcript_path": str(transcript_path.resolve()),
                 "failure_reason": str(exc),
                 "exception_type": exc.__class__.__name__,
+                "current_url": current_url,
+                "current_title": current_title,
             },
             completion={"state": "blocked", "final_output": False},
         )
