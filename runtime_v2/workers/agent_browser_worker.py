@@ -185,7 +185,10 @@ def _click_visible_page_locator(page, selector: str, *, has_text: str | None = N
     target = _last_visible_locator(locator)
     if target is None:
         return False
-    target.click(timeout=3000)
+    try:
+        target.click(timeout=3000)
+    except Exception:
+        return False
     return True
 
 
@@ -837,6 +840,8 @@ def run_agent_browser_verify_job(
     )
 
     transcript: list[dict[str, object]] = []
+    current_url = ""
+    current_title = ""
     timeout_sec = _service_timeout_sec(service)
     capture_snapshot = _snapshot_required(service, job.payload)
     recovery_attempted = False
