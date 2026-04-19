@@ -208,8 +208,13 @@ def _playwright_canva_background_generate(
         panel_id = str(panel_id or '').strip()
         if panel_id:
             panel = page.locator(f'#{panel_id}')
-            prompt_candidates = panel.locator("textarea,[role=textbox],input[type=text]")
-            prompt_input = _last_visible_locator(prompt_candidates)
+            prompt_input = None
+            for _ in range(8):
+                prompt_candidates = panel.locator("textarea,[role=textbox],input[type=text]")
+                prompt_input = _last_visible_locator(prompt_candidates)
+                if prompt_input is not None:
+                    break
+                page.wait_for_timeout(500)
             if prompt_input is not None:
                 prompt_input.fill(bg_prompt, timeout=timeout_sec * 1000)
                 if _click_visible_page_locator(panel, 'button,[role=button]', has_text="생성"):
