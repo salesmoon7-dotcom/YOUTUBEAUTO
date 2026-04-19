@@ -200,8 +200,7 @@ def _playwright_canva_background_generate(
         page.keyboard.press("Escape")
         page.wait_for_timeout(500)
 
-        tab = page.locator('button[role="tab"]', has_text="Product Background").first
-        tab.click(timeout=5000)
+        page.evaluate("""(async () => { const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms)); const tabs = Array.from(document.querySelectorAll('button[role="tab"][aria-controls], [role=tab][aria-controls]')); const target = tabs.find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경'); }); if (!(target instanceof HTMLElement)) return false; target.focus(); target.click(); await wait(300); if ((target.getAttribute('aria-selected') || '') === 'true') return true; target.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); target.dispatchEvent(new KeyboardEvent('keyup', {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); await wait(300); if ((target.getAttribute('aria-selected') || '') === 'true') return true; target.dispatchEvent(new KeyboardEvent('keydown', {key:' ', code:'Space', keyCode:32, which:32, bubbles:true})); target.dispatchEvent(new KeyboardEvent('keyup', {key:' ', code:'Space', keyCode:32, which:32, bubbles:true})); await wait(300); return (target.getAttribute('aria-selected') || '') === 'true'; })()""")
         page.wait_for_timeout(1500)
 
         panel_id = page.evaluate("""(() => { const target = Array.from(document.querySelectorAll('button[role="tab"][aria-controls], [role="tab"][aria-controls]')).find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경'); }); return target ? (target.getAttribute('aria-controls') || '') : ''; })()""")
