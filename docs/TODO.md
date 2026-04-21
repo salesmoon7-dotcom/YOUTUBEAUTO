@@ -6,7 +6,7 @@
 - `docs/plans/2026-03-11-runtime-v2-residual-drift-remediation-plan.md` - 최신 배치(Task 1~4 성격) 구현/검증은 반영 완료되었습니다. 이번 배치로 `single writer`, `failure contract canonical mapping`, `_run_worker dispatch cleanup`를 코드/테스트 기준으로 잠갔고, final verification gate(`control_plane_chain/evidence/browser_plane/error_codes/latest_run/debug_log + py_compile`)를 통과했습니다. 다음 active goal은 broad rerun이 아니라 `single scene/service` 기준의 MVP 1회 산출 증거를 닫는 것입니다.
 - `docs/plans/2026-04-01-runtime-v2-closeout-retest-result.md` - `Sheet1!row15` detached closeout 1회는 `D:\YOUTUBEAUTO_RUNTIME\probe\semantic-row-closeout-20260411-02\probe_result.json` + `evidence\failure_summary.json`으로 계약상 닫혔습니다. 현재 reading은 `closed failed retest`이며, 다음 active goal은 broad rerun이 아니라 이 closeout이 드러낸 단일 blocker `missing_scene_prompts`를 stage1 truth boundary에서 해결하는 것입니다.
 - `docs/plans/2026-03-11-runtime-v2-chat-safe-execution-remediation-plan.md` - 완료됨. 상세 실행/정리 결과는 해당 plan, `docs/plans/2026-03-11-chat-interruption-structure-remediation-plan.md`, `docs/plans/2026-03-11-chat-interruption-remediation-batches-plan.md`, `docs/COMPLETED.md`를 기준으로 봅니다.
-- `docs/plans/2026-03-11-runtime-v2-repo-root-dependency-remediation-plan.md` - 진행 예정. 정밀 재판정 기준으로 `브라우저 세션 외부화는 상당 부분 완료`, `런타임 상태/아티팩트 repo-root 기본값은 잔존`으로 분리해 후속 정리를 진행합니다.
+- `docs/plans/2026-03-11-runtime-v2-repo-root-dependency-remediation-plan.md` - Task 2는 완료 상태입니다. `runtime_state_root()` helper와 기본 `RuntimeConfig()` state/evidence/artifact/logs roots는 이미 external runtime root를 사용하고, 관련 회귀는 `tests/test_runtime_v2_chat_safe_execution.py`로 고정되어 있습니다. 남은 것은 Task 3 이후 범위(artifact/output root bias 추가 정리)와 문서 표현 정리뿐입니다.
 
 - `docs/plans/2026-03-09-runtime-v2-guardrail-drift-remediation-plan.md` - 완료됨. 상세 구현/검증은 plan 및 `docs/COMPLETED.md`를 기준으로 봅니다.
 - 구조 review 기록: `docs/plans/2026-03-11-control-plane-hotspot-review.md` - 현재 결정은 `no new unit`이며, 재오픈은 별도 architecture review unit으로만 허용합니다.
@@ -119,6 +119,10 @@
   - final artifact source는 misleading downloaded PNG 대신 raw CDP canvas crop을 사용하도록 바꿨습니다.
   - fresh real Canva boundary는 다시 `status=ok`, `final_output=true`로 닫히며, final artifact에는 요청 텍스트 `介護施設 / いくら必要？`가 실제로 확인됩니다.
   - `text_edit_ok=false`와 `remove_background_ok=false`는 최신 live evidence와 비교했을 때 false negative 성격이라 현재 gate에서는 비차단으로 정리했습니다.
+- 2026-04-20 canva hold note:
+  - `canva`는 현재 first terminal failure가 반복적으로 `CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT`로 surface되며, live Canva 상태가 사용자 스크린샷 상태와 자주 어긋납니다.
+  - 따라서 현재 `canva`는 별도 보류 축으로 두고, exact sequence/DOM evidence가 다시 맞춰질 때만 재개합니다.
+  - non-Canva 작업은 이 보류와 독립적으로 계속 진행합니다.
 - 2026-03-25 canva text-fidelity stop point:
   - current low-page flow에서 final canvas crop은 이제 일관되게 요청 텍스트 `介護施設 / いくら必要？`를 보여 줍니다.
   - 즉 Canva 상호작용/페이지 라우팅/텍스트 편집은 현재 배치에서 복구됐습니다.
