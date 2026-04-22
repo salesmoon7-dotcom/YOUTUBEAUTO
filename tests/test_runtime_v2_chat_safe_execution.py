@@ -91,6 +91,27 @@ class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
         self.assertEqual(workspace, artifact_root / job.workload / job.job_id)
         self.assertNotIn(r"D:\YOUTUBEAUTO\system\runtime_v2\artifacts", str(workspace))
 
+    def test_prepare_workspace_namespaces_run_id_under_job_directory(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "external-artifacts"
+            job = JobContract(
+                job_id="chatgpt-sheet1-15",
+                workload="chatgpt",
+                checkpoint_key="seed:chatgpt-sheet1-15",
+                payload={"run_id": "run-123"},
+            )
+
+            workspace = prepare_workspace(job, artifact_root=artifact_root)
+            started_payload = json.loads(
+                (workspace / "started.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(
+            workspace,
+            artifact_root / job.workload / job.job_id / "run-123",
+        )
+        self.assertEqual(started_payload["run_id"], "run-123")
+
     def test_default_runtime_config_uses_external_runtime_state_root(self) -> None:
         config = RuntimeConfig()
         state_root = runtime_state_root()

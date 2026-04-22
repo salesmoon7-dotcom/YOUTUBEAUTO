@@ -16,7 +16,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 def prepare_workspace(job: JobContract, artifact_root: Path | None = None) -> Path:
     resolved_root = artifact_root or RuntimeConfig().artifact_root
+    run_id = str(job.payload.get("run_id", "")).strip()
     workspace = resolved_root / job.workload / job.job_id
+    if run_id:
+        workspace = workspace / run_id
     workspace.mkdir(parents=True, exist_ok=True)
     _ = write_json_atomic(workspace / "job.json", job.to_dict())
     _ = write_json_atomic(
@@ -25,7 +28,7 @@ def prepare_workspace(job: JobContract, artifact_root: Path | None = None) -> Pa
             "status": "started",
             "job_id": job.job_id,
             "workload": job.workload,
-            "run_id": str(job.payload.get("run_id", "")),
+            "run_id": run_id,
             "started_at": __import__("time").time(),
         },
     )
