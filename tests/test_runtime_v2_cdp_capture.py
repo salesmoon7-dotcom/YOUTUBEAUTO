@@ -6,6 +6,7 @@ import tempfile
 import urllib.error
 import urllib.request
 import unittest
+from typing import cast
 from email.message import Message
 from pathlib import Path
 from unittest.mock import patch
@@ -501,6 +502,98 @@ class RuntimeV2CdpCaptureTests(unittest.TestCase):
                 self.assertTrue(asset_path.exists())
                 self.assertEqual(asset_path.read_bytes(), b"video-bytes")
                 self.assertEqual(len(sha256), 64)
+
+
+    def test_collect_browser_debug_state_accepts_genspark_result_tab_for_default_expected_url(
+        self,
+    ) -> None:
+        class FakeResponse:
+            def __init__(self, payload: object) -> None:
+                self._payload = payload
+
+            def read(self) -> bytes:
+                return json.dumps(self._payload, ensure_ascii=True).encode("utf-8")
+
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+                _ = (exc_type, exc, tb)
+                return None
+
+        def fake_urlopen(url: str, timeout: int = 10) -> FakeResponse:
+            _ = timeout
+            if url == "http://127.0.0.1:9333/json/list":
+                return FakeResponse(
+                    [
+                        {
+                            "type": "page",
+                            "url": "https://www.genspark.ai/agents?type=image_generation_agent",
+                            "title": "AI image",
+                            "webSocketDebuggerUrl": "ws://agent",
+                        },
+                        {
+                            "type": "page",
+                            "url": "https://www.genspark.ai/agents?id=fresh",
+                            "title": "Genspark Agents",
+                            "webSocketDebuggerUrl": "ws://fresh",
+                        },
+                    ]
+                )
+            raise AssertionError(url)
+
+        def fake_cdp(
+            ws_url: str, *, method: str, params: dict[str, object]
+        ) -> dict[str, object]:
+            _ = method
+            _ = params
+            return {
+                "result": {
+                    "result": {
+                        "value": json.dumps(
+                            {
+                                "url": "https://www.genspark.ai/agents?id=fresh",
+                                "title": "Genspark Agents",
+                                "textarea": "",
+                                "followupSent": False,
+                                "regenerateClicked": False,
+                                "body": "ready",
+                                "images": [],
+                            },
+                            ensure_ascii=True,
+                        )
+                    }
+                }
+            }
+
+        with (
+            patch(
+                "runtime_v2.agent_browser.cdp_capture.urllib.request.urlopen",
+                side_effect=fake_urlopen,
+            ),
+            patch(
+                "runtime_v2.agent_browser.cdp_capture._cdp_command",
+                side_effect=fake_cdp,
+            ),
+        ):
+            from runtime_v2.agent_browser.cdp_capture import collect_browser_debug_state
+
+            payload = cast(
+                dict[str, object],
+                collect_browser_debug_state(
+                    port=9333,
+                    expected_url_substring="genspark.ai/agents?type=image_generation_agent",
+                    service="genspark",
+                ),
+            )
+
+        selected_target = cast(dict[str, object], payload["selected_target"])
+        self.assertEqual(
+            selected_target["url"],
+            "https://www.genspark.ai/agents?id=fresh",
+        )
+        dom_state = cast(dict[str, object], payload["dom_state"])
+        self.assertEqual(dom_state["title"], "Genspark Agents")
 
 
 if __name__ == "__main__":

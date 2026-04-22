@@ -2833,27 +2833,30 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                         )
                         sleep(5)
                     sleep(2)
-            capture_url = (
-                str(
-                    cast(dict[str, object], result.get("details", {})).get(
-                        "current_url", expected_url_substring
-                    )
-                ).strip()
-                or expected_url_substring
-            )
+            details = cast(dict[str, object], result.get("details", {}))
+            current_url = str(details.get("current_url", "")).strip()
+            capture_url = current_url or expected_url_substring
             if service == "genspark":
-                if not capture_url.startswith("https://www.genspark.ai/agents?id="):
-                    capture_url = _latest_genspark_result_url(args.port)
-                if not capture_url.startswith("https://www.genspark.ai/agents?id="):
-                    raise RuntimeError("GENSPARK_RESULT_TAB_UNPINNED")
-                _ = write_functional_evidence_bundle(
-                    workspace=workspace,
-                    service=service,
-                    port=args.port,
-                    expected_url_substring=capture_url,
-                    service_artifact_path=target_path,
-                    image_url_override=ready_image_url,
-                )
+                            latest_capture_url = None
+                            if current_url and not capture_url.startswith("https://www.genspark.ai/agents?id="):
+                                try:
+                                    latest_capture_url = _latest_genspark_result_url(args.port)
+                                except Exception:
+                                    latest_capture_url = None
+                                if isinstance(latest_capture_url, str) and latest_capture_url.startswith(
+                                    "https://www.genspark.ai/agents?id="
+                                ):
+                                    capture_url = latest_capture_url
+                                elif latest_capture_url == "":
+                                    raise RuntimeError("GENSPARK_RESULT_TAB_UNPINNED")
+                            _ = write_functional_evidence_bundle(
+                                workspace=workspace,
+                                service=service,
+                                port=args.port,
+                                expected_url_substring=capture_url,
+                                service_artifact_path=target_path,
+                                image_url_override=ready_image_url,
+                            )
             else:
                 _ = write_functional_evidence_bundle(
                     workspace=workspace,

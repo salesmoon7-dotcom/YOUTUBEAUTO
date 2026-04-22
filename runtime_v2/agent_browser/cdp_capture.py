@@ -296,6 +296,28 @@ def _select_page_target(port: int, expected_url_substring: str) -> dict[str, str
                     "webSocketDebuggerUrl": str(item.get("webSocketDebuggerUrl", "")),
                     "url": url,
                 }
+    if expected_url_substring == expected_url_substring_for_service("genspark"):
+        genspark_result_pages: list[dict[str, object]] = []
+        genspark_agent_pages: list[dict[str, object]] = []
+        for item in pages:
+            if str(item.get("type", "")) != "page":
+                continue
+            url = str(item.get("url", ""))
+            if url.startswith("https://www.genspark.ai/agents?id="):
+                genspark_result_pages.append(item)
+                continue
+            if expected_url_substring in url:
+                genspark_agent_pages.append(item)
+        for item in reversed(genspark_result_pages):
+            return {
+                "webSocketDebuggerUrl": str(item.get("webSocketDebuggerUrl", "")),
+                "url": str(item.get("url", "")),
+            }
+        for item in reversed(genspark_agent_pages):
+            return {
+                "webSocketDebuggerUrl": str(item.get("webSocketDebuggerUrl", "")),
+                "url": str(item.get("url", "")),
+            }
     for item in pages:
         if str(item.get("type", "")) != "page":
             continue
