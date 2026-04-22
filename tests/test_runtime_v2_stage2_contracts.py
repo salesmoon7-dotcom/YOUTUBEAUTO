@@ -60,7 +60,7 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
         )
         self.assertEqual(str(render_spec["contract_version"]), "1.1")
         self.assertEqual(cast(list[object], render_spec["audio_refs"]), [])
-        self.assertEqual(str(first_timeline["asset_kind"]), "image")
+        self.assertEqual(str(first_timeline["asset_kind"]), "video")
         self.assertEqual(int(cast(int, first_timeline["duration_sec"])), 8)
         self.assertEqual(render_job["worker"], "render")
         self.assertEqual(render_payload["run_id"], "stage2-run-1")
@@ -133,10 +133,9 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
 
             jobs, _ = build_stage2_jobs(video_plan)
 
-        self.assertEqual(len(jobs), 6)
-        last_job = cast(dict[str, object], jobs[-2]["job"])
-        self.assertEqual(last_job["worker"], "genspark")
-        self.assertEqual(cast(dict[str, object], jobs[-1]["job"])["worker"], "render")
+        self.assertEqual(len(jobs), 7)
+        workers = [cast(dict[str, object], item["job"])["worker"] for item in jobs]
+        self.assertEqual(workers, ["genspark", "seaart", "geminigen", "canva", "genspark", "kenburns", "render"])
 
     def test_stage2_jobs_assign_kenburns_manifest_ssot_under_asset_root(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -553,10 +552,7 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
                 "line2": "",
             },
         )
-        self.assertEqual(
-            str(canva_payload["ref_img"]).replace("\\", "/"),
-            "D:/YOUTUBEAUTO/images/genspark-stage2-run-1-1.png",
-        )
+        self.assertNotIn("ref_img", canva_payload)
 
 
 if __name__ == "__main__":
