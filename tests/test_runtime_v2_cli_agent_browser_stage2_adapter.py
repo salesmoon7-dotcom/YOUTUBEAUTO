@@ -1597,7 +1597,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             ):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
-            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+            self.assertEqual(exit_code, exit_codes.ADAPTER_FAIL)
             evidence = json.loads(
                 (root / "attach_evidence.json").read_text(encoding="utf-8")
             )
@@ -1750,7 +1750,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             ):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
-            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+            self.assertEqual(exit_code, exit_codes.ADAPTER_FAIL)
             evidence = json.loads(
                 (root / "attach_evidence.json").read_text(encoding="utf-8")
             )
@@ -2703,7 +2703,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             ):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
-            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+            self.assertEqual(exit_code, exit_codes.ADAPTER_FAIL)
             self.assertEqual(verify_mock.call_count, 1)
             evidence = json.loads(
                 (root / "attach_evidence.json").read_text(encoding="utf-8")
@@ -2872,7 +2872,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             ):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
-            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+            self.assertEqual(exit_code, exit_codes.ADAPTER_FAIL)
             evidence = json.loads(
                 (root / "attach_evidence.json").read_text(encoding="utf-8")
             )
@@ -2882,6 +2882,67 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             entries = cast(list[object], retry_payload["entries"])
             self.assertGreaterEqual(len(entries), 4)
             self.assertFalse(output_path.exists())
+
+    def test_stage2_adapter_child_surfaces_genspark_not_ready_over_browser_unhealthy(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "scene-01.png"
+            args = CliArgs()
+            args.service = "genspark"
+            args.port = 9333
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "genspark.ai"
+            args.expected_title_substring = "Genspark"
+
+            responses: list[object] = []
+            for payload in [
+                '{"ok":false,"error":"GENSPARK_IMAGE_NOT_READY"}',
+                '{"ok":true,"question_marks":1}',
+                '{"ok":false,"error":"GENSPARK_IMAGE_NOT_READY"}',
+            ]:
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", payload)
+                setattr(completed, "stderr", "")
+                setattr(completed, "returncode", 0)
+                responses.append(completed)
+
+            def fake_run(*args_: object, **kwargs: object) -> object:
+                _ = kwargs
+                if responses:
+                    return responses.pop(0)
+                completed = cast(object, type("Completed", (), {})())
+                setattr(completed, "stdout", '{"ok":false,"error":"GENSPARK_IMAGE_NOT_READY"}')
+                setattr(completed, "stderr", "")
+                setattr(completed, "returncode", 0)
+                return completed
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={
+                        "status": "ok",
+                        "details": {"transcript_path": str(root / "transcript.json")},
+                    },
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli.sleep"),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    side_effect=RuntimeError("capture-failed"),
+                ),
+                patch(
+                    "runtime_v2.cli.collect_browser_debug_state",
+                    return_value={
+                        "selected_target": {
+                            "url": "https://www.genspark.ai/agents?id=fresh"
+                        }
+                    },
+                ),
+                patch("runtime_v2.cli.subprocess.run", side_effect=fake_run),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.ADAPTER_FAIL)
 
     def test_stage2_adapter_child_writes_functional_evidence_for_canva(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

@@ -2993,6 +2993,8 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                     else None
                 ),
             )
+            if service == "genspark" and _stage2_retry_trace_contains_genspark_not_ready(retry_trace):
+                return exit_codes.ADAPTER_FAIL
             return exit_codes.BROWSER_UNHEALTHY
     else:
         write_stage2_attach_evidence(
@@ -3844,6 +3846,15 @@ def _append_retry_trace(
             "stderr": _trim_retry_text(str(getattr(result, "stderr", "") or "")),
         }
     )
+
+
+def _stage2_retry_trace_contains_genspark_not_ready(trace: list[dict[str, object]]) -> bool:
+    for entry in trace:
+        if str(entry.get("phase", "")).strip() != "image_ready_poll":
+            continue
+        if "GENSPARK_IMAGE_NOT_READY" in str(entry.get("stdout", "")):
+            return True
+    return False
 
 
 def _write_stage2_adapter_retry_trace(
