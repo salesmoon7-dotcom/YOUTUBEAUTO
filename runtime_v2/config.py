@@ -6,13 +6,14 @@ from pathlib import Path
 from typing import Literal
 
 
-GpuWorkload = Literal["qwen3_tts", "rvc", "kenburns"]
+GpuWorkload = Literal["qwen3_tts", "voicevox", "rvc", "kenburns"]
 BrowserWorkload = Literal[
     "chatgpt", "genspark", "seaart", "geminigen", "canva", "agent_browser_verify"
 ]
 LocalWorkload = Literal["render", "dev_plan", "dev_implement", "dev_replan"]
 WorkloadName = Literal[
     "qwen3_tts",
+    "voicevox",
     "rvc",
     "kenburns",
     "chatgpt",
@@ -33,6 +34,7 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 
 WORKLOAD_KINDS: dict[WorkloadName, WorkloadKind] = {
     "qwen3_tts": "gpu",
+    "voicevox": "gpu",
     "rvc": "gpu",
     "kenburns": "gpu",
     "chatgpt": "browser",
@@ -49,6 +51,7 @@ WORKLOAD_KINDS: dict[WorkloadName, WorkloadKind] = {
 
 WORKLOAD_BROWSER_SERVICES: dict[WorkloadName, tuple[str, ...]] = {
     "qwen3_tts": (),
+    "voicevox": (),
     "rvc": (),
     "kenburns": (),
     "chatgpt": ("chatgpt",),
