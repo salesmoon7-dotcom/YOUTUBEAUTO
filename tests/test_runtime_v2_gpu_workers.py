@@ -13,10 +13,51 @@ from runtime_v2.stage2.genspark_worker import run_genspark_job
 from runtime_v2.stage2.geminigen_worker import run_geminigen_job
 from runtime_v2.workers.kenburns_worker import run_kenburns_job
 from runtime_v2.workers.qwen3_worker import run_qwen3_job
+from runtime_v2.workers.voicevox_worker import run_voicevox_job
 from runtime_v2.workers.rvc_worker import run_rvc_job
 
 
 class RuntimeV2GpuWorkerTests(unittest.TestCase):
+    def test_voicevox_workload_is_registered(self) -> None:
+        from runtime_v2.config import allowed_workloads
+
+        self.assertIn("voicevox", allowed_workloads())
+
+    def test_voicevox_worker_aliases_qwen3_tts_execution(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            image_path = root / "image.png"
+            output_path = artifact_root / "speech.flac"
+            _ = image_path.write_bytes(b"png")
+            job = JobContract(
+                job_id="voicevox-job-success",
+                workload="voicevox",
+                payload={
+                    "script_text": "hello world",
+                    "image_path": str(image_path.resolve()),
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "adapter_command": [
+                        sys.executable,
+                        "-c",
+                        (
+                            "from pathlib import Path; "
+                            f"p=Path(r'{str(output_path)}'); "
+                            "p.parent.mkdir(parents=True, exist_ok=True); "
+                            "p.write_bytes(b'wav')"
+                        ),
+                    ],
+                },
+            )
+
+            result = run_voicevox_job(job, artifact_root=artifact_root)
+
+            self.assertEqual(result["status"], "ok")
+            self.assertTrue(output_path.exists())
+            details = cast(dict[object, object], result["details"])
+            self.assertEqual(details["voice_text_count"], 1)
+
     def test_qwen3_worker_processes_one_item_via_explicit_adapter_command(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
