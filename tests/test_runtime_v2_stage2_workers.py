@@ -358,7 +358,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             artifact_root = root / "artifacts"
             job = _stage2_job("canva")
             job.payload["use_agent_browser"] = True
-            workspace = artifact_root / job.workload / job.job_id
+            workspace = artifact_root / job.workload / job.job_id / str(job.payload["run_id"])
             workspace.mkdir(parents=True, exist_ok=True)
             stale_attach = attach_evidence_path(workspace)
             stale_attach.write_text(
@@ -394,7 +394,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             job = _stage2_job("canva")
             job.payload["use_agent_browser"] = True
             job.payload["service_artifact_path"] = str(output_path)
-            workspace = artifact_root / "canva" / job.job_id
+            workspace = artifact_root / "canva" / job.job_id / str(job.payload["run_id"])
             workspace.mkdir(parents=True, exist_ok=True)
 
             def _fake_adapter(*args: object, **kwargs: object) -> dict[str, object]:
@@ -550,7 +550,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             job = _stage2_job("canva")
             job.payload["service_artifact_path"] = str(output_path)
             attach_evidence = (
-                artifact_root / "canva" / job.job_id / "attach_evidence.json"
+                artifact_root / "canva" / job.job_id / str(job.payload["run_id"]) / "attach_evidence.json"
             )
             job.payload["adapter_command"] = [
                 sys.executable,
@@ -568,7 +568,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
 
             result = run_canva_job(job, artifact_root)
 
-            workspace = artifact_root / "canva" / job.job_id
+            workspace = artifact_root / "canva" / job.job_id / str(job.payload["run_id"])
             self.assertEqual(result["status"], "ok")
             self.assertTrue(output_path.exists())
             self.assertTrue((workspace / "request.json").exists())
@@ -1061,7 +1061,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             root = Path(tmp_dir)
             output_path = root / "exports" / "canva-agent-browser.png"
             attach_evidence = (
-                root / "artifacts" / "canva" / "canva-job-1" / "attach_evidence.json"
+                root / "artifacts" / "canva" / "canva-job-1" / "stage2-run-1" / "attach_evidence.json"
             )
             attach_evidence.parent.mkdir(parents=True, exist_ok=True)
             _ = attach_evidence.write_text('{"status":"ok"}', encoding="utf-8")
@@ -1106,7 +1106,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             root = Path(tmp_dir)
             output_path = root / "exports" / "canva-agent-browser.png"
             attach_evidence = (
-                root / "artifacts" / "canva" / "canva-job-1" / "attach_evidence.json"
+                root / "artifacts" / "canva" / "canva-job-1" / "stage2-run-1" / "attach_evidence.json"
             )
             attach_evidence.parent.mkdir(parents=True, exist_ok=True)
             _ = attach_evidence.write_text(
