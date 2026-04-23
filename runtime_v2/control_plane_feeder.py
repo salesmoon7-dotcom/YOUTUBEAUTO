@@ -226,6 +226,7 @@ def _is_explicit_contract_archived(inbox_root: Path, contract_file: Path) -> boo
 def _is_allowed_explicit_contract_path(inbox_root: Path, contract_file: Path) -> bool:
     allowed_roots = {
         (inbox_root / "qwen3_tts").resolve(),
+        (inbox_root / "voicevox").resolve(),
         (inbox_root / "chatgpt").resolve(),
         (inbox_root / "genspark").resolve(),
         (inbox_root / "seaart").resolve(),

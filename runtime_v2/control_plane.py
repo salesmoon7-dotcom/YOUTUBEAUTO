@@ -65,6 +65,7 @@ from runtime_v2.workers.dev_plan_worker import run_dev_plan_job
 from runtime_v2.workers.dev_replan_worker import run_dev_replan_job
 from runtime_v2.workers.kenburns_worker import run_kenburns_job
 from runtime_v2.workers.qwen3_worker import run_qwen3_job
+from runtime_v2.workers.voicevox_worker import run_voicevox_job
 from runtime_v2.workers.rvc_worker import run_rvc_job
 from runtime_v2.contracts.job_contract import (
     JobContract,
@@ -949,7 +950,7 @@ def _promotion_gate(job: JobContract) -> str:
         return "A"
     if job.workload in {"canva", "geminigen"}:
         return "B"
-    if job.workload in {"qwen3_tts", "rvc", "kenburns"}:
+    if job.workload in {"qwen3_tts", "voicevox", "rvc", "kenburns"}:
         return "C"
     if job.workload == "render":
         return "D"
@@ -993,7 +994,7 @@ def _terminal_failure_code(job: JobContract) -> str:
     raw_code = str(job.payload.get("last_error_code", "")).strip()
     if raw_code:
         return raw_code
-    if job.workload == "qwen3_tts" and _to_int(job.attempts) > 0:
+    if job.workload in {"qwen3_tts", "voicevox"} and _to_int(job.attempts) > 0:
         return "WORKER_STALL_DETECTED"
     return "FAILED"
 
@@ -1440,6 +1441,7 @@ def _worker_dispatch_table(
         "rvc": lambda job: run_rvc_job(job, artifact_root=artifact_root),
         "kenburns": lambda job: run_kenburns_job(job, artifact_root=artifact_root),
         "qwen3_tts": lambda job: run_qwen3_job(job, artifact_root=artifact_root),
+        "voicevox": lambda job: run_voicevox_job(job, artifact_root=artifact_root),
         "dev_plan": lambda job: run_dev_plan_job(job, artifact_root),
         "dev_implement": lambda job: run_dev_implement_job(
             job,
