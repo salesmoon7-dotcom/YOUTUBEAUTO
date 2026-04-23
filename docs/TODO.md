@@ -1,5 +1,9 @@
 # TODO
 
+- `docs/plans/2026-04-23-legacy-program-inventory-map.md` - 레거시 실제 프로그램 목록을 `D:\YOUTUBE_AUTO\scripts` 기준으로 다시 고정한 인벤토리 문서입니다. 앞으로 legacy 분석/완료 판정은 이 문서의 프로그램 지도를 기준으로 비교합니다.
+- `docs/plans/2026-04-23-legacy-runtime-coverage-map.md` - 레거시 프로그램 인벤토리와 현재 `runtime_v2` 대응 범위를 대조한 문서입니다. 앞으로 non-Canva 완료 주장이나 잔여 범위 판단은 이 커버리지 맵까지 함께 비교합니다.
+- `Vrew`, `ACE BGM` - 사용자 지시로 폐기 축으로 고정합니다. 레거시 인벤토리에는 남기되 active migration/완료 범위 계산에서는 제외합니다.
+
 - 이 문서는 active index입니다. 긴 다중 파일 설명/세부 절차는 plan/SOP에 두고, 여기에는 1줄 상태와 canonical 링크를 우선 남깁니다.
 - 위 원칙은 점진적으로 적용합니다. 기존 긴 evidence/history 블록은 후속 정리 배치에서 축소합니다.
 - interruption/search 규칙의 정본은 `docs/sop/SOP_runtime_v2_development_guardrails.md`와 `docs/sop/SOP_chat_interruption_repo_triage.md`입니다.
