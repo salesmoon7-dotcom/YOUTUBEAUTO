@@ -1727,7 +1727,44 @@ def _run_stage5_row1_probe(
         )
         return str(failure_path)
 
-    probe_config = config.replace(stable_file_age_sec=0)
+    for directory in (
+        probe_root,
+        probe_root / "health",
+        probe_root / "evidence",
+        probe_root / "state",
+        probe_root / "artifacts",
+        probe_root / "inbox",
+        probe_root / "locks",
+        probe_root / "logs",
+    ):
+        directory.mkdir(parents=True, exist_ok=True)
+    
+    probe_config = RuntimeConfig.from_root(probe_root).replace(
+        stable_file_age_sec=0,
+        lease_ttl_sec=config.lease_ttl_sec,
+        renew_interval_sec=config.renew_interval_sec,
+        lock_mutex_stale_sec=config.lock_mutex_stale_sec,
+        gpt_floor_min_ok=config.gpt_floor_min_ok,
+        gpt_breach_sec=config.gpt_breach_sec,
+        gpt_spawn_cooldown_sec=config.gpt_spawn_cooldown_sec,
+        gpt_spawn_hourly_limit=config.gpt_spawn_hourly_limit,
+        max_retry_attempts=config.max_retry_attempts,
+        max_stale_recovery_attempts=config.max_stale_recovery_attempts,
+        circuit_breaker_threshold=config.circuit_breaker_threshold,
+        running_stale_sec=config.running_stale_sec,
+        progress_stall_timeout_sec=config.progress_stall_timeout_sec,
+        callback_timeout_sec=config.callback_timeout_sec,
+        callback_max_attempts=config.callback_max_attempts,
+        callback_backoff_sec=config.callback_backoff_sec,
+        blocked_backoff_sec=config.blocked_backoff_sec,
+        allow_mock_chain=config.allow_mock_chain,
+        lease_file=config.lease_file,
+        gui_status_file=config.gui_status_file,
+        browser_health_file=config.browser_health_file,
+        browser_registry_file=config.browser_registry_file,
+        gpt_status_file=config.gpt_status_file,
+        worker_registry_file=config.worker_registry_file,
+    )
 
     def _write_stage5_progress_report(
         *,

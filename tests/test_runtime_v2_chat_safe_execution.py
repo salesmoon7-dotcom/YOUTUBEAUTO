@@ -418,6 +418,41 @@ class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
         self.assertEqual(report["code"], "OK")
         self.assertEqual(call_counter["count"], 2)
 
+    def test_stage5_probe_uses_probe_local_runtime_root_for_control_loop(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            probe_root = root / "probe"
+            excel_path = root / "topic.xlsx"
+            workbook = Workbook()
+            sheet = cast(Worksheet, workbook.active)
+            sheet.title = "Sheet1"
+            sheet.append(["Topic", "Status"])
+            sheet.append(["Semantic row", "OK"])
+            workbook.save(excel_path)
+            workbook.close()
+            config = RuntimeConfig.from_root(root / "runtime")
+
+            def fake_control_loop_once(*, owner: str, config: RuntimeConfig, run_id: str):
+                _ = owner
+                _ = run_id
+                self.assertEqual(config.queue_store_file, probe_root / "state" / "job_queue.json")
+                return {"status": "failed", "code": "BROWSER_UNHEALTHY"}
+
+            with patch(
+                "runtime_v2.cli.run_control_loop_once",
+                side_effect=fake_control_loop_once,
+            ):
+                _run_stage5_row1_probe(
+                    owner="runtime_v2",
+                    config=config,
+                    probe_root=probe_root,
+                    run_id="stage5-probe-local-root",
+                    excel_path=str(excel_path),
+                    sheet_name="Sheet1",
+                    row_index=0,
+                    max_control_ticks=1,
+                )
+
     def test_stage5_probe_immediately_follows_up_after_seeded_result(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
