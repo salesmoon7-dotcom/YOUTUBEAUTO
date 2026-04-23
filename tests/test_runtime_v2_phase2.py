@@ -135,6 +135,19 @@ def _write_readiness_fixture(
 
 
 class RuntimeV2Phase2Tests(unittest.TestCase):
+    def test_voicevox_shares_qwen3_gpu_lease_identity(self) -> None:
+        config = RuntimeConfig.from_root(Path("D:/YOUTUBEAUTO/tmp_voicevox_lease_test"))
+        self.assertEqual(lease_key_for_workload("voicevox"), "lock:qwen3_tts")
+        from runtime_v2.gpu.lease import lease_file_for_workload, lock_file_for_workload
+        self.assertEqual(
+            lease_file_for_workload(config, "voicevox"),
+            lease_file_for_workload(config, "qwen3_tts"),
+        )
+        self.assertEqual(
+            lock_file_for_workload(config, "voicevox"),
+            lock_file_for_workload(config, "qwen3_tts"),
+        )
+
     def test_stage5_row1_probe_reaches_final_output(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

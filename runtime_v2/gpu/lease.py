@@ -14,9 +14,16 @@ from runtime_v2.config import GpuWorkload, RuntimeConfig
 
 WORKLOAD_LOCK_KEYS: dict[GpuWorkload, str] = {
     "qwen3_tts": "lock:qwen3_tts",
+    "voicevox": "lock:qwen3_tts",
     "rvc": "lock:rvc",
     "kenburns": "lock:kenburns",
 }
+
+
+def _lease_owner_workload(workload: GpuWorkload) -> GpuWorkload:
+    if workload == "voicevox":
+        return "qwen3_tts"
+    return workload
 
 
 def lease_key_for_workload(workload: GpuWorkload) -> str:
@@ -24,11 +31,13 @@ def lease_key_for_workload(workload: GpuWorkload) -> str:
 
 
 def lease_file_for_workload(config: RuntimeConfig, workload: GpuWorkload) -> Path:
-    return config.lock_root / f"{workload}.lease.json"
+    owner = _lease_owner_workload(workload)
+    return config.lock_root / f"{owner}.lease.json"
 
 
 def lock_file_for_workload(config: RuntimeConfig, workload: GpuWorkload) -> Path:
-    return config.lock_root / f"{workload}.lock"
+    owner = _lease_owner_workload(workload)
+    return config.lock_root / f"{owner}.lock"
 
 
 def lease_store_for_workload(config: RuntimeConfig, workload: GpuWorkload) -> "LeaseStore":
