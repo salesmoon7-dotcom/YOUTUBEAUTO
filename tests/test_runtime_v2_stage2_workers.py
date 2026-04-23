@@ -219,6 +219,68 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         self.assertEqual(result["error_code"], "BROWSER_UNHEALTHY")
         self.assertTrue(bool(result["retryable"]))
 
+    def test_genspark_worker_uses_retry_trace_not_ready_over_generic_browser_exit(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = root / "exports" / "scene-01.png"
+            job = _stage2_job("genspark")
+            job.payload["use_agent_browser"] = True
+            job.payload["service_artifact_path"] = str(output_path)
+            workspace = artifact_root / "genspark" / job.job_id / str(job.payload["run_id"])
+            workspace.mkdir(parents=True, exist_ok=True)
+
+            def _fake_adapter(*args: object, **kwargs: object) -> dict[str, object]:
+                del args, kwargs
+                attach_evidence = attach_evidence_path(workspace)
+                _ = attach_evidence.write_text(
+                    json.dumps(
+                        {
+                            "status": "ok",
+                            "error_code": "",
+                            "details": {
+                                "retry_trace_path": str(workspace / "adapter_retry_trace.json")
+                            },
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                _ = (workspace / "adapter_retry_trace.json").write_text(
+                    json.dumps(
+                        {
+                            "entries": [
+                                {
+                                    "phase": "image_ready_poll",
+                                    "attempt": 1,
+                                    "returncode": 0,
+                                    "stdout": '"{\"ok\":false,\"error\":\"GENSPARK_IMAGE_NOT_READY\"}"',
+                                    "stderr": "",
+                                }
+                            ]
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                return {
+                    "ok": False,
+                    "error_code": "BROWSER_UNHEALTHY",
+                    "stdout_path": root / "stdout.log",
+                    "stderr_path": root / "stderr.log",
+                    "details": {},
+                }
+
+            with patch(
+                "runtime_v2.stage2.genspark_worker.run_verified_adapter_command",
+                side_effect=_fake_adapter,
+            ):
+                result = run_genspark_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "GENSPARK_IMAGE_NOT_READY")
+        self.assertTrue(bool(result["retryable"]))
+
     def test_genspark_worker_rebases_service_artifact_path_into_artifact_root(
         self,
     ) -> None:

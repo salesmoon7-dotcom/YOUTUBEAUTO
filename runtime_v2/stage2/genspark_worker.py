@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import cast
 
@@ -25,7 +26,39 @@ _RETRYABLE_BROWSER_ERROR_CODES = {
     "AGENT_BROWSER_COMMAND_FAILED",
     "AGENT_BROWSER_VERIFY_FAILED",
     "AGENT_BROWSER_TIMEOUT",
+    "GENSPARK_IMAGE_NOT_READY",
 }
+
+
+def _genspark_adapter_error_code(
+    adapter_result: dict[str, object], attach_evidence_payload: dict[str, object]
+) -> str:
+    adapter_error_code = str(adapter_result.get("error_code", "genspark_adapter_failed"))
+    if adapter_error_code != "BROWSER_UNHEALTHY":
+        return adapter_error_code
+    if str(attach_evidence_payload.get("status", "")).strip() != "ok":
+        return adapter_error_code
+    attach_details_raw = attach_evidence_payload.get("details", {})
+    attach_details = attach_details_raw if isinstance(attach_details_raw, dict) else {}
+    retry_trace_path = str(attach_details.get("retry_trace_path", "")).strip()
+    if not retry_trace_path:
+        return adapter_error_code
+    try:
+        retry_payload = json.loads(Path(retry_trace_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return adapter_error_code
+    entries = retry_payload.get("entries", [])
+    if not isinstance(entries, list):
+        return adapter_error_code
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("phase", "")).strip() != "image_ready_poll":
+            continue
+        stdout = str(entry.get("stdout", ""))
+        if "GENSPARK_IMAGE_NOT_READY" in stdout:
+            return "GENSPARK_IMAGE_NOT_READY"
+    return adapter_error_code
 
 
 def _normalized_service_artifact_path(job: JobContract, artifact_root: Path) -> str:
@@ -104,8 +137,8 @@ def run_genspark_job(
         attach_evidence = attach_evidence_path(workspace)
         attach_evidence_payload = load_stage2_attach_evidence(workspace)
         if not bool(adapter_result.get("ok", False)):
-            adapter_error_code = str(
-                adapter_result.get("error_code", "genspark_adapter_failed")
+            adapter_error_code = _genspark_adapter_error_code(
+                adapter_result, attach_evidence_payload
             )
             return finalize_worker_result(
                 workspace,
