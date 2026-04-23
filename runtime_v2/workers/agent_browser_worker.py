@@ -200,16 +200,20 @@ def _playwright_canva_background_generate(
         page.keyboard.press("Escape")
         page.wait_for_timeout(500)
 
-        page.evaluate("""(async () => { const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms)); const tabs = Array.from(document.querySelectorAll('button[role="tab"][aria-controls], [role=tab][aria-controls]')); const target = tabs.find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경'); }); if (!(target instanceof HTMLElement)) return false; target.focus(); target.click(); await wait(300); if ((target.getAttribute('aria-selected') || '') === 'true') return true; target.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); target.dispatchEvent(new KeyboardEvent('keyup', {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); await wait(300); if ((target.getAttribute('aria-selected') || '') === 'true') return true; target.dispatchEvent(new KeyboardEvent('keydown', {key:' ', code:'Space', keyCode:32, which:32, bubbles:true})); target.dispatchEvent(new KeyboardEvent('keyup', {key:' ', code:'Space', keyCode:32, which:32, bubbles:true})); await wait(300); return (target.getAttribute('aria-selected') || '') === 'true'; })()""")
+        page.evaluate("""(async () => { const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms)); const tabs = Array.from(document.querySelectorAll('button[role="tab"][aria-controls], [role=tab][aria-controls]')); const target = tabs.find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경 생성'); }); if (!(target instanceof HTMLElement)) return false; target.focus(); target.click(); await wait(300); if ((target.getAttribute('aria-selected') || '') === 'true') return true; target.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); target.dispatchEvent(new KeyboardEvent('keyup', {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); await wait(300); if ((target.getAttribute('aria-selected') || '') === 'true') return true; target.dispatchEvent(new KeyboardEvent('keydown', {key:' ', code:'Space', keyCode:32, which:32, bubbles:true})); target.dispatchEvent(new KeyboardEvent('keyup', {key:' ', code:'Space', keyCode:32, which:32, bubbles:true})); await wait(300); return (target.getAttribute('aria-selected') || '') === 'true'; })()""")
         page.wait_for_timeout(1500)
 
-        panel_id = page.evaluate("""(() => { const target = Array.from(document.querySelectorAll('button[role="tab"][aria-controls], [role="tab"][aria-controls]')).find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경'); }); return target ? (target.getAttribute('aria-controls') || '') : ''; })()""")
+        panel_id = page.evaluate("""(() => { const target = Array.from(document.querySelectorAll('button[role="tab"][aria-controls], [role="tab"][aria-controls]')).find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경 생성'); }); return target ? (target.getAttribute('aria-controls') || '') : ''; })()""")
         panel_id = str(panel_id or '').strip()
+        if not panel_id:
+            if _click_visible_page_locator(page, 'button[role="tab"],[role=tab]', has_text='Product Background'):
+                page.wait_for_timeout(800)
+                panel_id = str(page.evaluate("(() => { const target = Array.from(document.querySelectorAll('button[role=tab][aria-controls], [role=\"tab\"][aria-controls]')).find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경 생성'); }); return target ? (target.getAttribute('aria-controls') || '') : ''; })()") or '').strip()
         if panel_id:
             panel = page.locator(f'#{panel_id}')
             prompt_input = None
             for _ in range(8):
-                prompt_candidates = panel.locator("textarea,[role=textbox],input[type=text]")
+                prompt_candidates = panel.locator("textarea,[role=textbox],input[type=text],[contenteditable='true']")
                 prompt_input = _last_visible_locator(prompt_candidates)
                 if prompt_input is not None:
                     break
@@ -218,21 +222,59 @@ def _playwright_canva_background_generate(
                 prompt_input.fill(bg_prompt, timeout=timeout_sec * 1000)
                 if _click_visible_page_locator(panel, 'button,[role=button]', has_text="생성"):
                     return {"ok": True, "step": "submitted_background_generate_panel"}
-            return {
-                "ok": False,
-                "error": "CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT",
-                "file_select_visible": bool(_click_visible_page_locator(panel, 'button,[role=button]', has_text="파일 선택하기")),
-                "generate_visible": bool(_click_visible_page_locator(panel, 'button,[role=button]', has_text="생성")),
-            }
+            file_select_visible = bool(_click_visible_page_locator(panel, 'button,[role=button]', has_text="파일 선택하기"))
+            generate_visible = bool(_click_visible_page_locator(panel, 'button,[role=button]', has_text="생성"))
+            if file_select_visible or generate_visible:
+                return {
+                    "ok": False,
+                    "error": "CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT",
+                    "file_select_visible": file_select_visible,
+                    "generate_visible": generate_visible,
+                }
 
-        iframe = page.locator('iframe[title="Product Background"]').first
+        try:
+            canvas_locator = page.locator('[aria-label="캔버스 진입점"]').first
+            canvas_box = canvas_locator.bounding_box()
+            if canvas_box:
+                page.mouse.click(
+                    float(canvas_box.get('x', 0)) + float(canvas_box.get('width', 0)) * 0.5,
+                    float(canvas_box.get('y', 0)) + float(canvas_box.get('height', 0)) * 0.15,
+                )
+                page.wait_for_timeout(500)
+        except Exception:
+            pass
+
+        page.evaluate("""(() => { const candidates = Array.from(document.querySelectorAll('button,[role=button],[aria-label]')); const target = candidates.find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경 생성'); }); if (!(target instanceof HTMLElement)) return false; target.focus(); target.click(); return true; })()""")
+        page.wait_for_timeout(800)
+
         frame = None
+        iframe_selectors = ['iframe[title="Product Background"]', 'iframe']
         for _ in range(10):
-            if iframe.count() > 0:
+            for selector in iframe_selectors:
+                iframe = page.locator(selector).first
+                if iframe.count() <= 0:
+                    continue
                 handle = iframe.element_handle(timeout=3000)
                 frame = handle.content_frame() if handle is not None else None
+                if frame is None:
+                    child_candidates = []
+                    for candidate in page.frames:
+                        candidate_url = str(getattr(candidate, 'url', '') or '')
+                        if 'canva-apps.com/app-sandbox/editor' in candidate_url:
+                            frame = candidate
+                            break
+                        if (
+                            candidate_url
+                            and candidate_url != 'about:blank'
+                            and 'canva.com/design/' not in candidate_url
+                        ):
+                            child_candidates.append(candidate)
+                    if frame is None and len(child_candidates) == 1:
+                        frame = child_candidates[0]
                 if frame is not None:
                     break
+            if frame is not None:
+                break
             page.wait_for_timeout(500)
         if frame is None:
             return {
@@ -240,7 +282,16 @@ def _playwright_canva_background_generate(
                 "error": "PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE",
             }
 
-        prompt_candidates = frame.locator("textarea,[role=textbox],input[type=text]")
+        for _ in range(10):
+            try:
+                frame_body = frame.locator('body').inner_text(timeout=1000)
+            except Exception:
+                frame_body = ''
+            if str(frame_body).strip():
+                break
+            page.wait_for_timeout(500)
+
+        prompt_candidates = frame.locator("textarea,[role=textbox],input[type=text],[contenteditable='true']")
         prompt_input = _last_visible_locator(prompt_candidates)
         prompt_visible = prompt_input is not None
 
