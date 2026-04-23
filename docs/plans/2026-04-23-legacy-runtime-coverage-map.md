@@ -22,7 +22,7 @@ Goal: Compare the actual legacy program inventory against the current `runtime_v
 | Ken Burns | `D:\YOUTUBE_AUTO\scripts\ken_burns_effect.py` | `runtime_v2/workers/kenburns_worker.py` | Covered | `docs/COMPLETED.md` records actual kenburn artifact evidence |
 | Render | `D:\YOUTUBE_AUTO\scripts\render.py` | `runtime_v2/stage3/render_worker.py` | Partially Covered | runtime_v2 render worker exists and docs mention render queueing, but current comparison still relies more on contract/stage evidence than full legacy parity proof |
 | RVC / Applio | `D:\YOUTUBE_AUTO\scripts\rvc_voice_convert.py`, `D:\YOUTUBE_AUTO\scripts\applio_server_manager.py` | `runtime_v2/workers/rvc_worker.py` | Covered | `docs/COMPLETED.md` records canonical worker evidence and exploratory functional verification |
-| VoiceVox | `D:\YOUTUBE_AUTO\scripts\voicevox_automation.py` | indirect via `runtime_v2/workers/qwen3_worker.py` TTS path only | Partially Covered | runtime_v2 has TTS coverage, but not a direct VoiceVox-specific worker equivalent documented as such |
+| VoiceVox | `D:/YOUTUBE_AUTO/scripts/voicevox_automation.py` | `runtime_v2/workers/voicevox_worker.py`, `runtime_v2/control_plane.py`, `runtime_v2/control_plane_feeder.py` | Covered | explicit `voicevox` workload/worker exists, dispatch is registered, inbox contracts are allowed, and GPU lease identity is intentionally shared with `qwen3_tts` |
 | Vrew | `D:\YOUTUBE_AUTO\scripts\vrew_web_automation.py` | no direct runtime_v2 program surface | Not Covered | No explicit `runtime_v2` Vrew worker/backend was found in code/docs |
 | ACE BGM | `D:\YOUTUBE_AUTO\scripts\ace_bgm_automation.py` | no direct runtime_v2 worker | Not Covered | No explicit ACE/BGM worker surfaced in runtime_v2 code; docs only mention BGM as part of payload/content contracts |
 | Google Sheets sync | `D:\YOUTUBE_AUTO\scripts\google_sheets_sync.py` | no direct full counterpart; some excel/state bridging exists | Partially Covered | `runtime_v2/excel/*` bridges and writeback exist, but not a direct Google Sheets program counterpart |
@@ -41,7 +41,6 @@ Do **not** say: all non-Canva legacy programs are fully complete.
 That stronger claim would overstate the current runtime_v2 coverage because the broader legacy map still includes partially covered or uncovered surfaces such as (excluding currently deprecated Vrew / ACE BGM):
 - `GeminiGen` (full legacy parity not re-proven in the latest chain)
 - `Render` (worker exists, but broader parity language should stay conservative)
-- `VoiceVox` as a distinct program surface
 - `Google Sheets sync` as a distinct program surface
 - `n8n/Mybox upload` beyond callback contract
 - `timeline / srt / shorts` explicit legacy program parity
