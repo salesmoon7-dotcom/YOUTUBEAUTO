@@ -125,6 +125,19 @@ def _collect_render_assets(render_spec: dict[str, object]) -> list[Path]:
     return deduped
 
 
+def _float_from_object(value: object, default: float) -> float:
+    if isinstance(value, bool):
+        return float(int(value))
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return default
+        return float(text)
+    return default
+
+
 def _int_from_object(value: object, default: int) -> int:
     if isinstance(value, bool):
         return int(value)
@@ -410,6 +423,45 @@ def _concat_scene_clips(
     return run_external_process(command, cwd=output_path.parent)
 
 
+
+
+def _resolve_bgm_path(render_spec: dict[str, object]) -> Path | None:
+    raw_bgm_path = str(render_spec.get("bgm_path", "")).strip()
+    if not raw_bgm_path:
+        return None
+    resolved = resolve_local_input(raw_bgm_path)
+    if resolved is None or not resolved.exists() or not resolved.is_file():
+        return None
+    return resolved.resolve()
+
+
+def _mix_render_bgm(
+    video_path: Path, voice_path: Path, bgm_path: Path, output_path: Path, *, bgm_volume: float
+) -> dict[str, object]:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    command = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(video_path.resolve()),
+        "-i",
+        str(voice_path.resolve()),
+        "-i",
+        str(bgm_path.resolve()),
+        "-filter_complex",
+        f"[2:a]volume={bgm_volume:.2f}[bgm];[1:a][bgm]amix=inputs=2:duration=first:normalize=0[aout]",
+        "-map",
+        "0:v:0",
+        "-map",
+        "[aout]",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-shortest",
+        str(output_path.resolve()),
+    ]
+    return run_external_process(command, cwd=output_path.parent)
 def _mux_render_audio(
     video_path: Path, audio_path: Path, output_path: Path
 ) -> dict[str, object]:
@@ -641,6 +693,8 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
         audio_sources = _select_audio_sources(
             render_spec_payload, artifact_root, run_id=render_run_id
         )
+        bgm_path = _resolve_bgm_path(render_spec_payload)
+        bgm_volume = _float_from_object(render_spec_payload.get("bgm_volume", 0.15), 0.15)
         audio_source = audio_sources[0] if len(audio_sources) == 1 else None
         if not audio_sources and _voice_texts_present(voice_json_path):
             return finalize_worker_result(
@@ -823,9 +877,18 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
             }
 
         if audio_source is not None:
-            mux_result = _mux_render_audio(
-                silent_output_path, audio_source, final_output_path
-            )
+            if bgm_path is not None:
+                mux_result = _mix_render_bgm(
+                    silent_output_path,
+                    audio_source,
+                    bgm_path,
+                    final_output_path,
+                    bgm_volume=bgm_volume,
+                )
+            else:
+                mux_result = _mux_render_audio(
+                    silent_output_path, audio_source, final_output_path
+                )
             mux_exit = mux_result.get("exit_code", 1)
             mux_exit_int = (
                 int(mux_exit) if isinstance(mux_exit, (int, float, str)) else 1

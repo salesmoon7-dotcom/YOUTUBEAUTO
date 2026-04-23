@@ -395,6 +395,100 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         self.assertEqual(str(details["audio_source_path"]), str(audio_path.resolve()))
         self.assertTrue(bool(completion["final_output"]))
 
+    def test_render_worker_mixes_optional_bgm_track(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            render_folder = root / "render_workspace"
+            video_dir = render_folder / "video"
+            output_dir = render_folder / "output"
+            video_dir.mkdir(parents=True, exist_ok=True)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            clip_path = video_dir / "#01_RVC.mp4"
+            clip_path.write_bytes(b"mp4")
+            voice_json = root / "voice.json"
+            voice_json.write_text(
+                json.dumps({"voice_texts": []}, ensure_ascii=True), encoding="utf-8"
+            )
+            voice_audio = root / "speech.wav"
+            voice_audio.write_bytes(b"wav")
+            bgm_audio = root / "bgm.mp3"
+            bgm_audio.write_bytes(b"mp3")
+            render_spec = root / "render_spec.json"
+            render_spec.write_text(
+                json.dumps(
+                    {
+                        "contract": "render_spec",
+                        "contract_version": "1.1",
+                        "run_id": "render-run-bgm",
+                        "row_ref": "Sheet1!row1",
+                        "asset_refs": [str(clip_path.resolve())],
+                        "audio_refs": [str(voice_audio.resolve())],
+                        "bgm_path": str(bgm_audio.resolve()),
+                        "bgm_volume": 0.15,
+                        "thumbnail_refs": [],
+                        "timeline": [
+                            {
+                                "scene_index": 1,
+                                "asset_path": str(clip_path.resolve()),
+                                "asset_kind": "video",
+                                "duration_sec": 6,
+                            }
+                        ],
+                        "reason_code": "ok",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            job = JobContract(
+                job_id="render-job-bgm",
+                workload="render",
+                payload={
+                    "render_folder_path": str(render_folder.resolve()),
+                    "voice_json_path": str(voice_json.resolve()),
+                    "render_spec_path": str(render_spec.resolve()),
+                },
+            )
+            commands: list[list[str]] = []
+
+            def fake_process(
+                command: list[str],
+                *,
+                cwd: Path,
+                extra_env: dict[str, str] | None = None,
+                timeout_sec: int = 3600,
+            ) -> dict[str, object]:
+                _ = cwd
+                _ = extra_env
+                _ = timeout_sec
+                commands.append(command)
+                output_path = Path(str(command[-1]))
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"mp4")
+                return {
+                    "command": command,
+                    "cwd": str(cwd),
+                    "exit_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "timed_out": False,
+                    "timeout_sec": 3600,
+                    "duration_sec": 0.01,
+                }
+
+            with patch(
+                "runtime_v2.stage3.render_worker.run_external_process",
+                side_effect=fake_process,
+            ):
+                result = run_render_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        details = cast(dict[object, object], result["details"])
+        self.assertEqual(str(details["render_mode"]), "timeline_ffmpeg_audio")
+        self.assertTrue(any("-filter_complex" in command for command in commands for _ in [0]))
+        self.assertTrue(any("amix=inputs=2:duration=first:normalize=0" in part for command in commands for part in command))
+
     def test_render_worker_concats_multiple_audio_refs_before_mux(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
