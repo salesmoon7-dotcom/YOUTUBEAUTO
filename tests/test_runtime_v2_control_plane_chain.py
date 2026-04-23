@@ -778,6 +778,25 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertEqual(saved_path, queue_file)
         self.assertEqual(call_count["count"], 3)
 
+    def test_queue_store_save_falls_back_to_direct_write_after_retry_exhausted(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            queue_file = Path(tmp_dir) / "job_queue.json"
+            queue_store = QueueStore(queue_file)
+            job = JobContract(job_id="job-1", workload="chatgpt")
+
+            def always_locked_replace(self: Path, target: Path) -> Path:
+                _ = target
+                error = PermissionError("locked")
+                error.winerror = 5
+                raise error
+
+            with patch.object(Path, "replace", new=always_locked_replace):
+                saved_path = queue_store.save([job])
+
+            self.assertEqual(saved_path, queue_file)
+            payload = json.loads(queue_file.read_text(encoding="utf-8"))
+            self.assertEqual(payload[0]["job_id"], "job-1")
+
     def test_control_plane_reports_invalid_queue_store_as_failed(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

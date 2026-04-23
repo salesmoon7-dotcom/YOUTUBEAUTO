@@ -54,15 +54,23 @@ class QueueStore:
             _ = handle.write(json.dumps(payload, ensure_ascii=True))
             temp_path = Path(handle.name)
         last_error: PermissionError | None = None
+        replaced = False
         for attempt in range(5):
             try:
                 _ = temp_path.replace(self.queue_file)
+                replaced = True
                 break
             except PermissionError as exc:
                 last_error = exc
                 if attempt == 4:
-                    raise
+                    break
                 sleep(0.05 * (attempt + 1))
+        if not replaced:
+            _ = self.queue_file.write_text(json.dumps(payload, ensure_ascii=True), encoding="utf-8")
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
         if last_error is not None and not self.queue_file.exists():
             raise last_error
         return self.queue_file
