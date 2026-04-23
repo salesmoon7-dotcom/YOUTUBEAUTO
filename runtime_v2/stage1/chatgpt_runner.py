@@ -129,7 +129,34 @@ def build_video_plan_from_topic_spec(
 
 
 def build_live_chatgpt_prompt(topic_spec: dict[str, object]) -> str:
-    return str(topic_spec.get("topic", "")).strip()
+    topic = str(topic_spec.get("topic", "")).strip()
+    return (
+        "Use the topic below and reply in the exact stage1 block format.\n"
+        "Do not write a free-form article or explanation.\n"
+        "Return every required block exactly once, in order.\n"
+        "Use numbered voice lines and matching scene blocks starting at #01 with no gaps.\n\n"
+        f"Topic: {topic}\n\n"
+        "[Title]\n"
+        "<main title>\n\n"
+        "[Title for Thumb]\n"
+        "<thumbnail title>\n\n"
+        "[Description]\n"
+        "<description>\n\n"
+        "[Keywords]\n"
+        "<comma-separated keywords>\n\n"
+        "[BGM]\n"
+        "<bgm prompt>\n\n"
+        "[Voice]\n"
+        "1. <voice line 1>\n"
+        "2. <voice line 2>\n"
+        "3. <voice line 3>\n\n"
+        "[#01]\n"
+        "<scene prompt 1>\n\n"
+        "[#02]\n"
+        "<scene prompt 2>\n\n"
+        "[#03]\n"
+        "<scene prompt 3>\n"
+    )
 
 
 def attach_gpt_response_text_from_browser_evidence(
