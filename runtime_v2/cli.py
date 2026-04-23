@@ -2353,11 +2353,27 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 "script": "(() => { const input = document.querySelector('input[placeholder*=\"페이지\"], input[placeholder*=\"page\"]'); if (!(input instanceof HTMLElement)) return JSON.stringify({ok:true, step:'page_picker_unavailable_before_background'}); const targetPage = String(Number(window.__runtime_v2_canva_page_count_after || 0) || Number(window.__runtime_v2_canva_page_count_before || 0) || 2); input.click(); if ('focus' in input) input.focus(); if ('value' in input) { input.value = ''; input.dispatchEvent(new Event('input', {bubbles:true})); input.value = targetPage; input.dispatchEvent(new Event('input', {bubbles:true})); input.dispatchEvent(new Event('change', {bubbles:true})); } input.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); input.dispatchEvent(new KeyboardEvent('keyup', {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); window.__runtime_v2_canva_created_page = Number(targetPage || '0'); return JSON.stringify({ok:true, step:'typed_current_page_before_background', page: targetPage, source:'created-page-explicit'}); })()",
             },
             {
+                "type": "click",
+                "selector": 'xpath=(//div[contains(normalize-space(.),"페이지 2") or contains(normalize-space(.),"Page 2")])[1]',
+            },
+            {
+                "type": "wait",
+                "target": "500",
+            },
+            {
                 "type": "click_box_offset",
                 "selector": 'xpath=(//*[@role="application"])[last()]',
                 "x_ratio": 0.15,
                 "y_ratio": 0.15,
                 "step": "focused_background_canvas",
+            },
+            {
+                "type": "wait",
+                "target": "800",
+            },
+            {
+                "type": "eval",
+                "script": "(() => { const nodes = Array.from(document.querySelectorAll('button,[role=button],div,span')); const target = nodes.find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text === '편집' || text === 'Edit'; }); if (!(target instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_EXACT_EDIT_BUTTON'}); target.click(); return JSON.stringify({ok:true, step:'clicked_exact_edit'}); })()",
             },
             {
                 "type": "wait",

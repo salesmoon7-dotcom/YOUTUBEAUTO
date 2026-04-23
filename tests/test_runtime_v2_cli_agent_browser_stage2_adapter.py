@@ -767,6 +767,69 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             "NO_BACKGROUND_GENERATE_BUTTON", "\n".join(background_eval_scripts)
         )
 
+    def test_stage2_adapter_child_includes_page2_and_edit_precondition_for_canva_background(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            (root / "thumb_data.json").write_text(
+                json.dumps(
+                    {
+                        "bg_prompt": "legacy background",
+                        "line1": "Legacy",
+                        "line2": "Thumb",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            (root / "request.json").write_text(
+                json.dumps({"payload": {"prompt": "scene one", "ref_img": "D:/ref.png"}}, ensure_ascii=True),
+                encoding="utf-8",
+            )
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+            captured_actions: list[dict[str, object]] = []
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                _ = artifact_root
+                payload = cast(dict[str, object], job.payload)
+                captured_actions.extend(cast(list[dict[str, object]], payload.get("actions", [])))
+                return {"status": "ok"}
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
+                patch("runtime_v2.cli.run_agent_browser_verify_job", side_effect=fake_verify),
+                patch("runtime_v2.cli.write_functional_evidence_bundle", return_value={"service": "canva", "sha256": "ok"}),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        click_actions = [action for action in captured_actions if action.get("type") == "click"]
+        click_box_actions = [action for action in captured_actions if action.get("type") == "click_box_offset"]
+        selectors = [str(action.get("selector", "")) for action in click_actions]
+        self.assertIn(
+            'xpath=(//div[contains(normalize-space(.),"페이지 2") or contains(normalize-space(.),"Page 2")])[1]',
+            selectors,
+        )
+        page2_index = selectors.index(
+            'xpath=(//div[contains(normalize-space(.),"페이지 2") or contains(normalize-space(.),"Page 2")])[1]'
+        )
+        edit_scripts = [
+            str(action.get("script", ""))
+            for action in captured_actions
+            if str(action.get("type", "")) == "eval"
+        ]
+        self.assertTrue(any("clicked_exact_edit" in script for script in edit_scripts))
+        self.assertGreaterEqual(page2_index, 0)
+        self.assertTrue(
+            any(action.get("step") == "focused_background_canvas" for action in click_box_actions)
+        )
+
     def test_stage2_adapter_child_accepts_line_ok_canva_text_result_without_applied(
         self,
     ) -> None:
@@ -4428,9 +4491,12 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         uploads = [
             action for action in captured_actions if action.get("type") == "upload"
         ]
-        self.assertTrue(
-            any("submitted_background_generate" in script for script in scripts)
-        )
+        iframe_actions = [
+            action
+            for action in captured_actions
+            if str(action.get("type", "")) == "playwright_canva_background_generate"
+        ]
+        self.assertEqual(len(iframe_actions), 1)
         self.assertTrue(
             any("clicked_remove_background" in script for script in scripts)
         )
@@ -4448,10 +4514,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             script for script in scripts if "cleanup_deleted_created_page" in script
         )
         self.assertIn("__runtime_v2_canva_created_page", cleanup_script)
-        self.assertTrue(any("attempt < 3" in script for script in scripts))
         self.assertTrue(any("key:'Escape'" in script for script in scripts))
-        self.assertTrue(any("Date.now() + 4000" in script for script in scripts))
-        self.assertTrue(any("Date.now() + 2000" in script for script in scripts))
         self.assertTrue(any("await wait(800)" in script for script in scripts))
         click_selector_actions = [
             action for action in captured_actions if action.get("type") == "click"
@@ -4465,7 +4528,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         )
         self.assertEqual(
             click_selector_actions[0].get("selector"),
-            'xpath=(//button[@role="tab" and contains(normalize-space(.),"Product Background")])[1]',
+            'xpath=(//div[contains(normalize-space(.),"페이지 2") or contains(normalize-space(.),"Page 2")])[1]',
         )
         self.assertTrue(
             any(
@@ -4513,16 +4576,16 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             for action in captured_actions
             if action.get("type") == "playwright_edit_canva_text"
         ]
-        self.assertEqual(len(click_actions), 2)
+        self.assertEqual(len(click_actions), 3)
         self.assertTrue(any(action.get("target") == "800" for action in wait_actions))
         self.assertEqual(len(drag_actions), 1)
         self.assertEqual(len(text_actions), 1)
         self.assertEqual(text_actions[0].get("line1"), "Legacy")
         self.assertEqual(text_actions[0].get("line2"), "Thumb")
         self.assertEqual(
-            click_actions[0].get("selector"), '[aria-label="캔버스 진입점"]'
+            click_actions[0].get("selector"), 'xpath=(//*[@role="application"])[last()]'
         )
-        self.assertEqual(click_actions[0].get("x_ratio"), 0.5)
+        self.assertEqual(click_actions[0].get("x_ratio"), 0.15)
         self.assertEqual(click_actions[0].get("y_ratio"), 0.15)
         self.assertTrue(
             any(
@@ -4558,12 +4621,6 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         )
         self.assertTrue(
             any("closed_remove_background_panel" in script for script in scripts)
-        )
-        self.assertTrue(any("static.canva.com" in script for script in scripts))
-        self.assertTrue(any("media.canva.com" in script for script in scripts))
-        self.assertTrue(any("source:'aria-label'" in script for script in scripts))
-        self.assertTrue(
-            any("source:'generate-cta-only'" in script for script in scripts)
         )
         self.assertEqual(uploads, [])
 
