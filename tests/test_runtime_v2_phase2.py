@@ -135,6 +135,11 @@ def _write_readiness_fixture(
 
 
 class RuntimeV2Phase2Tests(unittest.TestCase):
+    def test_google_sheets_sync_workload_is_registered(self) -> None:
+        from runtime_v2.config import allowed_workloads
+
+        self.assertIn("google_sheets_sync", allowed_workloads())
+
     def test_srt_workload_is_registered(self) -> None:
         from runtime_v2.config import allowed_workloads
 

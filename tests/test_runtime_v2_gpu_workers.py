@@ -4,6 +4,8 @@ import json
 import sys
 import tempfile
 import unittest
+from openpyxl import Workbook
+from openpyxl.worksheet.worksheet import Worksheet
 from pathlib import Path
 from typing import cast
 from unittest.mock import patch
@@ -18,6 +20,45 @@ from runtime_v2.workers.rvc_worker import run_rvc_job
 
 
 class RuntimeV2GpuWorkerTests(unittest.TestCase):
+    def test_google_sheets_sync_worker_reads_excel_row_and_posts_payload(self) -> None:
+        from runtime_v2.workers.google_sheets_sync_worker import run_google_sheets_sync_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            excel_path = root / "topic.xlsx"
+            workbook = Workbook()
+            sheet = cast(Worksheet, workbook.active)
+            sheet.title = "Sheet1"
+            sheet.append(["Topic", "Status", "Video Plan", "Reason Code"])
+            sheet.append(["Bridge topic", "Done", "final.mp4", "ok"])
+            workbook.save(excel_path)
+            workbook.close()
+            job = JobContract(
+                job_id="google-sheets-sync-job",
+                workload="google_sheets_sync",
+                payload={
+                    "run_id": "gsync-run-1",
+                    "row_ref": "Sheet1!row1",
+                    "excel_path": str(excel_path.resolve()),
+                    "sheet_name": "Sheet1",
+                    "row_index": 0,
+                },
+            )
+
+            with patch(
+                "runtime_v2.workers.google_sheets_sync_worker.sync_google_sheets_row",
+                return_value={"ok": True, "status_code": 200},
+            ) as sync_row:
+                result = run_google_sheets_sync_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        payload = cast(dict[str, object], sync_row.call_args.args[0])
+        values = cast(list[object], payload["values"])
+        self.assertEqual(payload["row_ref"], "Sheet1!row1")
+        self.assertEqual(values[0], "Bridge topic")
+        self.assertEqual(values[1], "Done")
+
     def test_srt_worker_writes_captions_from_voice_texts_and_timeline(self) -> None:
         from runtime_v2.workers.srt_worker import run_srt_job
 

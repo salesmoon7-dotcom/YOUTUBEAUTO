@@ -32,6 +32,32 @@ def _runtime_config(root: Path) -> RuntimeConfig:
 
 
 class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
+    def test_run_worker_dispatches_google_sheets_sync_workload(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "runtime" / "artifacts"
+            registry_file = root / "health" / "worker_registry.json"
+            artifact_root.mkdir(parents=True, exist_ok=True)
+            job = JobContract(
+                job_id="google-sheets-sync-dispatch-job",
+                workload="google_sheets_sync",
+                checkpoint_key="seed:google-sheets-sync-dispatch-job",
+                payload={"run_id": "gsync-run", "row_ref": "Sheet1!row1"},
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_google_sheets_sync_job",
+                return_value={"status": "ok", "stage": "google_sheets_sync"},
+            ) as run_sync:
+                result = run_worker(
+                    job,
+                    artifact_root=artifact_root,
+                    registry_file=registry_file,
+                )
+
+        self.assertEqual(result["status"], "ok")
+        run_sync.assert_called_once()
+
     def test_explicit_contract_path_allows_srt_inbox(self) -> None:
         from runtime_v2.control_plane_feeder import _is_allowed_explicit_contract_path
 
