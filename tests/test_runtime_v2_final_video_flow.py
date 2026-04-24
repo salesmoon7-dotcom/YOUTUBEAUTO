@@ -262,10 +262,10 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         completion = cast(dict[object, object], result["completion"])
         self.assertEqual(str(completion["state"]), "failed")
 
-    def test_render_worker_builds_video_from_image_asset_when_no_video_exists(
+    def test_render_worker_blocks_when_voice_texts_exist_but_audio_is_not_ready(
         self,
     ) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
             render_folder = root / "render_workspace"
@@ -311,45 +311,13 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
                 },
             )
 
-            def fake_process(
-                command: list[str],
-                *,
-                cwd: Path,
-                extra_env: dict[str, str] | None = None,
-                timeout_sec: int = 3600,
-            ) -> dict[str, object]:
-                _ = command
-                _ = extra_env
-                _ = timeout_sec
-                final_output = cwd / "render_final.mp4"
-                final_output.write_bytes(b"mp4")
-                return {
-                    "command": command,
-                    "cwd": str(cwd),
-                    "exit_code": 0,
-                    "stdout": "",
-                    "stderr": "",
-                    "timed_out": False,
-                    "timeout_sec": 3600,
-                    "duration_sec": 0.01,
-                }
+            result = run_render_job(job, artifact_root)
 
-            with patch(
-                "runtime_v2.stage3.render_worker.run_external_process",
-                side_effect=fake_process,
-            ):
-                result = run_render_job(job, artifact_root)
-                final_output = render_folder / "output" / "render_final.mp4"
-                self.assertTrue(final_output.exists())
-
-        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "render_audio_not_ready")
         completion = cast(dict[object, object], result["completion"])
-        details = cast(dict[object, object], result["details"])
-        self.assertTrue(bool(completion["final_output"]))
-        self.assertEqual(str(details["render_mode"]), "image_ffmpeg")
-        self.assertTrue(
-            str(completion["final_artifact_path"]).endswith("render_final.mp4")
-        )
+        self.assertEqual(str(completion["state"]), "blocked")
+        self.assertFalse(bool(completion["final_output"]))
 
     def test_render_worker_builds_timeline_and_muxes_audio(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
