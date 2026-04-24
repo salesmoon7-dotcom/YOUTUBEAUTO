@@ -448,6 +448,118 @@ class RuntimeV2CdpCaptureTests(unittest.TestCase):
                 self.assertEqual(target_path.read_bytes(), b"video")
                 self.assertEqual(evidence["sha256"], "sha256-video")
 
+    def test_capture_primary_video_asset_requests_all_video_candidates(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "geminigen.mp4"
+            encoded = base64.b64encode(b"video-bytes").decode("ascii")
+            seen_expression = ""
+
+            def fake_cdp(
+                ws_url: str, *, method: str, params: dict[str, object]
+            ) -> dict[str, object]:
+                nonlocal seen_expression
+                _ = ws_url
+                if method == "Runtime.evaluate" and params.get("awaitPromise"):
+                    return {
+                        "result": {"result": {"value": {"ok": True, "base64": encoded}}}
+                    }
+                seen_expression = str(params.get("expression", ""))
+                return {
+                    "result": {
+                        "result": {
+                            "value": [
+                                "https://www.geminigen.ai/logo-with-text.mp4",
+                                "https://www.geminigen.ai/api/files/example.mp4",
+                            ]
+                        }
+                    }
+                }
+
+            with (
+                patch(
+                    "runtime_v2.agent_browser.cdp_capture._select_page_target",
+                    return_value={
+                        "webSocketDebuggerUrl": "ws://127.0.0.1:9555/devtools/page/1",
+                        "url": "https://www.geminigen.ai/create/video",
+                    },
+                ),
+                patch(
+                    "runtime_v2.agent_browser.cdp_capture._cdp_command",
+                    side_effect=fake_cdp,
+                ),
+                patch(
+                    "runtime_v2.agent_browser.cdp_capture._download_image_bytes",
+                    return_value=b"video-bytes",
+                ),
+            ):
+                capture_primary_video_asset(
+                    9555,
+                    "geminigen.ai",
+                    output_path,
+                    service="geminigen",
+                )
+
+        self.assertIn("const candidates = []", seen_expression)
+        self.assertIn("candidates.push(src)", seen_expression)
+        self.assertIn("return candidates", seen_expression)
+
+    def test_capture_primary_video_asset_prefers_api_files_candidate(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "geminigen.mp4"
+
+            def fake_cdp(
+                ws_url: str, *, method: str, params: dict[str, object]
+            ) -> dict[str, object]:
+                _ = ws_url
+                _ = method
+                _ = params
+                return {
+                    "result": {
+                        "result": {
+                            "value": [
+                                "https://www.geminigen.ai/logo-with-text.mp4",
+                                "https://www.geminigen.ai/api/files/example.mp4",
+                            ]
+                        }
+                    }
+                }
+
+            def fake_download(image_url: str, ws_url: str) -> bytes:
+                self.assertEqual(
+                    image_url, "https://www.geminigen.ai/api/files/example.mp4"
+                )
+                self.assertEqual(ws_url, "ws://127.0.0.1:9555/devtools/page/1")
+                return b"video-bytes"
+
+            with (
+                patch(
+                    "runtime_v2.agent_browser.cdp_capture._select_page_target",
+                    return_value={
+                        "webSocketDebuggerUrl": "ws://127.0.0.1:9555/devtools/page/1",
+                        "url": "https://www.geminigen.ai/create/video",
+                    },
+                ),
+                patch(
+                    "runtime_v2.agent_browser.cdp_capture._cdp_command",
+                    side_effect=fake_cdp,
+                ),
+                patch(
+                    "runtime_v2.agent_browser.cdp_capture._download_image_bytes",
+                    side_effect=fake_download,
+                ),
+            ):
+                asset_path, sha256 = capture_primary_video_asset(
+                    9555,
+                    "geminigen.ai",
+                    output_path,
+                    service="geminigen",
+                )
+                self.assertTrue(asset_path.exists())
+                self.assertEqual(asset_path.read_bytes(), b"video-bytes")
+                self.assertEqual(len(sha256), 64)
+
     def test_capture_primary_video_asset_reads_video_src(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

@@ -125,6 +125,18 @@ def capture_primary_image_asset(
     return output_path, digest
 
 
+def _select_truthful_geminigen_video_url(raw_value: object) -> str:
+    if isinstance(raw_value, str):
+        return raw_value.strip()
+    if isinstance(raw_value, list):
+        candidates = [str(item).strip() for item in raw_value if str(item).strip()]
+        for candidate in candidates:
+            if '/api/files/' in candidate:
+                return candidate
+        return candidates[0] if candidates else ''
+    return ''
+
+
 def capture_primary_video_asset(
     port: int, expected_url_substring: str, output_path: Path, *, service: str = ""
 ) -> tuple[Path, str]:
@@ -133,14 +145,15 @@ def capture_primary_video_asset(
     expression = (
         "(() => {"
         "const selectors = ['video', 'video source'];"
+        "const candidates = [];"
         "for (const sel of selectors) {"
         "  const nodes = Array.from(document.querySelectorAll(sel));"
         "  for (const node of nodes) {"
         "    const src = node.currentSrc || node.src || node.getAttribute('src') || '';"
-        "    if (src && /^https?:/i.test(src)) return src;"
+        "    if (src && /^https?:/i.test(src) && !candidates.includes(src)) candidates.push(src);"
         "  }"
         "}"
-        "return '';"
+        "return candidates;"
         "})()"
     )
     video_payload = _cdp_command(
@@ -151,7 +164,7 @@ def capture_primary_video_asset(
             "returnByValue": True,
         },
     )
-    video_url = str(
+    video_url = _select_truthful_geminigen_video_url(
         cast(
             dict[str, object],
             cast(dict[str, object], video_payload.get("result", {})).get("result", {}),
