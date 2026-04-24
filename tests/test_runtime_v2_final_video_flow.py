@@ -86,6 +86,58 @@ def _write_render_fixture(
 
 
 class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
+    def test_shorts_render_worker_generates_vertical_video(self) -> None:
+        from runtime_v2.workers.shorts_render_worker import run_shorts_render_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            source_video = root / "source.mp4"
+            source_video.write_bytes(b"mp4")
+            output_path = artifact_root / "shorts.mp4"
+            job = JobContract(
+                job_id="shorts-render-job",
+                workload="shorts_render",
+                payload={
+                    "run_id": "shorts-run-1",
+                    "source_video_path": str(source_video.resolve()),
+                    "service_artifact_path": str(output_path.resolve()),
+                },
+            )
+            commands: list[list[str]] = []
+
+            def fake_process(
+                command: list[str], *, cwd: Path, extra_env: dict[str, str] | None = None, timeout_sec: int = 3600
+            ) -> dict[str, object]:
+                _ = cwd
+                _ = extra_env
+                _ = timeout_sec
+                commands.append(command)
+                output = Path(str(command[-1]))
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_bytes(b"mp4")
+                return {
+                    "command": command,
+                    "cwd": str(cwd),
+                    "exit_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "timed_out": False,
+                    "timeout_sec": 3600,
+                    "duration_sec": 0.01,
+                }
+
+            with patch(
+                "runtime_v2.workers.shorts_render_worker.run_external_process",
+                side_effect=fake_process,
+            ):
+                result = run_shorts_render_job(job, artifact_root=artifact_root)
+
+            self.assertEqual(result["status"], "ok")
+            self.assertTrue(output_path.exists())
+            self.assertTrue(any("-filter_complex" in part for command in commands for part in command))
+            self.assertTrue(any("overlay=(W-w)/2:(H-h)/2" in part for command in commands for part in command))
+
     def test_render_worker_fails_closed_without_render_inputs(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             artifact_root = Path(tmp_dir) / "artifacts"

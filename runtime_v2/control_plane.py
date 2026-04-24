@@ -55,6 +55,7 @@ from runtime_v2.stage2.genspark_worker import run_genspark_job
 from runtime_v2.stage2.seaart_worker import run_seaart_job
 from runtime_v2.stage3.render_worker import run_render_job
 from runtime_v2.workers.srt_worker import run_srt_job
+from runtime_v2.workers.shorts_render_worker import run_shorts_render_job
 from runtime_v2.workers.google_sheets_sync_worker import run_google_sheets_sync_job
 from runtime_v2.workers.n8n_upload_worker import run_n8n_upload_job
 from runtime_v2.worker_registry import update_worker_state
@@ -1442,6 +1443,7 @@ def _worker_dispatch_table(
         ),
         "render": lambda job: run_render_job(job, artifact_root),
         "srt": lambda job: run_srt_job(job, artifact_root=artifact_root),
+        "shorts_render": lambda job: run_shorts_render_job(job, artifact_root=artifact_root),
         "n8n_upload": lambda job: run_n8n_upload_job(job, artifact_root=artifact_root),
         "google_sheets_sync": lambda job: run_google_sheets_sync_job(job, artifact_root=artifact_root),
         "rvc": lambda job: run_rvc_job(job, artifact_root=artifact_root),
