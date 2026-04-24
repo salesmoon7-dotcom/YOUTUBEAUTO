@@ -54,6 +54,7 @@ from runtime_v2.stage2.geminigen_worker import run_geminigen_job
 from runtime_v2.stage2.genspark_worker import run_genspark_job
 from runtime_v2.stage2.seaart_worker import run_seaart_job
 from runtime_v2.stage3.render_worker import run_render_job
+from runtime_v2.workers.srt_worker import run_srt_job
 from runtime_v2.workers.n8n_upload_worker import run_n8n_upload_job
 from runtime_v2.worker_registry import update_worker_state
 from runtime_v2.worker_registry import load_worker_registry
@@ -1439,6 +1440,7 @@ def _worker_dispatch_table(
             registry_file=registry_file,
         ),
         "render": lambda job: run_render_job(job, artifact_root),
+        "srt": lambda job: run_srt_job(job, artifact_root=artifact_root),
         "n8n_upload": lambda job: run_n8n_upload_job(job, artifact_root=artifact_root),
         "rvc": lambda job: run_rvc_job(job, artifact_root=artifact_root),
         "kenburns": lambda job: run_kenburns_job(job, artifact_root=artifact_root),

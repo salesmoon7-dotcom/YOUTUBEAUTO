@@ -234,6 +234,7 @@ def _is_allowed_explicit_contract_path(inbox_root: Path, contract_file: Path) ->
         (inbox_root / "geminigen").resolve(),
         (inbox_root / "canva").resolve(),
         (inbox_root / "render").resolve(),
+        (inbox_root / "srt").resolve(),
         (inbox_root / "n8n_upload").resolve(),
         (inbox_root / "kenburns").resolve(),
         (inbox_root / "rvc" / "source").resolve(),

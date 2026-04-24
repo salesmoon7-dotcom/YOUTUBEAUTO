@@ -18,6 +18,64 @@ from runtime_v2.workers.rvc_worker import run_rvc_job
 
 
 class RuntimeV2GpuWorkerTests(unittest.TestCase):
+    def test_srt_worker_writes_captions_from_voice_texts_and_timeline(self) -> None:
+        from runtime_v2.workers.srt_worker import run_srt_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = artifact_root / "captions.srt"
+            voice_json = root / "voice.json"
+            voice_json.write_text(
+                json.dumps(
+                    {
+                        "voice_texts": [
+                            {"col": "#01", "text": "첫 번째 문장"},
+                            {"col": "#02", "text": "두 번째 문장"},
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            render_spec = root / "render_spec.json"
+            render_spec.write_text(
+                json.dumps(
+                    {
+                        "contract": "render_spec",
+                        "run_id": "srt-run-1",
+                        "row_ref": "Sheet1!row1",
+                        "timeline": [
+                            {"scene_index": 1, "duration_sec": 4},
+                            {"scene_index": 2, "duration_sec": 5},
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            job = JobContract(
+                job_id="srt-job-success",
+                workload="srt",
+                payload={
+                    "run_id": "srt-run-1",
+                    "row_ref": "Sheet1!row1",
+                    "voice_json_path": str(voice_json.resolve()),
+                    "render_spec_path": str(render_spec.resolve()),
+                    "service_artifact_path": str(output_path.resolve()),
+                },
+            )
+
+            result = run_srt_job(job, artifact_root=artifact_root)
+
+            self.assertEqual(result["status"], "ok")
+            self.assertTrue(output_path.exists())
+            srt_text = output_path.read_text(encoding="utf-8")
+            self.assertIn("첫 번째 문장", srt_text)
+            self.assertIn("두 번째 문장", srt_text)
+            self.assertIn("00:00:00,000 --> 00:00:04,000", srt_text)
+            self.assertIn("00:00:04,000 --> 00:00:09,000", srt_text)
+
     def test_n8n_upload_worker_posts_callback_with_render_artifact(self) -> None:
         from runtime_v2.workers.n8n_upload_worker import run_n8n_upload_job
 

@@ -32,6 +32,46 @@ def _runtime_config(root: Path) -> RuntimeConfig:
 
 
 class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
+    def test_explicit_contract_path_allows_srt_inbox(self) -> None:
+        from runtime_v2.control_plane_feeder import _is_allowed_explicit_contract_path
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            inbox_root = root / "inbox"
+            contract_file = inbox_root / "srt" / "srt.job.json"
+            contract_file.parent.mkdir(parents=True, exist_ok=True)
+            contract_file.write_text("{}", encoding="utf-8")
+
+            allowed = _is_allowed_explicit_contract_path(inbox_root, contract_file)
+
+        self.assertTrue(allowed)
+
+    def test_run_worker_dispatches_srt_workload(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "runtime" / "artifacts"
+            registry_file = root / "health" / "worker_registry.json"
+            artifact_root.mkdir(parents=True, exist_ok=True)
+            job = JobContract(
+                job_id="srt-dispatch-job",
+                workload="srt",
+                checkpoint_key="seed:srt-dispatch-job",
+                payload={"run_id": "srt-run", "row_ref": "Sheet1!row1"},
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_srt_job",
+                return_value={"status": "ok", "stage": "srt"},
+            ) as run_srt:
+                result = run_worker(
+                    job,
+                    artifact_root=artifact_root,
+                    registry_file=registry_file,
+                )
+
+        self.assertEqual(result["status"], "ok")
+        run_srt.assert_called_once()
+
     def test_explicit_contract_rejects_non_local_n8n_artifact_path(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

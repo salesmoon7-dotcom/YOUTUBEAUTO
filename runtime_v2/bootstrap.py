@@ -110,6 +110,7 @@ def _ensure_runtime_directories(config: RuntimeConfig) -> None:
         config.input_root / "qwen3_tts",
         config.input_root / "voicevox",
         config.input_root / "chatgpt",
+        config.input_root / "srt",
         config.input_root / "n8n_upload",
         config.input_root / "genspark",
         config.input_root / "seaart",

@@ -10,7 +10,7 @@ GpuWorkload = Literal["qwen3_tts", "voicevox", "rvc", "kenburns"]
 BrowserWorkload = Literal[
     "chatgpt", "genspark", "seaart", "geminigen", "canva", "agent_browser_verify"
 ]
-LocalWorkload = Literal["render", "n8n_upload", "dev_plan", "dev_implement", "dev_replan"]
+LocalWorkload = Literal["render", "srt", "n8n_upload", "dev_plan", "dev_implement", "dev_replan"]
 WorkloadName = Literal[
     "qwen3_tts",
     "voicevox",
@@ -26,6 +26,7 @@ WorkloadName = Literal[
     "dev_implement",
     "dev_replan",
     "render",
+    "srt",
     "n8n_upload",
 ]
 WorkloadKind = Literal["gpu", "browser", "local"]
@@ -48,6 +49,7 @@ WORKLOAD_KINDS: dict[WorkloadName, WorkloadKind] = {
     "dev_implement": "local",
     "dev_replan": "local",
     "render": "local",
+    "srt": "local",
     "n8n_upload": "local",
 }
 
@@ -66,6 +68,7 @@ WORKLOAD_BROWSER_SERVICES: dict[WorkloadName, tuple[str, ...]] = {
     "dev_implement": (),
     "dev_replan": (),
     "render": (),
+    "srt": (),
     "n8n_upload": (),
 }
 
