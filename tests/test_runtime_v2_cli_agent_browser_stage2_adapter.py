@@ -141,6 +141,12 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             args.service_artifact_path = str((root / "speech.flac").resolve())
             args.ref_audio = ""
 
+            def fake_bundle(**kwargs: object) -> dict[str, object]:
+                target = Path(str(kwargs["service_artifact_path"]))
+                target.parent.mkdir(parents=True, exist_ok=True)
+                _ = target.write_bytes(b"mp4")
+                return {"service": "geminigen", "sha256": "ok"}
+
             completed = cast(object, type("Completed", (), {})())
             setattr(completed, "returncode", 0)
             setattr(completed, "stdout", "ok")
@@ -305,6 +311,12 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                     )
                 return {"status": "ok", "details": {}}
 
+            def fake_bundle(**kwargs: object) -> dict[str, object]:
+                target = Path(str(kwargs["service_artifact_path"]))
+                target.parent.mkdir(parents=True, exist_ok=True)
+                _ = target.write_bytes(b"mp4")
+                return {"service": "geminigen", "sha256": "ok"}
+
             completed = cast(object, type("Completed", (), {})())
             setattr(completed, "stdout", '{"ok":true}')
             setattr(completed, "stderr", "")
@@ -321,7 +333,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 ),
                 patch(
                     "runtime_v2.cli.write_functional_evidence_bundle",
-                    return_value={"service": "geminigen", "sha256": "ok"},
+                    side_effect=fake_bundle,
                 ),
                 patch("runtime_v2.cli.subprocess.run", return_value=completed),
             ):
@@ -4850,6 +4862,10 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                     return_value={"status": "ok"},
                 ),
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "geminigen", "sha256": "ok"},
+                ),
             ):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 

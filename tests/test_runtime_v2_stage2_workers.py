@@ -529,7 +529,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
 
             result = run_geminigen_job(job, artifact_root)
 
-            workspace = artifact_root / "geminigen" / job.job_id
+            workspace = artifact_root / "geminigen" / job.job_id / str(job.payload["run_id"])
             self.assertEqual(result["status"], "ok")
             self.assertTrue(output_path.exists())
             self.assertTrue((workspace / "request.json").exists())
