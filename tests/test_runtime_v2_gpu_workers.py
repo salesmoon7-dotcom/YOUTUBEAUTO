@@ -18,6 +18,37 @@ from runtime_v2.workers.rvc_worker import run_rvc_job
 
 
 class RuntimeV2GpuWorkerTests(unittest.TestCase):
+    def test_n8n_upload_worker_posts_callback_with_render_artifact(self) -> None:
+        from runtime_v2.workers.n8n_upload_worker import run_n8n_upload_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            render_file = root / "render_final.mp4"
+            render_file.write_bytes(b"mp4")
+            job = JobContract(
+                job_id="n8n-upload-job-success",
+                workload="n8n_upload",
+                payload={
+                    "run_id": "upload-run-1",
+                    "callback_url": "https://example.test/webhook",
+                    "artifact_path": str(render_file.resolve()),
+                    "row_ref": "Sheet1!row1",
+                    "mode": "closeout",
+                },
+            )
+
+            with patch(
+                "runtime_v2.workers.n8n_upload_worker.post_callback",
+                return_value={"ok": True, "status_code": 200, "attempts": 1},
+            ) as post_callback:
+                result = run_n8n_upload_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        payload = cast(dict[str, object], post_callback.call_args.args[0])
+        self.assertEqual(payload["callback_url"], "https://example.test/webhook")
+        self.assertEqual(payload["artifact_path"], str(render_file.resolve()))
+
     def test_voicevox_workload_is_registered(self) -> None:
         from runtime_v2.config import allowed_workloads
 
