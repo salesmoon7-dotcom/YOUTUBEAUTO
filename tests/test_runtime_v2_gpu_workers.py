@@ -20,6 +20,81 @@ from runtime_v2.workers.rvc_worker import run_rvc_job
 
 
 class RuntimeV2GpuWorkerTests(unittest.TestCase):
+    def test_timeline_worker_generates_youtube_timeline_text(self) -> None:
+        from runtime_v2.workers.timeline_worker import run_timeline_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            voice_json = root / "voice.json"
+            voice_json.write_text(
+                json.dumps(
+                    {
+                        "chapter_plan": [
+                            {"title": "Intro", "start_col": "#01"},
+                            {"title": "Body", "start_col": "#02"},
+                            {"title": "Outro", "start_col": "#03"},
+                        ]
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            video_dir = root / "video"
+            video_dir.mkdir(parents=True, exist_ok=True)
+            for name in ["#01_RVC.mp4", "#02_RVC.mp4", "#03_RVC.mp4"]:
+                (video_dir / name).write_bytes(b"mp4")
+            output_path = artifact_root / "youtube_timeline.txt"
+            job = JobContract(
+                job_id="timeline-job-success",
+                workload="timeline",
+                payload={
+                    "run_id": "timeline-run-1",
+                    "row_ref": "Sheet1!row1",
+                    "voice_json_path": str(voice_json.resolve()),
+                    "video_dir_path": str(video_dir.resolve()),
+                    "service_artifact_path": str(output_path.resolve()),
+                },
+            )
+            expected_stdout = "\n".join(["0:00 Intro", "0:12 Body", "0:30 Outro"])
+
+            def fake_process(
+                command: list[str],
+                *,
+                cwd: Path,
+                extra_env: dict[str, str] | None = None,
+                timeout_sec: int = 3600,
+            ) -> dict[str, object]:
+                _ = extra_env
+                _ = timeout_sec
+                self.assertEqual(command[0], sys.executable)
+                self.assertTrue(command[1].endswith("timeline_generator.py"))
+                self.assertEqual(command[2:4], ["--voice-json", str(voice_json.resolve())])
+                self.assertEqual(command[4:6], ["--video-dir", str(video_dir.resolve())])
+                return {
+                    "command": command,
+                    "cwd": str(cwd),
+                    "exit_code": 0,
+                    "stdout": expected_stdout,
+                    "stderr": "",
+                    "timed_out": False,
+                    "timeout_sec": 3600,
+                    "duration_sec": 0.01,
+                }
+
+            with patch(
+                "runtime_v2.workers.timeline_worker.run_external_process",
+                side_effect=fake_process,
+            ):
+                result = run_timeline_job(job, artifact_root=artifact_root)
+
+            self.assertEqual(result["status"], "ok")
+            self.assertTrue(output_path.exists())
+            timeline_text = output_path.read_text(encoding="utf-8")
+            self.assertIn("0:00 Intro", timeline_text)
+            self.assertIn("0:12 Body", timeline_text)
+            self.assertIn("0:30 Outro", timeline_text)
+
     def test_google_sheets_sync_worker_reads_excel_row_and_posts_payload(self) -> None:
         from runtime_v2.workers.google_sheets_sync_worker import run_google_sheets_sync_job
 

@@ -135,6 +135,11 @@ def _write_readiness_fixture(
 
 
 class RuntimeV2Phase2Tests(unittest.TestCase):
+    def test_timeline_workload_is_registered(self) -> None:
+        from runtime_v2.config import allowed_workloads
+
+        self.assertIn("timeline", allowed_workloads())
+
     def test_shorts_render_workload_is_registered(self) -> None:
         from runtime_v2.config import allowed_workloads
 
