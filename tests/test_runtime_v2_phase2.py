@@ -135,6 +135,11 @@ def _write_readiness_fixture(
 
 
 class RuntimeV2Phase2Tests(unittest.TestCase):
+    def test_n8n_upload_workload_is_registered(self) -> None:
+        from runtime_v2.config import allowed_workloads
+
+        self.assertIn("n8n_upload", allowed_workloads())
+
     def test_voicevox_shares_qwen3_gpu_lease_identity(self) -> None:
         config = RuntimeConfig.from_root(Path("D:/YOUTUBEAUTO/tmp_voicevox_lease_test"))
         self.assertEqual(lease_key_for_workload("voicevox"), "lock:qwen3_tts")
