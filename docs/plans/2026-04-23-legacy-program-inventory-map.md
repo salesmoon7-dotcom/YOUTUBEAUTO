@@ -105,6 +105,7 @@ Before saying all non-Canva work is done, compare against this inventory rather 
 Deprecated by current user direction and therefore excluded from active migration targeting:
 - `Vrew`
 - `ACE BGM`
+- `Google Sheets sync`
 
 That does not mean every listed program has an open blocker right now.
 It means the legacy map must be understood at this broader program level before making completion claims.
