@@ -19,6 +19,7 @@ from runtime_v2.control_plane import (
     run_worker,
     seed_control_job,
 )
+from runtime_v2.control_plane_feeder import job_from_explicit_payload
 from runtime_v2.manager import seed_excel_row
 from runtime_v2.contracts.video_plan import build_video_plan
 from runtime_v2.latest_run import load_joined_latest_run
@@ -31,6 +32,60 @@ def _runtime_config(root: Path) -> RuntimeConfig:
 
 
 class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
+    def test_explicit_contract_rejects_non_local_n8n_artifact_path(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            inbox_root = root / "inbox"
+            contract_file = inbox_root / "n8n_upload" / "n8n.job.json"
+            contract_file.parent.mkdir(parents=True, exist_ok=True)
+            payload = build_explicit_job_contract(
+                job_id="n8n-upload-job",
+                workload="n8n_upload",
+                checkpoint_key="seed:n8n-upload-job",
+                payload={
+                    "callback_url": "https://example.test/webhook",
+                    "artifact_path": "C:/Windows/Temp/render_final.mp4",
+                },
+            )
+            contract_file.write_text(
+                json.dumps(payload, ensure_ascii=True), encoding="utf-8"
+            )
+
+            loaded = json.loads(contract_file.read_text(encoding="utf-8"))
+            contract, error = job_from_explicit_payload(
+                loaded, source_hint=str(contract_file)
+            )
+
+        self.assertIsNone(contract)
+        self.assertIsNotNone(error)
+        typed_error = cast(dict[str, object], error)
+        self.assertEqual(typed_error["code"], "non_local_path")
+    def test_run_worker_dispatches_n8n_upload_workload(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "runtime" / "artifacts"
+            registry_file = root / "health" / "worker_registry.json"
+            artifact_root.mkdir(parents=True, exist_ok=True)
+            job = JobContract(
+                job_id="n8n-upload-dispatch-job",
+                workload="n8n_upload",
+                checkpoint_key="seed:n8n-upload-dispatch-job",
+                payload={"run_id": "n8n-upload-run", "callback_url": "https://example.test/webhook"},
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_n8n_upload_job",
+                return_value={"status": "ok", "stage": "n8n_upload"},
+            ) as run_n8n_upload:
+                result = run_worker(
+                    job,
+                    artifact_root=artifact_root,
+                    registry_file=registry_file,
+                )
+
+        self.assertEqual(result["status"], "ok")
+        run_n8n_upload.assert_called_once()
+
     def test_explicit_contract_path_allows_voicevox_inbox(self) -> None:
         from runtime_v2.control_plane_feeder import _is_allowed_explicit_contract_path
 

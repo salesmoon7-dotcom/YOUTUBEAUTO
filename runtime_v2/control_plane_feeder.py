@@ -142,6 +142,7 @@ def payload_paths_are_local(payload: dict[str, object]) -> bool:
         "image_path",
         "scene_bundle_map_path",
         "service_artifact_path",
+        "artifact_path",
     ):
         raw_value = payload.get(key)
         if isinstance(raw_value, str) and raw_value.strip():
@@ -233,6 +234,7 @@ def _is_allowed_explicit_contract_path(inbox_root: Path, contract_file: Path) ->
         (inbox_root / "geminigen").resolve(),
         (inbox_root / "canva").resolve(),
         (inbox_root / "render").resolve(),
+        (inbox_root / "n8n_upload").resolve(),
         (inbox_root / "kenburns").resolve(),
         (inbox_root / "rvc" / "source").resolve(),
         (inbox_root / "rvc" / "audio").resolve(),
