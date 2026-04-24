@@ -5116,6 +5116,31 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         )
         self.assertTrue(bool(report["probe_success"]))
 
+    def test_stage2_row1_probe_blocks_when_geminigen_falls_back_to_placeholder(self) -> None:
+        ok_result = {"status": "ok", "error_code": "", "details": {}, "completion": {"final_output": True}}
+        failed_result = {"status": "failed", "error_code": "GEMINIGEN_LOGIN_UNPROVEN", "details": {}, "completion": {"final_output": False}}
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig.from_root(root / "runtime")
+            with (
+                patch("runtime_v2.cli.run_genspark_job", return_value=ok_result),
+                patch("runtime_v2.cli.run_seaart_job", return_value=ok_result),
+                patch("runtime_v2.cli.run_geminigen_job", side_effect=[failed_result, ok_result]),
+                patch("runtime_v2.cli.run_canva_job", return_value=ok_result),
+            ):
+                report = _run_stage2_row1_probe(
+                    config=config,
+                    probe_root=root / "probe",
+                    run_id="stage2-row1-geminigen-proof",
+                    agent_browser_services=["geminigen"],
+                )
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["code"], "GEMINIGEN_LOGIN_UNPROVEN")
+        self.assertFalse(bool(report["probe_success"]))
+        self.assertIn("geminigen", cast(list[object], report["placeholder_services"]))
+
     def test_stage2_row1_probe_writes_runtime_root_from_passed_config(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

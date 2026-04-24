@@ -1641,6 +1641,7 @@ def _run_stage2_row1_probe(
         result = runner(contract, config.artifact_root)
         fallback_used = False
         attach_attempt_failed = str(result.get("status", "")) != "ok"
+        attach_failure_code = str(result.get("error_code", ""))
         if attach_attempt_failed and service in agent_browser_services:
             fallback_payload = dict(payload)
             fallback_payload.pop("use_agent_browser", None)
@@ -1672,7 +1673,10 @@ def _run_stage2_row1_probe(
                 "attach_attempt_failed": attach_attempt_failed,
             }
         )
-        if str(result.get("status", "")) != "ok" and overall_ok:
+        if service == "geminigen" and fallback_used and overall_ok:
+            overall_ok = False
+            failure_code = attach_failure_code if attach_failure_code.startswith("GEMINIGEN_LOGIN_") else "GEMINIGEN_LOGIN_UNPROVEN"
+        elif str(result.get("status", "")) != "ok" and overall_ok:
             overall_ok = False
             failure_code = str(result.get("error_code", "BROWSER_BLOCKED"))
     report: dict[str, object] = {
