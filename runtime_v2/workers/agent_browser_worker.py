@@ -177,9 +177,15 @@ def _playwright_edit_canva_colored_text(
         browser.close()
 
 
-def _click_visible_page_locator(page, selector: str, *, has_text: str | None = None) -> bool:
+def _click_visible_page_locator(
+    page, selector: str, *, has_text: str | None = None
+) -> bool:
     try:
-        locator = page.locator(selector, has_text=has_text) if has_text is not None else page.locator(selector)
+        locator = (
+            page.locator(selector, has_text=has_text)
+            if has_text is not None
+            else page.locator(selector)
+        )
     except Exception:
         return False
     target = _last_visible_locator(locator)
@@ -200,30 +206,53 @@ def _playwright_canva_background_generate(
         page.keyboard.press("Escape")
         page.wait_for_timeout(500)
 
-        page.evaluate("""(async () => { const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms)); const tabs = Array.from(document.querySelectorAll('button[role="tab"][aria-controls], [role=tab][aria-controls]')); const target = tabs.find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경 생성'); }); if (!(target instanceof HTMLElement)) return false; target.focus(); target.click(); await wait(300); if ((target.getAttribute('aria-selected') || '') === 'true') return true; target.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); target.dispatchEvent(new KeyboardEvent('keyup', {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); await wait(300); if ((target.getAttribute('aria-selected') || '') === 'true') return true; target.dispatchEvent(new KeyboardEvent('keydown', {key:' ', code:'Space', keyCode:32, which:32, bubbles:true})); target.dispatchEvent(new KeyboardEvent('keyup', {key:' ', code:'Space', keyCode:32, which:32, bubbles:true})); await wait(300); return (target.getAttribute('aria-selected') || '') === 'true'; })()""")
+        page.evaluate(
+            """(async () => { const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms)); const tabs = Array.from(document.querySelectorAll('button[role="tab"][aria-controls], [role=tab][aria-controls]')); const target = tabs.find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경 생성'); }); if (!(target instanceof HTMLElement)) return false; target.focus(); target.click(); await wait(300); if ((target.getAttribute('aria-selected') || '') === 'true') return true; target.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); target.dispatchEvent(new KeyboardEvent('keyup', {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); await wait(300); if ((target.getAttribute('aria-selected') || '') === 'true') return true; target.dispatchEvent(new KeyboardEvent('keydown', {key:' ', code:'Space', keyCode:32, which:32, bubbles:true})); target.dispatchEvent(new KeyboardEvent('keyup', {key:' ', code:'Space', keyCode:32, which:32, bubbles:true})); await wait(300); return (target.getAttribute('aria-selected') || '') === 'true'; })()"""
+        )
         page.wait_for_timeout(1500)
 
-        panel_id = page.evaluate("""(() => { const target = Array.from(document.querySelectorAll('button[role="tab"][aria-controls], [role="tab"][aria-controls]')).find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경 생성'); }); return target ? (target.getAttribute('aria-controls') || '') : ''; })()""")
-        panel_id = str(panel_id or '').strip()
+        panel_id = page.evaluate(
+            """(() => { const target = Array.from(document.querySelectorAll('button[role="tab"][aria-controls], [role="tab"][aria-controls]')).find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경 생성'); }); return target ? (target.getAttribute('aria-controls') || '') : ''; })()"""
+        )
+        panel_id = str(panel_id or "").strip()
         if not panel_id:
-            if _click_visible_page_locator(page, 'button[role="tab"],[role=tab]', has_text='Product Background'):
+            if _click_visible_page_locator(
+                page, 'button[role="tab"],[role=tab]', has_text="Product Background"
+            ):
                 page.wait_for_timeout(800)
-                panel_id = str(page.evaluate("(() => { const target = Array.from(document.querySelectorAll('button[role=tab][aria-controls], [role=\"tab\"][aria-controls]')).find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경 생성'); }); return target ? (target.getAttribute('aria-controls') || '') : ''; })()") or '').strip()
+                panel_id = str(
+                    page.evaluate(
+                        "(() => { const target = Array.from(document.querySelectorAll('button[role=tab][aria-controls], [role=\"tab\"][aria-controls]')).find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경 생성'); }); return target ? (target.getAttribute('aria-controls') || '') : ''; })()"
+                    )
+                    or ""
+                ).strip()
         if panel_id:
-            panel = page.locator(f'#{panel_id}')
+            panel = page.locator(f"#{panel_id}")
             prompt_input = None
             for _ in range(8):
-                prompt_candidates = panel.locator("textarea,[role=textbox],input[type=text],[contenteditable='true']")
+                prompt_candidates = panel.locator(
+                    "textarea,[role=textbox],input[type=text],[contenteditable='true']"
+                )
                 prompt_input = _last_visible_locator(prompt_candidates)
                 if prompt_input is not None:
                     break
                 page.wait_for_timeout(500)
             if prompt_input is not None:
                 prompt_input.fill(bg_prompt, timeout=timeout_sec * 1000)
-                if _click_visible_page_locator(panel, 'button,[role=button]', has_text="생성"):
+                if _click_visible_page_locator(
+                    panel, "button,[role=button]", has_text="생성"
+                ):
                     return {"ok": True, "step": "submitted_background_generate_panel"}
-            file_select_visible = bool(_click_visible_page_locator(panel, 'button,[role=button]', has_text="파일 선택하기"))
-            generate_visible = bool(_click_visible_page_locator(panel, 'button,[role=button]', has_text="생성"))
+            file_select_visible = bool(
+                _click_visible_page_locator(
+                    panel, "button,[role=button]", has_text="파일 선택하기"
+                )
+            )
+            generate_visible = bool(
+                _click_visible_page_locator(
+                    panel, "button,[role=button]", has_text="생성"
+                )
+            )
             if file_select_visible or generate_visible:
                 return {
                     "ok": False,
@@ -237,18 +266,22 @@ def _playwright_canva_background_generate(
             canvas_box = canvas_locator.bounding_box()
             if canvas_box:
                 page.mouse.click(
-                    float(canvas_box.get('x', 0)) + float(canvas_box.get('width', 0)) * 0.5,
-                    float(canvas_box.get('y', 0)) + float(canvas_box.get('height', 0)) * 0.15,
+                    float(canvas_box.get("x", 0))
+                    + float(canvas_box.get("width", 0)) * 0.5,
+                    float(canvas_box.get("y", 0))
+                    + float(canvas_box.get("height", 0)) * 0.15,
                 )
                 page.wait_for_timeout(500)
         except Exception:
             pass
 
-        page.evaluate("""(() => { const candidates = Array.from(document.querySelectorAll('button,[role=button],[aria-label]')); const target = candidates.find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경 생성'); }); if (!(target instanceof HTMLElement)) return false; target.focus(); target.click(); return true; })()""")
+        page.evaluate(
+            """(() => { const candidates = Array.from(document.querySelectorAll('button,[role=button],[aria-label]')); const target = candidates.find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경 생성'); }); if (!(target instanceof HTMLElement)) return false; target.focus(); target.click(); return true; })()"""
+        )
         page.wait_for_timeout(800)
 
         frame = None
-        iframe_selectors = ['iframe[title="Product Background"]', 'iframe']
+        iframe_selectors = ['iframe[title="Product Background"]', "iframe"]
         for _ in range(10):
             for selector in iframe_selectors:
                 iframe = page.locator(selector).first
@@ -259,14 +292,14 @@ def _playwright_canva_background_generate(
                 if frame is None:
                     child_candidates = []
                     for candidate in page.frames:
-                        candidate_url = str(getattr(candidate, 'url', '') or '')
-                        if 'canva-apps.com/app-sandbox/editor' in candidate_url:
+                        candidate_url = str(getattr(candidate, "url", "") or "")
+                        if "canva-apps.com/app-sandbox/editor" in candidate_url:
                             frame = candidate
                             break
                         if (
                             candidate_url
-                            and candidate_url != 'about:blank'
-                            and 'canva.com/design/' not in candidate_url
+                            and candidate_url != "about:blank"
+                            and "canva.com/design/" not in candidate_url
                         ):
                             child_candidates.append(candidate)
                     if frame is None and len(child_candidates) == 1:
@@ -284,14 +317,16 @@ def _playwright_canva_background_generate(
 
         for _ in range(10):
             try:
-                frame_body = frame.locator('body').inner_text(timeout=1000)
+                frame_body = frame.locator("body").inner_text(timeout=1000)
             except Exception:
-                frame_body = ''
+                frame_body = ""
             if str(frame_body).strip():
                 break
             page.wait_for_timeout(500)
 
-        prompt_candidates = frame.locator("textarea,[role=textbox],input[type=text],[contenteditable='true']")
+        prompt_candidates = frame.locator(
+            "textarea,[role=textbox],input[type=text],[contenteditable='true']"
+        )
         prompt_input = _last_visible_locator(prompt_candidates)
         prompt_visible = prompt_input is not None
 
@@ -794,14 +829,18 @@ def _agent_browser_error_code(exc: Exception) -> str:
     return "AGENT_BROWSER_VERIFY_FAILED"
 
 
-def _recover_agent_browser_service(service: str, *, artifact_root: Path | None = None) -> None:
+def _recover_agent_browser_service(
+    service: str, *, artifact_root: Path | None = None
+) -> None:
     manager = BrowserManager()
     manager.start()
     supervisor = BrowserSupervisor(manager)
     if artifact_root is None:
         cfg = RuntimeConfig()
     else:
-        probe_root = artifact_root.parent if artifact_root.name == "artifacts" else artifact_root
+        probe_root = (
+            artifact_root.parent if artifact_root.name == "artifacts" else artifact_root
+        )
         cfg = RuntimeConfig.from_root(probe_root)
     _ = supervisor.tick(
         registry_file=cfg.browser_registry_file,
@@ -909,7 +948,11 @@ def run_agent_browser_verify_job(
     def _run_verify_once() -> tuple[
         list[dict[str, object]], int | None, str, str, Path | None
     ]:
-        local_transcript: list[dict[str, object]] = []
+        nonlocal current_url, current_title, transcript
+        current_url = ""
+        current_title = ""
+        transcript = []
+        local_transcript = transcript
         tab_list_command = build_tab_list_command(port=port)
         used_http_fallback = False
         try:
@@ -954,8 +997,6 @@ def run_agent_browser_verify_job(
                 )
         if selected_tab is None and (expected_url or expected_title):
             raise ValueError("agent_browser_matching_tab_not_found")
-        current_url = ""
-        current_title = ""
         if used_http_fallback and selected_tab is not None:
             selected = tabs[selected_tab]
             current_url = str(selected.get("url", ""))
@@ -1070,9 +1111,13 @@ def run_agent_browser_verify_job(
                 recovery_attempted = True
                 _recover_agent_browser_service(service, artifact_root=artifact_root)
                 try:
-                    transcript, selected_tab, current_url, current_title, snapshot_path = (
-                        _run_verify_once()
-                    )
+                    (
+                        transcript,
+                        selected_tab,
+                        current_url,
+                        current_title,
+                        snapshot_path,
+                    ) = _run_verify_once()
                 except RuntimeError:
                     transcript.append(
                         {

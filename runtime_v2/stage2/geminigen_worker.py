@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import cast
 
@@ -37,6 +38,27 @@ _GEMINIGEN_LOGIN_URL_PATTERNS = (
 )
 
 
+def _transcript_shows_login_redirect(transcript_path: Path) -> bool:
+    if not transcript_path.exists():
+        return False
+    try:
+        raw_payload = json.loads(transcript_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(raw_payload, dict):
+        return False
+    steps = raw_payload.get("steps", [])
+    if not isinstance(steps, list):
+        return False
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        output = str(step.get("output", "")).lower()
+        if any(pattern in output for pattern in _GEMINIGEN_LOGIN_URL_PATTERNS):
+            return True
+    return False
+
+
 def _int_value(raw_value: object, default: int) -> int:
     if isinstance(raw_value, bool):
         return int(raw_value)
@@ -64,15 +86,23 @@ def _geminigen_session_proof_failure(
     current_url = str(attach_evidence.get("current_url", "")).strip()
     current_title = str(attach_evidence.get("current_title", "")).strip()
     normalized_url = current_url.lower()
-    if not normalized_url or "geminigen.ai" not in normalized_url:
-        return "GEMINIGEN_LOGIN_UNPROVEN", {
-            "reason": "missing_geminigen_runtime_url",
+    transcript_path = Path(str(attach_evidence.get("transcript_path", "")).strip())
+    if _transcript_shows_login_redirect(transcript_path):
+        return "GEMINIGEN_LOGIN_REQUIRED", {
+            "reason": "login_redirect_detected_in_transcript",
             "current_url": current_url,
             "current_title": current_title,
+            "transcript_path": str(transcript_path),
         }
     if any(pattern in normalized_url for pattern in _GEMINIGEN_LOGIN_URL_PATTERNS):
         return "GEMINIGEN_LOGIN_REQUIRED", {
             "reason": "login_url_detected",
+            "current_url": current_url,
+            "current_title": current_title,
+        }
+    if not normalized_url or "geminigen.ai" not in normalized_url:
+        return "GEMINIGEN_LOGIN_UNPROVEN", {
+            "reason": "missing_geminigen_runtime_url",
             "current_url": current_url,
             "current_title": current_title,
         }
@@ -128,6 +158,27 @@ def run_geminigen_job(
             adapter_error_code = str(
                 adapter_result.get("error_code", "geminigen_adapter_failed")
             )
+            session_proof_failure = _geminigen_session_proof_failure(
+                workspace, use_agent_browser=use_agent_browser
+            )
+            if session_proof_failure is not None:
+                session_error_code, session_details = session_proof_failure
+                return finalize_worker_result(
+                    workspace,
+                    status="failed",
+                    stage="geminigen_session",
+                    artifacts=[
+                        request_path,
+                        prompt_path,
+                        stdout_path,
+                        stderr_path,
+                        *([attach_evidence] if attach_evidence.exists() else []),
+                    ],
+                    error_code=session_error_code,
+                    retryable=False,
+                    details=session_details,
+                    completion={"state": "failed", "final_output": False},
+                )
             return finalize_worker_result(
                 workspace,
                 status="failed",

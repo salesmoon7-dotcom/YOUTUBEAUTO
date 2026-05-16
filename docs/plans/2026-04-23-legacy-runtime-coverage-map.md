@@ -39,7 +39,7 @@ You may say: non-Canva closeout chain work is currently passing through the acti
 Do **not** say: all non-Canva legacy programs are fully complete.
 
 That stronger claim would overstate the current runtime_v2 coverage because the broader legacy map still includes partially covered or uncovered surfaces such as (excluding currently deprecated Vrew / ACE BGM / Google Sheets sync):
-- `GeminiGen` (explicit attach/session contracts exist, but live login/session proof is still the remaining non-Canva gap; even after legacy `repair_session` and browser restart, runtime still lands on `app/video-gen/grok` with the `Grok no longer free` title)
+- `GeminiGen` (explicit attach/session contracts exist, but live login/session proof is still the remaining non-Canva gap; fresh `D:\YOUTUBEAUTO_RUNTIME\probe\geminigen-login-proof-20260516-b\probe_result.json` now closes as `GEMINIGEN_LOGIN_REQUIRED` with `https://geminigen.ai/auth/login` / `Login - Access Your GeminiGen AI Account` evidence instead of a generic unproven fallback)
 
 ## Practical Rule Going Forward
 

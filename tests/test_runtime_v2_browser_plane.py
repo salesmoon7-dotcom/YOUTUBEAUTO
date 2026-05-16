@@ -1113,6 +1113,43 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertEqual(str(second["lock_state"]), "busy")
         self.assertFalse(bool(second.get("recovered", False)))
 
+    def test_old_profile_lock_with_dead_port_is_recovered_even_if_pid_still_exists(
+        self,
+    ) -> None:
+        with self._temp_dir() as tmp_dir:
+            profile_dir = Path(tmp_dir) / "chatgpt-primary"
+            first = acquire_profile_lock(
+                str(profile_dir.resolve()),
+                service="chatgpt",
+                session_id="primary",
+                port=9222,
+            )
+            lock_file = profile_dir / ".runtime_v2.profile.lock"
+            lock_payload = json.loads(lock_file.read_text(encoding="utf-8"))
+            lock_payload["pid"] = 999999
+            lock_payload["acquired_at"] = time() - 3600
+            _ = lock_file.write_text(
+                json.dumps(lock_payload, ensure_ascii=True), encoding="utf-8"
+            )
+
+            with (
+                patch("runtime_v2.browser.manager._pid_is_running", return_value=True),
+                patch(
+                    "runtime_v2.browser.manager._probe_local_port", return_value=False
+                ),
+            ):
+                second = acquire_profile_lock(
+                    str(profile_dir.resolve()),
+                    service="chatgpt",
+                    session_id="primary",
+                    port=9222,
+                )
+
+        self.assertTrue(bool(first["locked"]))
+        self.assertTrue(bool(second["locked"]))
+        self.assertEqual(str(second["lock_state"]), "stale")
+        self.assertTrue(bool(second["recovered"]))
+
     def test_unknown_profile_lock_metadata_fail_closes(self) -> None:
         with self._temp_dir() as tmp_dir:
             profile_dir = Path(tmp_dir) / "chatgpt-primary"

@@ -90,6 +90,10 @@ def _browser_plane_lock_stale_sec() -> int:
     return max(1, int(RuntimeConfig().lock_mutex_stale_sec))
 
 
+def _profile_lock_stale_sec() -> int:
+    return max(1, int(RuntimeConfig().lock_mutex_stale_sec))
+
+
 def _read_browser_plane_lock() -> dict[str, object]:
     lock_file = _browser_plane_lock_file()
     if not lock_file.exists():
@@ -719,6 +723,7 @@ def inspect_profile_lock(
     lock_age_sec = 0.0
     if isinstance(acquired_at, (int, float, str)):
         lock_age_sec = max(0.0, round(time() - _to_float(acquired_at, 0.0), 3))
+    stale_sec = _profile_lock_stale_sec()
     same_owner = (
         metadata_valid
         and str(existing_payload.get("service", "")) == service
@@ -730,6 +735,8 @@ def inspect_profile_lock(
         lock_state = "owned"
     elif not metadata_valid:
         lock_state = "unknown"
+    elif not port_open and lock_age_sec > stale_sec:
+        lock_state = "stale"
     elif pid_alive or port_open:
         lock_state = "busy"
     else:
@@ -741,6 +748,7 @@ def inspect_profile_lock(
         "pid_alive": pid_alive,
         "port_open": port_open,
         "lock_age_sec": lock_age_sec,
+        "stale_after_sec": stale_sec,
         "lock_file": str(lock_file),
     }
 
@@ -885,9 +893,6 @@ def open_browser_for_login(
     }
 
 
-
-
-
 def _reclaim_foreign_debug_port(session: BrowserSession) -> bool:
     if session.service != "chatgpt":
         return False
@@ -912,7 +917,12 @@ def _reclaim_foreign_debug_port(session: BrowserSession) -> bool:
         try:
             ws = websocket.create_connection(ws_url, timeout=10, suppress_origin=True)
             try:
-                ws.send(json.dumps({"id": 1, "method": "Browser.close", "params": {}}, ensure_ascii=True))
+                ws.send(
+                    json.dumps(
+                        {"id": 1, "method": "Browser.close", "params": {}},
+                        ensure_ascii=True,
+                    )
+                )
                 _ = ws.recv()
             finally:
                 ws.close()
@@ -925,7 +935,11 @@ def _reclaim_foreign_debug_port(session: BrowserSession) -> bool:
     if os.name == "nt":
         try:
             result = subprocess.run(
-                ["cmd", "/c", f"netstat -ano -p tcp | findstr LISTENING | findstr :{session.port}"],
+                [
+                    "cmd",
+                    "/c",
+                    f"netstat -ano -p tcp | findstr LISTENING | findstr :{session.port}",
+                ],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -963,6 +977,7 @@ def _reclaim_foreign_debug_port(session: BrowserSession) -> bool:
                         return True
                 break
     return not _probe_local_port(session.port)
+
 
 class BrowserManager:
     def __init__(self, sessions: list[BrowserSession] | None = None) -> None:

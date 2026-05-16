@@ -69,8 +69,12 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
                 _ = timeout_sec
                 self.assertEqual(command[0], sys.executable)
                 self.assertTrue(command[1].endswith("timeline_generator.py"))
-                self.assertEqual(command[2:4], ["--voice-json", str(voice_json.resolve())])
-                self.assertEqual(command[4:6], ["--video-dir", str(video_dir.resolve())])
+                self.assertEqual(
+                    command[2:4], ["--voice-json", str(voice_json.resolve())]
+                )
+                self.assertEqual(
+                    command[4:6], ["--video-dir", str(video_dir.resolve())]
+                )
                 return {
                     "command": command,
                     "cwd": str(cwd),
@@ -96,7 +100,9 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
             self.assertIn("0:30 Outro", timeline_text)
 
     def test_google_sheets_sync_worker_reads_excel_row_and_posts_payload(self) -> None:
-        from runtime_v2.workers.google_sheets_sync_worker import run_google_sheets_sync_job
+        from runtime_v2.workers.google_sheets_sync_worker import (
+            run_google_sheets_sync_job,
+        )
 
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -2031,6 +2037,122 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(result["error_code"], "GEMINIGEN_LOGIN_REQUIRED")
         self.assertEqual(result.get("next_jobs", []), [])
 
+    def test_geminigen_worker_relabels_adapter_failure_when_attach_evidence_shows_login(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = artifact_root / "exports" / "geminigen-scene-01.mp4"
+            stdout_path = artifact_root / "adapter_stdout.log"
+            stderr_path = artifact_root / "adapter_stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+            job = JobContract(
+                job_id="geminigen-login-required-on-adapter-fail",
+                workload="geminigen",
+                payload={
+                    "prompt": "video prompt one",
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "use_agent_browser": True,
+                    "adapter_command": [sys.executable, "-c", "pass"],
+                },
+            )
+
+            def fake_run_adapter(*args: object, **kwargs: object) -> dict[str, object]:
+                workspace = Path(str(args[0]))
+                attach_evidence = workspace / "attach_evidence.json"
+                attach_evidence.write_text(
+                    json.dumps(
+                        {
+                            "service": "geminigen",
+                            "status": "failed",
+                            "current_url": "https://geminigen.ai/auth/login",
+                            "current_title": "Login",
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                return {
+                    "ok": False,
+                    "error_code": "AGENT_BROWSER_COMMAND_FAILED",
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "details": {},
+                }
+
+            with patch(
+                "runtime_v2.stage2.geminigen_worker.run_verified_adapter_command",
+                side_effect=fake_run_adapter,
+            ):
+                result = run_geminigen_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "GEMINIGEN_LOGIN_REQUIRED")
+        self.assertFalse(bool(result["retryable"]))
+        self.assertEqual(result.get("next_jobs", []), [])
+
+    def test_geminigen_worker_relabels_google_login_redirect_as_login_required(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = artifact_root / "exports" / "geminigen-scene-01.mp4"
+            stdout_path = artifact_root / "adapter_stdout.log"
+            stderr_path = artifact_root / "adapter_stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+            job = JobContract(
+                job_id="geminigen-google-login-required",
+                workload="geminigen",
+                payload={
+                    "prompt": "video prompt one",
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "use_agent_browser": True,
+                    "adapter_command": [sys.executable, "-c", "pass"],
+                },
+            )
+
+            def fake_run_adapter(*args: object, **kwargs: object) -> dict[str, object]:
+                workspace = Path(str(args[0]))
+                attach_evidence = workspace / "attach_evidence.json"
+                attach_evidence.write_text(
+                    json.dumps(
+                        {
+                            "service": "geminigen",
+                            "status": "failed",
+                            "current_url": "https://accounts.google.com/signin/v2/identifier",
+                            "current_title": "Sign in - Google Accounts",
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                return {
+                    "ok": False,
+                    "error_code": "AGENT_BROWSER_COMMAND_FAILED",
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "details": {},
+                }
+
+            with patch(
+                "runtime_v2.stage2.geminigen_worker.run_verified_adapter_command",
+                side_effect=fake_run_adapter,
+            ):
+                result = run_geminigen_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "GEMINIGEN_LOGIN_REQUIRED")
+        self.assertFalse(bool(result["retryable"]))
+        self.assertEqual(result.get("next_jobs", []), [])
+
     def test_geminigen_worker_emits_next_job_only_with_session_proof(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -2087,6 +2209,86 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         next_jobs = cast(list[object], result["next_jobs"])
         self.assertEqual(len(next_jobs), 1)
+
+    def test_geminigen_worker_fails_closed_when_transcript_shows_login_redirect(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = artifact_root / "exports" / "geminigen-scene-01.mp4"
+            stdout_path = artifact_root / "adapter_stdout.log"
+            stderr_path = artifact_root / "adapter_stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+            job = JobContract(
+                job_id="geminigen-login-redirect",
+                workload="geminigen",
+                payload={
+                    "prompt": "video prompt one",
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "use_agent_browser": True,
+                    "adapter_command": [sys.executable, "-c", "pass"],
+                },
+            )
+
+            def fake_run_adapter(*args: object, **kwargs: object) -> dict[str, object]:
+                workspace = Path(str(args[0]))
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                _ = output_path.write_bytes(b"mp4")
+                transcript_path = workspace / "agent_browser_transcript.json"
+                transcript_path.write_text(
+                    json.dumps(
+                        {
+                            "service": "geminigen",
+                            "steps": [
+                                {
+                                    "command": ["agent-browser", "get", "url"],
+                                    "output": "https://geminigen.ai/app/video-gen/grok",
+                                },
+                                {
+                                    "command": ["agent-browser", "tab", "list"],
+                                    "output": "Login - Access Your GeminiGen AI Account - https://geminigen.ai/auth/login\n",
+                                },
+                            ],
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                attach_evidence = workspace / "attach_evidence.json"
+                attach_evidence.write_text(
+                    json.dumps(
+                        {
+                            "service": "geminigen",
+                            "status": "ok",
+                            "current_url": "https://geminigen.ai/app/video-gen/grok",
+                            "current_title": '"Grok no longer free"? Access it here for FREE.',
+                            "transcript_path": str(transcript_path),
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                return {
+                    "ok": True,
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "output_path": output_path,
+                    "reused": False,
+                }
+
+            with patch(
+                "runtime_v2.stage2.geminigen_worker.run_verified_adapter_command",
+                side_effect=fake_run_adapter,
+            ):
+                result = run_geminigen_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "GEMINIGEN_LOGIN_REQUIRED")
+        self.assertEqual(result.get("next_jobs", []), [])
 
     def test_genspark_worker_uses_shorter_adapter_timeout_for_probe_artifacts(
         self,
