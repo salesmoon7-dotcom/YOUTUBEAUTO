@@ -25,7 +25,7 @@ from runtime_v2.agent_browser.result_parser import (
     select_best_tab,
 )
 from runtime_v2.browser.health import build_browser_health_payload, write_browser_health
-from runtime_v2.browser.manager import BrowserManager
+from runtime_v2.browser.manager import BrowserManager, LOGIN_URL_PATTERNS
 from runtime_v2.browser.supervisor import BrowserSupervisor
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.contracts.job_contract import JobContract
@@ -854,7 +854,12 @@ def _recover_agent_browser_service(
 
 
 def _mark_probe_browser_unhealthy(
-    artifact_root: Path, *, service: str, port: int
+    artifact_root: Path,
+    *,
+    service: str,
+    port: int,
+    current_url: str = "",
+    current_title: str = "",
 ) -> None:
     probe_root = (
         artifact_root.parent if artifact_root.name == "artifacts" else artifact_root
@@ -872,6 +877,13 @@ def _mark_probe_browser_unhealthy(
         return
     sessions: list[dict[str, object]] = []
     changed = False
+    normalized_url = current_url.strip().lower()
+    normalized_title = current_title.strip().lower()
+    login_patterns = tuple(LOGIN_URL_PATTERNS.get(service, ()))
+    login_required = any(pattern in normalized_url for pattern in login_patterns) or (
+        service == "geminigen"
+        and ("login" in normalized_title or "sign in" in normalized_title)
+    )
     for raw in cast(list[object], raw_sessions):
         if not isinstance(raw, dict):
             continue
@@ -881,9 +893,14 @@ def _mark_probe_browser_unhealthy(
             and int(session.get("port", 0) or 0) == port
         ):
             session["healthy"] = False
-            session["status"] = "unhealthy"
-            session["cdp_endpoint_ready"] = False
-            session["blocked_reason"] = "agent_browser_attach_failed"
+            if login_required:
+                session["status"] = "login_required"
+                session["cdp_endpoint_ready"] = True
+                session["blocked_reason"] = ""
+            else:
+                session["status"] = "unhealthy"
+                session["cdp_endpoint_ready"] = False
+                session["blocked_reason"] = "agent_browser_attach_failed"
             changed = True
         sessions.append(session)
     if not changed:
@@ -1168,7 +1185,13 @@ def run_agent_browser_verify_job(
             completion={"state": "verified", "final_output": False},
         )
     except (RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
-        _mark_probe_browser_unhealthy(artifact_root, service=service, port=port)
+        _mark_probe_browser_unhealthy(
+            artifact_root,
+            service=service,
+            port=port,
+            current_url=current_url,
+            current_title=current_title,
+        )
         transcript_path = write_json_atomic(
             workspace / "agent_browser_transcript.json",
             {

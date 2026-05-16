@@ -1731,6 +1731,94 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertEqual(str(session["status"]), "unhealthy")
         self.assertFalse(bool(session["cdp_endpoint_ready"]))
 
+    def test_agent_browser_verify_marks_probe_browser_login_required_when_login_page_seen(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            config = RuntimeConfig.from_root(root)
+            config.browser_health_file.parent.mkdir(parents=True, exist_ok=True)
+            config.browser_health_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "runtime": "runtime_v2",
+                        "run_id": "probe-run",
+                        "checked_at": 1.0,
+                        "session_count": 1,
+                        "healthy_count": 1,
+                        "unhealthy_count": 0,
+                        "availability_percent": 100.0,
+                        "sessions": [
+                            {
+                                "service": "geminigen",
+                                "port": 9555,
+                                "healthy": True,
+                                "status": "running",
+                                "cdp_endpoint_ready": True,
+                            }
+                        ],
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            job = JobContract(
+                job_id="agent-browser-geminigen-login-health-downgrade",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-geminigen-login-health-downgrade",
+                payload={
+                    "service": "geminigen",
+                    "port": 9555,
+                    "expected_url_substring": "geminigen.ai",
+                    "expected_title_substring": "Grok",
+                    "capture_snapshot": False,
+                    "actions": [
+                        {
+                            "type": "wait",
+                            "target": "textarea[placeholder*='Describe the video']",
+                        }
+                    ],
+                },
+            )
+
+            outputs = iter(
+                [
+                    "[0] Login - Access Your GeminiGen AI Account - https://geminigen.ai/auth/login\n",
+                    "selected geminigen",
+                    "https://geminigen.ai/auth/login",
+                    "Login - Access Your GeminiGen AI Account",
+                ]
+            )
+
+            def fake_run(command: list[str], *, timeout_sec: int = 30) -> str:
+                _ = timeout_sec
+                if command[-2:] == [
+                    "wait",
+                    "textarea[placeholder*='Describe the video']",
+                ]:
+                    raise RuntimeError("page.waitForSelector: Timeout 10000ms exceeded")
+                return next(outputs)
+
+            with patch(
+                "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                side_effect=fake_run,
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+            health_payload = json.loads(
+                config.browser_health_file.read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(result["status"], "failed")
+        session = cast(dict[str, object], health_payload["sessions"][0])
+        self.assertFalse(bool(session["healthy"]))
+        self.assertEqual(str(session["status"]), "login_required")
+        self.assertTrue(bool(session["cdp_endpoint_ready"]))
+
     def test_agent_browser_verify_accepts_legacy_string_actions(self) -> None:
         from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
 
