@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import io
+import os
 import sys
 import socket
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -164,6 +166,7 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
         config = RuntimeConfig.from_root(Path("D:/YOUTUBEAUTO/tmp_voicevox_lease_test"))
         self.assertEqual(lease_key_for_workload("voicevox"), "lock:qwen3_tts")
         from runtime_v2.gpu.lease import lease_file_for_workload, lock_file_for_workload
+
         self.assertEqual(
             lease_file_for_workload(config, "voicevox"),
             lease_file_for_workload(config, "qwen3_tts"),
@@ -753,6 +756,170 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
         self.assertEqual(payload["code"], "BROWSER_REGISTRY_INVALID")
         self.assertEqual(exit_code, exit_codes.BROWSER_BLOCKED)
         self.assertIn("BROWSER_REGISTRY_INVALID", blocker_codes)
+
+    def test_geminigen_repair_session_reports_success(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            script_path = root / "geminigen_automation.py"
+            script_path.write_text("# test", encoding="utf-8")
+
+            args = ["runtime_v2.cli", "--geminigen-repair-session"]
+            stdout = io.StringIO()
+            with (
+                patch.dict(
+                    os.environ,
+                    {"RUNTIME_V2_LEGACY_GEMINIGEN_SCRIPT": str(script_path.resolve())},
+                    clear=False,
+                ),
+                patch(
+                    "runtime_v2.cli.subprocess.run",
+                    return_value=subprocess.CompletedProcess(
+                        args=[sys.executable, str(script_path), "--repair-session"],
+                        returncode=0,
+                        stdout="ok",
+                        stderr="",
+                    ),
+                ) as run_mock,
+                patch.object(sys, "argv", args),
+                redirect_stdout(stdout),
+            ):
+                exit_code = main()
+
+        payload = json.loads(stdout.getvalue().strip())
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["code"], "OK")
+        self.assertEqual(
+            run_mock.call_args.kwargs["creationflags"],
+            int(getattr(subprocess, "CREATE_NO_WINDOW", 0)),
+        )
+
+    def test_geminigen_repair_session_fail_closes_when_script_missing(self) -> None:
+        args = ["runtime_v2.cli", "--geminigen-repair-session"]
+        stdout = io.StringIO()
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "RUNTIME_V2_LEGACY_GEMINIGEN_SCRIPT": (
+                        r"D:\missing\geminigen_automation.py"
+                    )
+                },
+                clear=False,
+            ),
+            patch.object(sys, "argv", args),
+            redirect_stdout(stdout),
+        ):
+            exit_code = main()
+
+        payload = json.loads(stdout.getvalue().strip())
+        self.assertEqual(exit_code, exit_codes.CLI_USAGE)
+        self.assertEqual(payload["status"], "failed")
+        self.assertEqual(payload["code"], "GEMINIGEN_REPAIR_SCRIPT_MISSING")
+
+    def test_geminigen_repair_session_closes_live_browser_before_legacy_repair(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            script_path = root / "geminigen_automation.py"
+            script_path.write_text("# test", encoding="utf-8")
+
+            args = ["runtime_v2.cli", "--geminigen-repair-session"]
+            stdout = io.StringIO()
+            with (
+                patch.dict(
+                    os.environ,
+                    {"RUNTIME_V2_LEGACY_GEMINIGEN_SCRIPT": str(script_path.resolve())},
+                    clear=False,
+                ),
+                patch(
+                    "runtime_v2.cli.inspect_profile_lock",
+                    return_value={
+                        "browser_pid": 12345,
+                        "pid_alive": True,
+                        "lock_state": "busy",
+                    },
+                ),
+                patch("runtime_v2.cli.release_profile_lock") as release_mock,
+                patch(
+                    "runtime_v2.cli.subprocess.run",
+                    side_effect=[
+                        subprocess.CompletedProcess(
+                            args=["taskkill", "/PID", "12345", "/T", "/F"],
+                            returncode=0,
+                            stdout="killed",
+                            stderr="",
+                        ),
+                        subprocess.CompletedProcess(
+                            args=[sys.executable, str(script_path), "--repair-session"],
+                            returncode=0,
+                            stdout="ok",
+                            stderr="",
+                        ),
+                    ],
+                ) as run_mock,
+                patch.object(sys, "argv", args),
+                redirect_stdout(stdout),
+            ):
+                exit_code = main()
+
+        payload = json.loads(stdout.getvalue().strip())
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(run_mock.call_args_list[0].args[0][0], "taskkill")
+        self.assertEqual(run_mock.call_args_list[1].args[0][2], "--repair-session")
+        release_mock.assert_called_once()
+
+    def test_geminigen_repair_session_keeps_lock_when_taskkill_fails(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            script_path = root / "geminigen_automation.py"
+            script_path.write_text("# test", encoding="utf-8")
+
+            args = ["runtime_v2.cli", "--geminigen-repair-session"]
+            stdout = io.StringIO()
+            with (
+                patch.dict(
+                    os.environ,
+                    {"RUNTIME_V2_LEGACY_GEMINIGEN_SCRIPT": str(script_path.resolve())},
+                    clear=False,
+                ),
+                patch(
+                    "runtime_v2.cli.inspect_profile_lock",
+                    return_value={
+                        "browser_pid": 12345,
+                        "pid_alive": True,
+                        "lock_state": "busy",
+                    },
+                ),
+                patch("runtime_v2.cli.release_profile_lock") as release_mock,
+                patch(
+                    "runtime_v2.cli.subprocess.run",
+                    side_effect=[
+                        subprocess.CompletedProcess(
+                            args=["taskkill", "/PID", "12345", "/T", "/F"],
+                            returncode=1,
+                            stdout="",
+                            stderr="failed",
+                        ),
+                        subprocess.CompletedProcess(
+                            args=[sys.executable, str(script_path), "--repair-session"],
+                            returncode=0,
+                            stdout="ok",
+                            stderr="",
+                        ),
+                    ],
+                ),
+                patch.object(sys, "argv", args),
+                redirect_stdout(stdout),
+            ):
+                exit_code = main()
+
+        payload = json.loads(stdout.getvalue().strip())
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        self.assertEqual(payload["status"], "ok")
+        release_mock.assert_not_called()
 
     def test_gui_status_write_is_atomic_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

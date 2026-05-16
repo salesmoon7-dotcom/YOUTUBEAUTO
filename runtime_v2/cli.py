@@ -22,8 +22,11 @@ from runtime_v2.boundary_jobs import (
 )
 from runtime_v2.browser.manager import (
     BrowserManager,
+    default_browser_sessions_by_service,
     expected_url_substring_for_service,
+    inspect_profile_lock,
     open_browser_for_login,
+    release_profile_lock,
 )
 from runtime_v2.browser.supervisor import BrowserSupervisor
 from runtime_v2.config import (
@@ -133,6 +136,7 @@ class CliArgs(argparse.Namespace):
     selftest_force_browser_fail: bool
     selftest_force_gpt_fail: bool
     open_browser_login: str
+    geminigen_repair_session: bool
     readiness_check: bool
     soak_report: bool
     soak_24h: bool
@@ -191,6 +195,7 @@ class CliArgs(argparse.Namespace):
         self.selftest_force_browser_fail = False
         self.selftest_force_gpt_fail = False
         self.open_browser_login = ""
+        self.geminigen_repair_session = False
         self.readiness_check = False
         self.soak_report = False
         self.soak_24h = False
@@ -520,6 +525,9 @@ def main() -> int:
     _ = parser.add_argument("--selftest-force-browser-fail", action="store_true")
     _ = parser.add_argument("--selftest-force-gpt-fail", action="store_true")
     _ = parser.add_argument("--open-browser-login", default="")
+    _ = parser.add_argument(
+        "--geminigen-repair-session", action="store_true", help=argparse.SUPPRESS
+    )
     _ = parser.add_argument("--readiness-check", action="store_true")
     _ = parser.add_argument("--soak-report", action="store_true")
     _ = parser.add_argument("--soak-24h", action="store_true")
@@ -566,6 +574,7 @@ def main() -> int:
             args.stage5b_5row_detached,
             args.stage5b_5row_probe_child,
             bool(args.open_browser_login.strip()),
+            args.geminigen_repair_session,
             args.readiness_check,
             args.soak_report,
             args.soak_24h,
@@ -598,6 +607,14 @@ def main() -> int:
         payload = open_browser_for_login(args.open_browser_login.strip())
         print(json.dumps(payload, ensure_ascii=True))
         return exit_codes.SUCCESS
+    if args.geminigen_repair_session:
+        report = _run_geminigen_repair_session()
+        print(json.dumps(report, ensure_ascii=True))
+        return (
+            exit_codes.SUCCESS
+            if str(report.get("status", "")) == "ok"
+            else exit_codes.CLI_USAGE
+        )
     if args.readiness_check:
         readiness = load_runtime_readiness(config, completed=True)
         print(json.dumps(readiness, ensure_ascii=True))
@@ -1427,6 +1444,81 @@ def _migrate_legacy_sessions() -> dict[str, object]:
     return _copy_legacy_sessions(_legacy_session_root(), browser_session_root())
 
 
+def _legacy_geminigen_script_path() -> Path:
+    override = os.environ.get("RUNTIME_V2_LEGACY_GEMINIGEN_SCRIPT", "").strip()
+    if override:
+        return Path(override)
+    return Path(r"D:\YOUTUBE_AUTO\scripts\geminigen_automation.py")
+
+
+def _run_geminigen_repair_session() -> dict[str, object]:
+    script_path = _legacy_geminigen_script_path().resolve()
+    if not script_path.exists() or not script_path.is_file():
+        return {
+            "status": "failed",
+            "code": "GEMINIGEN_REPAIR_SCRIPT_MISSING",
+            "script_path": str(script_path),
+        }
+    creationflags = int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    session = default_browser_sessions_by_service().get("geminigen")
+    if session is not None:
+        lock_snapshot = inspect_profile_lock(
+            session.profile_dir,
+            service=session.service,
+            session_id=session.session_id,
+            port=session.port,
+        )
+        browser_pid = int(str(lock_snapshot.get("browser_pid", 0) or 0))
+        if browser_pid > 0 and bool(lock_snapshot.get("pid_alive", False)):
+            try:
+                kill_result = subprocess.run(
+                    ["taskkill", "/PID", str(browser_pid), "/T", "/F"],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=30,
+                    check=False,
+                    creationflags=creationflags,
+                )
+            except (OSError, subprocess.SubprocessError):
+                kill_result = None
+            if kill_result is not None and int(kill_result.returncode) == 0:
+                release_profile_lock(
+                    session.profile_dir,
+                    service=session.service,
+                    session_id=session.session_id,
+                )
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(script_path), "--repair-session"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+            check=False,
+            creationflags=creationflags,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {
+            "status": "failed",
+            "code": "GEMINIGEN_REPAIR_SESSION_FAILED",
+            "script_path": str(script_path),
+            "error": str(exc),
+        }
+    return {
+        "status": "ok" if completed.returncode == 0 else "failed",
+        "code": "OK"
+        if completed.returncode == 0
+        else "GEMINIGEN_REPAIR_SESSION_FAILED",
+        "script_path": str(script_path),
+        "returncode": int(completed.returncode),
+        "stdout": completed.stdout,
+        "stderr": completed.stderr,
+    }
+
+
 def _write_detached_summary(
     *,
     out_root: Path,
@@ -1675,7 +1767,11 @@ def _run_stage2_row1_probe(
         )
         if service == "geminigen" and fallback_used and overall_ok:
             overall_ok = False
-            failure_code = attach_failure_code if attach_failure_code.startswith("GEMINIGEN_LOGIN_") else "GEMINIGEN_LOGIN_UNPROVEN"
+            failure_code = (
+                attach_failure_code
+                if attach_failure_code.startswith("GEMINIGEN_LOGIN_")
+                else "GEMINIGEN_LOGIN_UNPROVEN"
+            )
         elif str(result.get("status", "")) != "ok" and overall_ok:
             overall_ok = False
             failure_code = str(result.get("error_code", "BROWSER_BLOCKED"))
@@ -1742,7 +1838,7 @@ def _run_stage5_row1_probe(
         probe_root / "logs",
     ):
         directory.mkdir(parents=True, exist_ok=True)
-    
+
     probe_config = RuntimeConfig.from_root(probe_root).replace(
         stable_file_age_sec=0,
         lease_ttl_sec=config.lease_ttl_sec,
@@ -2894,26 +2990,30 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             current_url = str(details.get("current_url", "")).strip()
             capture_url = current_url or expected_url_substring
             if service == "genspark":
-                            latest_capture_url = None
-                            if current_url and not capture_url.startswith("https://www.genspark.ai/agents?id="):
-                                try:
-                                    latest_capture_url = _latest_genspark_result_url(args.port)
-                                except Exception:
-                                    latest_capture_url = None
-                                if isinstance(latest_capture_url, str) and latest_capture_url.startswith(
-                                    "https://www.genspark.ai/agents?id="
-                                ):
-                                    capture_url = latest_capture_url
-                                elif latest_capture_url == "":
-                                    raise RuntimeError("GENSPARK_RESULT_TAB_UNPINNED")
-                            _ = write_functional_evidence_bundle(
-                                workspace=workspace,
-                                service=service,
-                                port=args.port,
-                                expected_url_substring=capture_url,
-                                service_artifact_path=target_path,
-                                image_url_override=ready_image_url,
-                            )
+                latest_capture_url = None
+                if current_url and not capture_url.startswith(
+                    "https://www.genspark.ai/agents?id="
+                ):
+                    try:
+                        latest_capture_url = _latest_genspark_result_url(args.port)
+                    except Exception:
+                        latest_capture_url = None
+                    if isinstance(
+                        latest_capture_url, str
+                    ) and latest_capture_url.startswith(
+                        "https://www.genspark.ai/agents?id="
+                    ):
+                        capture_url = latest_capture_url
+                    elif latest_capture_url == "":
+                        raise RuntimeError("GENSPARK_RESULT_TAB_UNPINNED")
+                _ = write_functional_evidence_bundle(
+                    workspace=workspace,
+                    service=service,
+                    port=args.port,
+                    expected_url_substring=capture_url,
+                    service_artifact_path=target_path,
+                    image_url_override=ready_image_url,
+                )
             else:
                 _ = write_functional_evidence_bundle(
                     workspace=workspace,
@@ -2997,7 +3097,10 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                     else None
                 ),
             )
-            if service == "genspark" and _stage2_retry_trace_contains_genspark_not_ready(retry_trace):
+            if (
+                service == "genspark"
+                and _stage2_retry_trace_contains_genspark_not_ready(retry_trace)
+            ):
                 return exit_codes.ADAPTER_FAIL
             return exit_codes.BROWSER_UNHEALTHY
     else:
@@ -3852,7 +3955,9 @@ def _append_retry_trace(
     )
 
 
-def _stage2_retry_trace_contains_genspark_not_ready(trace: list[dict[str, object]]) -> bool:
+def _stage2_retry_trace_contains_genspark_not_ready(
+    trace: list[dict[str, object]],
+) -> bool:
     for entry in trace:
         if str(entry.get("phase", "")).strip() != "image_ready_poll":
             continue
