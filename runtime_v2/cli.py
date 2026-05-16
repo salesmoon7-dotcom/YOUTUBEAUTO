@@ -1691,6 +1691,13 @@ def _build_stage2_placeholder_adapter_command(target_path: Path) -> list[str]:
     ]
 
 
+def _geminigen_probe_failure_code(raw_code: str) -> str:
+    code = raw_code.strip()
+    if not code:
+        return "GEMINIGEN_LOGIN_UNPROVEN"
+    return code
+
+
 def _run_stage2_row1_probe(
     *,
     config: RuntimeConfig,
@@ -1731,6 +1738,7 @@ def _run_stage2_row1_probe(
         )
         runner = _stage2_runner_for_service(service)
         result = runner(contract, config.artifact_root)
+        initial_result = result
         fallback_used = False
         attach_attempt_failed = str(result.get("status", "")) != "ok"
         attach_failure_code = str(result.get("error_code", ""))
@@ -1750,6 +1758,14 @@ def _run_stage2_row1_probe(
             )
             result = runner(fallback_contract, config.artifact_root)
             fallback_used = True
+        reported_result = result
+        if service == "geminigen":
+            if fallback_used:
+                reported_result = dict(cast(dict[str, object], initial_result))
+                reported_result["status"] = "failed"
+                reported_result["error_code"] = _geminigen_probe_failure_code(
+                    attach_failure_code
+                )
         if fallback_used or service not in agent_browser_services:
             placeholder_services.append(service)
         elif str(result.get("status", "")) == "ok":
@@ -1757,21 +1773,17 @@ def _run_stage2_row1_probe(
         stage2_results.append(
             {
                 "service": service,
-                "status": str(result.get("status", "")),
-                "error_code": str(result.get("error_code", "")),
-                "details": result.get("details", {}),
-                "completion": result.get("completion", {}),
+                "status": str(reported_result.get("status", "")),
+                "error_code": str(reported_result.get("error_code", "")),
+                "details": reported_result.get("details", {}),
+                "completion": reported_result.get("completion", {}),
                 "fallback_used": fallback_used,
                 "attach_attempt_failed": attach_attempt_failed,
             }
         )
         if service == "geminigen" and fallback_used and overall_ok:
             overall_ok = False
-            failure_code = (
-                attach_failure_code
-                if attach_failure_code.startswith("GEMINIGEN_LOGIN_")
-                else "GEMINIGEN_LOGIN_UNPROVEN"
-            )
+            failure_code = _geminigen_probe_failure_code(attach_failure_code)
         elif str(result.get("status", "")) != "ok" and overall_ok:
             overall_ok = False
             failure_code = str(result.get("error_code", "BROWSER_BLOCKED"))

@@ -779,7 +779,9 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             "NO_BACKGROUND_GENERATE_BUTTON", "\n".join(background_eval_scripts)
         )
 
-    def test_stage2_adapter_child_includes_page2_and_edit_precondition_for_canva_background(self) -> None:
+    def test_stage2_adapter_child_includes_page2_and_edit_precondition_for_canva_background(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             output_path = root / "exports" / "THUMB.png"
@@ -795,7 +797,10 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (root / "request.json").write_text(
-                json.dumps({"payload": {"prompt": "scene one", "ref_img": "D:/ref.png"}}, ensure_ascii=True),
+                json.dumps(
+                    {"payload": {"prompt": "scene one", "ref_img": "D:/ref.png"}},
+                    ensure_ascii=True,
+                ),
                 encoding="utf-8",
             )
             args = CliArgs()
@@ -809,20 +814,34 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
                 _ = artifact_root
                 payload = cast(dict[str, object], job.payload)
-                captured_actions.extend(cast(list[dict[str, object]], payload.get("actions", [])))
+                captured_actions.extend(
+                    cast(list[dict[str, object]], payload.get("actions", []))
+                )
                 return {"status": "ok"}
 
             with (
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
                 patch("runtime_v2.cli._attach_canva_ref_images_via_playwright"),
-                patch("runtime_v2.cli.run_agent_browser_verify_job", side_effect=fake_verify),
-                patch("runtime_v2.cli.write_functional_evidence_bundle", return_value={"service": "canva", "sha256": "ok"}),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
             ):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
         self.assertEqual(exit_code, exit_codes.SUCCESS)
-        click_actions = [action for action in captured_actions if action.get("type") == "click"]
-        click_box_actions = [action for action in captured_actions if action.get("type") == "click_box_offset"]
+        click_actions = [
+            action for action in captured_actions if action.get("type") == "click"
+        ]
+        click_box_actions = [
+            action
+            for action in captured_actions
+            if action.get("type") == "click_box_offset"
+        ]
         selectors = [str(action.get("selector", "")) for action in click_actions]
         self.assertIn(
             'xpath=(//div[contains(normalize-space(.),"페이지 2") or contains(normalize-space(.),"Page 2")])[1]',
@@ -839,7 +858,10 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertTrue(any("clicked_exact_edit" in script for script in edit_scripts))
         self.assertGreaterEqual(page2_index, 0)
         self.assertTrue(
-            any(action.get("step") == "focused_background_canvas" for action in click_box_actions)
+            any(
+                action.get("step") == "focused_background_canvas"
+                for action in click_box_actions
+            )
         )
 
     def test_stage2_adapter_child_accepts_line_ok_canva_text_result_without_applied(
@@ -2895,7 +2917,9 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             self.assertGreaterEqual(len(entries), 4)
             self.assertFalse(output_path.exists())
 
-    def test_stage2_adapter_child_surfaces_genspark_not_ready_over_browser_unhealthy(self) -> None:
+    def test_stage2_adapter_child_surfaces_genspark_not_ready_over_browser_unhealthy(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             output_path = root / "exports" / "scene-01.png"
@@ -2923,7 +2947,11 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 if responses:
                     return responses.pop(0)
                 completed = cast(object, type("Completed", (), {})())
-                setattr(completed, "stdout", '{"ok":false,"error":"GENSPARK_IMAGE_NOT_READY"}')
+                setattr(
+                    completed,
+                    "stdout",
+                    '{"ok":false,"error":"GENSPARK_IMAGE_NOT_READY"}',
+                )
                 setattr(completed, "stderr", "")
                 setattr(completed, "returncode", 0)
                 return completed
@@ -5116,9 +5144,21 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         )
         self.assertTrue(bool(report["probe_success"]))
 
-    def test_stage2_row1_probe_blocks_when_geminigen_falls_back_to_placeholder(self) -> None:
-        ok_result = {"status": "ok", "error_code": "", "details": {}, "completion": {"final_output": True}}
-        failed_result = {"status": "failed", "error_code": "GEMINIGEN_LOGIN_UNPROVEN", "details": {}, "completion": {"final_output": False}}
+    def test_stage2_row1_probe_blocks_when_geminigen_falls_back_to_placeholder(
+        self,
+    ) -> None:
+        ok_result = {
+            "status": "ok",
+            "error_code": "",
+            "details": {},
+            "completion": {"final_output": True},
+        }
+        failed_result = {
+            "status": "failed",
+            "error_code": "GEMINIGEN_LOGIN_UNPROVEN",
+            "details": {},
+            "completion": {"final_output": False},
+        }
 
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -5126,7 +5166,10 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             with (
                 patch("runtime_v2.cli.run_genspark_job", return_value=ok_result),
                 patch("runtime_v2.cli.run_seaart_job", return_value=ok_result),
-                patch("runtime_v2.cli.run_geminigen_job", side_effect=[failed_result, ok_result]),
+                patch(
+                    "runtime_v2.cli.run_geminigen_job",
+                    side_effect=[failed_result, ok_result],
+                ),
                 patch("runtime_v2.cli.run_canva_job", return_value=ok_result),
             ):
                 report = _run_stage2_row1_probe(
@@ -5140,6 +5183,55 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertEqual(report["code"], "GEMINIGEN_LOGIN_UNPROVEN")
         self.assertFalse(bool(report["probe_success"]))
         self.assertIn("geminigen", cast(list[object], report["placeholder_services"]))
+        first = cast(list[dict[str, object]], report["results"])[2]
+        self.assertEqual(first["service"], "geminigen")
+        self.assertEqual(first["status"], "failed")
+        self.assertEqual(first["error_code"], "GEMINIGEN_LOGIN_UNPROVEN")
+        self.assertTrue(bool(first["fallback_used"]))
+        completion = cast(dict[str, object], first["completion"])
+        self.assertFalse(bool(completion["final_output"]))
+
+    def test_stage2_row1_probe_preserves_non_login_geminigen_attach_failure(
+        self,
+    ) -> None:
+        ok_result = {
+            "status": "ok",
+            "error_code": "",
+            "details": {},
+            "completion": {"final_output": True},
+        }
+        failed_result = {
+            "status": "failed",
+            "error_code": "REF_IMAGE_UPLOAD_FAILED",
+            "details": {},
+            "completion": {"final_output": False},
+        }
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig.from_root(root / "runtime")
+            with (
+                patch("runtime_v2.cli.run_genspark_job", return_value=ok_result),
+                patch("runtime_v2.cli.run_seaart_job", return_value=ok_result),
+                patch(
+                    "runtime_v2.cli.run_geminigen_job",
+                    side_effect=[failed_result, ok_result],
+                ),
+                patch("runtime_v2.cli.run_canva_job", return_value=ok_result),
+            ):
+                report = _run_stage2_row1_probe(
+                    config=config,
+                    probe_root=root / "probe",
+                    run_id="stage2-row1-geminigen-non-login",
+                    agent_browser_services=["geminigen"],
+                )
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["code"], "REF_IMAGE_UPLOAD_FAILED")
+        first = cast(list[dict[str, object]], report["results"])[2]
+        self.assertEqual(first["service"], "geminigen")
+        self.assertEqual(first["status"], "failed")
+        self.assertEqual(first["error_code"], "REF_IMAGE_UPLOAD_FAILED")
 
     def test_stage2_row1_probe_writes_runtime_root_from_passed_config(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
