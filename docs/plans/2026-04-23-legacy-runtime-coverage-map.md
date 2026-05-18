@@ -17,7 +17,7 @@ Goal: Compare the actual legacy program inventory against the current `runtime_v
 | Qwen3 TTS | `D:\YOUTUBE_AUTO\scripts\qwen3_tts_automation.py` | `runtime_v2/workers/qwen3_worker.py` | Covered | `docs/COMPLETED.md` documents canonical worker evidence and current reruns complete qwen successfully |
 | Genspark | `D:\YOUTUBE_AUTO\scripts\genspark_automation.py` | `runtime_v2/stage2/genspark_worker.py`, `runtime_v2/cli.py`, `runtime_v2/stage2/agent_browser_adapter.py` | Covered | `docs/COMPLETED.md`, recent commits `06dce73` and `c4d4d4b`, and fresh rerun evidence show `genspark ref-1` and main image jobs now close truthfully |
 | SeaArt | `D:\YOUTUBE_AUTO\scripts\seaart_automation.py` | `runtime_v2/stage2/seaart_worker.py` | Covered | `docs/COMPLETED.md` documents functional verification and fresh rerun evidence shows ref/main SeaArt jobs complete |
-| GeminiGen | `D:\YOUTUBE_AUTO\scripts\geminigen_automation.py` | `runtime_v2/stage2/geminigen_worker.py` | Partially Covered | Docs show contract verification and some functional evidence, but current closeout chain in scope did not revalidate the full legacy GeminiGen surface |
+| GeminiGen | `D:\YOUTUBE_AUTO\scripts\geminigen_automation.py` | `runtime_v2/stage2/geminigen_worker.py` | Covered | hidden legacy `--repair-session`, reboot-safe browser recover, bounded page-context fetch fallback, truthful probe-result/render-spec contracts, and fresh logged-in proof `D:\YOUTUBEAUTO_RUNTIME\probe\geminigen-login-proof-20260519-a\probe_result.json` now show live GeminiGen generation closing as `OK` |
 | Canva | `D:\YOUTUBE_AUTO\scripts\canva_automation.py` | `runtime_v2/stage2/canva_worker.py`, `runtime_v2/workers/agent_browser_worker.py`, `runtime_v2/cli.py` | Hold | Code exists and many boundaries were explored, but latest truthful blocker remains a live Canva app-contract issue; this must not be counted as done |
 | Ken Burns | `D:\YOUTUBE_AUTO\scripts\ken_burns_effect.py` | `runtime_v2/workers/kenburns_worker.py` | Covered | `docs/COMPLETED.md` records actual kenburn artifact evidence |
 | Render | `D:/YOUTUBE_AUTO/scripts/render.py` | `runtime_v2/stage3/render_worker.py` | Covered | `run_render_job()` now has focused parity proof for blocked audio-not-ready, timeline ffmpeg + mux, optional BGM overlay, audio concat, and canonical audio fallback, with manual QA confirming deterministic final artifact behavior |
@@ -33,13 +33,12 @@ Goal: Compare the actual legacy program inventory against the current `runtime_v
 ## What This Means For Completion Claims
 
 ### Safe claim
-You may say: non-Canva closeout chain work is currently passing through the active row15 rerun path up to the Canva hold point.
+You may say: the active migration range is now passing through the non-Canva chain, including GeminiGen, and the remaining top-level hold is Canva.
 
 ### Unsafe claim
 Do **not** say: all non-Canva legacy programs are fully complete.
 
-That stronger claim would overstate the current runtime_v2 coverage because the broader legacy map still includes partially covered or uncovered surfaces such as (excluding currently deprecated Vrew / ACE BGM / Google Sheets sync):
-- `GeminiGen` (explicit attach/session contracts exist, hidden legacy `--repair-session` replay and reboot-safe browser recover are now available from runtime_v2, and fresh `D:\YOUTUBEAUTO_RUNTIME\probe\geminigen-login-proof-20260518-c\probe_result.json` still closes as `GEMINIGEN_LOGIN_REQUIRED` with the failed `GeminiGen` asset pruned from `render_spec.asset_refs`/`timeline`; fresh `D:\YOUTUBEAUTO_RUNTIME\probe\geminigen-login-proof-20260518-b\probe_result.json` also confirms the reboot-following page-context fetch hang is bounded and the probe result is emitted truthfully again. The remaining non-Canva gap is therefore live auth/session validity, not missing runtime_v2 plumbing)
+That stronger claim would still overstate the current runtime_v2 coverage if it included deprecated or intentionally deferred surfaces (for example `Canva` hold, or deprecated `Vrew` / `ACE BGM` / `Google Sheets sync`). Fresh `D:\YOUTUBEAUTO_RUNTIME\probe\geminigen-login-proof-20260519-a\probe_result.json` removes `GeminiGen` from that partially-covered set for the active migration range.
 
 ## Practical Rule Going Forward
 
