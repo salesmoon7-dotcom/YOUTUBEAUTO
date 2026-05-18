@@ -393,10 +393,12 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         )
 
         class FakeNode:
-            def __init__(self, box) -> None:
+            def __init__(self, box, *, text: str = "", aria: str = "") -> None:
                 self._box = box
                 self.clicked = False
                 self.filled = ""
+                self._text = text
+                self._aria = aria
 
             def bounding_box(self):
                 return self._box
@@ -406,6 +408,14 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
 
             def fill(self, value: str, timeout=None):
                 self.filled = value
+
+            def inner_text(self, timeout=None):
+                return self._text
+
+            def get_attribute(self, name: str, timeout=None):
+                if name == "aria-label":
+                    return self._aria
+                return ""
 
             @property
             def first(self):
@@ -536,10 +546,12 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         )
 
         class FakeNode:
-            def __init__(self, box) -> None:
+            def __init__(self, box, *, text: str = "", aria: str = "") -> None:
                 self._box = box
                 self.clicked = False
                 self.filled = ""
+                self._text = text
+                self._aria = aria
 
             def bounding_box(self):
                 return self._box
@@ -549,6 +561,14 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
 
             def fill(self, value: str, timeout=None):
                 self.filled = value
+
+            def inner_text(self, timeout=None):
+                return self._text
+
+            def get_attribute(self, name: str, timeout=None):
+                if name == "aria-label":
+                    return self._aria
+                return ""
 
         class FakeLocatorList:
             def __init__(self, items) -> None:
@@ -618,6 +638,223 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertEqual(result["step"], "submitted_background_generate_panel")
         self.assertEqual(page.panel.input.filled, "hello")
         self.assertTrue(page.panel.generate.clicked)
+
+    def test_canva_background_generate_prefers_legacy_top_dom_prompt_path(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import (
+            _playwright_canva_background_generate,
+        )
+
+        class FakeNode:
+            def __init__(self, box, *, text: str = "", aria: str = "") -> None:
+                self._box = box
+                self.clicked = False
+                self.filled = ""
+                self._text = text
+                self._aria = aria
+
+            def bounding_box(self):
+                return self._box
+
+            def click(self, timeout=None, force=False):
+                self.clicked = True
+
+            def fill(self, value: str, timeout=None):
+                self.filled = value
+
+            def inner_text(self, timeout=None):
+                return self._text
+
+            def get_attribute(self, name: str, timeout=None):
+                if name == "aria-label":
+                    return self._aria
+                return ""
+
+        class FakeLocatorList:
+            def __init__(self, items) -> None:
+                self._items = items
+
+            def count(self) -> int:
+                return len(self._items)
+
+            def nth(self, index: int):
+                return self._items[index]
+
+            @property
+            def first(self):
+                return self._items[0]
+
+        class FakePage:
+            def __init__(self) -> None:
+                self.keyboard = MagicMock()
+                self.wait_calls = 0
+                self._eval_calls = 0
+                self.top_prompt = FakeNode({"width": 120, "height": 24})
+                self.top_generate = FakeNode(
+                    {"width": 80, "height": 20}, text="Generate", aria=""
+                )
+                self.bg_button = FakeNode(
+                    {"width": 90, "height": 20}, text="배경 생성", aria="배경 생성"
+                )
+
+            def wait_for_timeout(self, ms: int):
+                self.wait_calls += 1
+                return None
+
+            def evaluate(self, script: str):
+                self._eval_calls += 1
+                if self._eval_calls == 1:
+                    return False
+                if self._eval_calls == 2:
+                    return ""
+                raise AssertionError(script)
+
+            def locator(self, selector: str, has_text=None):
+                if selector == "button,[role=button]" and has_text == "배경 생성":
+                    return FakeLocatorList([self.bg_button])
+                if selector in {
+                    "textarea[placeholder*='예시']",
+                    "textarea[placeholder*='Describe']",
+                    "textarea[placeholder*='prompt']",
+                    "textarea[aria-label*='프롬프트'],textarea[aria-label*='Prompt']",
+                    "div[role='dialog'] textarea",
+                    "div[contenteditable='true'][role='textbox']",
+                    "div[contenteditable='true'][data-lexical-editor='true']",
+                    "[role='textbox'][contenteditable='true']",
+                    "textarea",
+                    "[role=textbox]",
+                    "input[type=text]",
+                    "[contenteditable='true']",
+                }:
+                    return FakeLocatorList([self.top_prompt])
+                if selector == "button,[role=button]":
+                    return FakeLocatorList([self.bg_button, self.top_generate])
+                raise AssertionError((selector, has_text))
+
+        page = FakePage()
+        browser = MagicMock()
+
+        with patch(
+            "runtime_v2.workers.agent_browser_worker._select_canva_page",
+            return_value=(browser, page),
+        ):
+            result = _playwright_canva_background_generate(
+                port=9666, bg_prompt="hello", timeout_sec=30
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["step"], "submitted_background_generate_topdom")
+        self.assertTrue(page.bg_button.clicked)
+        self.assertEqual(page.top_prompt.filled, "hello")
+        self.assertTrue(page.top_generate.clicked)
+
+    def test_canva_background_generate_uses_legacy_generate_fallback(self) -> None:
+        from runtime_v2.workers.agent_browser_worker import (
+            _playwright_canva_background_generate,
+        )
+
+        class FakeNode:
+            def __init__(self, box, *, text: str = "", aria: str = "") -> None:
+                self._box = box
+                self.clicked = False
+                self.filled = ""
+                self._text = text
+                self._aria = aria
+
+            def bounding_box(self):
+                return self._box
+
+            def click(self, timeout=None, force=False):
+                self.clicked = True
+
+            def fill(self, value: str, timeout=None):
+                self.filled = value
+
+            def inner_text(self, timeout=None):
+                return self._text
+
+            def get_attribute(self, name: str, timeout=None):
+                if name == "aria-label":
+                    return self._aria
+                return ""
+
+        class FakeLocatorList:
+            def __init__(self, items) -> None:
+                self._items = items
+
+            def count(self) -> int:
+                return len(self._items)
+
+            def nth(self, index: int):
+                return self._items[index]
+
+            @property
+            def first(self):
+                return self._items[0]
+
+        class FakePage:
+            def __init__(self) -> None:
+                self.keyboard = MagicMock()
+                self.wait_calls = 0
+                self._eval_calls = 0
+                self.top_prompt = FakeNode({"width": 120, "height": 24})
+                self.bg_button = FakeNode(
+                    {"width": 90, "height": 20}, text="배경 생성", aria="배경 생성"
+                )
+                self.run_button = FakeNode(
+                    {"width": 90, "height": 20}, text="배경 생성 4개", aria=""
+                )
+
+            def wait_for_timeout(self, ms: int):
+                self.wait_calls += 1
+                return None
+
+            def evaluate(self, script: str):
+                self._eval_calls += 1
+                if self._eval_calls == 1:
+                    return False
+                if self._eval_calls == 2:
+                    return ""
+                raise AssertionError(script)
+
+            def locator(self, selector: str, has_text=None):
+                if selector == "button,[role=button]" and has_text == "배경 생성":
+                    return FakeLocatorList([self.bg_button])
+                if selector in {
+                    "textarea[placeholder*='예시']",
+                    "textarea[placeholder*='Describe']",
+                    "textarea[placeholder*='prompt']",
+                    "textarea[aria-label*='프롬프트'],textarea[aria-label*='Prompt']",
+                    "div[role='dialog'] textarea",
+                    "div[contenteditable='true'][role='textbox']",
+                    "div[contenteditable='true'][data-lexical-editor='true']",
+                    "[role='textbox'][contenteditable='true']",
+                    "textarea",
+                    "[role=textbox]",
+                    "input[type=text]",
+                    "[contenteditable='true']",
+                }:
+                    return FakeLocatorList([self.top_prompt])
+                if selector == "button,[role=button]":
+                    return FakeLocatorList([self.bg_button, self.run_button])
+                raise AssertionError((selector, has_text))
+
+        page = FakePage()
+        browser = MagicMock()
+
+        with patch(
+            "runtime_v2.workers.agent_browser_worker._select_canva_page",
+            return_value=(browser, page),
+        ):
+            result = _playwright_canva_background_generate(
+                port=9666, bg_prompt="hello", timeout_sec=30
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["step"], "submitted_background_generate_topdom")
+        self.assertFalse(page.bg_button.clicked and page.bg_button.filled)
+        self.assertTrue(page.run_button.clicked)
 
     def test_canva_background_generate_falls_back_to_generic_iframe_locator(
         self,

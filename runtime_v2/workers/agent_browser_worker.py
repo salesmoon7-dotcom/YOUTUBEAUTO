@@ -198,6 +198,38 @@ def _click_visible_page_locator(
     return True
 
 
+def _legacy_canva_topdom_generate_button(page):
+    try:
+        locator = page.locator("button,[role=button]")
+    except Exception:
+        return None
+    count = locator.count()
+    fallback_generate = None
+    for index in range(count):
+        candidate = locator.nth(index)
+        try:
+            box = candidate.bounding_box()
+        except Exception:
+            box = None
+        if not box or box.get("width", 0) <= 0 or box.get("height", 0) <= 0:
+            continue
+        try:
+            text = str(candidate.inner_text(timeout=500) or "").strip()
+        except Exception:
+            text = ""
+        try:
+            aria_label = str(
+                candidate.get_attribute("aria-label", timeout=500) or ""
+            ).strip()
+        except Exception:
+            aria_label = ""
+        if text and "배경 생성" in text and aria_label != "배경 생성":
+            return candidate
+        if text == "Generate":
+            fallback_generate = candidate
+    return fallback_generate
+
+
 def _playwright_canva_background_generate(
     *, port: int, bg_prompt: str, timeout_sec: int
 ) -> dict[str, object]:
@@ -205,6 +237,46 @@ def _playwright_canva_background_generate(
     try:
         page.keyboard.press("Escape")
         page.wait_for_timeout(500)
+
+        if _click_visible_page_locator(
+            page, "button,[role=button]", has_text="배경 생성"
+        ):
+            page.wait_for_timeout(800)
+            top_prompt = None
+            prompt_selectors = [
+                "textarea[placeholder*='예시']",
+                "textarea[placeholder*='Describe']",
+                "textarea[placeholder*='prompt']",
+                "textarea[aria-label*='프롬프트'],textarea[aria-label*='Prompt']",
+                "div[role='dialog'] textarea",
+                "div[contenteditable='true'][role='textbox']",
+                "div[contenteditable='true'][data-lexical-editor='true']",
+                "[role='textbox'][contenteditable='true']",
+                "textarea",
+                "[role=textbox]",
+                "input[type=text]",
+                "[contenteditable='true']",
+            ]
+            for _ in range(3):
+                for selector in prompt_selectors:
+                    top_candidates = page.locator(selector)
+                    top_prompt = _last_visible_locator(top_candidates)
+                    if top_prompt is not None:
+                        break
+                if top_prompt is not None:
+                    break
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(300)
+                _click_visible_page_locator(
+                    page, "button,[role=button]", has_text="배경 생성"
+                )
+                page.wait_for_timeout(800)
+            if top_prompt is not None:
+                top_prompt.fill(bg_prompt, timeout=timeout_sec * 1000)
+                generate_button = _legacy_canva_topdom_generate_button(page)
+                if generate_button is not None:
+                    generate_button.click(timeout=5000)
+                    return {"ok": True, "step": "submitted_background_generate_topdom"}
 
         page.evaluate(
             """(async () => { const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms)); const tabs = Array.from(document.querySelectorAll('button[role="tab"][aria-controls], [role=tab][aria-controls]')); const target = tabs.find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경 생성'); }); if (!(target instanceof HTMLElement)) return false; target.focus(); target.click(); await wait(300); if ((target.getAttribute('aria-selected') || '') === 'true') return true; target.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); target.dispatchEvent(new KeyboardEvent('keyup', {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); await wait(300); if ((target.getAttribute('aria-selected') || '') === 'true') return true; target.dispatchEvent(new KeyboardEvent('keydown', {key:' ', code:'Space', keyCode:32, which:32, bubbles:true})); target.dispatchEvent(new KeyboardEvent('keyup', {key:' ', code:'Space', keyCode:32, which:32, bubbles:true})); await wait(300); return (target.getAttribute('aria-selected') || '') === 'true'; })()"""

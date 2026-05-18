@@ -155,6 +155,10 @@
   - fresh boundary `D:\YOUTUBEAUTO_RUNTIME\probe\canva-boundary-20260519-c\probe_result.json`에서 `geminigen`은 live-ready로 닫혔지만 `canva` row는 `status=failed`, `error_code=CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT`, `fallback_used=true`로 truthfully 남습니다.
   - 이번 배치에서 non-legacy `NO_EXACT_EDIT_BUTTON` precondition은 optional로 낮췄고, 그 뒤에도 blocker는 다시 `Product Background` prompt input 부재로 수렴했습니다.
   - 따라서 현재 Canva hold의 single blocker는 여전히 `live Product Background app-contract`, 즉 prompt input이 top DOM/current tooling 경계에서 안정적으로 노출되지 않는 점입니다.
+- 2026-05-19 canva legacy top-dom retry result:
+  - 레거시 `배경 생성 -> top DOM prompt -> 생성` 경로를 runtime_v2 helper에 다시 우선 배치한 뒤 fresh boundary `D:\YOUTUBEAUTO_RUNTIME\probe\canva-boundary-20260519-d\probe_result.json`을 재실행했습니다.
+  - 그 결과 blocker는 `NO_EXACT_EDIT_BUTTON`이나 top-DOM prompt miss가 아니라 다시 `PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE`로 수렴했습니다.
+  - 따라서 현재 truthful reading은 `Canva`가 레거시 top-DOM 경로를 놓쳐서 막히는 것이 아니라, live Canva가 결국 iframe-hosted Product Background UI로 수렴하고 current tooling 경계에서 그 iframe 접근이 안정적으로 성립하지 않는다는 점입니다.
 - 오라클 shortest-path 전략(현재 SSOT):
   - 남은 검증은 semantic target row(`Sheet1` row 16 / CLI `--row-index 14`)에 대한 `Stage 5 detached run` **1회**만 수행합니다.
   - 그 전에 `python -m runtime_v2.cli --readiness-check`만 확인하고, readiness fail이면 Stage 5를 시작하지 않습니다.
