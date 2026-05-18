@@ -131,10 +131,10 @@ def _select_truthful_geminigen_video_url(raw_value: object) -> str:
     if isinstance(raw_value, list):
         candidates = [str(item).strip() for item in raw_value if str(item).strip()]
         for candidate in candidates:
-            if '/api/files/' in candidate:
+            if "/api/files/" in candidate:
                 return candidate
-        return candidates[0] if candidates else ''
-    return ''
+        return candidates[0] if candidates else ""
+    return ""
 
 
 def capture_primary_video_asset(
@@ -376,7 +376,16 @@ def _download_image_bytes(image_url: str, ws_url: str) -> bytes:
 def _fetch_bytes_via_page_context(ws_url: str, image_url: str) -> bytes:
     expression = """
 (async () => {
-  const response = await fetch(%s, {credentials: 'include'});
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  let response;
+  try {
+    response = await fetch(%s, {credentials: 'include', signal: controller.signal});
+  } catch (error) {
+    clearTimeout(timeoutId);
+    return {ok: false, error: 'FETCH_ABORTED'};
+  }
+  clearTimeout(timeoutId);
   if (!response.ok) {
     return {ok: false, status: response.status};
   }

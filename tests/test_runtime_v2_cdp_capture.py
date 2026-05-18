@@ -615,6 +615,67 @@ class RuntimeV2CdpCaptureTests(unittest.TestCase):
                 self.assertEqual(asset_path.read_bytes(), b"video-bytes")
                 self.assertEqual(len(sha256), 64)
 
+    def test_capture_primary_video_asset_uses_abortable_page_fetch_fallback(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "geminigen-abortable.mp4"
+            encoded = base64.b64encode(b"video-bytes").decode("ascii")
+            fallback_expression = ""
+
+            def fake_cdp(
+                ws_url: str, *, method: str, params: dict[str, object]
+            ) -> dict[str, object]:
+                nonlocal fallback_expression
+                _ = ws_url
+                if method == "Runtime.evaluate" and params.get("awaitPromise"):
+                    fallback_expression = str(params.get("expression", ""))
+                    return {
+                        "result": {"result": {"value": {"ok": True, "base64": encoded}}}
+                    }
+                return {
+                    "result": {
+                        "result": {
+                            "value": "https://www.geminigen.ai/api/files/example.mp4"
+                        }
+                    }
+                }
+
+            with (
+                patch(
+                    "runtime_v2.agent_browser.cdp_capture._select_page_target",
+                    return_value={
+                        "webSocketDebuggerUrl": "ws://127.0.0.1:9555/devtools/page/1",
+                        "url": "https://www.geminigen.ai/create/video",
+                    },
+                ),
+                patch(
+                    "runtime_v2.agent_browser.cdp_capture.urllib.request.urlopen",
+                    side_effect=urllib.error.HTTPError(
+                        "https://www.geminigen.ai/api/files/example.mp4",
+                        403,
+                        "Forbidden",
+                        hdrs=Message(),
+                        fp=None,
+                    ),
+                ),
+                patch(
+                    "runtime_v2.agent_browser.cdp_capture._cdp_command",
+                    side_effect=fake_cdp,
+                ),
+            ):
+                asset_path, sha256 = capture_primary_video_asset(
+                    9555,
+                    "geminigen.ai",
+                    output_path,
+                    service="geminigen",
+                )
+                self.assertTrue(asset_path.exists())
+                self.assertEqual(asset_path.read_bytes(), b"video-bytes")
+                self.assertEqual(len(sha256), 64)
+        self.assertIn("AbortController", fallback_expression)
+        self.assertIn("setTimeout(() => controller.abort()", fallback_expression)
 
     def test_collect_browser_debug_state_accepts_genspark_result_tab_for_default_expected_url(
         self,
