@@ -5190,6 +5190,56 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertTrue(bool(first["fallback_used"]))
         completion = cast(dict[str, object], first["completion"])
         self.assertFalse(bool(completion["final_output"]))
+        render_spec = cast(dict[str, object], report["render_spec"])
+        asset_refs = cast(list[object], render_spec["asset_refs"])
+        self.assertFalse(any("#03_GEMI.mp4" in str(item) for item in asset_refs))
+        timeline = cast(list[object], render_spec["timeline"])
+        self.assertFalse(
+            any(
+                isinstance(item, dict) and str(item.get("workload", "")) == "geminigen"
+                for item in timeline
+            )
+        )
+
+    def test_stage2_row1_probe_blocks_when_geminigen_login_required_falls_back(
+        self,
+    ) -> None:
+        ok_result = {
+            "status": "ok",
+            "error_code": "",
+            "details": {},
+            "completion": {"final_output": True},
+        }
+        failed_result = {
+            "status": "failed",
+            "error_code": "GEMINIGEN_LOGIN_REQUIRED",
+            "details": {},
+            "completion": {"final_output": False},
+        }
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig.from_root(root / "runtime")
+            with (
+                patch("runtime_v2.cli.run_genspark_job", return_value=ok_result),
+                patch("runtime_v2.cli.run_seaart_job", return_value=ok_result),
+                patch(
+                    "runtime_v2.cli.run_geminigen_job",
+                    side_effect=[failed_result, ok_result],
+                ),
+                patch("runtime_v2.cli.run_canva_job", return_value=ok_result),
+            ):
+                report = _run_stage2_row1_probe(
+                    config=config,
+                    probe_root=root / "probe",
+                    run_id="stage2-row1-geminigen-login-required",
+                    agent_browser_services=["geminigen"],
+                )
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["code"], "GEMINIGEN_LOGIN_REQUIRED")
+        first = cast(list[dict[str, object]], report["results"])[2]
+        self.assertEqual(first["error_code"], "GEMINIGEN_LOGIN_REQUIRED")
 
     def test_stage2_row1_probe_preserves_non_login_geminigen_attach_failure(
         self,
@@ -5232,6 +5282,19 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertEqual(first["service"], "geminigen")
         self.assertEqual(first["status"], "failed")
         self.assertEqual(first["error_code"], "REF_IMAGE_UPLOAD_FAILED")
+        render_spec = cast(dict[str, object], report["render_spec"])
+        asset_refs = cast(list[object], render_spec["asset_refs"])
+        self.assertFalse(any("#03_GEMI.mp4" in str(item) for item in asset_refs))
+        timeline = cast(list[object], render_spec["timeline"])
+        self.assertFalse(
+            any(
+                isinstance(item, dict) and str(item.get("workload", "")) == "geminigen"
+                for item in timeline
+            )
+        )
+        render_spec = cast(dict[str, object], report["render_spec"])
+        asset_refs = cast(list[object], render_spec["asset_refs"])
+        self.assertFalse(any("#03_GEMI.mp4" in str(item) for item in asset_refs))
 
     def test_stage2_row1_probe_writes_runtime_root_from_passed_config(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -5313,6 +5376,11 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         )
         self.assertEqual(cast(list[object], report["live_ready_services"]), [])
         self.assertTrue(bool(report["probe_success"]))
+        render_spec = cast(dict[str, object], report["render_spec"])
+        asset_refs = cast(list[object], render_spec["asset_refs"])
+        self.assertEqual(len(asset_refs), 3)
+        timeline = cast(list[object], render_spec["timeline"])
+        self.assertEqual(len(timeline), 3)
 
     def test_qwen3_adapter_child_writes_first_generated_voice_artifact(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

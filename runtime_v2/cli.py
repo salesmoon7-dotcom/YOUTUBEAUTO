@@ -1718,6 +1718,7 @@ def _run_stage2_row1_probe(
     failure_code = "OK"
     placeholder_services: list[str] = []
     live_ready_services: list[str] = []
+    excluded_asset_paths: set[str] = set()
     for raw in jobs[:-1]:
         typed = cast(dict[str, object], raw)
         job_payload = cast(dict[str, object], typed["job"])
@@ -1781,12 +1782,29 @@ def _run_stage2_row1_probe(
                 "attach_attempt_failed": attach_attempt_failed,
             }
         )
+        if str(reported_result.get("status", "")) != "ok":
+            excluded_asset_paths.add(str(payload.get("service_artifact_path", "")))
         if service == "geminigen" and fallback_used and overall_ok:
             overall_ok = False
             failure_code = _geminigen_probe_failure_code(attach_failure_code)
         elif str(result.get("status", "")) != "ok" and overall_ok:
             overall_ok = False
             failure_code = str(result.get("error_code", "BROWSER_BLOCKED"))
+    if excluded_asset_paths:
+        render_spec = dict(render_spec)
+        render_spec["asset_refs"] = [
+            item
+            for item in cast(list[object], render_spec.get("asset_refs", []))
+            if str(item) not in excluded_asset_paths
+        ]
+        render_spec["timeline"] = [
+            item
+            for item in cast(list[object], render_spec.get("timeline", []))
+            if not (
+                isinstance(item, dict)
+                and str(item.get("asset_path", "")) in excluded_asset_paths
+            )
+        ]
     report: dict[str, object] = {
         "run_id": run_id,
         "mode": "stage2_row1",
