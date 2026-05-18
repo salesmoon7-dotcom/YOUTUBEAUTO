@@ -151,6 +151,10 @@
   - 현재 live Canva에서는 `Product Background` 탭이 열리지만 생성 UI가 top DOM에 나타나지 않고, panel 내부는 iframe-hosted app state로만 노출됩니다.
   - current tooling 기준 Playwright/CDP로 해당 iframe `content_frame()` 접근이 안정적으로 되지 않아, 지금 단계의 truthful blocker는 opener/button selector가 아니라 `Product Background iframe UI 접근 불가`입니다.
   - 따라서 동일 세션/템플릿 상태에서 추가 top-DOM opener 수정은 중단하고, 다음 세션은 (1) Canva 상태가 바뀌어 top DOM generate UI가 노출되는지 확인하거나, (2) iframe 내부 접근 전략을 별도 배치로 설계하는 방향으로 이어갑니다.
+- 2026-05-19 canva hold reaffirmed:
+  - fresh boundary `D:\YOUTUBEAUTO_RUNTIME\probe\canva-boundary-20260519-c\probe_result.json`에서 `geminigen`은 live-ready로 닫혔지만 `canva` row는 `status=failed`, `error_code=CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT`, `fallback_used=true`로 truthfully 남습니다.
+  - 이번 배치에서 non-legacy `NO_EXACT_EDIT_BUTTON` precondition은 optional로 낮췄고, 그 뒤에도 blocker는 다시 `Product Background` prompt input 부재로 수렴했습니다.
+  - 따라서 현재 Canva hold의 single blocker는 여전히 `live Product Background app-contract`, 즉 prompt input이 top DOM/current tooling 경계에서 안정적으로 노출되지 않는 점입니다.
 - 오라클 shortest-path 전략(현재 SSOT):
   - 남은 검증은 semantic target row(`Sheet1` row 16 / CLI `--row-index 14`)에 대한 `Stage 5 detached run` **1회**만 수행합니다.
   - 그 전에 `python -m runtime_v2.cli --readiness-check`만 확인하고, readiness fail이면 Stage 5를 시작하지 않습니다.

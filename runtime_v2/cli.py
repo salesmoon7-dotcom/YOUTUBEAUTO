@@ -1760,10 +1760,10 @@ def _run_stage2_row1_probe(
             result = runner(fallback_contract, config.artifact_root)
             fallback_used = True
         reported_result = result
-        if service == "geminigen":
-            if fallback_used:
-                reported_result = dict(cast(dict[str, object], initial_result))
-                reported_result["status"] = "failed"
+        if fallback_used and service in {"geminigen", "canva"}:
+            reported_result = dict(cast(dict[str, object], initial_result))
+            reported_result["status"] = "failed"
+            if service == "geminigen":
                 reported_result["error_code"] = _geminigen_probe_failure_code(
                     attach_failure_code
                 )
@@ -2503,7 +2503,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
             {
                 "type": "eval",
-                "script": "(() => { const nodes = Array.from(document.querySelectorAll('button,[role=button],div,span')); const target = nodes.find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text === '편집' || text === 'Edit'; }); if (!(target instanceof HTMLElement)) return JSON.stringify({ok:false,error:'NO_EXACT_EDIT_BUTTON'}); target.click(); return JSON.stringify({ok:true, step:'clicked_exact_edit'}); })()",
+                "script": "(() => { const nodes = Array.from(document.querySelectorAll('button,[role=button],div,span')); const target = nodes.find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text === '편집' || text === 'Edit'; }); if (!(target instanceof HTMLElement)) return JSON.stringify({ok:true, step:'edit_optional'}); target.click(); return JSON.stringify({ok:true, step:'clicked_exact_edit'}); })()",
             },
             {
                 "type": "wait",

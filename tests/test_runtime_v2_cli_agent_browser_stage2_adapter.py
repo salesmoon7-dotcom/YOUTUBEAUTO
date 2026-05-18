@@ -856,6 +856,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             if str(action.get("type", "")) == "eval"
         ]
         self.assertTrue(any("clicked_exact_edit" in script for script in edit_scripts))
+        self.assertTrue(any("edit_optional" in script for script in edit_scripts))
         self.assertGreaterEqual(page2_index, 0)
         self.assertTrue(
             any(
@@ -5295,6 +5296,50 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         render_spec = cast(dict[str, object], report["render_spec"])
         asset_refs = cast(list[object], render_spec["asset_refs"])
         self.assertFalse(any("#03_GEMI.mp4" in str(item) for item in asset_refs))
+
+    def test_stage2_row1_probe_reports_canva_fallback_row_truthfully(self) -> None:
+        ok_result = {
+            "status": "ok",
+            "error_code": "",
+            "details": {},
+            "completion": {"state": "succeeded", "final_output": True},
+        }
+        failed_result = {
+            "status": "failed",
+            "error_code": "CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT",
+            "details": {},
+            "completion": {"state": "failed", "final_output": False},
+        }
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig.from_root(root / "runtime")
+            with (
+                patch("runtime_v2.cli.run_genspark_job", return_value=ok_result),
+                patch("runtime_v2.cli.run_seaart_job", return_value=ok_result),
+                patch("runtime_v2.cli.run_geminigen_job", return_value=ok_result),
+                patch(
+                    "runtime_v2.cli.run_canva_job",
+                    side_effect=[failed_result, ok_result],
+                ),
+            ):
+                report = _run_stage2_row1_probe(
+                    config=config,
+                    probe_root=root / "probe",
+                    run_id="stage2-row1-canva-fallback",
+                    agent_browser_services=["canva"],
+                )
+
+        self.assertEqual(report["code"], "OK")
+        self.assertTrue(bool(report["probe_success"]))
+        fourth = cast(list[dict[str, object]], report["results"])[3]
+        self.assertEqual(fourth["service"], "canva")
+        self.assertEqual(fourth["status"], "failed")
+        self.assertEqual(
+            fourth["error_code"], "CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT"
+        )
+        self.assertTrue(bool(fourth["attach_attempt_failed"]))
+        self.assertTrue(bool(fourth["fallback_used"]))
 
     def test_stage2_row1_probe_writes_runtime_root_from_passed_config(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
