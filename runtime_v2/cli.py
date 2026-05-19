@@ -789,17 +789,20 @@ def main() -> int:
             return exit_codes.CLI_USAGE
         _ = _write_probe_result(
             probe_root,
-            {
-                "run_id": run_id,
-                "mode": "stage5_row1",
-                "status": str(report.get("status", "unknown")),
-                "code": str(report.get("code", "CLI_USAGE")),
-                "exit_code": exit_code_from_status(
-                    str(report.get("code", "CLI_USAGE"))
-                ),
-                "debug_log": str(debug_log_path(config.debug_log_root, run_id)),
-                "result": report,
-            },
+            cast(
+                dict[str, object],
+                {
+                    **report,
+                    "run_id": str(report.get("run_id", run_id)),
+                    "mode": str(report.get("mode", "stage5_row1")),
+                    "status": str(report.get("status", "unknown")),
+                    "code": str(report.get("code", "CLI_USAGE")),
+                    "exit_code": exit_code_from_status(
+                        str(report.get("code", "CLI_USAGE"))
+                    ),
+                    "debug_log": str(debug_log_path(config.debug_log_root, run_id)),
+                },
+            ),
         )
         _ = _write_detached_summary(
             out_root=probe_root,
