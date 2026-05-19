@@ -690,6 +690,7 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
                 self.keyboard = MagicMock()
                 self.wait_calls = 0
                 self._eval_calls = 0
+                self.frames = [MagicMock(url="https://www.canva.com/design/foo/edit")]
                 self.top_prompt = FakeNode({"width": 120, "height": 24})
                 self.top_generate = FakeNode(
                     {"width": 80, "height": 20}, text="Generate", aria=""
@@ -798,6 +799,7 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
                 self.keyboard = MagicMock()
                 self.wait_calls = 0
                 self._eval_calls = 0
+                self.frames = [MagicMock(url="https://www.canva.com/design/foo/edit")]
                 self.top_prompt = FakeNode({"width": 120, "height": 24})
                 self.bg_button = FakeNode(
                     {"width": 90, "height": 20}, text="배경 생성", aria="배경 생성"
@@ -946,6 +948,7 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
                 self.keyboard = MagicMock()
                 self.wait_calls = 0
                 self._eval_calls = 0
+                self.frames = [MagicMock(url="https://www.canva.com/design/foo/edit")]
 
             def wait_for_timeout(self, ms: int):
                 self.wait_calls += 1
@@ -1644,6 +1647,13 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertEqual(result["error"], "PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE")
         self.assertIn("app-aagfbubmjom.canva-apps.com", str(result["iframe_src"]))
         self.assertEqual(str(result["iframe_title"]), "Product Background")
+        self.assertEqual(
+            cast(list[object], result["observed_frame_urls"]),
+            [
+                "https://www.canva.com/design/foo/edit",
+                "about:blank",
+            ],
+        )
 
     def test_agent_browser_verify_skips_snapshot_for_non_chatgpt_services(self) -> None:
         from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job

@@ -355,6 +355,9 @@ def _playwright_canva_background_generate(
         frame = None
         iframe_src = ""
         iframe_title = ""
+        observed_frame_urls = [
+            str(getattr(candidate, "url", "") or "") for candidate in page.frames
+        ]
         iframe_selectors = ['iframe[title="Product Background"]', "iframe"]
         for _ in range(10):
             for selector in iframe_selectors:
@@ -403,6 +406,7 @@ def _playwright_canva_background_generate(
                 "error": "PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE",
                 "iframe_src": iframe_src,
                 "iframe_title": iframe_title,
+                "observed_frame_urls": observed_frame_urls,
             }
 
         for _ in range(10):
