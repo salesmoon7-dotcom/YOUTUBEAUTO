@@ -353,12 +353,28 @@ def _playwright_canva_background_generate(
         page.wait_for_timeout(800)
 
         frame = None
+        iframe_src = ""
+        iframe_title = ""
         iframe_selectors = ['iframe[title="Product Background"]', "iframe"]
         for _ in range(10):
             for selector in iframe_selectors:
                 iframe = page.locator(selector).first
                 if iframe.count() <= 0:
                     continue
+                try:
+                    current_src = str(iframe.get_attribute("src", timeout=1000) or "")
+                except Exception:
+                    current_src = ""
+                try:
+                    current_title = str(
+                        iframe.get_attribute("title", timeout=1000) or ""
+                    )
+                except Exception:
+                    current_title = ""
+                if current_src and not iframe_src:
+                    iframe_src = current_src
+                if current_title and not iframe_title:
+                    iframe_title = current_title
                 handle = iframe.element_handle(timeout=3000)
                 frame = handle.content_frame() if handle is not None else None
                 if frame is None:
@@ -385,6 +401,8 @@ def _playwright_canva_background_generate(
             return {
                 "ok": False,
                 "error": "PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE",
+                "iframe_src": iframe_src,
+                "iframe_title": iframe_title,
             }
 
         for _ in range(10):

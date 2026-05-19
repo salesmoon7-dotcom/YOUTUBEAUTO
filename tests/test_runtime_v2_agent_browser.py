@@ -1333,6 +1333,13 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
             def element_handle(self, timeout=None):
                 return FakeHandle()
 
+            def get_attribute(self, name: str, timeout=None):
+                if name == "src":
+                    return "https://app-aagfbubmjom.canva-apps.com/app-sandbox/editor/AAGfbuBmjOM/11?locale=ko-KR"
+                if name == "title":
+                    return "Product Background"
+                return ""
+
         class FakePage:
             def __init__(self) -> None:
                 self.keyboard = MagicMock()
@@ -1574,6 +1581,13 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
             def element_handle(self, timeout=None):
                 return FakeHandle()
 
+            def get_attribute(self, name: str, timeout=None):
+                if name == "src":
+                    return "https://app-aagfbubmjom.canva-apps.com/app-sandbox/editor/AAGfbuBmjOM/11?locale=ko-KR"
+                if name == "title":
+                    return "Product Background"
+                return ""
+
         class FakeFrame:
             def __init__(self, url: str) -> None:
                 self.url = url
@@ -1628,6 +1642,8 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"], "PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE")
+        self.assertIn("app-aagfbubmjom.canva-apps.com", str(result["iframe_src"]))
+        self.assertEqual(str(result["iframe_title"]), "Product Background")
 
     def test_agent_browser_verify_skips_snapshot_for_non_chatgpt_services(self) -> None:
         from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
