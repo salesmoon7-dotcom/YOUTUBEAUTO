@@ -923,6 +923,22 @@ def _agent_browser_error_code(exc: Exception) -> str:
     return "AGENT_BROWSER_VERIFY_FAILED"
 
 
+def _agent_browser_action_payload(exc: Exception) -> dict[str, object]:
+    if not isinstance(exc, RuntimeError):
+        return {}
+    message = str(exc).strip()
+    if not message.startswith("agent_browser_action_failed:"):
+        return {}
+    raw_payload = message.split(":", 1)[1].strip()
+    try:
+        parsed = json.loads(raw_payload)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return cast(dict[str, object], parsed)
+
+
 def _recover_agent_browser_service(
     service: str, *, artifact_root: Path | None = None
 ) -> None:
@@ -1302,6 +1318,7 @@ def run_agent_browser_verify_job(
             current_url=current_url,
             current_title=current_title,
         )
+        action_payload = _agent_browser_action_payload(exc)
         transcript_path = write_json_atomic(
             workspace / "agent_browser_transcript.json",
             {
@@ -1325,6 +1342,7 @@ def run_agent_browser_verify_job(
                 "failure_reason": str(exc),
                 "current_url": current_url,
                 "current_title": current_title,
+                **action_payload,
             },
             completion={"state": "blocked", "final_output": False},
         )

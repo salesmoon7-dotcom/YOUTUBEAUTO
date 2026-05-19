@@ -1871,6 +1871,81 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         )
         self.assertEqual(str(details["current_title"]), "Grok")
 
+    def test_agent_browser_verify_surfaces_canva_action_payload_details(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "artifacts"
+            job = JobContract(
+                job_id="agent-browser-canva-iframe-payload",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-canva-iframe-payload",
+                payload={
+                    "service": "canva",
+                    "port": 9666,
+                    "expected_url_substring": "canva.com",
+                    "expected_title_substring": "Canva",
+                    "capture_snapshot": False,
+                    "actions": [
+                        {
+                            "type": "eval",
+                            "script": "(() => { return JSON.stringify({ok:false}); })()",
+                        }
+                    ],
+                },
+            )
+
+            outputs = iter(
+                [
+                    "[0] Canva Edit - https://www.canva.com/design/foo/edit\n",
+                    "selected canva",
+                    "https://www.canva.com/design/foo/edit",
+                    "Canva Edit",
+                ]
+            )
+
+            def fake_run(command: list[str], *, timeout_sec: int = 30) -> str:
+                _ = timeout_sec
+                if command[3] == "eval":
+                    raise RuntimeError(
+                        "agent_browser_action_failed:"
+                        + json.dumps(
+                            {
+                                "ok": False,
+                                "error": "PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE",
+                                "iframe_src": "https://app-aagfbubmjom.canva-apps.com/app-sandbox/editor/AAGfbuBmjOM/11?locale=ko-KR",
+                                "iframe_title": "Product Background",
+                                "observed_frame_urls": [
+                                    "https://www.canva.com/design/foo/edit",
+                                    "about:blank",
+                                ],
+                            },
+                            ensure_ascii=True,
+                        )
+                    )
+                return next(outputs)
+
+            with patch(
+                "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                side_effect=fake_run,
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE")
+        details = cast(dict[str, object], result["details"])
+        self.assertIn("app-aagfbubmjom.canva-apps.com", str(details["iframe_src"]))
+        self.assertEqual(str(details["iframe_title"]), "Product Background")
+        self.assertEqual(
+            cast(list[object], details["observed_frame_urls"]),
+            [
+                "https://www.canva.com/design/foo/edit",
+                "about:blank",
+            ],
+        )
+
     def test_agent_browser_verify_does_not_claim_service_recovered_when_retry_still_fails(
         self,
     ) -> None:

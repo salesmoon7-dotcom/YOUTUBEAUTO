@@ -57,6 +57,26 @@ def _canva_adapter_error_code(
     return adapter_error_code
 
 
+def _canva_failed_adapter_details(
+    adapter_result: dict[str, object],
+    attach_evidence_payload: dict[str, object],
+    attach_details: dict[str, object],
+) -> dict[str, object]:
+    base_details = cast(dict[str, object], adapter_result.get("details", {}))
+    return {
+        **base_details,
+        "attach_status": str(attach_evidence_payload.get("status", "")),
+        "attach_error_code": str(attach_evidence_payload.get("error_code", "")),
+        "current_url": str(attach_evidence_payload.get("current_url", "")),
+        "current_title": str(attach_evidence_payload.get("current_title", "")),
+        "iframe_src": str(attach_details.get("iframe_src", "")),
+        "iframe_title": str(attach_details.get("iframe_title", "")),
+        "observed_frame_urls": cast(
+            list[object], attach_details.get("observed_frame_urls", [])
+        ),
+    }
+
+
 def run_canva_job(
     job: JobContract, artifact_root: Path, registry_file: Path | None = None
 ) -> dict[str, object]:
@@ -130,7 +150,11 @@ def run_canva_job(
                 ],
                 error_code=adapter_error_code,
                 retryable=adapter_error_code in _RETRYABLE_BROWSER_ERROR_CODES,
-                details=cast(dict[str, object], adapter_result.get("details", {})),
+                details=_canva_failed_adapter_details(
+                    adapter_result,
+                    attach_evidence_payload,
+                    attach_details,
+                ),
                 completion={"state": "failed", "final_output": False},
             )
         verified_output = Path(str(adapter_result["output_path"]))

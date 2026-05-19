@@ -14,6 +14,8 @@ from runtime_v2.control_plane import run_worker
 from runtime_v2.stage2.agent_browser_adapter import (
     attach_evidence_path,
     build_stage2_agent_browser_adapter_command,
+    load_stage2_attach_evidence,
+    write_stage2_attach_evidence,
 )
 from runtime_v2.stage2.canva_worker import run_canva_job
 from runtime_v2.stage2.geminigen_worker import run_geminigen_job
@@ -219,7 +221,9 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         self.assertEqual(result["error_code"], "BROWSER_UNHEALTHY")
         self.assertTrue(bool(result["retryable"]))
 
-    def test_genspark_worker_uses_retry_trace_not_ready_over_generic_browser_exit(self) -> None:
+    def test_genspark_worker_uses_retry_trace_not_ready_over_generic_browser_exit(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
@@ -227,7 +231,9 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             job = _stage2_job("genspark")
             job.payload["use_agent_browser"] = True
             job.payload["service_artifact_path"] = str(output_path)
-            workspace = artifact_root / "genspark" / job.job_id / str(job.payload["run_id"])
+            workspace = (
+                artifact_root / "genspark" / job.job_id / str(job.payload["run_id"])
+            )
             workspace.mkdir(parents=True, exist_ok=True)
 
             def _fake_adapter(*args: object, **kwargs: object) -> dict[str, object]:
@@ -239,7 +245,9 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                             "status": "ok",
                             "error_code": "",
                             "details": {
-                                "retry_trace_path": str(workspace / "adapter_retry_trace.json")
+                                "retry_trace_path": str(
+                                    workspace / "adapter_retry_trace.json"
+                                )
                             },
                         },
                         ensure_ascii=True,
@@ -254,7 +262,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                                     "phase": "image_ready_poll",
                                     "attempt": 1,
                                     "returncode": 0,
-                                    "stdout": '"{\"ok\":false,\"error\":\"GENSPARK_IMAGE_NOT_READY\"}"',
+                                    "stdout": '"{"ok":false,"error":"GENSPARK_IMAGE_NOT_READY"}"',
                                     "stderr": "",
                                 }
                             ]
@@ -420,7 +428,9 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             artifact_root = root / "artifacts"
             job = _stage2_job("canva")
             job.payload["use_agent_browser"] = True
-            workspace = artifact_root / job.workload / job.job_id / str(job.payload["run_id"])
+            workspace = (
+                artifact_root / job.workload / job.job_id / str(job.payload["run_id"])
+            )
             workspace.mkdir(parents=True, exist_ok=True)
             stale_attach = attach_evidence_path(workspace)
             stale_attach.write_text(
@@ -456,7 +466,9 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             job = _stage2_job("canva")
             job.payload["use_agent_browser"] = True
             job.payload["service_artifact_path"] = str(output_path)
-            workspace = artifact_root / "canva" / job.job_id / str(job.payload["run_id"])
+            workspace = (
+                artifact_root / "canva" / job.job_id / str(job.payload["run_id"])
+            )
             workspace.mkdir(parents=True, exist_ok=True)
 
             def _fake_adapter(*args: object, **kwargs: object) -> dict[str, object]:
@@ -529,7 +541,9 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
 
             result = run_geminigen_job(job, artifact_root)
 
-            workspace = artifact_root / "geminigen" / job.job_id / str(job.payload["run_id"])
+            workspace = (
+                artifact_root / "geminigen" / job.job_id / str(job.payload["run_id"])
+            )
             self.assertEqual(result["status"], "ok")
             self.assertTrue(output_path.exists())
             self.assertTrue((workspace / "request.json").exists())
@@ -612,7 +626,11 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             job = _stage2_job("canva")
             job.payload["service_artifact_path"] = str(output_path)
             attach_evidence = (
-                artifact_root / "canva" / job.job_id / str(job.payload["run_id"]) / "attach_evidence.json"
+                artifact_root
+                / "canva"
+                / job.job_id
+                / str(job.payload["run_id"])
+                / "attach_evidence.json"
             )
             job.payload["adapter_command"] = [
                 sys.executable,
@@ -630,7 +648,9 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
 
             result = run_canva_job(job, artifact_root)
 
-            workspace = artifact_root / "canva" / job.job_id / str(job.payload["run_id"])
+            workspace = (
+                artifact_root / "canva" / job.job_id / str(job.payload["run_id"])
+            )
             self.assertEqual(result["status"], "ok")
             self.assertTrue(output_path.exists())
             self.assertTrue((workspace / "request.json").exists())
@@ -1123,7 +1143,12 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             root = Path(tmp_dir)
             output_path = root / "exports" / "canva-agent-browser.png"
             attach_evidence = (
-                root / "artifacts" / "canva" / "canva-job-1" / "stage2-run-1" / "attach_evidence.json"
+                root
+                / "artifacts"
+                / "canva"
+                / "canva-job-1"
+                / "stage2-run-1"
+                / "attach_evidence.json"
             )
             attach_evidence.parent.mkdir(parents=True, exist_ok=True)
             _ = attach_evidence.write_text('{"status":"ok"}', encoding="utf-8")
@@ -1168,7 +1193,12 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             root = Path(tmp_dir)
             output_path = root / "exports" / "canva-agent-browser.png"
             attach_evidence = (
-                root / "artifacts" / "canva" / "canva-job-1" / "stage2-run-1" / "attach_evidence.json"
+                root
+                / "artifacts"
+                / "canva"
+                / "canva-job-1"
+                / "stage2-run-1"
+                / "attach_evidence.json"
             )
             attach_evidence.parent.mkdir(parents=True, exist_ok=True)
             _ = attach_evidence.write_text(
@@ -1270,6 +1300,100 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         self.assertEqual(
             str(details["transcript_path"]), "D:/trace/agent_browser_transcript.json"
         )
+
+    def test_canva_worker_failed_adapter_surfaces_iframe_diagnostics(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            job = _stage2_job("canva")
+            job.payload["service_artifact_path"] = str(
+                root / "exports" / "canva-agent-browser.png"
+            )
+            job.payload["use_agent_browser"] = True
+            stdout_path = root / "artifacts" / "stdout.log"
+            stderr_path = root / "artifacts" / "stderr.log"
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = stdout_path.write_text("", encoding="utf-8")
+            _ = stderr_path.write_text("", encoding="utf-8")
+
+            def adapter_result(*args, **kwargs):
+                return {
+                    "ok": False,
+                    "error_code": "BROWSER_UNHEALTHY",
+                    "stdout_path": stdout_path,
+                    "stderr_path": stderr_path,
+                    "details": {"returncode": 20},
+                }
+
+            with (
+                patch(
+                    "runtime_v2.stage2.canva_worker.run_verified_adapter_command",
+                    side_effect=adapter_result,
+                ),
+                patch(
+                    "runtime_v2.stage2.canva_worker.load_stage2_attach_evidence",
+                    return_value={
+                        "status": "failed",
+                        "error_code": "PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE",
+                        "current_url": "https://www.canva.com/design/foo/edit",
+                        "current_title": "Canva Edit",
+                        "details": {
+                            "iframe_src": "https://app-aagfbubmjom.canva-apps.com/app-sandbox/editor/AAGfbuBmjOM/11?locale=ko-KR",
+                            "iframe_title": "Product Background",
+                            "observed_frame_urls": [
+                                "https://www.canva.com/design/foo/edit",
+                                "about:blank",
+                            ],
+                        },
+                    },
+                ),
+            ):
+                result = run_canva_job(job, root / "artifacts")
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE")
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(
+            str(details["current_url"]), "https://www.canva.com/design/foo/edit"
+        )
+        self.assertEqual(str(details["iframe_title"]), "Product Background")
+        self.assertIn("app-aagfbubmjom.canva-apps.com", str(details["iframe_src"]))
+
+    def test_write_stage2_attach_evidence_preserves_iframe_diagnostics(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            workspace = Path(tmp_dir)
+            evidence_path = write_stage2_attach_evidence(
+                workspace=workspace,
+                service="canva",
+                port=9666,
+                result={
+                    "status": "failed",
+                    "stage": "agent_browser_verify",
+                    "error_code": "PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE",
+                    "details": {
+                        "current_url": "https://www.canva.com/design/foo/edit",
+                        "current_title": "Canva Edit",
+                        "transcript_path": "D:/trace/transcript.json",
+                        "iframe_src": "https://app-aagfbubmjom.canva-apps.com/app-sandbox/editor/AAGfbuBmjOM/11?locale=ko-KR",
+                        "iframe_title": "Product Background",
+                        "observed_frame_urls": [
+                            "https://www.canva.com/design/foo/edit",
+                            "about:blank",
+                        ],
+                    },
+                },
+                probe_debug_only=True,
+                recovery_attempted=False,
+                placeholder_artifact=False,
+            )
+            payload = load_stage2_attach_evidence(workspace)
+
+        self.assertEqual(evidence_path, attach_evidence_path(workspace))
+        self.assertEqual(
+            str(payload["current_url"]), "https://www.canva.com/design/foo/edit"
+        )
+        details = cast(dict[str, object], payload["details"])
+        self.assertEqual(str(details["iframe_title"]), "Product Background")
+        self.assertIn("app-aagfbubmjom.canva-apps.com", str(details["iframe_src"]))
 
     def test_stage2_worker_uses_json_input_only_and_returns_runner_result(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

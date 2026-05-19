@@ -127,8 +127,26 @@ def write_stage2_attach_evidence(
     payload["ref_images_resolved"] = ref_images_resolved or []
     payload["ref_images_attach_attempted"] = ref_images_attach_attempted
     payload["ref_upload_error_code"] = ref_upload_error_code
+    payload_details: dict[str, object] = {
+        str(key): value
+        for key, value in details.items()
+        if str(key)
+        not in {
+            "service",
+            "port",
+            "current_url",
+            "current_title",
+            "transcript_path",
+            "snapshot_path",
+            "failure_reason",
+        }
+    }
     if extra_details:
-        payload["details"] = {str(key): value for key, value in extra_details.items()}
+        payload_details.update(
+            {str(key): value for key, value in extra_details.items()}
+        )
+    if payload_details:
+        payload["details"] = payload_details
     evidence_path = attach_evidence_path(workspace)
     _ = evidence_path.write_text(
         json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8"
