@@ -7,7 +7,7 @@ import json
 import time
 import urllib.request
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from playwright.sync_api import sync_playwright
 
@@ -230,6 +230,83 @@ def _legacy_canva_topdom_generate_button(page):
     return fallback_generate
 
 
+def _inspect_canva_iframe_target(port: int, iframe_src: str) -> dict[str, object]:
+    if not iframe_src:
+        return {}
+    try:
+        targets = json.loads(
+            urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/json/list", timeout=10
+            ).read()
+        )
+    except Exception:
+        return {}
+    if not isinstance(targets, list):
+        return {}
+    iframe_target = None
+    for raw in targets:
+        if not isinstance(raw, dict):
+            continue
+        if raw.get("type") != "iframe":
+            continue
+        target_url = str(raw.get("url", "") or "")
+        if target_url == iframe_src:
+            iframe_target = raw
+            break
+    if iframe_target is None:
+        return {}
+    ws_url = str(iframe_target.get("webSocketDebuggerUrl", "") or "")
+    if not ws_url:
+        return {}
+    try:
+        from websocket import create_connection
+
+        ws = create_connection(ws_url, timeout=20, suppress_origin=True)
+        try:
+            command_id = 1
+            ws.send(json.dumps({"id": command_id, "method": "Runtime.enable"}))
+            command_id += 1
+            expression = """(() => {
+  const labels = Array.from(document.querySelectorAll('button,[role=button]')).map(el => {
+    const text = (el.innerText || el.textContent || '').trim();
+    const aria = ((el.getAttribute && el.getAttribute('aria-label')) || '').trim();
+    return { text, aria };
+  });
+  const hasExact = (value) => labels.some(item => item.text === value || item.aria === value);
+  return {
+    prompt_visible: document.querySelectorAll('textarea,[role=textbox],input[type=text],[contenteditable=true]').length > 0,
+    file_select_visible: hasExact('파일 선택하기'),
+    generate_visible: hasExact('생성'),
+    body: document.body && document.body.innerText ? document.body.innerText.slice(0, 1000) : ''
+  };
+})()"""
+            ws.send(
+                json.dumps(
+                    {
+                        "id": command_id,
+                        "method": "Runtime.evaluate",
+                        "params": {"expression": expression, "returnByValue": True},
+                    }
+                )
+            )
+            while True:
+                message = json.loads(ws.recv())
+                if message.get("id") != command_id:
+                    continue
+                result = cast(dict[str, object], message.get("result", {}))
+                remote_result = result.get("result", {})
+                if not isinstance(remote_result, dict):
+                    return {}
+                value = remote_result.get("value", {})
+                if not isinstance(value, dict):
+                    return {}
+                return {str(key): val for key, val in value.items()}
+        finally:
+            ws.close()
+    except Exception:
+        return {}
+
+
 def _playwright_canva_background_generate(
     *, port: int, bg_prompt: str, timeout_sec: int
 ) -> dict[str, object]:
@@ -401,12 +478,35 @@ def _playwright_canva_background_generate(
                 break
             page.wait_for_timeout(500)
         if frame is None:
+            iframe_target_details = _inspect_canva_iframe_target(port, iframe_src)
+            if iframe_target_details:
+                prompt_visible = bool(
+                    iframe_target_details.get("prompt_visible", False)
+                )
+                file_select_visible = bool(
+                    iframe_target_details.get("file_select_visible", False)
+                )
+                generate_visible = bool(
+                    iframe_target_details.get("generate_visible", False)
+                )
+                if (not prompt_visible) and (file_select_visible or generate_visible):
+                    return {
+                        "ok": False,
+                        "error": "CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT",
+                        "file_select_visible": file_select_visible,
+                        "generate_visible": generate_visible,
+                        "iframe_src": iframe_src,
+                        "iframe_title": iframe_title,
+                        "observed_frame_urls": observed_frame_urls,
+                        **iframe_target_details,
+                    }
             return {
                 "ok": False,
                 "error": "PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE",
                 "iframe_src": iframe_src,
                 "iframe_title": iframe_title,
                 "observed_frame_urls": observed_frame_urls,
+                **iframe_target_details,
             }
 
         for _ in range(10):
@@ -434,7 +534,9 @@ def _playwright_canva_background_generate(
                 "generate_visible": bool(generate.count()),
             }
 
-        prompt_input.fill(bg_prompt, timeout=timeout_sec * 1000)
+        if prompt_input is None:
+            raise RuntimeError("canva_prompt_input_missing_after_visibility_gate")
+        cast(Any, prompt_input).fill(bg_prompt, timeout=timeout_sec * 1000)
         generate_button = frame.get_by_role("button", name="생성")
         generate_button.click(timeout=5000)
         return {"ok": True, "step": "submitted_background_generate_iframe"}

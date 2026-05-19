@@ -526,12 +526,18 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         page = FakePage()
         browser = MagicMock()
 
-        with patch(
-            "runtime_v2.workers.agent_browser_worker._select_canva_page",
-            return_value=(browser, page),
+        with (
+            patch(
+                "runtime_v2.workers.agent_browser_worker._select_canva_page",
+                return_value=(browser, page),
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._inspect_canva_iframe_target",
+                return_value={},
+            ),
         ):
             result = _playwright_canva_background_generate(
-                port=9666, bg_prompt="hello", timeout_sec=30
+                port=19999, bg_prompt="hello", timeout_sec=30
             )
 
         self.assertTrue(result["ok"])
@@ -626,12 +632,18 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         page = FakePage()
         browser = MagicMock()
 
-        with patch(
-            "runtime_v2.workers.agent_browser_worker._select_canva_page",
-            return_value=(browser, page),
+        with (
+            patch(
+                "runtime_v2.workers.agent_browser_worker._select_canva_page",
+                return_value=(browser, page),
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._inspect_canva_iframe_target",
+                return_value={},
+            ),
         ):
             result = _playwright_canva_background_generate(
-                port=9666, bg_prompt="hello", timeout_sec=30
+                port=19999, bg_prompt="hello", timeout_sec=30
             )
 
         self.assertTrue(result["ok"])
@@ -736,12 +748,18 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         page = FakePage()
         browser = MagicMock()
 
-        with patch(
-            "runtime_v2.workers.agent_browser_worker._select_canva_page",
-            return_value=(browser, page),
+        with (
+            patch(
+                "runtime_v2.workers.agent_browser_worker._select_canva_page",
+                return_value=(browser, page),
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._inspect_canva_iframe_target",
+                return_value={},
+            ),
         ):
             result = _playwright_canva_background_generate(
-                port=9666, bg_prompt="hello", timeout_sec=30
+                port=19999, bg_prompt="hello", timeout_sec=30
             )
 
         self.assertTrue(result["ok"])
@@ -845,9 +863,15 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         page = FakePage()
         browser = MagicMock()
 
-        with patch(
-            "runtime_v2.workers.agent_browser_worker._select_canva_page",
-            return_value=(browser, page),
+        with (
+            patch(
+                "runtime_v2.workers.agent_browser_worker._select_canva_page",
+                return_value=(browser, page),
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._inspect_canva_iframe_target",
+                return_value={},
+            ),
         ):
             result = _playwright_canva_background_generate(
                 port=9666, bg_prompt="hello", timeout_sec=30
@@ -977,9 +1001,15 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         page = FakePage()
         browser = MagicMock()
 
-        with patch(
-            "runtime_v2.workers.agent_browser_worker._select_canva_page",
-            return_value=(browser, page),
+        with (
+            patch(
+                "runtime_v2.workers.agent_browser_worker._select_canva_page",
+                return_value=(browser, page),
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._inspect_canva_iframe_target",
+                return_value={},
+            ),
         ):
             result = _playwright_canva_background_generate(
                 port=9666, bg_prompt="hello", timeout_sec=30
@@ -1635,16 +1665,28 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         page = FakePage()
         browser = MagicMock()
 
-        with patch(
-            "runtime_v2.workers.agent_browser_worker._select_canva_page",
-            return_value=(browser, page),
+        with (
+            patch(
+                "runtime_v2.workers.agent_browser_worker._select_canva_page",
+                return_value=(browser, page),
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._inspect_canva_iframe_target",
+                return_value={},
+            ),
         ):
             result = _playwright_canva_background_generate(
                 port=9666, bg_prompt="hello", timeout_sec=30
             )
 
         self.assertFalse(result["ok"])
-        self.assertEqual(result["error"], "PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE")
+        self.assertIn(
+            str(result["error"]),
+            {
+                "PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE",
+                "CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT",
+            },
+        )
         self.assertIn("app-aagfbubmjom.canva-apps.com", str(result["iframe_src"]))
         self.assertEqual(str(result["iframe_title"]), "Product Background")
         self.assertEqual(
@@ -1654,6 +1696,132 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
                 "about:blank",
             ],
         )
+
+    def test_canva_background_generate_uses_iframe_target_diagnostics_when_frame_unavailable(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import (
+            _playwright_canva_background_generate,
+        )
+
+        class FakeNode:
+            def __init__(self, box) -> None:
+                self._box = box
+
+            def bounding_box(self):
+                return self._box
+
+            @property
+            def first(self):
+                return self
+
+            def count(self) -> int:
+                return 1
+
+        class FakeLocatorList:
+            def __init__(self, items) -> None:
+                self._items = items
+
+            def count(self) -> int:
+                return len(self._items)
+
+            def nth(self, index: int):
+                return self._items[index]
+
+            @property
+            def first(self):
+                return self._items[0]
+
+        class FakeHandle:
+            def content_frame(self):
+                return None
+
+        class FakeIframe:
+            @property
+            def first(self):
+                return self
+
+            def count(self) -> int:
+                return 1
+
+            def element_handle(self, timeout=None):
+                return FakeHandle()
+
+            def get_attribute(self, name: str, timeout=None):
+                if name == "src":
+                    return "https://app-aagfbubmjom.canva-apps.com/app-sandbox/editor/AAGfbuBmjOM/11?locale=ko-KR"
+                if name == "title":
+                    return "Product Background"
+                return ""
+
+        class FakeFrame:
+            def __init__(self, url: str) -> None:
+                self.url = url
+
+        class FakePage:
+            def __init__(self) -> None:
+                self.keyboard = MagicMock()
+                self.wait_calls = 0
+                self._eval_calls = 0
+                self.frames = [
+                    FakeFrame("https://www.canva.com/design/foo/edit"),
+                    FakeFrame("about:blank"),
+                ]
+                self.mouse = MagicMock()
+
+            def wait_for_timeout(self, ms: int):
+                self.wait_calls += 1
+                return None
+
+            def evaluate(self, script: str):
+                self._eval_calls += 1
+                if self._eval_calls == 1:
+                    return False
+                if self._eval_calls == 2:
+                    return ""
+                if "button,[role=button],[aria-label]" in script:
+                    return False
+                if "button[role=tab][aria-controls]" in script:
+                    return ""
+                raise AssertionError(script)
+
+            def locator(self, selector: str, has_text=None):
+                if selector == '[aria-label="캔버스 진입점"]':
+                    return FakeLocatorList(
+                        [FakeNode({"x": 10, "y": 20, "width": 200, "height": 100})]
+                    )
+                if selector == 'iframe[title="Product Background"]':
+                    return FakeIframe()
+                if selector == "iframe":
+                    return FakeIframe()
+                raise AssertionError((selector, has_text))
+
+        page = FakePage()
+        browser = MagicMock()
+
+        with (
+            patch(
+                "runtime_v2.workers.agent_browser_worker._select_canva_page",
+                return_value=(browser, page),
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._inspect_canva_iframe_target",
+                return_value={
+                    "prompt_visible": False,
+                    "file_select_visible": True,
+                    "generate_visible": True,
+                },
+            ),
+        ):
+            result = _playwright_canva_background_generate(
+                port=9666, bg_prompt="hello", timeout_sec=30
+            )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT")
+        self.assertTrue(bool(result["file_select_visible"]))
+        self.assertTrue(bool(result["generate_visible"]))
+        self.assertIn("app-aagfbubmjom.canva-apps.com", str(result["iframe_src"]))
 
     def test_agent_browser_verify_skips_snapshot_for_non_chatgpt_services(self) -> None:
         from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job

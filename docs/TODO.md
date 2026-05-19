@@ -157,9 +157,10 @@
   - 따라서 현재 Canva hold의 single blocker는 여전히 `live Product Background app-contract`, 즉 prompt input이 top DOM/current tooling 경계에서 안정적으로 노출되지 않는 점입니다.
 - 2026-05-19 canva legacy top-dom retry result:
   - 레거시 `배경 생성 -> top DOM prompt -> 생성` 경로를 runtime_v2 helper에 다시 우선 배치한 뒤 fresh boundary `D:\YOUTUBEAUTO_RUNTIME\probe\canva-boundary-20260519-d\probe_result.json`을 재실행했습니다.
-  - 그 결과 blocker는 `NO_EXACT_EDIT_BUTTON`이나 top-DOM prompt miss가 아니라 다시 `PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE`로 수렴했습니다.
-  - latest fresh boundary `D:\YOUTUBEAUTO_RUNTIME\probe\canva-boundary-20260519-i\probe_result.json`에서는 failed Canva row details에 `iframe_src=https://app-aagfbubmjom.canva-apps.com/app-sandbox/editor/...`, `iframe_title=Product Background`, `observed_frame_urls=[design edit, about:blank]`까지 함께 남겨, DOM iframe 존재와 frame commit 부재가 동일 payload에서 보이도록 고정했습니다.
-  - 따라서 현재 truthful reading은 `Canva`가 레거시 top-DOM 경로를 놓쳐서 막히는 것이 아니라, live Canva가 결국 iframe-hosted Product Background UI로 수렴하고 current tooling 경계에서 그 iframe 접근이 안정적으로 성립하지 않는다는 점입니다.
+  - 그 결과 blocker는 `NO_EXACT_EDIT_BUTTON`이나 top-DOM prompt miss가 아니라 다시 iframe 경계로 수렴했습니다.
+  - separate live CDP diagnostic에서는 `json/list`에 `type=iframe`, `url=https://app-aagfbubmjom.canva-apps.com/app-sandbox/editor/...` target이 실제로 노출되고, 그 OOPIF target body에는 prompt textbox 없이 `파일 선택하기` / `생성`만 보인다는 점을 확인했습니다.
+  - fresh boundary `D:\YOUTUBEAUTO_RUNTIME\probe\canva-boundary-20260519-j\probe_result.json`에서는 failed Canva row details에 `iframe_src`, `iframe_title`, `observed_frame_urls=[design edit, about:blank]`가 남고, top-level blocker도 `CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT`으로 더 truthfully 좁혀졌습니다.
+  - 따라서 current truthful reading은 `Canva`가 레거시 top-DOM 경로를 놓쳐서 막히는 것이 아니라, live Product Background OOPIF 안에서 prompt 없이 `파일 선택하기` / `생성` 상태로 머무르는 app-contract 경계에 막혀 있다는 점입니다.
 - 오라클 shortest-path 전략(현재 SSOT):
   - 남은 검증은 semantic target row(`Sheet1` row 16 / CLI `--row-index 14`)에 대한 `Stage 5 detached run` **1회**만 수행합니다.
   - 그 전에 `python -m runtime_v2.cli --readiness-check`만 확인하고, readiness fail이면 Stage 5를 시작하지 않습니다.
