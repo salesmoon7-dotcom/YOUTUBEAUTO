@@ -1895,6 +1895,149 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertEqual(step["output"], "service_recovery_failed")
         self.assertTrue(bool(step["recovery_attempted"]))
 
+    def test_agent_browser_verify_retries_once_more_after_recovery_settle(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "artifacts"
+            job = JobContract(
+                job_id="agent-browser-genspark-recovery-settle",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-genspark-recovery-settle",
+                payload={
+                    "service": "genspark",
+                    "port": 9333,
+                    "expected_url_substring": "genspark.ai/agents?type=image_generation_agent",
+                    "expected_title_substring": "Genspark",
+                    "capture_snapshot": False,
+                },
+            )
+
+            command_calls = {"count": 0}
+
+            def fake_run(command: list[str], *, timeout_sec: int = 30) -> str:
+                _ = timeout_sec
+                command_calls["count"] += 1
+                if command_calls["count"] <= 2:
+                    raise RuntimeError(
+                        "Failed to connect via CDP to http://localhost:9333"
+                    )
+                if command[3:] == ["tab", "list"]:
+                    return (
+                        "\u001b[36m\u2192\u001b[0m [0] AI 이미지 - "
+                        "https://www.genspark.ai/agents?type=image_generation_agent\n"
+                    )
+                if command[3:] == ["tab", "0"]:
+                    return (
+                        "\u001b[32m\u2713\u001b[0m \u001b[1mAI 이미지\u001b[0m\n"
+                        "  https://www.genspark.ai/agents?type=image_generation_agent\n"
+                    )
+                if command[3:] == ["get", "url"]:
+                    return "https://www.genspark.ai/agents?type=image_generation_agent"
+                if command[3:] == ["get", "title"]:
+                    return "AI 이미지"
+                raise AssertionError(command)
+
+            with (
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                    side_effect=fake_run,
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._http_cdp_tab_list",
+                    side_effect=ConnectionRefusedError("WinError 10061"),
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._recover_agent_browser_service"
+                ),
+                patch("runtime_v2.workers.agent_browser_worker.time.sleep"),
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+            transcript_path = Path(
+                str(cast(dict[str, object], result["details"])["transcript_path"])
+            )
+            transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(str(result.get("error_code", "")), "")
+        self.assertEqual(command_calls["count"], 6)
+        steps = cast(list[object], transcript["steps"])
+        self.assertTrue(
+            any(
+                isinstance(step, dict)
+                and step.get("command") == ["recovery"]
+                and step.get("output") == "service_recovered"
+                for step in steps
+            )
+        )
+
+    def test_agent_browser_verify_does_not_retry_non_connect_runtime_error(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "artifacts"
+            job = JobContract(
+                job_id="agent-browser-genspark-non-connect-runtime-error",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-genspark-non-connect-runtime-error",
+                payload={
+                    "service": "genspark",
+                    "port": 9333,
+                    "expected_url_substring": "genspark.ai/agents?type=image_generation_agent",
+                    "expected_title_substring": "Genspark",
+                    "capture_snapshot": False,
+                },
+            )
+
+            command_calls = {"count": 0}
+
+            def fake_run(command: list[str], *, timeout_sec: int = 30) -> str:
+                _ = timeout_sec
+                command_calls["count"] += 1
+                if command[3:] == ["tab", "list"]:
+                    return (
+                        "\u001b[36m\u2192\u001b[0m [0] AI 이미지 - "
+                        "https://www.genspark.ai/agents?type=image_generation_agent\n"
+                    )
+                if command[3:] == ["tab", "0"]:
+                    return (
+                        "\u001b[32m\u2713\u001b[0m \u001b[1mAI 이미지\u001b[0m\n"
+                        "  https://www.genspark.ai/agents?type=image_generation_agent\n"
+                    )
+                if command[3:] == ["get", "url"]:
+                    raise RuntimeError(
+                        'agent_browser_action_failed:{"error":"NO_PROMPT_INPUT"}'
+                    )
+                raise AssertionError(command)
+
+            with (
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                    side_effect=fake_run,
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._http_cdp_tab_list",
+                    side_effect=AssertionError("http fallback unused"),
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._recover_agent_browser_service"
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker.time.sleep"
+                ) as sleep_mock,
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "NO_PROMPT_INPUT")
+        self.assertEqual(command_calls["count"], 6)
+        sleep_mock.assert_not_called()
+
     def test_agent_browser_verify_marks_probe_browser_unhealthy_on_attach_failure(
         self,
     ) -> None:

@@ -925,6 +925,22 @@ def _recover_agent_browser_service(
     )
 
 
+def _is_transient_cdp_connect_error(exc: RuntimeError) -> bool:
+    message = str(exc)
+    lowered = message.lower()
+    return "failed to connect via cdp" in lowered or "winerror 10061" in lowered
+
+
+def _retry_verify_after_recovery(verify_once, *, settle_sec: float = 1.0):
+    try:
+        return verify_once()
+    except RuntimeError as exc:
+        if not _is_transient_cdp_connect_error(exc):
+            raise
+        time.sleep(settle_sec)
+        return verify_once()
+
+
 def _mark_probe_browser_unhealthy(
     artifact_root: Path,
     *,
@@ -1206,7 +1222,7 @@ def run_agent_browser_verify_job(
                         current_url,
                         current_title,
                         snapshot_path,
-                    ) = _run_verify_once()
+                    ) = _retry_verify_after_recovery(_run_verify_once)
                 except RuntimeError:
                     transcript.append(
                         {
