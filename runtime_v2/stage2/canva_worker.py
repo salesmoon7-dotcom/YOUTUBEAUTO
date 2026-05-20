@@ -77,6 +77,8 @@ def _canva_failed_adapter_details(
         "prompt_visible": bool(attach_details.get("prompt_visible", False)),
         "file_select_visible": bool(attach_details.get("file_select_visible", False)),
         "generate_visible": bool(attach_details.get("generate_visible", False)),
+        "upload_attempted": bool(attach_details.get("upload_attempted", False)),
+        "upload_protocol_ok": bool(attach_details.get("upload_protocol_ok", False)),
         "body": str(attach_details.get("body", "")),
     }
 
