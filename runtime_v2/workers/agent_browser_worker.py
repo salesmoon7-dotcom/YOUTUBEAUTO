@@ -675,12 +675,22 @@ def _playwright_canva_background_generate(
                         "body": str(frame_body),
                         "upload_attempted": True,
                         "upload_protocol_ok": True,
+                        "iframe_src": iframe_src,
+                        "iframe_title": iframe_title,
+                        "observed_frame_urls": observed_frame_urls,
                     }
             return {
                 "ok": False,
                 "error": "CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT",
                 "file_select_visible": file_select_visible,
                 "generate_visible": generate_visible,
+                "upload_attempted": bool(ref_img_path.strip() and file_select_visible),
+                "upload_protocol_ok": bool(
+                    ref_img_path.strip() and file_select_visible
+                ),
+                "iframe_src": iframe_src,
+                "iframe_title": iframe_title,
+                "observed_frame_urls": observed_frame_urls,
             }
 
         if prompt_input is None:
