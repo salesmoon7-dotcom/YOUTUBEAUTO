@@ -1514,33 +1514,42 @@ def run_agent_browser_verify_job(
         except RuntimeError as exc:
             if service in {"genspark", "seaart"} and not recovery_attempted:
                 recovery_attempted = True
-                _recover_agent_browser_service(service, artifact_root=artifact_root)
-                try:
-                    (
-                        transcript,
-                        selected_tab,
-                        current_url,
-                        current_title,
-                        snapshot_path,
-                    ) = _retry_verify_after_recovery(_run_verify_once)
-                except RuntimeError:
-                    transcript.append(
-                        {
-                            "command": ["recovery"],
-                            "output": "service_recovery_failed",
-                            "recovery_attempted": True,
-                            "agent_browser_error": str(exc),
-                        }
-                    )
+                last_exc = exc
+                for attempt in range(2):
+                    _recover_agent_browser_service(service, artifact_root=artifact_root)
+                    try:
+                        (
+                            transcript,
+                            selected_tab,
+                            current_url,
+                            current_title,
+                            snapshot_path,
+                        ) = _retry_verify_after_recovery(_run_verify_once)
+                        transcript.append(
+                            {
+                                "command": ["recovery"],
+                                "output": "service_recovered",
+                                "recovery_attempted": True,
+                                "agent_browser_error": str(last_exc),
+                                "recovery_attempt_index": attempt + 1,
+                            }
+                        )
+                        break
+                    except RuntimeError as retry_exc:
+                        last_exc = retry_exc
+                        if attempt == 1:
+                            transcript.append(
+                                {
+                                    "command": ["recovery"],
+                                    "output": "service_recovery_failed",
+                                    "recovery_attempted": True,
+                                    "agent_browser_error": str(last_exc),
+                                    "recovery_attempt_index": attempt + 1,
+                                }
+                            )
+                            raise
+                else:
                     raise
-                transcript.append(
-                    {
-                        "command": ["recovery"],
-                        "output": "service_recovered",
-                        "recovery_attempted": True,
-                        "agent_browser_error": str(exc),
-                    }
-                )
             else:
                 raise
 

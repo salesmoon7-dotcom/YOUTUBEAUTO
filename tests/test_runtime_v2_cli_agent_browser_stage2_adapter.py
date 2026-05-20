@@ -846,21 +846,16 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             if action.get("type") == "click_box_offset"
         ]
         selectors = [str(action.get("selector", "")) for action in click_actions]
-        self.assertIn(
-            'xpath=(//div[contains(normalize-space(.),"페이지 2") or contains(normalize-space(.),"Page 2")])[1]',
-            selectors,
-        )
-        page2_index = selectors.index(
-            'xpath=(//div[contains(normalize-space(.),"페이지 2") or contains(normalize-space(.),"Page 2")])[1]'
-        )
         edit_scripts = [
             str(action.get("script", ""))
             for action in captured_actions
             if str(action.get("type", "")) == "eval"
         ]
+        self.assertTrue(
+            any("selected_created_page" in script for script in edit_scripts)
+        )
         self.assertTrue(any("clicked_exact_edit" in script for script in edit_scripts))
         self.assertTrue(any("edit_optional" in script for script in edit_scripts))
-        self.assertGreaterEqual(page2_index, 0)
         self.assertTrue(
             any(
                 action.get("step") == "focused_background_canvas"
@@ -4252,6 +4247,60 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         )
         self.assertIn("KeyboardEvent", str(page_input_action["script"]))
 
+    def test_stage2_adapter_child_skips_page2_click_after_duplicate_when_picker_missing(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "THUMB.png"
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+
+            captured_actions: list[dict[str, object]] = []
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                _ = artifact_root
+                payload = cast(dict[str, object], job.payload)
+                captured_actions.extend(
+                    cast(list[dict[str, object]], payload.get("actions", []))
+                )
+                return {"status": "ok"}
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    return_value={"service": "canva", "sha256": "ok"},
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        click_actions = [
+            action
+            for action in captured_actions
+            if str(action.get("type", "")) == "click"
+        ]
+        self.assertFalse(
+            any(
+                'xpath=(//div[contains(normalize-space(.),"페이지 2") or contains(normalize-space(.),"Page 2")])[1]'
+                == str(action.get("selector", ""))
+                for action in click_actions
+            )
+        )
+        eval_scripts = [str(action.get("script", "")) for action in captured_actions]
+        self.assertTrue(
+            any("selected_created_page_optional" in script for script in eval_scripts)
+        )
+
     def test_stage2_adapter_child_canva_text_falls_back_without_color_spans(
         self,
     ) -> None:
@@ -4680,7 +4729,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertTrue(
             any("cleanup_deleted_created_page" in script for script in scripts)
         )
-        self.assertFalse(any("selected_created_page" in script for script in scripts))
+        self.assertTrue(any("selected_created_page" in script for script in scripts))
         page_input_script = next(
             script for script in scripts if "typed_current_page" in script
         )
@@ -4694,16 +4743,12 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         click_selector_actions = [
             action for action in captured_actions if action.get("type") == "click"
         ]
-        self.assertEqual(len(click_selector_actions), 5)
+        self.assertEqual(len(click_selector_actions), 4)
         self.assertFalse(
             any(
                 'aria-label="ref.png"' in str(action.get("selector", ""))
                 for action in click_selector_actions
             )
-        )
-        self.assertEqual(
-            click_selector_actions[0].get("selector"),
-            'xpath=(//div[contains(normalize-space(.),"페이지 2") or contains(normalize-space(.),"Page 2")])[1]',
         )
         self.assertTrue(
             any(

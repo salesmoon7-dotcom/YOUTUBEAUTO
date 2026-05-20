@@ -2596,6 +2596,81 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertEqual(command_calls["count"], 6)
         sleep_mock.assert_not_called()
 
+    def test_agent_browser_verify_retries_second_recovery_for_transient_connect_error(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            artifact_root = Path(tmp_dir) / "artifacts"
+            job = JobContract(
+                job_id="agent-browser-genspark-second-recovery",
+                workload="agent_browser_verify",
+                checkpoint_key="seed:agent-browser-genspark-second-recovery",
+                payload={
+                    "service": "genspark",
+                    "port": 9333,
+                    "expected_url_substring": "genspark.ai/agents?type=image_generation_agent",
+                    "expected_title_substring": "Genspark",
+                    "capture_snapshot": False,
+                },
+            )
+
+            command_calls = {"count": 0}
+
+            def fake_run(command: list[str], *, timeout_sec: int = 30) -> str:
+                _ = timeout_sec
+                command_calls["count"] += 1
+                if command_calls["count"] <= 4:
+                    raise RuntimeError(
+                        "Failed to connect via CDP to http://localhost:9333"
+                    )
+                if command[3:] == ["tab", "list"]:
+                    return (
+                        "\u001b[36m\u2192\u001b[0m [0] AI 이미지 - "
+                        "https://www.genspark.ai/agents?type=image_generation_agent\n"
+                    )
+                if command[3:] == ["tab", "0"]:
+                    return (
+                        "\u001b[32m\u2713\u001b[0m \u001b[1mAI 이미지\u001b[0m\n"
+                        "  https://www.genspark.ai/agents?type=image_generation_agent\n"
+                    )
+                if command[3:] == ["get", "url"]:
+                    return "https://www.genspark.ai/agents?type=image_generation_agent"
+                if command[3:] == ["get", "title"]:
+                    return "AI 이미지"
+                raise AssertionError(command)
+
+            recover_calls = {"count": 0}
+
+            def fake_recover(
+                service: str, *, artifact_root: Path | None = None
+            ) -> None:
+                _ = service
+                _ = artifact_root
+                recover_calls["count"] += 1
+
+            with (
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                    side_effect=fake_run,
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._http_cdp_tab_list",
+                    side_effect=ConnectionRefusedError("WinError 10061"),
+                ),
+                patch(
+                    "runtime_v2.workers.agent_browser_worker._recover_agent_browser_service",
+                    side_effect=fake_recover,
+                ),
+                patch("runtime_v2.workers.agent_browser_worker.time.sleep"),
+            ):
+                result = run_agent_browser_verify_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(recover_calls["count"], 2)
+        self.assertGreaterEqual(command_calls["count"], 8)
+
     def test_agent_browser_verify_marks_probe_browser_unhealthy_on_attach_failure(
         self,
     ) -> None:
