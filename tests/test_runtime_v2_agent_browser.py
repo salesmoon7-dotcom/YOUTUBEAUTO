@@ -1823,6 +1823,295 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertTrue(bool(result["generate_visible"]))
         self.assertIn("app-aagfbubmjom.canva-apps.com", str(result["iframe_src"]))
 
+    def test_canva_background_generate_surfaces_oopif_upload_rejected(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import (
+            _playwright_canva_background_generate,
+        )
+
+        class FakeNode:
+            def __init__(self, box) -> None:
+                self._box = box
+
+            def bounding_box(self):
+                return self._box
+
+            @property
+            def first(self):
+                return self
+
+            def count(self) -> int:
+                return 1
+
+        class FakeLocatorList:
+            def __init__(self, items) -> None:
+                self._items = items
+
+            def count(self) -> int:
+                return len(self._items)
+
+            def nth(self, index: int):
+                return self._items[index]
+
+            @property
+            def first(self):
+                return self._items[0]
+
+        class FakeHandle:
+            def content_frame(self):
+                return None
+
+        class FakeIframe:
+            @property
+            def first(self):
+                return self
+
+            def count(self) -> int:
+                return 1
+
+            def element_handle(self, timeout=None):
+                return FakeHandle()
+
+            def get_attribute(self, name: str, timeout=None):
+                if name == "src":
+                    return "https://app-aagfbubmjom.canva-apps.com/app-sandbox/editor/AAGfbuBmjOM/11?locale=ko-KR"
+                if name == "title":
+                    return "Product Background"
+                return ""
+
+        class FakeFrame:
+            def __init__(self, url: str) -> None:
+                self.url = url
+
+        class FakePage:
+            def __init__(self) -> None:
+                self.keyboard = MagicMock()
+                self.wait_calls = 0
+                self._eval_calls = 0
+                self.frames = [
+                    FakeFrame("https://www.canva.com/design/foo/edit"),
+                    FakeFrame("about:blank"),
+                ]
+                self.mouse = MagicMock()
+
+            def wait_for_timeout(self, ms: int):
+                self.wait_calls += 1
+                return None
+
+            def evaluate(self, script: str):
+                self._eval_calls += 1
+                if self._eval_calls == 1:
+                    return False
+                if self._eval_calls == 2:
+                    return ""
+                if "button,[role=button],[aria-label]" in script:
+                    return False
+                if "button[role=tab][aria-controls]" in script:
+                    return ""
+                raise AssertionError(script)
+
+            def locator(self, selector: str, has_text=None):
+                if selector == '[aria-label="캔버스 진입점"]':
+                    return FakeLocatorList(
+                        [FakeNode({"x": 10, "y": 20, "width": 200, "height": 100})]
+                    )
+                if selector == 'iframe[title="Product Background"]':
+                    return FakeIframe()
+                if selector == "iframe":
+                    return FakeIframe()
+                raise AssertionError((selector, has_text))
+
+        page = FakePage()
+        browser = MagicMock()
+
+        with (
+            patch(
+                "runtime_v2.workers.agent_browser_worker._select_canva_page",
+                return_value=(browser, page),
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._inspect_canva_iframe_target",
+                return_value={
+                    "prompt_visible": False,
+                    "file_select_visible": True,
+                    "generate_visible": True,
+                    "body": "파일 선택하기\n생성",
+                },
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._upload_canva_iframe_file",
+                return_value={
+                    "upload_attempted": True,
+                    "upload_protocol_ok": True,
+                    "body": "이미지를 업로드하지 못했습니다\n파일 선택하기\n생성",
+                    "prompt_visible": False,
+                    "file_select_visible": True,
+                    "generate_visible": True,
+                },
+            ),
+        ):
+            result = _playwright_canva_background_generate(
+                port=9666,
+                bg_prompt="hello",
+                timeout_sec=30,
+                ref_img_path=r"D:\ref.png",
+            )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "CANVA_PRODUCT_BACKGROUND_UPLOAD_REJECTED")
+        self.assertTrue(bool(result["upload_attempted"]))
+        self.assertTrue(bool(result["upload_protocol_ok"]))
+        self.assertIn("이미지를 업로드하지 못했습니다", str(result["body"]))
+
+    def test_canva_background_generate_frame_upload_rejected(self) -> None:
+        from runtime_v2.workers.agent_browser_worker import (
+            _playwright_canva_background_generate,
+        )
+
+        class FakeVisibleCount:
+            def __init__(self, count: int) -> None:
+                self._count = count
+
+            def count(self) -> int:
+                return self._count
+
+        class FakePromptLocator:
+            def count(self) -> int:
+                return 0
+
+            @property
+            def first(self):
+                return self
+
+            def nth(self, index: int):
+                raise AssertionError(index)
+
+        class FakeBodyLocator:
+            def __init__(self, body: str) -> None:
+                self._body = body
+
+            def inner_text(self, timeout=None):
+                return self._body
+
+        class FakeInputLocator:
+            def __init__(self) -> None:
+                self.uploaded = ""
+
+            def set_input_files(self, path: str, timeout=None):
+                self.uploaded = path
+
+            @property
+            def first(self):
+                return self
+
+        class FakeFrame:
+            def __init__(self) -> None:
+                self.url = "https://app-aagfbubmjom.canva-apps.com/app-sandbox/editor/AAGfbuBmjOM/11?locale=ko-KR"
+                self.file_input = FakeInputLocator()
+                self.body = "이미지를 업로드하지 못했습니다\n파일 선택하기\n생성"
+
+            def locator(self, selector: str):
+                if selector == "body":
+                    return FakeBodyLocator(self.body)
+                if (
+                    selector
+                    == "textarea,[role=textbox],input[type=text],[contenteditable='true']"
+                ):
+                    return FakePromptLocator()
+                if selector == "input[type=file]":
+                    return self.file_input
+                raise AssertionError(selector)
+
+            def get_by_role(self, role: str, name: str):
+                if role == "button" and name == "파일 선택하기":
+                    return FakeVisibleCount(1)
+                if role == "button" and name == "생성":
+                    return FakeVisibleCount(1)
+                raise AssertionError((role, name))
+
+        class FakeHandle:
+            def __init__(self, frame: FakeFrame) -> None:
+                self._frame = frame
+
+            def content_frame(self):
+                return self._frame
+
+        class FakeIframe:
+            def __init__(self, frame: FakeFrame) -> None:
+                self._frame = frame
+
+            @property
+            def first(self):
+                return self
+
+            def count(self) -> int:
+                return 1
+
+            def element_handle(self, timeout=None):
+                return FakeHandle(self._frame)
+
+            def get_attribute(self, name: str, timeout=None):
+                if name == "src":
+                    return self._frame.url
+                if name == "title":
+                    return "Product Background"
+                return ""
+
+        class FakePage:
+            def __init__(self, frame: FakeFrame) -> None:
+                self.keyboard = MagicMock()
+                self.wait_calls = 0
+                self._eval_calls = 0
+                self.frames = [
+                    MagicMock(url="https://www.canva.com/design/foo/edit"),
+                    frame,
+                ]
+                self._frame = frame
+
+            def wait_for_timeout(self, ms: int):
+                self.wait_calls += 1
+                return None
+
+            def evaluate(self, script: str):
+                self._eval_calls += 1
+                if self._eval_calls == 1:
+                    return False
+                if self._eval_calls == 2:
+                    return ""
+                if "button,[role=button],[aria-label]" in script:
+                    return False
+                if "button[role=tab][aria-controls]" in script:
+                    return ""
+                raise AssertionError(script)
+
+            def locator(self, selector: str, has_text=None):
+                if selector == 'iframe[title="Product Background"]':
+                    return FakeIframe(self._frame)
+                if selector == "iframe":
+                    return FakeIframe(self._frame)
+                raise AssertionError((selector, has_text))
+
+        frame = FakeFrame()
+        page = FakePage(frame)
+        browser = MagicMock()
+
+        with patch(
+            "runtime_v2.workers.agent_browser_worker._select_canva_page",
+            return_value=(browser, page),
+        ):
+            result = _playwright_canva_background_generate(
+                port=9666,
+                bg_prompt="hello",
+                timeout_sec=30,
+                ref_img_path=r"D:\ref.png",
+            )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "CANVA_PRODUCT_BACKGROUND_UPLOAD_REJECTED")
+        self.assertEqual(frame.file_input.uploaded, r"D:\ref.png")
+        self.assertIn("이미지를 업로드하지 못했습니다", str(result["body"]))
+
     def test_agent_browser_verify_skips_snapshot_for_non_chatgpt_services(self) -> None:
         from runtime_v2.workers.agent_browser_worker import run_agent_browser_verify_job
 

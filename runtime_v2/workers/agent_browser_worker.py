@@ -307,8 +307,116 @@ def _inspect_canva_iframe_target(port: int, iframe_src: str) -> dict[str, object
         return {}
 
 
+def _upload_canva_iframe_file(
+    port: int, iframe_src: str, ref_img_path: str
+) -> dict[str, object]:
+    file_path = str(ref_img_path).strip()
+    if not iframe_src or not file_path:
+        return {"upload_attempted": False, "upload_protocol_ok": False}
+    target_details = _inspect_canva_iframe_target(port, iframe_src)
+    try:
+        targets = json.loads(
+            urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/json/list", timeout=10
+            ).read()
+        )
+    except Exception:
+        return {**target_details, "upload_attempted": True, "upload_protocol_ok": False}
+    iframe_target = None
+    if isinstance(targets, list):
+        for raw in targets:
+            if not isinstance(raw, dict):
+                continue
+            if raw.get("type") != "iframe":
+                continue
+            if str(raw.get("url", "") or "") == iframe_src:
+                iframe_target = raw
+                break
+    if iframe_target is None:
+        return {**target_details, "upload_attempted": True, "upload_protocol_ok": False}
+    ws_url = str(iframe_target.get("webSocketDebuggerUrl", "") or "")
+    if not ws_url:
+        return {**target_details, "upload_attempted": True, "upload_protocol_ok": False}
+    try:
+        from websocket import create_connection
+
+        ws = create_connection(ws_url, timeout=20, suppress_origin=True)
+        try:
+            ws.send(json.dumps({"id": 1, "method": "DOM.enable"}))
+            ws.send(
+                json.dumps(
+                    {
+                        "id": 2,
+                        "method": "DOM.getDocument",
+                        "params": {"depth": -1, "pierce": True},
+                    }
+                )
+            )
+            root_id = None
+            while True:
+                msg = json.loads(ws.recv())
+                if msg.get("id") == 2:
+                    result = cast(dict[str, object], msg.get("result", {}))
+                    root = result.get("root", {})
+                    root_id = root.get("nodeId") if isinstance(root, dict) else None
+                    break
+            if not root_id:
+                return {
+                    **target_details,
+                    "upload_attempted": True,
+                    "upload_protocol_ok": False,
+                }
+            ws.send(
+                json.dumps(
+                    {
+                        "id": 3,
+                        "method": "DOM.querySelector",
+                        "params": {"nodeId": root_id, "selector": "input[type=file]"},
+                    }
+                )
+            )
+            node_id = None
+            while True:
+                msg = json.loads(ws.recv())
+                if msg.get("id") == 3:
+                    result = cast(dict[str, object], msg.get("result", {}))
+                    node_id = result.get("nodeId")
+                    break
+            if not node_id:
+                return {
+                    **target_details,
+                    "upload_attempted": True,
+                    "upload_protocol_ok": False,
+                }
+            ws.send(
+                json.dumps(
+                    {
+                        "id": 4,
+                        "method": "DOM.setFileInputFiles",
+                        "params": {"files": [file_path], "nodeId": node_id},
+                    }
+                )
+            )
+            upload_ok = False
+            while True:
+                msg = json.loads(ws.recv())
+                if msg.get("id") == 4:
+                    upload_ok = "error" not in msg
+                    break
+            post_details = _inspect_canva_iframe_target(port, iframe_src)
+            return {
+                **post_details,
+                "upload_attempted": True,
+                "upload_protocol_ok": upload_ok,
+            }
+        finally:
+            ws.close()
+    except Exception:
+        return {**target_details, "upload_attempted": True, "upload_protocol_ok": False}
+
+
 def _playwright_canva_background_generate(
-    *, port: int, bg_prompt: str, timeout_sec: int
+    *, port: int, bg_prompt: str, timeout_sec: int, ref_img_path: str = ""
 ) -> dict[str, object]:
     browser, page = _select_canva_page(port)
     try:
@@ -490,6 +598,22 @@ def _playwright_canva_background_generate(
                     iframe_target_details.get("generate_visible", False)
                 )
                 if (not prompt_visible) and (file_select_visible or generate_visible):
+                    upload_result: dict[str, object] = {}
+                    if ref_img_path.strip() and file_select_visible:
+                        upload_result = _upload_canva_iframe_file(
+                            port, iframe_src, ref_img_path
+                        )
+                        upload_body = str(upload_result.get("body", ""))
+                        if "이미지를 업로드하지 못했습니다" in upload_body:
+                            return {
+                                "ok": False,
+                                "error": "CANVA_PRODUCT_BACKGROUND_UPLOAD_REJECTED",
+                                "iframe_src": iframe_src,
+                                "iframe_title": iframe_title,
+                                "observed_frame_urls": observed_frame_urls,
+                                **iframe_target_details,
+                                **upload_result,
+                            }
                     return {
                         "ok": False,
                         "error": "CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT",
@@ -499,6 +623,7 @@ def _playwright_canva_background_generate(
                         "iframe_title": iframe_title,
                         "observed_frame_urls": observed_frame_urls,
                         **iframe_target_details,
+                        **upload_result,
                     }
             return {
                 "ok": False,
@@ -527,11 +652,35 @@ def _playwright_canva_background_generate(
         if not prompt_visible:
             file_select = frame.get_by_role("button", name="파일 선택하기")
             generate = frame.get_by_role("button", name="생성")
+            file_select_visible = bool(file_select.count())
+            generate_visible = bool(generate.count())
+            if ref_img_path.strip() and file_select_visible:
+                try:
+                    frame.locator("input[type=file]").first.set_input_files(
+                        ref_img_path, timeout=5000
+                    )
+                    page.wait_for_timeout(1500)
+                except Exception:
+                    pass
+                try:
+                    frame_body = frame.locator("body").inner_text(timeout=1000)
+                except Exception:
+                    frame_body = ""
+                if "이미지를 업로드하지 못했습니다" in str(frame_body):
+                    return {
+                        "ok": False,
+                        "error": "CANVA_PRODUCT_BACKGROUND_UPLOAD_REJECTED",
+                        "file_select_visible": file_select_visible,
+                        "generate_visible": generate_visible,
+                        "body": str(frame_body),
+                        "upload_attempted": True,
+                        "upload_protocol_ok": True,
+                    }
             return {
                 "ok": False,
                 "error": "CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT",
-                "file_select_visible": bool(file_select.count()),
-                "generate_visible": bool(generate.count()),
+                "file_select_visible": file_select_visible,
+                "generate_visible": generate_visible,
             }
 
         if prompt_input is None:
@@ -803,6 +952,7 @@ def _run_agent_browser_actions(
                 port=port,
                 bg_prompt=str(action.get("bg_prompt", "")),
                 timeout_sec=timeout_sec,
+                ref_img_path=str(action.get("ref_img_path", "")),
             )
             output = json.dumps(output_payload, ensure_ascii=True)
             command = ["playwright-canva-background-generate"]

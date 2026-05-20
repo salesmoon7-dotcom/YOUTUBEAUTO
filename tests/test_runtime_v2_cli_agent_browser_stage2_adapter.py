@@ -767,6 +767,9 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         ]
         self.assertEqual(len(iframe_actions), 1)
         self.assertEqual(str(iframe_actions[0].get("bg_prompt", "")), "scene three")
+        self.assertTrue(
+            str(iframe_actions[0].get("ref_img_path", "")).endswith("ref.png")
+        )
         self.assertFalse(
             any(
                 "filled_background_prompt" in script

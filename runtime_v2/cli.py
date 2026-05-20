@@ -2537,6 +2537,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             {
                 "type": "playwright_canva_background_generate",
                 "bg_prompt": bg_prompt,
+                "ref_img_path": ref_img,
             },
             {
                 "type": "wait",
