@@ -74,6 +74,10 @@ def _canva_failed_adapter_details(
         "observed_frame_urls": cast(
             list[object], attach_details.get("observed_frame_urls", [])
         ),
+        "prompt_visible": bool(attach_details.get("prompt_visible", False)),
+        "file_select_visible": bool(attach_details.get("file_select_visible", False)),
+        "generate_visible": bool(attach_details.get("generate_visible", False)),
+        "body": str(attach_details.get("body", "")),
     }
 
 

@@ -1343,6 +1343,10 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                                 "https://www.canva.com/design/foo/edit",
                                 "about:blank",
                             ],
+                            "prompt_visible": False,
+                            "file_select_visible": True,
+                            "generate_visible": True,
+                            "body": "로드 중\n이미지 업로드\n파일 선택하기\n생성",
                         },
                     },
                 ),
@@ -1357,6 +1361,10 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         )
         self.assertEqual(str(details["iframe_title"]), "Product Background")
         self.assertIn("app-aagfbubmjom.canva-apps.com", str(details["iframe_src"]))
+        self.assertFalse(bool(details["prompt_visible"]))
+        self.assertTrue(bool(details["file_select_visible"]))
+        self.assertTrue(bool(details["generate_visible"]))
+        self.assertIn("파일 선택하기", str(details["body"]))
 
     def test_write_stage2_attach_evidence_preserves_iframe_diagnostics(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -1379,6 +1387,10 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                             "https://www.canva.com/design/foo/edit",
                             "about:blank",
                         ],
+                        "prompt_visible": False,
+                        "file_select_visible": True,
+                        "generate_visible": True,
+                        "body": "로드 중\n이미지 업로드\n파일 선택하기\n생성",
                     },
                 },
                 probe_debug_only=True,
@@ -1394,6 +1406,9 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         details = cast(dict[str, object], payload["details"])
         self.assertEqual(str(details["iframe_title"]), "Product Background")
         self.assertIn("app-aagfbubmjom.canva-apps.com", str(details["iframe_src"]))
+        self.assertFalse(bool(details["prompt_visible"]))
+        self.assertTrue(bool(details["file_select_visible"]))
+        self.assertTrue(bool(details["generate_visible"]))
 
     def test_stage2_worker_uses_json_input_only_and_returns_runner_result(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

@@ -159,7 +159,7 @@
   - 레거시 `배경 생성 -> top DOM prompt -> 생성` 경로를 runtime_v2 helper에 다시 우선 배치한 뒤 fresh boundary `D:\YOUTUBEAUTO_RUNTIME\probe\canva-boundary-20260519-d\probe_result.json`을 재실행했습니다.
   - 그 결과 blocker는 `NO_EXACT_EDIT_BUTTON`이나 top-DOM prompt miss가 아니라 다시 iframe 경계로 수렴했습니다.
   - separate live CDP diagnostic에서는 `json/list`에 `type=iframe`, `url=https://app-aagfbubmjom.canva-apps.com/app-sandbox/editor/...` target이 실제로 노출되고, 그 OOPIF target body에는 prompt textbox 없이 `파일 선택하기` / `생성`만 보인다는 점을 확인했습니다.
-  - fresh boundary `D:\YOUTUBEAUTO_RUNTIME\probe\canva-boundary-20260519-j\probe_result.json`에서는 failed Canva row details에 `iframe_src`, `iframe_title`, `observed_frame_urls=[design edit, about:blank]`가 남고, top-level blocker도 `CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT`으로 더 truthfully 좁혀졌습니다.
+  - latest fresh boundary `D:\YOUTUBEAUTO_RUNTIME\probe\canva-boundary-20260519-k\probe_result.json`에서는 failed Canva row details에 `iframe_src`, `iframe_title`, `observed_frame_urls=[design edit, about:blank]`, `prompt_visible=false`, `file_select_visible=true`, `generate_visible=true`, `body=...파일 선택하기...생성...`까지 함께 남고, top-level blocker도 `CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT`으로 더 truthfully 좁혀졌습니다.
   - 추가 live polling에서는 15초 동안 DOM iframe이 `width=360`, `height=820`로 계속 보이는데도 `page.frames`는 끝까지 `[design edit, about:blank]`만 유지되었습니다. 즉 DOM iframe visibility와 Playwright frame commit은 현재 세션에서도 계속 분리되어 있습니다.
   - 따라서 current truthful reading은 `Canva`가 레거시 top-DOM 경로를 놓쳐서 막히는 것이 아니라, live Product Background OOPIF 안에서 prompt 없이 `파일 선택하기` / `생성` 상태로 머무르는 app-contract 경계에 막혀 있다는 점입니다.
 - 오라클 shortest-path 전략(현재 SSOT):
