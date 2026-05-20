@@ -178,6 +178,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertIsNotNone(error)
         typed_error = cast(dict[str, object], error)
         self.assertEqual(typed_error["code"], "non_local_path")
+
     def test_run_worker_dispatches_n8n_upload_workload(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -188,7 +189,10 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 job_id="n8n-upload-dispatch-job",
                 workload="n8n_upload",
                 checkpoint_key="seed:n8n-upload-dispatch-job",
-                payload={"run_id": "n8n-upload-run", "callback_url": "https://example.test/webhook"},
+                payload={
+                    "run_id": "n8n-upload-run",
+                    "callback_url": "https://example.test/webhook",
+                },
             )
 
             with patch(
@@ -991,7 +995,9 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertEqual(saved_path, queue_file)
         self.assertEqual(call_count["count"], 3)
 
-    def test_queue_store_save_falls_back_to_direct_write_after_retry_exhausted(self) -> None:
+    def test_queue_store_save_falls_back_to_direct_write_after_retry_exhausted(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             queue_file = Path(tmp_dir) / "job_queue.json"
             queue_store = QueueStore(queue_file)
@@ -1073,10 +1079,12 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 run_id="chatgpt-run-1",
                 row_ref="Sheet1!row1",
                 topic="Bridge topic",
-                story_outline=["Scene 1", "Scene 2"],
+                story_outline=["Scene 1", "Scene 2", "Scene 3", "Scene 4"],
                 scene_plan=[
                     {"scene_index": 1, "prompt": "scene one"},
                     {"scene_index": 2, "prompt": "scene two"},
+                    {"scene_index": 3, "prompt": "scene three"},
+                    {"scene_index": 4, "prompt": "scene four"},
                 ],
                 asset_plan={
                     "asset_root": str(asset_root.resolve()),
@@ -1200,10 +1208,12 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 run_id="chatgpt-run-excel-main",
                 row_ref="Sheet1!row1",
                 topic="Bridge topic",
-                story_outline=["Scene 1", "Scene 2"],
+                story_outline=["Scene 1", "Scene 2", "Scene 3", "Scene 4"],
                 scene_plan=[
                     {"scene_index": 1, "prompt": "scene one"},
                     {"scene_index": 2, "prompt": "scene two"},
+                    {"scene_index": 3, "prompt": "scene three"},
+                    {"scene_index": 4, "prompt": "scene four"},
                 ],
                 asset_plan={
                     "asset_root": str(asset_root.resolve()),
@@ -1282,10 +1292,12 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 run_id="chatgpt-run-manifest",
                 row_ref="Sheet1!row1",
                 topic="Bridge topic",
-                story_outline=["Scene 1", "Scene 2"],
+                story_outline=["Scene 1", "Scene 2", "Scene 3", "Scene 4"],
                 scene_plan=[
                     {"scene_index": 1, "prompt": "scene one"},
                     {"scene_index": 2, "prompt": "scene two"},
+                    {"scene_index": 3, "prompt": "scene three"},
+                    {"scene_index": 4, "prompt": "scene four"},
                 ],
                 asset_plan={
                     "asset_root": str(asset_root.resolve()),
@@ -1350,12 +1362,21 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                 for item in queued_items
                 if str(item.get("job_id", "")).startswith("render-")
             )
+            canva_job = next(
+                item
+                for item in queued_items
+                if str(item.get("job_id", "")).startswith("canva-")
+            )
             render_payload = cast(dict[str, object], render_job["payload"])
+            canva_payload = cast(dict[str, object], canva_job["payload"])
             manifest_path = Path(str(render_payload["asset_manifest_path"]))
             manifest = cast(
                 dict[str, object], json.loads(manifest_path.read_text(encoding="utf-8"))
             )
             self.assertTrue(manifest_path.exists())
+            self.assertEqual(
+                str(canva_payload["asset_manifest_path"]), str(manifest_path.resolve())
+            )
             self.assertEqual(manifest["run_id"], "chatgpt-run-manifest")
             roles = cast(dict[str, object], manifest["roles"])
             self.assertTrue(

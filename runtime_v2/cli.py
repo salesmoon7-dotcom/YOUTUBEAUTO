@@ -1601,6 +1601,25 @@ def _load_optional_json_dict(path: Path) -> dict[str, object]:
     return {str(key): value for key, value in raw_payload.items()}
 
 
+def _select_canva_ref_img_from_manifest(manifest_path_text: str) -> str:
+    manifest_path = Path(str(manifest_path_text).strip())
+    payload = _load_optional_json_dict(manifest_path)
+    roles = payload.get("roles", {})
+    if not isinstance(roles, dict):
+        return ""
+    candidate = str(roles.get("image_primary", "")).strip()
+    if not candidate:
+        return ""
+    path = Path(candidate)
+    if not path.is_absolute():
+        path = (manifest_path.parent / path).resolve()
+    else:
+        path = path.resolve()
+    if path.exists() and path.is_file():
+        return str(path)
+    return ""
+
+
 def _stage2_transcript_items(result: dict[str, object]) -> list[dict[str, object]]:
     transcript_items = result.get("transcript", [])
     if isinstance(transcript_items, list):
@@ -2324,13 +2343,24 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
         ref_img_1 = str(request_payload_obj.get("ref_img_1", "")).strip()
         ref_img_2 = str(request_payload_obj.get("ref_img_2", "")).strip()
         ref_img = str(request_payload_obj.get("ref_img", "")).strip()
+        asset_manifest_path = str(
+            request_payload_obj.get("asset_manifest_path", "")
+        ).strip()
         first_frame_path = str(request_payload_obj.get("first_frame_path", "")).strip()
         try:
             if service == "canva" and ref_img:
                 ref_images_requested = [ref_img]
                 ref_images_resolved = [ref_img]
             elif service == "canva" and not ref_img:
-                ref_images_requested, ref_images_resolved = [], []
+                manifest_ref_img = _select_canva_ref_img_from_manifest(
+                    asset_manifest_path
+                )
+                if manifest_ref_img:
+                    ref_img = manifest_ref_img
+                    ref_images_requested = [manifest_ref_img]
+                    ref_images_resolved = [manifest_ref_img]
+                else:
+                    ref_images_requested, ref_images_resolved = [], []
             elif service == "geminigen" and first_frame_path:
                 ref_images_requested = [first_frame_path]
                 asset_root = str(request_payload_obj.get("asset_root", "")).strip()

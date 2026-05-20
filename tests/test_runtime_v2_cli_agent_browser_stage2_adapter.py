@@ -4501,6 +4501,76 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertEqual(evidence["ref_images_requested"], [])
         self.assertEqual(evidence["ref_images_resolved"], [])
 
+    def test_canva_uses_asset_manifest_image_primary_when_ref_img_missing(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            asset_root = root / "assets"
+            asset_root.mkdir(parents=True, exist_ok=True)
+            image_primary = asset_root / "images" / "genspark-row15-scene3.png"
+            image_primary.parent.mkdir(parents=True, exist_ok=True)
+            image_primary.write_bytes(b"png")
+            manifest_path = asset_root / "asset_manifest.json"
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "roles": {"image_primary": str(image_primary.resolve())},
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            request_payload = {
+                "payload": {
+                    "prompt": "scene prompt",
+                    "asset_manifest_path": str(manifest_path.resolve()),
+                }
+            }
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            output_path = root / "exports" / "THUMB.png"
+            args = CliArgs()
+            args.service = "canva"
+            args.port = 9666
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "canva.com"
+            args.expected_title_substring = "Canva"
+            captured_actions: list[dict[str, object]] = []
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                _ = artifact_root
+                payload = cast(dict[str, object], job.payload)
+                captured_actions.extend(
+                    cast(list[dict[str, object]], payload.get("actions", []))
+                )
+                return {
+                    "status": "failed",
+                    "error_code": "AGENT_BROWSER_COMMAND_FAILED",
+                    "details": {},
+                }
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+        iframe_actions = [
+            action
+            for action in captured_actions
+            if str(action.get("type", "")) == "playwright_canva_background_generate"
+        ]
+        self.assertEqual(len(iframe_actions), 1)
+        self.assertEqual(
+            str(iframe_actions[0].get("ref_img_path", "")),
+            str(image_primary.resolve()),
+        )
+
     def test_stage2_adapter_child_resets_stale_attach_evidence_before_run(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

@@ -1445,9 +1445,13 @@ def _worker_dispatch_table(
         "render": lambda job: run_render_job(job, artifact_root),
         "timeline": lambda job: run_timeline_job(job, artifact_root=artifact_root),
         "srt": lambda job: run_srt_job(job, artifact_root=artifact_root),
-        "shorts_render": lambda job: run_shorts_render_job(job, artifact_root=artifact_root),
+        "shorts_render": lambda job: run_shorts_render_job(
+            job, artifact_root=artifact_root
+        ),
         "n8n_upload": lambda job: run_n8n_upload_job(job, artifact_root=artifact_root),
-        "google_sheets_sync": lambda job: run_google_sheets_sync_job(job, artifact_root=artifact_root),
+        "google_sheets_sync": lambda job: run_google_sheets_sync_job(
+            job, artifact_root=artifact_root
+        ),
         "rvc": lambda job: run_rvc_job(job, artifact_root=artifact_root),
         "kenburns": lambda job: run_kenburns_job(job, artifact_root=artifact_root),
         "qwen3_tts": lambda job: run_qwen3_job(job, artifact_root=artifact_root),
@@ -1926,13 +1930,12 @@ def _attach_asset_manifest(
         if not isinstance(job_raw, dict):
             continue
         job_block = cast(dict[object, object], job_raw)
-        if str(job_block.get("worker", "")) != "render":
-            continue
         payload_raw = job_block.get("payload")
         if not isinstance(payload_raw, dict):
             continue
         payload = cast(dict[object, object], payload_raw)
-        payload["asset_manifest_path"] = str(manifest_path.resolve())
+        if str(job_block.get("worker", "")) in {"render", "canva"}:
+            payload["asset_manifest_path"] = str(manifest_path.resolve())
     return manifest_path
 
 

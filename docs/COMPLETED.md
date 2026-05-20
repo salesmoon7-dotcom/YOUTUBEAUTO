@@ -4,6 +4,8 @@
 - 위 원칙은 점진적으로 적용합니다. 기존 긴 완료/evidence 기록은 후속 정리 배치에서 축소합니다.
 - interruption/search 규칙의 정본은 `docs/sop/SOP_runtime_v2_development_guardrails.md`와 `docs/sop/SOP_chat_interruption_repo_triage.md`입니다.
 
+- `runtime_v2/control_plane.py`, `runtime_v2/cli.py`, `tests/test_runtime_v2_control_plane_chain.py`, `tests/test_runtime_v2_cli_agent_browser_stage2_adapter.py`, `docs/TODO.md`, `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260520-e\probe_result.json` - Canva dynamic ref-manifest wiring batch 완료; stage1-routed asset manifest를 `canva` next job payload에도 붙이고, adapter child가 `ref_img`가 비어 있을 때 manifest `image_primary`를 canva ref image로 해석하도록 보강했습니다. 다만 fresh truly sequential row15 rerun은 다시 `genspark / BROWSER_UNHEALTHY`에서 먼저 닫혀, 이 wiring이 closeout 전체 경로에서는 아직 fully exercised되지 않았다는 점까지 같이 고정했습니다.
+
 - `runtime_v2/workers/agent_browser_worker.py`, `docs/TODO.md`, `D:\YOUTUBEAUTO_RUNTIME\probe\canva-boundary-20260520-b\probe_result.json` - Canva frame-upload worker detail batch 완료; frame-committed OOPIF 경로에서 ref image 업로드 시도를 한 뒤에도 latest failed Canva row는 계속 `CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT`으로 남았고, worker failed details에는 `upload_attempted=true`, `upload_protocol_ok=true`가 함께 기록되어 upload attempt success와 post-upload no-prompt shell 상태를 구분할 수 있게 했습니다.
 
 - `runtime_v2/stage2/canva_worker.py`, `tests/test_runtime_v2_stage2_workers.py`, `docs/TODO.md`, `D:\YOUTUBEAUTO_RUNTIME\probe\canva-boundary-20260520-b\probe_result.json` - Canva frame-upload detail propagation batch 완료; frame-committed OOPIF upload attempt flags(`upload_attempted`, `upload_protocol_ok`)를 failed canva worker details까지 전파했고, fresh boundary에서도 latest failed row는 여전히 `CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT`으로 남아 OOPIF bootstrap/upload shell state가 current blocker라는 점을 다시 고정했습니다.
