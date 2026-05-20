@@ -1228,7 +1228,11 @@ def _recover_agent_browser_service(
 def _is_transient_cdp_connect_error(exc: RuntimeError) -> bool:
     message = str(exc)
     lowered = message.lower()
-    return "failed to connect via cdp" in lowered or "winerror 10061" in lowered
+    return (
+        "failed to connect via cdp" in lowered
+        or "winerror 10061" in lowered
+        or "econnrefused" in lowered
+    )
 
 
 def _retry_verify_after_recovery(verify_once, *, settle_sec: float = 1.0):
@@ -1537,7 +1541,12 @@ def run_agent_browser_verify_job(
                         break
                     except RuntimeError as retry_exc:
                         last_exc = retry_exc
-                        if attempt == 1:
+                        allow_second_recovery = (
+                            attempt == 0 and _is_transient_cdp_connect_error(retry_exc)
+                        )
+                        if allow_second_recovery:
+                            continue
+                        if attempt == 1 or not allow_second_recovery:
                             transcript.append(
                                 {
                                     "command": ["recovery"],

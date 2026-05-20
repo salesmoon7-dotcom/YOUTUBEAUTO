@@ -2474,6 +2474,8 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
             )
 
             command_calls = {"count": 0}
+            recover_calls = {"count": 0}
+            recover_calls = {"count": 0}
 
             def fake_run(command: list[str], *, timeout_sec: int = 30) -> str:
                 _ = timeout_sec
@@ -2553,6 +2555,7 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
             )
 
             command_calls = {"count": 0}
+            recover_calls = {"count": 0}
 
             def fake_run(command: list[str], *, timeout_sec: int = 30) -> str:
                 _ = timeout_sec
@@ -2573,6 +2576,13 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
                     )
                 raise AssertionError(command)
 
+            def fake_recover(
+                service: str, *, artifact_root: Path | None = None
+            ) -> None:
+                _ = service
+                _ = artifact_root
+                recover_calls["count"] += 1
+
             with (
                 patch(
                     "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
@@ -2583,7 +2593,8 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
                     side_effect=AssertionError("http fallback unused"),
                 ),
                 patch(
-                    "runtime_v2.workers.agent_browser_worker._recover_agent_browser_service"
+                    "runtime_v2.workers.agent_browser_worker._recover_agent_browser_service",
+                    side_effect=fake_recover,
                 ),
                 patch(
                     "runtime_v2.workers.agent_browser_worker.time.sleep"
@@ -2594,6 +2605,7 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "NO_PROMPT_INPUT")
         self.assertEqual(command_calls["count"], 6)
+        self.assertEqual(recover_calls["count"], 1)
         sleep_mock.assert_not_called()
 
     def test_agent_browser_verify_retries_second_recovery_for_transient_connect_error(
