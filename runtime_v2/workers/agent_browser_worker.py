@@ -230,6 +230,15 @@ def _legacy_canva_topdom_generate_button(page):
     return fallback_generate
 
 
+def _canva_credit_exhausted(body_text: str) -> bool:
+    body = str(body_text)
+    return (
+        "남은 크레딧이 없습니다" in body
+        or "크레딧 더 구매하기" in body
+        or "크레딧이 더 필요하신가요" in body
+    )
+
+
 def _inspect_canva_iframe_target(port: int, iframe_src: str) -> dict[str, object]:
     if not iframe_src:
         return {}
@@ -604,6 +613,16 @@ def _playwright_canva_background_generate(
                             port, iframe_src, ref_img_path
                         )
                         upload_body = str(upload_result.get("body", ""))
+                        if _canva_credit_exhausted(upload_body):
+                            return {
+                                "ok": False,
+                                "error": "CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED",
+                                "iframe_src": iframe_src,
+                                "iframe_title": iframe_title,
+                                "observed_frame_urls": observed_frame_urls,
+                                **iframe_target_details,
+                                **upload_result,
+                            }
                         if "이미지를 업로드하지 못했습니다" in upload_body:
                             return {
                                 "ok": False,
@@ -614,6 +633,18 @@ def _playwright_canva_background_generate(
                                 **iframe_target_details,
                                 **upload_result,
                             }
+                    iframe_body = str(iframe_target_details.get("body", ""))
+                    if _canva_credit_exhausted(iframe_body):
+                        return {
+                            "ok": False,
+                            "error": "CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED",
+                            "file_select_visible": file_select_visible,
+                            "generate_visible": generate_visible,
+                            "iframe_src": iframe_src,
+                            "iframe_title": iframe_title,
+                            "observed_frame_urls": observed_frame_urls,
+                            **iframe_target_details,
+                        }
                     return {
                         "ok": False,
                         "error": "CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT",
@@ -666,6 +697,19 @@ def _playwright_canva_background_generate(
                     frame_body = frame.locator("body").inner_text(timeout=1000)
                 except Exception:
                     frame_body = ""
+                if _canva_credit_exhausted(str(frame_body)):
+                    return {
+                        "ok": False,
+                        "error": "CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED",
+                        "file_select_visible": file_select_visible,
+                        "generate_visible": generate_visible,
+                        "body": str(frame_body),
+                        "upload_attempted": True,
+                        "upload_protocol_ok": True,
+                        "iframe_src": iframe_src,
+                        "iframe_title": iframe_title,
+                        "observed_frame_urls": observed_frame_urls,
+                    }
                 if "이미지를 업로드하지 못했습니다" in str(frame_body):
                     return {
                         "ok": False,
