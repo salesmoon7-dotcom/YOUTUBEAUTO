@@ -4,6 +4,8 @@
 - 위 원칙은 점진적으로 적용합니다. 기존 긴 완료/evidence 기록은 후속 정리 배치에서 축소합니다.
 - interruption/search 규칙의 정본은 `docs/sop/SOP_runtime_v2_development_guardrails.md`와 `docs/sop/SOP_chat_interruption_repo_triage.md`입니다.
 
+- `runtime_v2/workers/agent_browser_worker.py`, `tests/test_runtime_v2_agent_browser.py`, `docs/TODO.md`, `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260520-j\probe_result.json`, `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260520-j\evidence\failure_summary.json` - latest row15 closeout convergence batch 완료; fresh truly sequential rerun이 `chatgpt -> qwen3_tts -> genspark ref-1 -> seaart ref-2 -> genspark main -> seaart main`까지 전진한 뒤 `Canva / CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED`에서 contract상 닫혀 latest top-level blocker가 다시 Canva Product Background OOPIF credit purchase gate single boundary로 수렴했음을 고정했습니다.
+
 - `docs/TODO.md`, `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260520-i\probe_result.json`, `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260520-i\evidence\failure_summary.json` - latest row15 repin batch 완료; fresh truly sequential rerun은 다시 `genspark / BROWSER_UNHEALTHY`에서 먼저 contract상 닫혔고, 이로써 latest closeout truth가 현재도 genspark 선행 불안정 경계와 Canva credit gate 경계를 번갈아 드러내는 pinned boundary 단계임을 최신 evidence 기준으로 다시 정렬했습니다.
 
 - `runtime_v2/workers/agent_browser_worker.py`, `tests/test_runtime_v2_agent_browser.py`, `docs/TODO.md`, `D:\YOUTUBEAUTO_RUNTIME\probe\canva-boundary-20260520-e\probe_result.json` - Canva credit-gate narrowing batch 완료; OOPIF body의 `크레딧이 더 필요하신가요? 구매하기`/`Product Background의 200 크레딧 중 5 크레딧` 신호를 별도 분류해 fresh detached boundary가 failed Canva row를 `CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED`로 닫도록 고정했습니다. 이제 current Canva blocker는 generic no-prompt shell보다 더 좁은 credit purchase gate boundary로 해석합니다.
