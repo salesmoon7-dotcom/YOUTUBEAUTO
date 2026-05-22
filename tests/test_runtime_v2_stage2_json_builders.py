@@ -79,8 +79,9 @@ class RuntimeV2Stage2JsonBuildersTests(unittest.TestCase):
                     {"scene_index": 1, "prompt": "scene one"},
                     {"scene_index": 2, "prompt": "scene two"},
                     {"scene_index": 3, "prompt": "scene three"},
+                    {"scene_index": 4, "prompt": "scene four"},
                 ],
-                "videos": ["video one prompt"],
+                "videos": [],
                 "stage1_handoff": {
                     "contract": {
                         "run_id": "row15-run",
@@ -145,6 +146,46 @@ class RuntimeV2Stage2JsonBuildersTests(unittest.TestCase):
             _, render_spec = build_stage2_jobs(cast(dict[str, object], video_plan))
 
         self.assertEqual(render_spec["audio_refs"], [str(audio_path.resolve())])
+
+    def test_build_stage2_jobs_skips_canva_for_longform_video_plan(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            asset_root = root / "assets"
+            asset_root.mkdir(parents=True, exist_ok=True)
+            video_plan = {
+                "run_id": "row15-run",
+                "row_ref": "Sheet1!row15",
+                "reason_code": "ok",
+                "asset_plan": {
+                    "asset_root": str(asset_root.resolve()),
+                    "common_asset_folder": str(asset_root.resolve()),
+                },
+                "scene_plan": [
+                    {"scene_index": 1, "prompt": "[인물] scene one"},
+                    {"scene_index": 2, "prompt": "[장소] scene two"},
+                    {"scene_index": 3, "prompt": "[인물] scene three"},
+                    {"scene_index": 4, "prompt": "[장소] scene four"},
+                ],
+                "videos": ["video one prompt"],
+                "stage1_handoff": {
+                    "contract": {
+                        "run_id": "row15-run",
+                        "row_ref": "Sheet1!row15",
+                        "topic": "Boundary topic",
+                        "voice_texts": [{"col": "#01", "text": "hello"}],
+                        "title_for_thumb": "bg prompt\nLine 1: title\nLine 2: subtitle",
+                        "ref_img_1": "",
+                        "ref_img_2": "",
+                    }
+                },
+                "use_agent_browser_services": ["canva", "geminigen"],
+            }
+
+            jobs, render_spec = build_stage2_jobs(cast(dict[str, object], video_plan))
+
+        workers = [cast(dict[str, object], entry["job"])["worker"] for entry in jobs]
+        self.assertNotIn("canva", workers)
+        self.assertEqual(render_spec["thumbnail_refs"], [])
 
 
 if __name__ == "__main__":

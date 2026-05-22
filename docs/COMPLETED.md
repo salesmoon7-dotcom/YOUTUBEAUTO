@@ -4,6 +4,8 @@
 - 위 원칙은 점진적으로 적용합니다. 기존 긴 완료/evidence 기록은 후속 정리 배치에서 축소합니다.
 - interruption/search 규칙의 정본은 `docs/sop/SOP_runtime_v2_development_guardrails.md`와 `docs/sop/SOP_chat_interruption_repo_triage.md`입니다.
 
+- `runtime_v2/stage2/json_builders.py`, `tests/test_runtime_v2_stage2_json_builders.py`, `docs/TODO.md`, `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260521-a\probe_result.json` - longform canva optionalization batch 완료; `stage1 videos`가 있는 longform closeout path에서는 기본 stage2 scene rotation에서 `canva`를 제외해 썸네일 생성 축을 보조 단계로 분리했고, fresh truly sequential row15 rerun으로 확인한 결과 latest closeout은 여전히 `genspark / BROWSER_UNHEALTHY`에서 먼저 닫혀 current pinned boundary가 Canva가 아니라 genspark 선행 불안정 경계와의 조합이라는 점을 다시 고정했습니다.
+
 - `D:\YOUTUBEAUTO_RUNTIME\probe\browser-recover-20260521-a\probe_result.json`, `D:\YOUTUBEAUTO_RUNTIME\probe\stage2-noncanva-20260521-a\probe_result.json`, `docs/TODO.md` - stage2 non-Canva convergence batch 완료; fresh browser recover 뒤 detached 단일 boundary에서 `genspark`, `seaart`, `geminigen`이 모두 `status=ok`, `code=OK`, `final_output=true`로 다시 닫혀, Canva를 보류 축으로 두더라도 stage2 핵심 생성 경로 자체는 fresh evidence로 살아 있음을 고정했습니다.
 
 - `runtime_v2/workers/agent_browser_worker.py`, `tests/test_runtime_v2_agent_browser.py`, `docs/TODO.md`, `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260520-j\probe_result.json`, `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260520-j\evidence\failure_summary.json` - latest row15 closeout convergence batch 완료; fresh truly sequential rerun이 `chatgpt -> qwen3_tts -> genspark ref-1 -> seaart ref-2 -> genspark main -> seaart main`까지 전진한 뒤 `Canva / CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED`에서 contract상 닫혀 latest top-level blocker가 다시 Canva Product Background OOPIF credit purchase gate single boundary로 수렴했음을 고정했습니다.

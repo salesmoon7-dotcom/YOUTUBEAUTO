@@ -380,6 +380,7 @@ def _sanitize_ref_job_prompt(prompt: str) -> str:
                 changed = True
     return text
 
+
 def _build_ref_jobs(
     *,
     run_id: str,
@@ -550,7 +551,7 @@ def build_stage2_jobs(
     jobs.extend(ref_jobs)
     scene_workloads: list[WorkloadName]
     if stage1_videos:
-        scene_workloads = ["genspark", "seaart", "canva"]
+        scene_workloads = ["genspark", "seaart"]
     else:
         scene_workloads = workloads
     for scene_offset, raw_scene in enumerate(typed_scene_plan):
