@@ -129,6 +129,7 @@ class CliArgs(argparse.Namespace):
     stage5_row1_probe_child: bool
     stage5b_5row_detached: bool
     stage5b_5row_probe_child: bool
+    probe_finalize_child: bool
     callback_url: str
     callback_mock_out: str
     gui_status_out: str
@@ -151,6 +152,9 @@ class CliArgs(argparse.Namespace):
     stage2_agent_browser_services: str
     migrate_sessions: bool
     allow_legacy_session_root: bool
+    child_pid: int
+    fallback_code: str
+    fallback_status: str
 
     def __init__(self) -> None:
         super().__init__()
@@ -188,6 +192,7 @@ class CliArgs(argparse.Namespace):
         self.stage5_row1_probe_child = False
         self.stage5b_5row_detached = False
         self.stage5b_5row_probe_child = False
+        self.probe_finalize_child = False
         self.callback_url = ""
         self.callback_mock_out = ""
         self.gui_status_out = "system/runtime_v2/health/gui_status.json"
@@ -210,6 +215,9 @@ class CliArgs(argparse.Namespace):
         self.stage2_agent_browser_services = "genspark"
         self.migrate_sessions = False
         self.allow_legacy_session_root = False
+        self.child_pid = 0
+        self.fallback_code = "PROBE_INCOMPLETE"
+        self.fallback_status = "failed"
 
 
 def exit_code_from_status(code: str) -> int:
@@ -518,6 +526,9 @@ def main() -> int:
     _ = parser.add_argument(
         "--stage5b-5row-probe-child", action="store_true", help=argparse.SUPPRESS
     )
+    _ = parser.add_argument(
+        "--probe-finalize-child", action="store_true", help=argparse.SUPPRESS
+    )
     _ = parser.add_argument("--callback-url", default="")
     _ = parser.add_argument("--callback-mock-out", default="")
     _ = parser.add_argument("--gui-status-out", default="")
@@ -545,6 +556,13 @@ def main() -> int:
     )
     _ = parser.add_argument("--migrate-sessions", action="store_true")
     _ = parser.add_argument("--allow-legacy-session-root", action="store_true")
+    _ = parser.add_argument("--child-pid", type=int, default=0, help=argparse.SUPPRESS)
+    _ = parser.add_argument(
+        "--fallback-code", default="PROBE_INCOMPLETE", help=argparse.SUPPRESS
+    )
+    _ = parser.add_argument(
+        "--fallback-status", default="failed", help=argparse.SUPPRESS
+    )
     args = parser.parse_args(namespace=CliArgs())
     if args.allow_legacy_session_root:
         os.environ["RUNTIME_V2_ALLOW_LEGACY_SESSION_ROOT"] = "1"
@@ -574,6 +592,7 @@ def main() -> int:
             args.stage5_row1_probe_child,
             args.stage5b_5row_detached,
             args.stage5b_5row_probe_child,
+            args.probe_finalize_child,
             bool(args.open_browser_login.strip()),
             args.geminigen_repair_session,
             args.readiness_check,
@@ -826,6 +845,8 @@ def main() -> int:
         )
         print(final_report(report))
         return exit_code_from_status(str(report.get("code", "CLI_USAGE")))
+    if args.probe_finalize_child:
+        return _run_probe_finalize_child(args)
     if args.stage5b_5row_probe_child:
         report = _run_stage5b_5row_probe(
             owner=args.owner,
@@ -1379,6 +1400,29 @@ def _spawn_detached_probe(args: CliArgs, *, mode: str) -> int:
             stderr=stderr_handle,
             creationflags=creationflags,
         )
+    if mode == "stage5_row1":
+        finalize_command = [
+            sys.executable,
+            "-u",
+            "-m",
+            "runtime_v2.cli",
+            "--probe-finalize-child",
+            "--probe-root",
+            str(probe_root),
+            "--child-pid",
+            str(child.pid),
+            "--fallback-code",
+            "PROBE_INCOMPLETE",
+            "--fallback-status",
+            "failed",
+        ]
+        _ = subprocess.Popen(
+            finalize_command,
+            cwd=str(Path.cwd()),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=creationflags,
+        )
 
     report = {
         "run_id": f"detached-{uuid4()}",
@@ -1419,6 +1463,31 @@ def _probe_root_path(raw_probe_root: str) -> Path:
     if probe_root:
         return Path(probe_root)
     return probe_runtime_root() / str(uuid4())
+
+
+def _pid_is_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _run_probe_finalize_child(args: CliArgs) -> int:
+    probe_root = _probe_root_path(args.probe_root)
+    while _pid_is_alive(int(args.child_pid)):
+        sleep(1.0)
+    try:
+        _ = _finalize_probe_result_from_progress(
+            probe_root,
+            fallback_code=str(args.fallback_code or "PROBE_INCOMPLETE"),
+            fallback_status=str(args.fallback_status or "failed"),
+        )
+        return exit_codes.SUCCESS
+    except Exception:
+        return exit_codes.CLI_USAGE
 
 
 def _legacy_session_root() -> Path:

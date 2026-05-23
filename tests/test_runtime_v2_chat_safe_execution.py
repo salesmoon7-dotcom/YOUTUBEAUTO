@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -277,6 +278,134 @@ class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
         self.assertIn("2", command)
         self.assertIn("--max-control-ticks", command)
         self.assertIn("7", command)
+
+    def test_spawn_detached_probe_for_stage5_starts_finalize_watcher(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            args = CliArgs()
+            args.probe_root = str(root / "probe")
+            args.excel_path = str(root / "topic.xlsx")
+            args.sheet_name = "Sheet1"
+            args.row_index = 2
+            args.max_control_ticks = 7
+            probe_child = MagicMock()
+            probe_child.pid = 13579
+            watcher_child = MagicMock()
+            watcher_child.pid = 24680
+
+            with patch(
+                "runtime_v2.cli.subprocess.Popen",
+                side_effect=[probe_child, watcher_child],
+            ) as popen:
+                exit_code = _spawn_detached_probe(args, mode="stage5_row1")
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        self.assertEqual(popen.call_count, 2)
+        watcher_command = popen.call_args_list[1].args[0]
+        self.assertEqual(
+            watcher_command[:4], [sys.executable, "-u", "-m", "runtime_v2.cli"]
+        )
+        self.assertIn("--probe-finalize-child", watcher_command)
+        self.assertIn("--child-pid", watcher_command)
+        self.assertIn("13579", watcher_command)
+
+    def test_probe_finalize_child_writes_probe_result_when_pid_dead(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            probe_root = root / "probe"
+            _write_probe_progress(
+                probe_root,
+                {
+                    "run_id": "row15-run",
+                    "mode": "stage5_row1",
+                    "status": "running",
+                    "code": "PROBE_RUNNING",
+                    "probe_success": False,
+                    "ticks": 4,
+                },
+            )
+            args = CliArgs()
+            args.probe_finalize_child = True
+            args.probe_root = str(probe_root)
+            args.child_pid = 0
+            args.fallback_code = "PROBE_INCOMPLETE"
+            args.fallback_status = "failed"
+
+            with patch(
+                "sys.argv",
+                [
+                    "runtime_v2.cli",
+                    "--probe-finalize-child",
+                    "--probe-root",
+                    str(probe_root),
+                    "--child-pid",
+                    "0",
+                    "--fallback-code",
+                    "PROBE_INCOMPLETE",
+                    "--fallback-status",
+                    "failed",
+                ],
+            ):
+                exit_code = main()
+            probe_result = json.loads(
+                (probe_root / "probe_result.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        self.assertEqual(probe_result["status"], "failed")
+        self.assertEqual(probe_result["code"], "PROBE_INCOMPLETE")
+
+    def test_probe_finalize_child_waits_until_pid_exits(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            probe_root = root / "probe"
+            _write_probe_progress(
+                probe_root,
+                {
+                    "run_id": "row15-run",
+                    "mode": "stage5_row1",
+                    "status": "running",
+                    "code": "PROBE_RUNNING",
+                    "probe_success": False,
+                    "ticks": 5,
+                },
+            )
+            args = CliArgs()
+            args.probe_finalize_child = True
+            args.probe_root = str(probe_root)
+            args.child_pid = 13579
+            args.fallback_code = "PROBE_INCOMPLETE"
+            args.fallback_status = "failed"
+
+            with (
+                patch("runtime_v2.cli._pid_is_alive", side_effect=[True, True, False]),
+                patch("runtime_v2.cli.sleep", return_value=None) as sleep_mock,
+                patch(
+                    "sys.argv",
+                    [
+                        "runtime_v2.cli",
+                        "--probe-finalize-child",
+                        "--probe-root",
+                        str(probe_root),
+                        "--child-pid",
+                        "13579",
+                        "--fallback-code",
+                        "PROBE_INCOMPLETE",
+                        "--fallback-status",
+                        "failed",
+                    ],
+                ),
+            ):
+                exit_code = main()
+
+            probe_result = json.loads(
+                (probe_root / "probe_result.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        self.assertEqual(sleep_mock.call_count, 2)
+        self.assertEqual(probe_result["status"], "failed")
+        self.assertEqual(probe_result["code"], "PROBE_INCOMPLETE")
 
     def test_build_runtime_config_uses_probe_root_for_stage5_child(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
