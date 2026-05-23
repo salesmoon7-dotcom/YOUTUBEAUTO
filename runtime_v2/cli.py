@@ -1190,7 +1190,7 @@ def main() -> int:
         "event": "run_finished",
         "ts": now_ts(),
         "mode": mode,
-        "status": result.get("status", "failed"),
+        "status": str(summary.get("status", result.get("status", "failed"))),
         "code": code,
         "exit_code": exit_code,
         "result": result,
