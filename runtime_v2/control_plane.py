@@ -156,6 +156,7 @@ def run_control_loop_once(
         return {
             "status": str(closeout_state.get("status", "running")),
             "code": str(closeout_state.get("reason", "CLOSEOUT_ALREADY_TRACKED")),
+            "queue_status": str(closeout_state.get("status", "running")),
             "run_id": run_id,
         }
     default_config = RuntimeConfig()
@@ -224,7 +225,11 @@ def run_control_loop_once(
             events_file,
             run_id=run_id,
         )
-        return {"status": "failed", "code": "QUEUE_STORE_INVALID"}
+        return {
+            "status": "failed",
+            "code": "QUEUE_STORE_INVALID",
+            "queue_status": "failed",
+        }
     _recover_stale_running_jobs(
         queue_store, jobs, now, runtime_config, events_file, run_id=run_id
     )
@@ -304,6 +309,7 @@ def run_control_loop_once(
                 return {
                     "status": "seeded",
                     "code": "SEEDED_JOB",
+                    "queue_status": "seeded",
                     "seeded_jobs": [seeded_job.to_dict() for seeded_job in seeded_jobs],
                 }
         terminal_failed_job = _latest_terminal_failed_row(jobs)
@@ -355,6 +361,7 @@ def run_control_loop_once(
             return {
                 "status": "failed",
                 "code": failure_code,
+                "queue_status": "failed",
                 "job_id": terminal_failed_job.job_id,
                 "row_ref": row_ref,
                 "failure_summary_path": str(runtime_config.failure_summary_file),
@@ -415,7 +422,7 @@ def run_control_loop_once(
             reason="NO_JOB",
             attempt=1,
         )
-        return {"status": "idle", "code": "NO_JOB"}
+        return {"status": "idle", "code": "NO_JOB", "queue_status": "idle"}
 
     previous_status = job.status
     if can_transition(previous_status, "running"):
@@ -889,6 +896,7 @@ def run_control_loop_once(
     return {
         "status": result_status,
         "code": "OK" if success else runtime_error_code,
+        "queue_status": job.status,
         "job": job.to_dict(),
         "result": result,
         "worker_result": worker_result,

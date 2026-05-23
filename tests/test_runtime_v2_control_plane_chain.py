@@ -963,6 +963,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "idle")
         self.assertEqual(result["code"], "NO_JOB")
+        self.assertEqual(str(result["queue_status"]), "idle")
         self.assertEqual(str(qwen_registry["state"]), "idle")
 
     def test_queue_store_load_fail_closes_on_corrupted_queue_file(self) -> None:
@@ -1031,6 +1032,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["code"], "QUEUE_STORE_INVALID")
+        self.assertEqual(str(result["queue_status"]), "failed")
         self.assertEqual(str(result_metadata["code"]), "QUEUE_STORE_INVALID")
 
     def test_retry_and_circuit_helpers_share_single_canonical_policy_module(
@@ -2981,6 +2983,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["code"], "BROWSER_UNHEALTHY")
+        self.assertEqual(str(result["queue_status"]), "retry")
         self.assertEqual(str(job_payload["status"]), "retry")
         self.assertEqual(int(cast(int, job_payload["attempts"])), 1)
         self.assertGreater(float(cast(float, latest_metadata["backoff_sec"])), 0.0)

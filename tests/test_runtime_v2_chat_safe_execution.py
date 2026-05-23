@@ -16,7 +16,9 @@ from runtime_v2.browser import manager as browser_manager
 from runtime_v2.cli import (
     _build_runtime_config,
     _copy_legacy_sessions,
+    _finalize_probe_result_from_progress,
     _run_stage5_row1_probe,
+    _write_probe_progress,
     _write_probe_result,
     exit_code_from_readiness,
     exit_code_from_status,
@@ -414,9 +416,126 @@ class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
                     max_control_ticks=3,
                 )
 
+            progress_payload = json.loads(
+                (probe_root / "probe_progress.json").read_text(encoding="utf-8")
+            )
+            probe_payload = json.loads(
+                (probe_root / "probe_result.json").read_text(encoding="utf-8")
+            )
+
         self.assertTrue(bool(report["probe_success"]))
         self.assertEqual(report["code"], "OK")
         self.assertEqual(call_counter["count"], 2)
+        self.assertEqual(progress_payload["mode"], "stage5_row1")
+        self.assertEqual(progress_payload["status"], "running")
+        self.assertEqual(progress_payload["code"], "PROBE_RUNNING")
+        self.assertEqual(progress_payload["ticks"], 2)
+        self.assertEqual(probe_payload["status"], "ok")
+        self.assertEqual(probe_payload["code"], "OK")
+
+    def test_write_probe_progress_retries_permission_error_on_replace(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            probe_root = Path(tmp_dir) / "probe"
+            original_replace = Path.replace
+            call_count = {"count": 0}
+
+            def flaky_replace(self: Path, target: Path) -> Path:
+                call_count["count"] += 1
+                if call_count["count"] < 3:
+                    error = PermissionError("locked")
+                    error.winerror = 5
+                    raise error
+                return original_replace(self, target)
+
+            with patch.object(Path, "replace", new=flaky_replace):
+                output_path = _write_probe_progress(
+                    probe_root,
+                    {"status": "running", "code": "PROBE_RUNNING", "ticks": 1},
+                )
+
+        self.assertEqual(output_path, probe_root / "probe_progress.json")
+        self.assertEqual(call_count["count"], 3)
+
+    def test_finalize_probe_result_from_progress_writes_fail_closed_artifact(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            probe_root = Path(tmp_dir) / "probe"
+            probe_root.mkdir(parents=True, exist_ok=True)
+            progress = _write_probe_progress(
+                probe_root,
+                {
+                    "run_id": "row15-run",
+                    "mode": "stage5_row1",
+                    "status": "ok",
+                    "code": "OK",
+                    "probe_success": False,
+                    "ticks": 8,
+                    "latest_result": {
+                        "job": {"workload": "seaart"},
+                        "code": "OK",
+                    },
+                },
+            )
+
+            output_path = _finalize_probe_result_from_progress(
+                probe_root,
+                fallback_code="PROBE_INCOMPLETE",
+                fallback_status="failed",
+            )
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(progress, probe_root / "probe_progress.json")
+        self.assertEqual(output_path, probe_root / "probe_result.json")
+        self.assertEqual(payload["status"], "failed")
+        self.assertEqual(payload["code"], "PROBE_INCOMPLETE")
+        self.assertEqual(payload["ticks"], 8)
+        self.assertEqual(payload["latest_result"]["job"]["workload"], "seaart")
+
+    def test_finalize_probe_result_from_progress_overwrites_running_placeholder(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            probe_root = Path(tmp_dir) / "probe"
+            probe_root.mkdir(parents=True, exist_ok=True)
+            _write_probe_result(
+                probe_root,
+                {
+                    "run_id": "row15-run",
+                    "mode": "stage5_row1",
+                    "status": "running",
+                    "code": "PROBE_RUNNING",
+                    "probe_success": False,
+                    "ticks": 1,
+                },
+            )
+            _write_probe_progress(
+                probe_root,
+                {
+                    "run_id": "row15-run",
+                    "mode": "stage5_row1",
+                    "status": "running",
+                    "code": "PROBE_RUNNING",
+                    "probe_success": False,
+                    "ticks": 8,
+                    "latest_result": {
+                        "job": {"workload": "seaart"},
+                        "code": "OK",
+                    },
+                },
+            )
+
+            output_path = _finalize_probe_result_from_progress(
+                probe_root,
+                fallback_code="PROBE_INCOMPLETE",
+                fallback_status="failed",
+            )
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(output_path, probe_root / "probe_result.json")
+        self.assertEqual(payload["status"], "failed")
+        self.assertEqual(payload["code"], "PROBE_INCOMPLETE")
+        self.assertEqual(payload["ticks"], 8)
 
     def test_stage5_probe_uses_probe_local_runtime_root_for_control_loop(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

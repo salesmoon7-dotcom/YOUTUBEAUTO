@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import os
 import shutil
@@ -756,6 +757,18 @@ def main() -> int:
         return exit_code_from_status(str(report.get("code", "CLI_USAGE")))
     if args.stage5_row1_probe_child:
         probe_root = _probe_root_path(args.probe_root)
+
+        def _stage5_finalize_on_exit() -> None:
+            try:
+                _finalize_probe_result_from_progress(
+                    probe_root,
+                    fallback_code="PROBE_INCOMPLETE",
+                    fallback_status="failed",
+                )
+            except Exception:
+                return None
+
+        atexit.register(_stage5_finalize_on_exit)
         try:
             report = _run_stage5_row1_probe(
                 owner=args.owner,
@@ -1927,8 +1940,8 @@ def _run_stage5_row1_probe(
         progress_report: dict[str, object] = {
             "run_id": run_id,
             "mode": "stage5_row1",
-            "status": status,
-            "code": code,
+            "status": "running",
+            "code": "PROBE_RUNNING",
             "exit_code": 0,
             "probe_success": False,
             "seed_result": seed_result,
@@ -1937,7 +1950,9 @@ def _run_stage5_row1_probe(
             "placeholder_services": [],
             "latest_result": result,
         }
-        _ = _write_probe_result(probe_root, progress_report)
+        _ = _write_probe_progress(probe_root, progress_report)
+        if not (probe_root / "probe_result.json").exists():
+            _ = _write_probe_result(probe_root, progress_report)
 
     seed_result = seed_excel_row(
         config=probe_config,
@@ -3863,6 +3878,74 @@ def _write_probe_result(probe_root: Path, payload: dict[str, object]) -> Path:
     if last_error is not None and not output_file.exists():
         raise last_error
     return output_file
+
+
+def _write_probe_progress(probe_root: Path, payload: dict[str, object]) -> Path:
+    probe_root.mkdir(parents=True, exist_ok=True)
+    output_file = probe_root / "probe_progress.json"
+    payload_with_contract = {
+        "schema_version": "1.0",
+        "runtime": "runtime_v2",
+        "checked_at": round(time(), 3),
+        **_json_safe_mapping(payload),
+    }
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=probe_root,
+        prefix="probe_progress.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        _ = handle.write(json.dumps(payload_with_contract, ensure_ascii=True))
+        temp_path = Path(handle.name)
+    last_error: PermissionError | None = None
+    for delay in (0.05, 0.1, 0.2, None):
+        try:
+            _ = temp_path.replace(output_file)
+            break
+        except PermissionError as exc:
+            last_error = exc
+            if getattr(exc, "winerror", None) != 5 or delay is None:
+                raise
+            sleep(delay)
+    if last_error is not None and not output_file.exists():
+        raise last_error
+    return output_file
+
+
+def _finalize_probe_result_from_progress(
+    probe_root: Path,
+    *,
+    fallback_code: str,
+    fallback_status: str,
+) -> Path:
+    result_path = probe_root / "probe_result.json"
+    progress_path = probe_root / "probe_progress.json"
+    if result_path.exists():
+        if not progress_path.exists():
+            return result_path
+        current_payload = json.loads(result_path.read_text(encoding="utf-8"))
+        if not isinstance(current_payload, dict):
+            return result_path
+        current_code = str(current_payload.get("code", "")).strip()
+        current_status = str(current_payload.get("status", "")).strip()
+        if current_code not in {"PROBE_RUNNING", ""} and current_status not in {
+            "running",
+            "",
+        }:
+            return result_path
+    if not progress_path.exists():
+        raise FileNotFoundError(progress_path)
+    raw_payload = json.loads(progress_path.read_text(encoding="utf-8"))
+    if not isinstance(raw_payload, dict):
+        raise ValueError("invalid_probe_progress")
+    payload = cast(dict[str, object], raw_payload)
+    payload["status"] = fallback_status
+    payload["code"] = fallback_code
+    payload["exit_code"] = exit_code_from_status(fallback_code)
+    payload["probe_success"] = False
+    return _write_probe_result(probe_root, payload)
 
 
 def _json_safe_value(value: object) -> object:
