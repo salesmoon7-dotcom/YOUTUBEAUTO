@@ -374,18 +374,34 @@ class RuntimeV2CliJobContractTests(unittest.TestCase):
             pointer = json.loads(
                 (runtime_root / "latest_completed_run.json").read_text(encoding="utf-8")
             )
+            active_pointer = json.loads(
+                (runtime_root / "latest_active_run.json").read_text(encoding="utf-8")
+            )
             result_router = json.loads(
                 (runtime_root / "evidence" / "result.json").read_text(encoding="utf-8")
+            )
+            gui_status = json.loads(
+                (runtime_root / "health" / "gui_status.json").read_text(
+                    encoding="utf-8"
+                )
             )
 
         self.assertEqual(exit_code, exit_codes.CLI_USAGE)
         self.assertEqual(pointer["run_id"], "canva-boundary-run")
         self.assertEqual(pointer["status"], "failed")
         self.assertEqual(pointer["code"], "CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED")
+        self.assertEqual(active_pointer["status"], "failed")
+        self.assertEqual(
+            active_pointer["code"], "CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED"
+        )
         self.assertEqual(result_router["metadata"]["status"], "failed")
         self.assertEqual(
             result_router["metadata"]["code"],
             "CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED",
+        )
+        self.assertEqual(gui_status["status_text"], "failed")
+        self.assertEqual(
+            gui_status["status_code"], "CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED"
         )
 
 
