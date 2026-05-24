@@ -305,6 +305,89 @@ class RuntimeV2CliJobContractTests(unittest.TestCase):
         self.assertEqual(canonical["job_id"], "chatgpt-boundary-job")
         self.assertEqual(canonical["workload"], "chatgpt")
 
+    def test_job_contract_path_updates_runtime_latest_completed_run_for_failed_worker(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            runtime_root = root / "runtime"
+            contract_path = root / "job.json"
+            contract_path.write_text(
+                json.dumps(
+                    build_explicit_job_contract(
+                        job_id="canva-boundary-job",
+                        workload="canva",
+                        checkpoint_key="boundary:canva:3",
+                        payload={
+                            "run_id": "canva-boundary-run",
+                            "row_ref": "Sheet1!row15",
+                        },
+                    ),
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+
+            with (
+                patch(
+                    "runtime_v2.cli.run_gated",
+                    return_value={
+                        "status": "ok",
+                        "code": "OK",
+                        "workload": "canva",
+                        "job": {
+                            "job_id": "canva-boundary-job",
+                            "workload": "canva",
+                            "status": "queued",
+                        },
+                        "worker_result": {
+                            "status": "failed",
+                            "stage": "canva_adapter",
+                            "manifest_path": str(root / "manifest.json"),
+                            "result_path": str(root / "result.json"),
+                            "error_code": "CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED",
+                            "retryable": False,
+                            "details": {},
+                            "next_jobs": [],
+                            "completion": {
+                                "state": "failed",
+                                "final_output": False,
+                                "final_artifact": "",
+                                "final_artifact_path": "",
+                            },
+                        },
+                    },
+                ),
+                patch(
+                    "sys.argv",
+                    [
+                        "runtime_v2.cli",
+                        "--job-contract-path",
+                        str(contract_path),
+                        "--runtime-root",
+                        str(runtime_root),
+                    ],
+                ),
+            ):
+                exit_code = main()
+
+            pointer = json.loads(
+                (runtime_root / "latest_completed_run.json").read_text(encoding="utf-8")
+            )
+            result_router = json.loads(
+                (runtime_root / "evidence" / "result.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(exit_code, exit_codes.CLI_USAGE)
+        self.assertEqual(pointer["run_id"], "canva-boundary-run")
+        self.assertEqual(pointer["status"], "failed")
+        self.assertEqual(pointer["code"], "CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED")
+        self.assertEqual(result_router["metadata"]["status"], "failed")
+        self.assertEqual(
+            result_router["metadata"]["code"],
+            "CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED",
+        )
+
 
 if __name__ == "__main__":
     _ = unittest.main()

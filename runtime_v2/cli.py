@@ -58,6 +58,7 @@ from runtime_v2.gpt_pool_monitor import tick_gpt_status
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
 from runtime_v2.latest_run import (
     write_cli_runtime_snapshot,
+    write_runtime_snapshot,
 )
 from runtime_v2.manager import mark_excel_row_running, seed_excel_row
 from runtime_v2.manager import write_failure_summary
@@ -1184,6 +1185,40 @@ def main() -> int:
             },
             artifacts=snapshot_artifacts,
         )
+        if explicit_job is not None:
+            write_runtime_snapshot(
+                config,
+                run_id=run_id,
+                mode=mode,
+                status=str(summary.get("status", result.get("status", "failed"))),
+                code=code,
+                debug_log=str(debug_log),
+                gui_payload=gui_payload,
+                artifacts=snapshot_artifacts,
+                metadata={
+                    "run_id": run_id,
+                    "mode": mode,
+                    "status": str(
+                        summary.get("status", result.get("status", "failed"))
+                    ),
+                    "code": code,
+                    "exit_code": exit_code,
+                    "job_id": str(summary.get("job_id", "")),
+                    "workload": str(summary.get("workload", "")),
+                    "queue_status": str(summary.get("queue_status", "")),
+                    "stage": str(summary.get("stage", "")),
+                    "error_code": str(summary.get("error_code", "")),
+                    "manifest_path": str(summary.get("manifest_path", "")),
+                    "result_path": str(summary.get("result_path", "")),
+                    "completion_state": str(summary.get("completion_state", "")),
+                    "final_output": bool(summary.get("final_output", False)),
+                    "final_artifact": str(summary.get("final_artifact", "")),
+                    "final_artifact_path": str(summary.get("final_artifact_path", "")),
+                    "debug_log": str(debug_log),
+                    "ts": now_ts(),
+                },
+                write_completed=True,
+            )
 
     report = {
         "run_id": run_id,
