@@ -100,17 +100,10 @@
 - Canva detailed history note:
   - 2026-03~2026-05의 세부 Canva 연대기(템플릿 semantics, ref image wiring, top-DOM opener, iframe/OOPIF 진단, prompt/input drift, credit gate narrowing)는 이제 active index가 아니라 historical evidence입니다.
   - active 판단은 이 TODO 상단의 current hold bullet, `docs/plans/2026-04-23-legacy-runtime-coverage-map.md`, `docs/COMPLETED.md`를 SSOT로 사용합니다.
-- 오라클 shortest-path 전략(현재 SSOT):
-  - 남은 검증은 semantic target row(`Sheet1` row 16 / CLI `--row-index 14`)에 대한 `Stage 5 detached run` **1회**만 수행합니다.
-  - 그 전에 `python -m runtime_v2.cli --readiness-check`만 확인하고, readiness fail이면 Stage 5를 시작하지 않습니다.
-  - 더 이상 재실행하지 않을 항목: generic Stage 5 row, Stage 5B 5-row, 24h soak, 광역 pytest, non-GPT 기능 재검증.
-  - 완료 기준: 새 `probe_root`에 `probe_result.json`이 존재하고 `probe_success=true`, `code=OK`이며, 성공 시 최종 `render_final.mp4`가 존재하거나 실패 시 `failure_summary.json`이 생성돼 1회 런으로 닫힘 판단이 가능해야 합니다.
-  - stop/escalation 규칙: semantic row 1회 실행이 결정적 계약/로직 오류로 실패하면 Stage 5 반복 금지, 그 1개 blocker만 수정합니다. 비결정적 환경 실패에서만 단 1회 rerun을 허용합니다.
-  - 예방 원칙:
-    - 레거시 계약은 실행 전에 먼저 고정하고, 실행 중간에 계약을 재해석하지 않습니다.
-    - 조사 순서/문서 나열 순서를 실행 순서처럼 설명하거나 사용하지 않습니다. 실행은 dependency gate와 필수 산출물 기준으로만 결정합니다.
-    - 사용자 중단 지시 후에는 같은 세션에서 재검증/재실행을 계속하지 않습니다. 상태는 `interrupted`로 기록하고 다음 사이클로 넘깁니다.
-    - broad rerun보다 single-blocker 증거 수렴을 우선합니다. 하나 고치고 한 경계만 확인합니다.
+- shortest-path historical note:
+  - 이전 `semantic row 1회 rerun` 지침은 historical execution note로 유지합니다.
+  - 현재 active closeout truth는 이미 `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260524-a\probe_result.json` success evidence로 닫혔으므로, 이 블록은 새 active work item이 아니라 과거 실행 규칙 기록입니다.
+  - current active 판단은 TODO 상단 status bullets와 `docs/plans/2026-04-01-runtime-v2-closeout-retest-result.md`를 SSOT로 사용합니다.
 - agent-browser implementation unit은 완료되었습니다.
   - 최소 closed loop(`dev_plan -> dev_implement -> agent_browser_verify -> dev_replan`)와 safe-tier fail-closed, probe-root smoke는 구현됨
   - stage2 브라우저 워커는 `video_plan["use_agent_browser_services"]` opt-in으로 hidden CLI child 기반 `agent-browser` adapter 경로를 자동 생성할 수 있음
