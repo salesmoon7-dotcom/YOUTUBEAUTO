@@ -16,13 +16,7 @@
 
 - `docs/plans/2026-03-11-runtime-v2-full-e2e-linkage-remediation-plan.md`, `docs/plans/2026-03-11-runtime-v2-runtime-verification-checklist.md`, `docs/plans/2026-03-11-runtime-v2-chat-safe-execution-remediation-plan.md`, `docs/plans/2026-03-11-chat-interruption-structure-remediation-plan.md`, `docs/plans/2026-03-11-chat-interruption-remediation-batches-plan.md`, `AGENTS.md`, `docs/INDEX.md`, `docs/TODO.md`, `docs/COMPLETED.md`, `docs/sop/SOP_runtime_v2_development_guardrails.md`, `docs/sop/SOP_chat_interruption_repo_triage.md`, `runtime_v2/config.py`, `runtime_v2/browser/manager.py`, `runtime_v2/cli.py`, `runtime_v2/workers/external_process.py`, `runtime_v2/workers/qwen3_worker.py`, `runtime_v2/stage2/request_builders.py`, `runtime_v2/stage2/geminigen_worker.py` - full e2e linkage + chat interruption remediation 정리 완료; production queueing graph, `qwen3_tts -> rvc` next-job, GeminiGen `first_frame_path`, KenBurns inbox GPU policy, verification checklist, external runtime root 이관, source-only 검색 기본값, lag triage SOP, detached recovery, stray-root fail-close를 한 묶음으로 정리해 runtime_v2의 chat-safe execution baseline을 canonical 문서/코드 경계로 고정했습니다.
 
-- `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md` - Task 4(`Single Meaning Snapshot Review`) 완료. 세부 구현/검증 파일 목록은 plan과 관련 commit history를 기준으로 봅니다.
-
-- `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md` - Task 3(`Guardrail Accumulation Controls`) 완료 재판정 반영. 상세 근거는 plan과 Oracle review 기록을 따릅니다.
-
-- `docs/plans/2026-03-11-control-plane-hotspot-review.md` - Task 5 control-plane hotspot review 완료. canonical 책임과 재오픈 조건은 review 문서를 기준으로 유지합니다.
-
-- `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md` - Task 6(`Final Verification Gate`) 완료. 세부 회귀와 verification bundle은 plan 및 테스트 이력 기준으로 관리합니다.
+- `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md`, `docs/plans/2026-03-11-control-plane-hotspot-review.md` - architecture simplification / hotspot review cluster 정리 완료; `Guardrail Accumulation Controls`, `Single Meaning Snapshot Review`, `Final Verification Gate`, control-plane hotspot review를 canonical plan/review 단위로 닫고, 세부 구현 근거와 재오픈 조건은 해당 문서와 commit history 기준으로 유지합니다.
 
 - `docs/sop/SOP_runtime_v2_development_guardrails.md`, `docs/reference/error-code-semantics.md`, `docs/INDEX.md`, `docs/plans/2026-03-11-browser-health-subprogram-review.md`, `runtime_v2/browser/manager.py`, `runtime_v2/browser/supervisor.py`, `runtime_v2/supervisor.py`, `tests/test_runtime_v2_browser_plane.py` - error semantics / browser health review cluster 정리 완료; `warning_worker_error_code_mismatch` 운영 triage 기준과 `error_code` 계열 semantics를 canonical 문서로 고정했고, 현재 browser plane이 health/recovery 하부프로그램 역할을 수행한다는 review 결론과 한계를 함께 문서화했습니다.
 
