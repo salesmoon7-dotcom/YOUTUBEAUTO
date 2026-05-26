@@ -26,27 +26,7 @@
   - 같은 rerun의 최종 산출물은 `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row1-rerun-03\artifacts\chatgpt\chatgpt-sheet1-45\assets\output\render_final.mp4`입니다.
   - 현재 상태 해석은 `docs/plans/2026-03-07-runtime-v2-staged-test-plan.md` 기준으로 `generic Stage 5 minimum rerun complete`, `Stage 5B complete`, `24h soak deferred`입니다.
 - 사용자 지정 semantic target row closeout은 현재 fresh success evidence 기준으로 완료 상태입니다. 대상은 `요양 시설 비용 현실과 준비해야 할 금액` 주제가 있는 `Sheet1!row15`(엑셀 UI 기준 16행)이며, runtime_v2 reader 기준 CLI 매핑은 `--row-index 14`입니다.
-- runtime simplification historical note:
-  - 2026-04-01의 `runtime simplification reset`, stale/shared browser reuse 분석, broad rerun 금지, single scene/service 우선 원칙은 historical remediation context입니다.
-  - 현재 active closeout truth는 row15 success와 Canva external credit hold로 이미 재정렬되었으므로, 이 긴 분석 블록은 active work item이 아니라 배경 진단 기록으로 유지합니다.
-  - 구조/closeout 해석 SSOT는 `docs/plans/2026-04-01-runtime-v2-corrected-pipeline-flow.md`, `docs/plans/2026-04-01-runtime-v2-prompt-handling-classification.md`, `docs/plans/2026-04-01-runtime-v2-legacy-difference-table.md`, `docs/plans/2026-04-01-runtime-v2-closeout-retest-result.md`, `docs/plans/2026-04-01-runtime-v2-fallback-removal-table.md`를 기준으로 읽습니다.
-- 2026-03-20 분석 정리:
-  - 이번 주 drift의 핵심은 `최소단위 테스트`를 하지 않고 `semantic row 전체 closeout`을 최소 테스트처럼 반복 실행한 것입니다.
-  - `qwen3_tts`는 `voice_texts` 전체를 한 번에 먹는 장시간 단일 job으로 선언되어(`runtime_v2/workers/qwen3_worker.py`) 이미지 1개를 보기 전에 수시간을 소비했습니다.
-  - stage2는 `genspark/seaart -> gate A`, `canva/geminigen -> gate B`, `qwen/rvc/kenburns -> gate C`, `render -> gate D`로 fan-out되며(`runtime_v2/stage2/json_builders.py`), gate A 실패가 후속 gate fail-close로 전파돼 최소단위 검증과 충돌했습니다(`runtime_v2/control_plane.py`).
-  - 즉 현재 문제는 서비스 개별 실패만이 아니라, `fan-out + 장시간 qwen + aggressive fail-close`가 결합된 설계/운용 불일치입니다.
-  - 다음 사이클 원칙: `하부프로그램당 1개 산출물`을 먼저 증명하는 service-boundary 방식으로 되돌리고, semantic row full closeout은 그 다음 단계에서만 허용합니다.
-- Canva detailed history note:
-  - 2026-03~2026-05의 세부 Canva 연대기(템플릿 semantics, ref image wiring, top-DOM opener, iframe/OOPIF 진단, prompt/input drift, credit gate narrowing)는 이제 active index가 아니라 historical evidence입니다.
-  - active 판단은 이 TODO 상단의 current hold bullet, `docs/plans/2026-04-23-legacy-runtime-coverage-map.md`, `docs/COMPLETED.md`를 SSOT로 사용합니다.
-- shortest-path historical note:
-  - 이전 `semantic row 1회 rerun` 지침은 historical execution note로 유지합니다.
-  - 현재 active closeout truth는 이미 `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260524-a\probe_result.json` success evidence로 닫혔으므로, 이 블록은 새 active work item이 아니라 과거 실행 규칙 기록입니다.
-  - current active 판단은 TODO 상단 status bullets와 `docs/plans/2026-04-01-runtime-v2-closeout-retest-result.md`를 SSOT로 사용합니다.
-- agent-browser historical note:
-  - `agent-browser` 구현/attach evidence/history는 completed scope이며, current active 판단은 `docs/plans/2026-03-09-agent-browser-live-readiness-report.md`와 `docs/COMPLETED.md`를 기준으로 읽습니다.
-- completed historical notes:
-  - `agent-browser`, `stage1 legacy parity`, `chat interruption`, `browser instability triage`, `remaining issues priority`, `active integration`, `ChatGPT backend hardening`, `subprogram gap analysis`, `non-GPT detailed analysis`, `non-GPT functional verification`, `remediation priority` 관련 상세 연대기는 모두 completed/historical scope입니다.
-  - active status 판단은 더 이상 이 TODO 하단의 장문 구현 메모가 아니라 `docs/COMPLETED.md`, `docs/INDEX.md`, 각 canonical plan 문서를 기준으로 읽습니다.
-  - 채팅 세션 실행 규칙은 `docs/sop/SOP_runtime_v2_development_guardrails.md`, `docs/sop/SOP_chat_interruption_repo_triage.md`, `docs/plans/2026-03-08-browser-session-stability-plan.md`를 SSOT로 사용합니다.
-  - stage1/GPT/backend/비-GPT 서비스별 상세 evidence 해석은 각 linked plan과 `docs/COMPLETED.md`로 이관됐으며, TODO는 active index만 유지합니다.
+- historical note bundle:
+  - `runtime simplification reset`, `2026-03-20 drift analysis`, detailed `Canva` chronology, old `semantic row 1회 rerun` guidance, `agent-browser` attach history, 그리고 stage1/GPT/backend/비-GPT detailed evidence 연대기는 모두 historical/completed scope입니다.
+  - current active 판단은 이 TODO 상단 status bullets와 `docs/plans/2026-04-01-runtime-v2-closeout-retest-result.md`, `docs/plans/2026-04-23-legacy-runtime-coverage-map.md`, `docs/COMPLETED.md`를 SSOT로 사용합니다.
+  - 채팅 세션 실행 규칙은 `docs/sop/SOP_runtime_v2_development_guardrails.md`, `docs/sop/SOP_chat_interruption_repo_triage.md`, `docs/plans/2026-03-08-browser-session-stability-plan.md`를 SSOT로 유지합니다.
