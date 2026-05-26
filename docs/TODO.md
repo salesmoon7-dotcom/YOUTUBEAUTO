@@ -20,11 +20,7 @@
 - `docs/plans/2026-03-11-runtime-v2-architecture-simplification-plan.md` - Task 4 완료. follow-up은 `snapshot_run_id`/latest-run drift 재증가 방지에 한정됩니다.
 - `docs/plans/2026-03-11-runtime-v2-conditional-tightening-plan.md` - 현재 판정은 `조건부 수용`이며, 후속은 문서 상태 정렬·event 경계 tightening·의미 drift 회귀 잠금만 다룹니다.
 - 완료된 unit 기록: `docs/plans/2026-03-09-control-plane-feeder-decomposition-plan.md` - 1차 배치는 완료, 현재 결정은 `2차 분해 no-go`이며 재검토 조건은 plan 본문 기준으로 유지합니다.
-- generic `1행 smoke` 최소 단계 테스트는 완료되었습니다.
-  - detached browser recovery `D:\YOUTUBEAUTO_RUNTIME\probe\browser-recover-minimum-02\probe_result.json`이 `code=OK`로 종료됐습니다.
-  - fresh Stage 5 rerun `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row1-rerun-03\probe_result.json`이 `status=ok`, `code=OK`, `probe_success=true`로 종료됐습니다.
-  - 같은 rerun의 최종 산출물은 `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row1-rerun-03\artifacts\chatgpt\chatgpt-sheet1-45\assets\output\render_final.mp4`입니다.
-  - 현재 상태 해석은 `docs/plans/2026-03-07-runtime-v2-staged-test-plan.md` 기준으로 `generic Stage 5 minimum rerun complete`, `Stage 5B complete`, `24h soak deferred`입니다.
+- `docs/plans/2026-03-07-runtime-v2-staged-test-plan.md`, `D:\YOUTUBEAUTO_RUNTIME\probe\browser-recover-minimum-02\probe_result.json`, `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row1-rerun-03\probe_result.json` - generic `1행 smoke` 최소 단계 테스트는 완료되었습니다. 현재 상태 해석은 staged-test plan 기준 `generic Stage 5 minimum rerun complete`, `Stage 5B complete`, `24h soak deferred`이며, final artifact는 `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row1-rerun-03\artifacts\chatgpt\chatgpt-sheet1-45\assets\output\render_final.mp4`입니다.
 - 사용자 지정 semantic target row closeout은 현재 fresh success evidence 기준으로 완료 상태입니다. 대상은 `요양 시설 비용 현실과 준비해야 할 금액` 주제가 있는 `Sheet1!row15`(엑셀 UI 기준 16행)이며, runtime_v2 reader 기준 CLI 매핑은 `--row-index 14`입니다.
 - historical note bundle:
   - `runtime simplification reset`, `2026-03-20 drift analysis`, detailed `Canva` chronology, old `semantic row 1회 rerun` guidance, `agent-browser` attach history, 그리고 stage1/GPT/backend/비-GPT detailed evidence 연대기는 모두 historical/completed scope입니다.
