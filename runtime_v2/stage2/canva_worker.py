@@ -67,6 +67,12 @@ def _canva_failed_adapter_details(
         **base_details,
         "attach_status": str(attach_evidence_payload.get("status", "")),
         "attach_error_code": str(attach_evidence_payload.get("error_code", "")),
+        "ref_images_attach_attempted": bool(
+            attach_evidence_payload.get("ref_images_attach_attempted", False)
+        ),
+        "ref_upload_error_code": str(
+            attach_evidence_payload.get("ref_upload_error_code", "")
+        ),
         "current_url": str(attach_evidence_payload.get("current_url", "")),
         "current_title": str(attach_evidence_payload.get("current_title", "")),
         "iframe_src": str(attach_details.get("iframe_src", "")),

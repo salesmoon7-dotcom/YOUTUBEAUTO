@@ -1336,6 +1336,8 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                         "error_code": "PRODUCT_BACKGROUND_IFRAME_UNAVAILABLE",
                         "current_url": "https://www.canva.com/design/foo/edit",
                         "current_title": "Canva Edit",
+                        "ref_images_attach_attempted": True,
+                        "ref_upload_error_code": "",
                         "details": {
                             "iframe_src": "https://app-aagfbubmjom.canva-apps.com/app-sandbox/editor/AAGfbuBmjOM/11?locale=ko-KR",
                             "iframe_title": "Product Background",
@@ -1365,6 +1367,8 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         )
         self.assertEqual(str(details["iframe_title"]), "Product Background")
         self.assertIn("app-aagfbubmjom.canva-apps.com", str(details["iframe_src"]))
+        self.assertTrue(bool(details["ref_images_attach_attempted"]))
+        self.assertEqual(str(details["ref_upload_error_code"]), "")
         self.assertEqual(cast(int, details["topdom_open_attempts"]), 2)
         self.assertEqual(cast(int, details["canvas_refocus_count"]), 1)
         self.assertFalse(bool(details["prompt_visible"]))
