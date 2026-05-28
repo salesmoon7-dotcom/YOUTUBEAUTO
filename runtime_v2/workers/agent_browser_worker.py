@@ -429,12 +429,41 @@ def _playwright_canva_background_generate(
 ) -> dict[str, object]:
     browser, page = _select_canva_page(port)
     try:
+
+        def _refocus_canva_canvas() -> None:
+            try:
+                canvas_locator = page.locator('[aria-label="캔버스 진입점"]').first
+                canvas_box = canvas_locator.bounding_box()
+                if canvas_box:
+                    page.mouse.click(
+                        float(canvas_box.get("x", 0))
+                        + float(canvas_box.get("width", 0)) * 0.5,
+                        float(canvas_box.get("y", 0))
+                        + float(canvas_box.get("height", 0)) * 0.15,
+                    )
+                    page.wait_for_timeout(500)
+                    return
+            except Exception:
+                pass
+
         page.keyboard.press("Escape")
         page.wait_for_timeout(500)
 
-        if _click_visible_page_locator(
-            page, "button,[role=button]", has_text="배경 생성"
-        ):
+        topdom_background_opened = False
+        for attempt in range(2):
+            if _click_visible_page_locator(
+                page, "button,[role=button]", has_text="배경 생성"
+            ):
+                topdom_background_opened = True
+                break
+            if attempt == 0:
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(300)
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(300)
+                _refocus_canva_canvas()
+
+        if topdom_background_opened:
             page.wait_for_timeout(800)
             top_prompt = None
             prompt_selectors = [
@@ -527,19 +556,7 @@ def _playwright_canva_background_generate(
                     "generate_visible": generate_visible,
                 }
 
-        try:
-            canvas_locator = page.locator('[aria-label="캔버스 진입점"]').first
-            canvas_box = canvas_locator.bounding_box()
-            if canvas_box:
-                page.mouse.click(
-                    float(canvas_box.get("x", 0))
-                    + float(canvas_box.get("width", 0)) * 0.5,
-                    float(canvas_box.get("y", 0))
-                    + float(canvas_box.get("height", 0)) * 0.15,
-                )
-                page.wait_for_timeout(500)
-        except Exception:
-            pass
+        _refocus_canva_canvas()
 
         page.evaluate(
             """(() => { const candidates = Array.from(document.querySelectorAll('button,[role=button],[aria-label]')); const target = candidates.find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경 생성'); }); if (!(target instanceof HTMLElement)) return false; target.focus(); target.click(); return true; })()"""

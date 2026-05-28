@@ -882,6 +882,121 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertFalse(page.bg_button.clicked and page.bg_button.filled)
         self.assertTrue(page.run_button.clicked)
 
+    def test_canva_background_generate_retries_topdom_after_canvas_refocus(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import (
+            _playwright_canva_background_generate,
+        )
+
+        class FakeNode:
+            def __init__(self, box) -> None:
+                self._box = box
+                self.filled = ""
+                self.clicked = False
+
+            def bounding_box(self):
+                return self._box
+
+            def click(self, timeout=None, force=False):
+                self.clicked = True
+
+            def fill(self, value: str, timeout=None):
+                self.filled = value
+
+        class FakeLocatorList:
+            def __init__(self, items) -> None:
+                self._items = items
+
+            def count(self) -> int:
+                return len(self._items)
+
+            def nth(self, index: int):
+                return self._items[index]
+
+            @property
+            def first(self):
+                return self._items[0]
+
+        class FakePage:
+            def __init__(self) -> None:
+                self.keyboard = MagicMock()
+                self.mouse = MagicMock()
+                self.wait_calls = 0
+                self._eval_calls = 0
+                self.frames = [MagicMock(url="https://www.canva.com/design/foo/edit")]
+                self.top_prompt = FakeNode({"width": 120, "height": 24})
+                self.top_generate = FakeNode({"width": 80, "height": 20})
+                self.canvas_entry = FakeNode(
+                    {"x": 10, "y": 20, "width": 200, "height": 100}
+                )
+
+            def wait_for_timeout(self, ms: int):
+                self.wait_calls += 1
+                return None
+
+            def evaluate(self, script: str):
+                self._eval_calls += 1
+                if self._eval_calls == 1:
+                    return False
+                if self._eval_calls == 2:
+                    return ""
+                raise AssertionError(script)
+
+            def locator(self, selector: str, has_text=None):
+                if selector == '[aria-label="캔버스 진입점"]':
+                    return FakeLocatorList([self.canvas_entry])
+                if selector in {
+                    "textarea[placeholder*='예시']",
+                    "textarea[placeholder*='Describe']",
+                    "textarea[placeholder*='prompt']",
+                    "textarea[aria-label*='프롬프트'],textarea[aria-label*='Prompt']",
+                    "div[role='dialog'] textarea",
+                    "div[contenteditable='true'][role='textbox']",
+                    "div[contenteditable='true'][data-lexical-editor='true']",
+                    "[role='textbox'][contenteditable='true']",
+                    "textarea",
+                    "[role=textbox]",
+                    "input[type=text]",
+                    "[contenteditable='true']",
+                }:
+                    return FakeLocatorList([self.top_prompt])
+                if selector == "button,[role=button]":
+                    return FakeLocatorList([self.top_generate])
+                raise AssertionError((selector, has_text))
+
+        page = FakePage()
+        browser = MagicMock()
+        click_results = iter([False, True, True])
+
+        with (
+            patch(
+                "runtime_v2.workers.agent_browser_worker._select_canva_page",
+                return_value=(browser, page),
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._inspect_canva_iframe_target",
+                return_value={},
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._click_visible_page_locator",
+                side_effect=lambda *args, **kwargs: next(click_results),
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._legacy_canva_topdom_generate_button",
+                return_value=page.top_generate,
+            ),
+        ):
+            result = _playwright_canva_background_generate(
+                port=19999, bg_prompt="hello", timeout_sec=30
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["step"], "submitted_background_generate_topdom")
+        self.assertEqual(page.top_prompt.filled, "hello")
+        self.assertTrue(page.top_generate.clicked)
+        page.mouse.click.assert_called_once()
+
     def test_canva_background_generate_falls_back_to_generic_iframe_locator(
         self,
     ) -> None:
