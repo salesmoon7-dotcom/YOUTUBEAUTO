@@ -6,12 +6,7 @@
 - This file is the canonical docs navigation entrypoint.
 
 ## Single Classification Rule
-- 문서 상태 분류는 `TODO` 또는 `COMPLETED` 두 가지로만 관리합니다.
-- 분류 진입점은 아래 두 문서만 사용합니다.
-  - `TODO.md`
-  - `COMPLETED.md`
-
-## Active Status Docs
+- 문서 상태 분류와 진입점은 `TODO.md` / `COMPLETED.md` 두 문서만 사용합니다.
 - `TODO.md` - 현재 진행 중이거나 운영 검증이 남은 작업 목록
 - `COMPLETED.md` - 코드 구현이 끝난 작업 목록
 
@@ -65,8 +60,7 @@
 - 운영 스냅샷의 `OK`/green은 attach 가능, 로그인 확인, 서비스 생성 성공, final closeout 성공과 동일한 증거등급이 아닙니다.
 
 ## Session-Start Rule
-- `runtime_v2` 관련 작업은 사용자 재지시가 없어도 먼저 `sop/SOP_runtime_v2_development_guardrails.md`를 기준으로 읽고 진행합니다.
-- interruption/search 판단이 함께 필요한 경우 `sop/SOP_chat_interruption_repo_triage.md`를 같은 우선순위로 읽습니다.
+- `runtime_v2` 관련 작업은 먼저 `sop/SOP_runtime_v2_development_guardrails.md`를 읽고, interruption/search 판단이 함께 필요하면 `sop/SOP_chat_interruption_repo_triage.md`를 같은 우선순위로 읽습니다.
 - 이 문서는 라우팅과 canonical 링크만 유지합니다. 세부 절차는 각 `sop/`와 `plans/` 문서에서 관리합니다.
 
 위 디렉터리는 저장 위치일 뿐이며, 상태 분류 기준은 `TODO.md` / `COMPLETED.md`의 링크 상태를 따릅니다.
