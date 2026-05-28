@@ -996,6 +996,8 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertEqual(page.top_prompt.filled, "hello")
         self.assertTrue(page.top_generate.clicked)
         page.mouse.click.assert_called_once()
+        self.assertEqual(result["topdom_open_attempts"], 2)
+        self.assertEqual(result["canvas_refocus_count"], 1)
 
     def test_canva_background_generate_retries_topdom_before_credit_gate_result(
         self,
@@ -1091,6 +1093,8 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"], "CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED")
         self.assertEqual(page.mouse.click.call_count, 2)
+        self.assertEqual(result["topdom_open_attempts"], 2)
+        self.assertEqual(result["canvas_refocus_count"], 2)
 
     def test_canva_background_generate_falls_back_to_generic_iframe_locator(
         self,

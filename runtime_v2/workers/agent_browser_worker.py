@@ -429,8 +429,17 @@ def _playwright_canva_background_generate(
 ) -> dict[str, object]:
     browser, page = _select_canva_page(port)
     try:
+        topdom_open_attempts = 0
+        canvas_refocus_count = 0
+
+        def _topdom_diag() -> dict[str, object]:
+            return {
+                "topdom_open_attempts": topdom_open_attempts,
+                "canvas_refocus_count": canvas_refocus_count,
+            }
 
         def _refocus_canva_canvas() -> None:
+            nonlocal canvas_refocus_count
             try:
                 canvas_locator = page.locator('[aria-label="캔버스 진입점"]').first
                 canvas_box = canvas_locator.bounding_box()
@@ -441,6 +450,7 @@ def _playwright_canva_background_generate(
                         float(canvas_box.get("y", 0))
                         + float(canvas_box.get("height", 0)) * 0.15,
                     )
+                    canvas_refocus_count += 1
                     page.wait_for_timeout(500)
                     return
             except Exception:
@@ -451,6 +461,7 @@ def _playwright_canva_background_generate(
 
         topdom_background_opened = False
         for attempt in range(2):
+            topdom_open_attempts += 1
             if _click_visible_page_locator(
                 page, "button,[role=button]", has_text="배경 생성"
             ):
@@ -499,7 +510,11 @@ def _playwright_canva_background_generate(
                 generate_button = _legacy_canva_topdom_generate_button(page)
                 if generate_button is not None:
                     generate_button.click(timeout=5000)
-                    return {"ok": True, "step": "submitted_background_generate_topdom"}
+                    return {
+                        "ok": True,
+                        "step": "submitted_background_generate_topdom",
+                        **_topdom_diag(),
+                    }
 
         page.evaluate(
             """(async () => { const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms)); const tabs = Array.from(document.querySelectorAll('button[role="tab"][aria-controls], [role=tab][aria-controls]')); const target = tabs.find(node => { const text = ((node.innerText || node.textContent || '') + ' ' + (node.getAttribute('aria-label') || '')).trim(); return text.includes('Product Background') || text.includes('배경 생성'); }); if (!(target instanceof HTMLElement)) return false; target.focus(); target.click(); await wait(300); if ((target.getAttribute('aria-selected') || '') === 'true') return true; target.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); target.dispatchEvent(new KeyboardEvent('keyup', {key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true})); await wait(300); if ((target.getAttribute('aria-selected') || '') === 'true') return true; target.dispatchEvent(new KeyboardEvent('keydown', {key:' ', code:'Space', keyCode:32, which:32, bubbles:true})); target.dispatchEvent(new KeyboardEvent('keyup', {key:' ', code:'Space', keyCode:32, which:32, bubbles:true})); await wait(300); return (target.getAttribute('aria-selected') || '') === 'true'; })()"""
@@ -537,7 +552,11 @@ def _playwright_canva_background_generate(
                 if _click_visible_page_locator(
                     panel, "button,[role=button]", has_text="생성"
                 ):
-                    return {"ok": True, "step": "submitted_background_generate_panel"}
+                    return {
+                        "ok": True,
+                        "step": "submitted_background_generate_panel",
+                        **_topdom_diag(),
+                    }
             file_select_visible = bool(
                 _click_visible_page_locator(
                     panel, "button,[role=button]", has_text="파일 선택하기"
@@ -554,6 +573,7 @@ def _playwright_canva_background_generate(
                     "error": "CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT",
                     "file_select_visible": file_select_visible,
                     "generate_visible": generate_visible,
+                    **_topdom_diag(),
                 }
 
         _refocus_canva_canvas()
@@ -637,6 +657,7 @@ def _playwright_canva_background_generate(
                                 "iframe_src": iframe_src,
                                 "iframe_title": iframe_title,
                                 "observed_frame_urls": observed_frame_urls,
+                                **_topdom_diag(),
                                 **iframe_target_details,
                                 **upload_result,
                             }
@@ -647,6 +668,7 @@ def _playwright_canva_background_generate(
                                 "iframe_src": iframe_src,
                                 "iframe_title": iframe_title,
                                 "observed_frame_urls": observed_frame_urls,
+                                **_topdom_diag(),
                                 **iframe_target_details,
                                 **upload_result,
                             }
@@ -660,6 +682,7 @@ def _playwright_canva_background_generate(
                             "iframe_src": iframe_src,
                             "iframe_title": iframe_title,
                             "observed_frame_urls": observed_frame_urls,
+                            **_topdom_diag(),
                             **iframe_target_details,
                         }
                     return {
@@ -670,6 +693,7 @@ def _playwright_canva_background_generate(
                         "iframe_src": iframe_src,
                         "iframe_title": iframe_title,
                         "observed_frame_urls": observed_frame_urls,
+                        **_topdom_diag(),
                         **iframe_target_details,
                         **upload_result,
                     }
@@ -679,6 +703,7 @@ def _playwright_canva_background_generate(
                 "iframe_src": iframe_src,
                 "iframe_title": iframe_title,
                 "observed_frame_urls": observed_frame_urls,
+                **_topdom_diag(),
                 **iframe_target_details,
             }
 
@@ -726,6 +751,7 @@ def _playwright_canva_background_generate(
                         "iframe_src": iframe_src,
                         "iframe_title": iframe_title,
                         "observed_frame_urls": observed_frame_urls,
+                        **_topdom_diag(),
                     }
                 if "이미지를 업로드하지 못했습니다" in str(frame_body):
                     return {
@@ -739,6 +765,7 @@ def _playwright_canva_background_generate(
                         "iframe_src": iframe_src,
                         "iframe_title": iframe_title,
                         "observed_frame_urls": observed_frame_urls,
+                        **_topdom_diag(),
                     }
             return {
                 "ok": False,
@@ -752,6 +779,7 @@ def _playwright_canva_background_generate(
                 "iframe_src": iframe_src,
                 "iframe_title": iframe_title,
                 "observed_frame_urls": observed_frame_urls,
+                **_topdom_diag(),
             }
 
         if prompt_input is None:
@@ -759,7 +787,11 @@ def _playwright_canva_background_generate(
         cast(Any, prompt_input).fill(bg_prompt, timeout=timeout_sec * 1000)
         generate_button = frame.get_by_role("button", name="생성")
         generate_button.click(timeout=5000)
-        return {"ok": True, "step": "submitted_background_generate_iframe"}
+        return {
+            "ok": True,
+            "step": "submitted_background_generate_iframe",
+            **_topdom_diag(),
+        }
     finally:
         browser.close()
 

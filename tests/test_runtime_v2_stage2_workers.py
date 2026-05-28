@@ -1343,6 +1343,8 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                                 "https://www.canva.com/design/foo/edit",
                                 "about:blank",
                             ],
+                            "topdom_open_attempts": 2,
+                            "canvas_refocus_count": 1,
                             "prompt_visible": False,
                             "file_select_visible": True,
                             "generate_visible": True,
@@ -1363,6 +1365,8 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         )
         self.assertEqual(str(details["iframe_title"]), "Product Background")
         self.assertIn("app-aagfbubmjom.canva-apps.com", str(details["iframe_src"]))
+        self.assertEqual(cast(int, details["topdom_open_attempts"]), 2)
+        self.assertEqual(cast(int, details["canvas_refocus_count"]), 1)
         self.assertFalse(bool(details["prompt_visible"]))
         self.assertTrue(bool(details["file_select_visible"]))
         self.assertTrue(bool(details["generate_visible"]))
@@ -1391,6 +1395,8 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                             "https://www.canva.com/design/foo/edit",
                             "about:blank",
                         ],
+                        "topdom_open_attempts": 2,
+                        "canvas_refocus_count": 1,
                         "prompt_visible": False,
                         "file_select_visible": True,
                         "generate_visible": True,
@@ -1412,6 +1418,8 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         details = cast(dict[str, object], payload["details"])
         self.assertEqual(str(details["iframe_title"]), "Product Background")
         self.assertIn("app-aagfbubmjom.canva-apps.com", str(details["iframe_src"]))
+        self.assertEqual(cast(int, details["topdom_open_attempts"]), 2)
+        self.assertEqual(cast(int, details["canvas_refocus_count"]), 1)
         self.assertFalse(bool(details["prompt_visible"]))
         self.assertTrue(bool(details["file_select_visible"]))
         self.assertTrue(bool(details["generate_visible"]))
