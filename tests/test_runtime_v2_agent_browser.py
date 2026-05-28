@@ -1096,6 +1096,316 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertEqual(result["topdom_open_attempts"], 2)
         self.assertEqual(result["canvas_refocus_count"], 2)
 
+    def test_canva_background_generate_strips_bootstrap_from_credit_gate_body(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import (
+            _playwright_canva_background_generate,
+        )
+
+        class FakeNode:
+            def __init__(self, box) -> None:
+                self._box = box
+
+            def bounding_box(self):
+                return self._box
+
+        class FakeLocatorList:
+            def __init__(self, items) -> None:
+                self._items = items
+
+            @property
+            def first(self):
+                return self if not self._items else self._items[0]
+
+            def count(self) -> int:
+                return len(self._items)
+
+            def nth(self, index: int):
+                return self._items[index]
+
+        class FakePage:
+            def __init__(self) -> None:
+                self.keyboard = MagicMock()
+                self.mouse = MagicMock()
+                self.wait_calls = 0
+                self._eval_calls = 0
+                self.frames = [MagicMock(url="https://www.canva.com/design/foo/edit")]
+                self.canvas_entry = FakeNode(
+                    {"x": 10, "y": 20, "width": 200, "height": 100}
+                )
+
+            def wait_for_timeout(self, ms: int):
+                self.wait_calls += 1
+                return None
+
+            def evaluate(self, script: str):
+                self._eval_calls += 1
+                if self._eval_calls == 1:
+                    return False
+                if self._eval_calls == 2:
+                    return ""
+                if self._eval_calls == 3:
+                    return False
+                if self._eval_calls == 4:
+                    return ""
+                raise AssertionError(script)
+
+            def locator(self, selector: str, has_text=None):
+                if selector == '[aria-label="캔버스 진입점"]':
+                    return FakeLocatorList([self.canvas_entry])
+                if selector == 'iframe[title="Product Background"]':
+                    return FakeLocatorList([])
+                if selector == "iframe":
+                    return FakeLocatorList([])
+                raise AssertionError((selector, has_text))
+
+        page = FakePage()
+        browser = MagicMock()
+        click_results = iter([False, False, False])
+
+        with (
+            patch(
+                "runtime_v2.workers.agent_browser_worker._select_canva_page",
+                return_value=(browser, page),
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._inspect_canva_iframe_target",
+                return_value={
+                    "prompt_visible": False,
+                    "file_select_visible": True,
+                    "generate_visible": True,
+                    "body": "파일 선택하기\n생성\nProduct Background의 200 크레딧 중 5 크레딧을 사용하게 돼요. 크레딧이 더 필요하신가요? 구매하기\nwindow['__canva_public_path__']='https://static.canva.com/web/'\n(function() { hugeBootstrap(); })()",
+                },
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._click_visible_page_locator",
+                side_effect=lambda *args, **kwargs: next(click_results),
+            ),
+        ):
+            result = _playwright_canva_background_generate(
+                port=19999, bg_prompt="hello", timeout_sec=30
+            )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED")
+        self.assertIn("크레딧이 더 필요하신가요", str(result["body"]))
+        self.assertNotIn("__canva_public_path__", str(result["body"]))
+        self.assertNotIn("hugeBootstrap", str(result["body"]))
+
+    def test_canva_background_generate_strips_live_bootstrap_noise_from_body(
+        self,
+    ) -> None:
+        from runtime_v2.workers.agent_browser_worker import (
+            _playwright_canva_background_generate,
+        )
+
+        class FakeNode:
+            def __init__(self, box) -> None:
+                self._box = box
+
+            def bounding_box(self):
+                return self._box
+
+        class FakeLocatorList:
+            def __init__(self, items) -> None:
+                self._items = items
+
+            @property
+            def first(self):
+                return self if not self._items else self._items[0]
+
+            def count(self) -> int:
+                return len(self._items)
+
+            def nth(self, index: int):
+                return self._items[index]
+
+        class FakePage:
+            def __init__(self) -> None:
+                self.keyboard = MagicMock()
+                self.mouse = MagicMock()
+                self.wait_calls = 0
+                self._eval_calls = 0
+                self.frames = [MagicMock(url="https://www.canva.com/design/foo/edit")]
+                self.canvas_entry = FakeNode(
+                    {"x": 10, "y": 20, "width": 200, "height": 100}
+                )
+
+            def wait_for_timeout(self, ms: int):
+                self.wait_calls += 1
+                return None
+
+            def evaluate(self, script: str):
+                self._eval_calls += 1
+                if self._eval_calls == 1:
+                    return False
+                if self._eval_calls == 2:
+                    return ""
+                if self._eval_calls == 3:
+                    return False
+                if self._eval_calls == 4:
+                    return ""
+                raise AssertionError(script)
+
+            def locator(self, selector: str, has_text=None):
+                if selector == '[aria-label="캔버스 진입점"]':
+                    return FakeLocatorList([self.canvas_entry])
+                if selector == 'iframe[title="Product Background"]':
+                    return FakeLocatorList([])
+                if selector == "iframe":
+                    return FakeLocatorList([])
+                raise AssertionError((selector, has_text))
+
+        page = FakePage()
+        browser = MagicMock()
+        click_results = iter([False, False, False])
+        noisy_body = (
+            "로드 중document.documentElement.classList.replace('adaptive', "
+            "window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');"
+            "업로드된 이미지ref-1.png장면 선택모두 보기생성"
+            "Product Background의 200 크레딧 중 5 크레딧을 사용하게 돼요."
+            "크레딧이 더 필요하신가요? 구매하기⁠⁠(새 디자인 탭 또는 창에서 열기)"
+            "(function() { bootstrap(); })()"
+        )
+
+        with (
+            patch(
+                "runtime_v2.workers.agent_browser_worker._select_canva_page",
+                return_value=(browser, page),
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._inspect_canva_iframe_target",
+                return_value={
+                    "prompt_visible": False,
+                    "file_select_visible": False,
+                    "generate_visible": True,
+                    "body": noisy_body,
+                },
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._click_visible_page_locator",
+                side_effect=lambda *args, **kwargs: next(click_results),
+            ),
+        ):
+            result = _playwright_canva_background_generate(
+                port=19999, bg_prompt="hello", timeout_sec=30
+            )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED")
+        self.assertNotIn(
+            "document.documentElement.classList.replace", str(result["body"])
+        )
+        self.assertNotIn("(function() {", str(result["body"]))
+        self.assertIn("크레딧이 더 필요하신가요", str(result["body"]))
+
+    def test_canva_background_generate_sanitizes_upload_branch_body(self) -> None:
+        from runtime_v2.workers.agent_browser_worker import (
+            _playwright_canva_background_generate,
+        )
+
+        class FakeNode:
+            def __init__(self, box) -> None:
+                self._box = box
+
+            def bounding_box(self):
+                return self._box
+
+        class FakeLocatorList:
+            def __init__(self, items) -> None:
+                self._items = items
+
+            @property
+            def first(self):
+                return self if not self._items else self._items[0]
+
+            def count(self) -> int:
+                return len(self._items)
+
+            def nth(self, index: int):
+                return self._items[index]
+
+        class FakePage:
+            def __init__(self) -> None:
+                self.keyboard = MagicMock()
+                self.mouse = MagicMock()
+                self.wait_calls = 0
+                self._eval_calls = 0
+                self.frames = [MagicMock(url="https://www.canva.com/design/foo/edit")]
+                self.canvas_entry = FakeNode(
+                    {"x": 10, "y": 20, "width": 200, "height": 100}
+                )
+
+            def wait_for_timeout(self, ms: int):
+                self.wait_calls += 1
+                return None
+
+            def evaluate(self, script: str):
+                self._eval_calls += 1
+                if self._eval_calls == 1:
+                    return False
+                if self._eval_calls == 2:
+                    return ""
+                if self._eval_calls == 3:
+                    return False
+                if self._eval_calls == 4:
+                    return ""
+                raise AssertionError(script)
+
+            def locator(self, selector: str, has_text=None):
+                if selector == '[aria-label="캔버스 진입점"]':
+                    return FakeLocatorList([self.canvas_entry])
+                if selector == 'iframe[title="Product Background"]':
+                    return FakeLocatorList([])
+                if selector == "iframe":
+                    return FakeLocatorList([])
+                raise AssertionError((selector, has_text))
+
+        page = FakePage()
+        browser = MagicMock()
+        click_results = iter([False, False, False])
+
+        with (
+            patch(
+                "runtime_v2.workers.agent_browser_worker._select_canva_page",
+                return_value=(browser, page),
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._inspect_canva_iframe_target",
+                return_value={
+                    "prompt_visible": False,
+                    "file_select_visible": True,
+                    "generate_visible": True,
+                    "body": "파일 선택하기\n생성",
+                },
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._click_visible_page_locator",
+                side_effect=lambda *args, **kwargs: next(click_results),
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._upload_canva_iframe_file",
+                return_value={
+                    "upload_attempted": True,
+                    "upload_protocol_ok": True,
+                    "body": "파일 선택하기\n생성\nProduct Background의 200 크레딧 중 5 크레딧을 사용하게 돼요. 크레딧이 더 필요하신가요? 구매하기\nwindow['__canva_public_path__']='https://static.canva.com/web/'\n(function() { hugeBootstrap(); })()",
+                },
+            ),
+        ):
+            result = _playwright_canva_background_generate(
+                port=19999,
+                bg_prompt="hello",
+                timeout_sec=30,
+                ref_img_path=r"D:\YOUTUBEAUTO\dummy.png",
+            )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED")
+        self.assertIn("크레딧이 더 필요하신가요", str(result["body"]))
+        self.assertNotIn("__canva_public_path__", str(result["body"]))
+        self.assertNotIn("hugeBootstrap", str(result["body"]))
+
     def test_canva_background_generate_falls_back_to_generic_iframe_locator(
         self,
     ) -> None:

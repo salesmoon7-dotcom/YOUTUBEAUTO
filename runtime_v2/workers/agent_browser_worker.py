@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import json
+import re
 import time
 import urllib.request
 from pathlib import Path
@@ -237,6 +238,30 @@ def _canva_credit_exhausted(body_text: str) -> bool:
         or "크레딧 더 구매하기" in body
         or "크레딧이 더 필요하신가요" in body
     )
+
+
+def _sanitize_canva_body_text(body_text: str) -> str:
+    body = str(body_text)
+    body = body.replace(
+        "document.documentElement.classList.replace('adaptive', window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');",
+        "",
+    )
+    body = re.sub(r"\(function\(\)\s*\{.*$", "", body, flags=re.DOTALL)
+    body = re.sub(
+        r"window\[['\"]__canva_public_path__['\"]\].*$", "", body, flags=re.DOTALL
+    )
+    cut_markers = [
+        "window['__canva_public_path__']",
+        'window["__canva_public_path__"]',
+        "(function() {",
+        "(()=>",
+    ]
+    for marker in cut_markers:
+        index = body.find(marker)
+        if index >= 0:
+            body = body[:index]
+            break
+    return body.strip()
 
 
 def _inspect_canva_iframe_target(port: int, iframe_src: str) -> dict[str, object]:
@@ -649,7 +674,9 @@ def _playwright_canva_background_generate(
                         upload_result = _upload_canva_iframe_file(
                             port, iframe_src, ref_img_path
                         )
-                        upload_body = str(upload_result.get("body", ""))
+                        upload_body = _sanitize_canva_body_text(
+                            str(upload_result.get("body", ""))
+                        )
                         if _canva_credit_exhausted(upload_body):
                             return {
                                 "ok": False,
@@ -660,6 +687,7 @@ def _playwright_canva_background_generate(
                                 **_topdom_diag(),
                                 **iframe_target_details,
                                 **upload_result,
+                                "body": upload_body,
                             }
                         if "이미지를 업로드하지 못했습니다" in upload_body:
                             return {
@@ -671,8 +699,15 @@ def _playwright_canva_background_generate(
                                 **_topdom_diag(),
                                 **iframe_target_details,
                                 **upload_result,
+                                "body": upload_body,
                             }
-                    iframe_body = str(iframe_target_details.get("body", ""))
+                    iframe_body = _sanitize_canva_body_text(
+                        str(iframe_target_details.get("body", ""))
+                    )
+                    iframe_target_details = {
+                        **iframe_target_details,
+                        "body": iframe_body,
+                    }
                     if _canva_credit_exhausted(iframe_body):
                         return {
                             "ok": False,
@@ -739,13 +774,14 @@ def _playwright_canva_background_generate(
                     frame_body = frame.locator("body").inner_text(timeout=1000)
                 except Exception:
                     frame_body = ""
+                frame_body = _sanitize_canva_body_text(str(frame_body))
                 if _canva_credit_exhausted(str(frame_body)):
                     return {
                         "ok": False,
                         "error": "CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED",
                         "file_select_visible": file_select_visible,
                         "generate_visible": generate_visible,
-                        "body": str(frame_body),
+                        "body": frame_body,
                         "upload_attempted": True,
                         "upload_protocol_ok": True,
                         "iframe_src": iframe_src,
@@ -759,7 +795,7 @@ def _playwright_canva_background_generate(
                         "error": "CANVA_PRODUCT_BACKGROUND_UPLOAD_REJECTED",
                         "file_select_visible": file_select_visible,
                         "generate_visible": generate_visible,
-                        "body": str(frame_body),
+                        "body": frame_body,
                         "upload_attempted": True,
                         "upload_protocol_ok": True,
                         "iframe_src": iframe_src,
