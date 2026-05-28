@@ -1057,6 +1057,8 @@ def main() -> int:
         payload={
             "run_id": run_id,
             "mode": mode,
+            "status": str(summary.get("status", result.get("status", "unknown"))),
+            "code": code,
             "result": result,
             "summary": summary,
         },

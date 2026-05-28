@@ -524,6 +524,67 @@ class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
             final_event["code"], "CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED"
         )
 
+    def test_job_contract_cli_result_event_uses_failed_summary_status(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig.from_root(root / "runtime")
+            contract_path = root / "canva.job.json"
+            contract_path.write_text("{}", encoding="utf-8")
+            explicit_job = JobContract(
+                job_id="canva-boundary-job",
+                workload="canva",
+                checkpoint_key="stage2:canva:Sheet1!row15:3",
+                payload={"run_id": "canva-boundary-run", "row_ref": "Sheet1!row15"},
+            )
+
+            with (
+                patch("runtime_v2.cli._build_runtime_config", return_value=config),
+                patch("runtime_v2.cli._load_job_contract", return_value=explicit_job),
+                patch(
+                    "runtime_v2.cli._run_explicit_job_contract",
+                    return_value={
+                        "status": "ok",
+                        "code": "OK",
+                        "job": explicit_job.to_dict(),
+                        "worker_result": {
+                            "status": "failed",
+                            "stage": "canva_adapter",
+                            "error_code": "CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED",
+                            "completion": {
+                                "state": "failed",
+                                "final_output": False,
+                            },
+                        },
+                    },
+                ),
+                patch(
+                    "sys.argv",
+                    [
+                        "runtime_v2.cli",
+                        "--job-contract-path",
+                        str(contract_path),
+                    ],
+                ),
+            ):
+                exit_code = main()
+
+            debug_events = [
+                json.loads(line)
+                for line in config.debug_log_root.joinpath("canva-boundary-run.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+                if line.strip()
+            ]
+            cli_result_event = next(
+                event for event in debug_events if event.get("event") == "cli_result"
+            )
+
+        self.assertEqual(exit_code, exit_codes.CLI_USAGE)
+        self.assertEqual(cli_result_event["status"], "failed")
+        self.assertEqual(
+            cli_result_event["code"], "CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED"
+        )
+
     def test_build_runtime_config_uses_probe_root_for_stage5_child(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             probe_root = Path(tmp_dir) / "probe"
