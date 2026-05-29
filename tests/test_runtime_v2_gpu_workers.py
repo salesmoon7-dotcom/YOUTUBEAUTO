@@ -897,6 +897,50 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         details = cast(dict[object, object], result["details"])
         self.assertEqual(details["model_name"], "voice-model-a")
 
+    def test_qwen3_worker_uses_asset_manifest_image_for_rvc_next_job(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = artifact_root / "speech.flac"
+            image_path = root / "images" / "scene-01.png"
+            image_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = image_path.write_bytes(b"png")
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = output_path.write_bytes(b"stale")
+            manifest_path = root / "asset_manifest.json"
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "roles": {"image_primary": str(image_path.resolve())},
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            job = JobContract(
+                job_id="qwen-job-manifest",
+                workload="qwen3_tts",
+                payload={
+                    "script_text": "hello world",
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "emit_rvc_next_job": True,
+                    "asset_manifest_path": str(manifest_path.resolve()),
+                    "adapter_command": [sys.executable, "-c", "pass"],
+                },
+            )
+
+            result = run_qwen3_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        next_jobs = cast(list[object], result.get("next_jobs", []))
+        self.assertEqual(len(next_jobs), 1)
+        next_job_contract = cast(dict[str, object], next_jobs[0])
+        next_job = cast(dict[str, object], next_job_contract["job"])
+        next_payload = cast(dict[str, object], next_job["payload"])
+        self.assertEqual(str(next_payload["image_path"]), str(image_path.resolve()))
+
     def test_qwen3_worker_native_only_does_not_emit_next_jobs(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

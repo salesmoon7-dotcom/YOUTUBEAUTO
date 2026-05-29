@@ -156,6 +156,28 @@ def _load_qwen3_result_payload(workspace: Path) -> dict[str, object]:
     return cast(dict[str, object], raw_payload) if isinstance(raw_payload, dict) else {}
 
 
+def _resolve_qwen_image_path(payload: dict[str, object]) -> str:
+    image_path = str(payload.get("image_path", "")).strip()
+    if image_path:
+        return image_path
+    manifest_path_raw = str(payload.get("asset_manifest_path", "")).strip()
+    if not manifest_path_raw:
+        return ""
+    manifest_path = Path(manifest_path_raw)
+    if not manifest_path.exists() or not manifest_path.is_file():
+        return ""
+    try:
+        raw_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(raw_manifest, dict):
+        return ""
+    roles = raw_manifest.get("roles", {})
+    if not isinstance(roles, dict):
+        return ""
+    return str(roles.get("image_primary", "")).strip()
+
+
 def _qwen3_adapter_error_code(
     adapter_result: dict[str, object], workspace: Path
 ) -> tuple[str, dict[str, object]]:
@@ -196,7 +218,7 @@ def _build_rvc_next_job(
         "export_format": output_format.upper(),
         "chain_depth": _int_value(job.payload.get("chain_depth", 0), 0) + 1,
     }
-    image_path = str(job.payload.get("image_path", "")).strip()
+    image_path = _resolve_qwen_image_path(job.payload)
     if image_path:
         payload["image_path"] = image_path
     duration_sec = job.payload.get("duration_sec")
