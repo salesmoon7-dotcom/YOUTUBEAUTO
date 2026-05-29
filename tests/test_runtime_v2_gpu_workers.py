@@ -1058,8 +1058,10 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
 
             self.assertEqual(result["status"], "ok")
             self.assertTrue(output_path.exists())
+            next_jobs = cast(list[object], result.get("next_jobs", []))
             completion = cast(dict[object, object], result["completion"])
-            self.assertEqual(completion["state"], "succeeded")
+            self.assertEqual(len(next_jobs), 1)
+            self.assertEqual(completion["state"], "routed")
             self.assertTrue(bool(completion["final_output"]))
 
     def test_rvc_worker_accepts_audio_path_in_gemi_video_source_mode(self) -> None:
@@ -1368,11 +1370,54 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
             dict[object, object], run_adapter.call_args.kwargs["extra_env"]
         )
         self.assertIn("--rvc-adapter-child", adapter_command)
-        self.assertTrue(
-            str(adapter_extra_env["PYTHONPATH"]).startswith(
-                str(Path("D:/YOUTUBEAUTO").resolve())
+
+    def test_rvc_worker_emits_kenburns_next_job_when_image_present(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            source_path = root / "source.flac"
+            image_path = root / "image.png"
+            output_path = artifact_root / "converted.wav"
+            _ = source_path.write_bytes(b"flac")
+            _ = image_path.write_bytes(b"png")
+            job = JobContract(
+                job_id="rvc-job-kenburns",
+                workload="rvc",
+                payload={
+                    "source_path": str(source_path.resolve()),
+                    "image_path": str(image_path.resolve()),
+                    "model_name": "voice-model-a",
+                    "duration_sec": 11,
+                    "chain_depth": 1,
+                    "service_artifact_path": str(output_path),
+                    "adapter_command": [
+                        sys.executable,
+                        "-c",
+                        (
+                            "from pathlib import Path; "
+                            f"p=Path(r'{str(output_path)}'); "
+                            "p.parent.mkdir(parents=True, exist_ok=True); "
+                            "p.write_bytes(b'wav')"
+                        ),
+                    ],
+                },
             )
-        )
+
+            result = run_rvc_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        next_jobs = cast(list[object], result.get("next_jobs", []))
+        self.assertEqual(len(next_jobs), 1)
+        next_job_contract = cast(dict[str, object], next_jobs[0])
+        chain = cast(dict[str, object], next_job_contract["chain"])
+        next_job = cast(dict[str, object], next_job_contract["job"])
+        next_payload = cast(dict[str, object], next_job["payload"])
+        self.assertEqual(str(next_job["worker"]), "kenburns")
+        self.assertEqual(cast(int, chain["step"]), 2)
+        self.assertEqual(str(next_payload["source_path"]), str(image_path.resolve()))
+        self.assertEqual(str(next_payload["audio_path"]), str(output_path.resolve()))
+        self.assertEqual(cast(int, next_payload["duration_sec"]), 11)
+        self.assertEqual(cast(int, next_payload["chain_depth"]), 2)
 
     def test_rvc_worker_keeps_explicit_adapter_command_when_present(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

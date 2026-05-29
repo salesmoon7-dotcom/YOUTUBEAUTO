@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from runtime_v2.contracts.job_contract import JobContract
+from runtime_v2.contracts.job_contract import build_explicit_job_contract, JobContract
 from runtime_v2.workers.external_process import (
     run_external_process,
     run_verified_adapter_command,
@@ -57,6 +57,34 @@ def _legacy_applio_runtime(config: dict[str, object]) -> dict[str, str]:
             )
         ).strip(),
     }
+
+
+def _build_kenburns_next_job(
+    job: JobContract, verified_output: Path, *, image_path: str
+) -> dict[str, object] | None:
+    if not image_path.strip():
+        return None
+    chain_depth = int(job.payload.get("chain_depth", 0)) + 1
+    payload: dict[str, object] = {
+        "source_path": image_path.strip(),
+        "audio_path": str(verified_output.resolve()),
+        "duration_sec": job.payload.get("duration_sec", 8),
+        "chain_depth": chain_depth,
+    }
+    for key in ("run_id", "row_ref", "topic", "episode_no", "channel"):
+        value = job.payload.get(key)
+        if isinstance(value, str) and value.strip():
+            payload[key] = value.strip()
+        elif isinstance(value, (int, float)):
+            payload[key] = value
+    return build_explicit_job_contract(
+        job_id=f"kenburns-{job.job_id}",
+        workload="kenburns",
+        checkpoint_key=f"derived:kenburns:{job.job_id}",
+        payload=payload,
+        chain_step=chain_depth,
+        parent_job_id=job.job_id,
+    )
 
 
 def run_rvc_job(
@@ -215,6 +243,13 @@ def run_rvc_job(
                 completion={"state": "failed", "final_output": False},
             )
         verified_output = Path(str(adapter_result["output_path"]))
+        image_path = str(job.payload.get("image_path", "")).strip()
+        next_jobs: list[dict[str, object]] = []
+        kenburns_next_job = _build_kenburns_next_job(
+            job, verified_output, image_path=image_path
+        )
+        if kenburns_next_job is not None:
+            next_jobs.append(kenburns_next_job)
 
         return finalize_worker_result(
             workspace,
@@ -230,7 +265,7 @@ def run_rvc_job(
             retryable=False,
             details={
                 "model_name": model_name,
-                "image_path": str(job.payload.get("image_path", "")).strip(),
+                "image_path": image_path,
                 "audio_path": str(job.payload.get("audio_path", "")).strip(),
                 "duration_sec": job.payload.get("duration_sec", 8),
                 "source_mode": source_mode,
@@ -239,8 +274,9 @@ def run_rvc_job(
                 "adapter_mode": "command",
                 **legacy_runtime,
             },
+            next_jobs=next_jobs,
             completion={
-                "state": "succeeded",
+                "state": "routed" if next_jobs else "succeeded",
                 "final_output": True,
                 "final_artifact": verified_output.name,
                 "final_artifact_path": str(verified_output.resolve()),
