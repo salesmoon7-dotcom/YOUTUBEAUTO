@@ -1173,6 +1173,7 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             .replace("\\", "/")
             .endswith("/speech.flac")
         )
+        self.assertTrue(bool(qwen_payload["emit_rvc_next_job"]))
         self.assertEqual(len(render_jobs), 1)
 
     def test_control_plane_merges_chatgpt_video_plan_to_excel_main_path(self) -> None:

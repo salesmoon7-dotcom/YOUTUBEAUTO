@@ -2147,6 +2147,7 @@ def _declared_stage1_qwen_job(
             "topic": topic,
             "voice_texts": voice_texts,
             "model_name": model_name or "voice-model-a",
+            "emit_rvc_next_job": True,
             "service_artifact_path": str(service_artifact_path),
             "chain_depth": 0,
             "excel_path": excel_path,
