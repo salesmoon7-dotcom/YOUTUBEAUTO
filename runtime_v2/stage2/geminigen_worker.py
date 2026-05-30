@@ -222,6 +222,7 @@ def run_geminigen_job(
         model_name = str(job.payload.get("model_name", "")).strip()
         chain_step = _int_value(job.payload.get("chain_depth", 0), 0) + 1
         if model_name:
+            image_path = str(job.payload.get("first_frame_path", "")).strip()
             next_jobs.append(
                 build_explicit_job_contract(
                     job_id=f"rvc-{job.job_id}",
@@ -229,6 +230,7 @@ def run_geminigen_job(
                     checkpoint_key=f"derived:rvc:{job.job_id}",
                     payload={
                         "audio_path": str(verified_output.resolve()),
+                        "image_path": image_path,
                         "model_name": model_name,
                         "service_artifact_path": str(
                             verified_output.with_name(
