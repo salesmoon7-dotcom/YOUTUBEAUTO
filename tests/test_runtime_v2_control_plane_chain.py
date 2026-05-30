@@ -1372,11 +1372,20 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             )
             render_payload = cast(dict[str, object], render_job["payload"])
             canva_payload = cast(dict[str, object], canva_job["payload"])
+            qwen_job = next(
+                item
+                for item in queued_items
+                if str(item.get("job_id", "")).startswith("qwen3-")
+            )
+            qwen_payload = cast(dict[str, object], qwen_job["payload"])
             manifest_path = Path(str(render_payload["asset_manifest_path"]))
             manifest = cast(
                 dict[str, object], json.loads(manifest_path.read_text(encoding="utf-8"))
             )
             self.assertTrue(manifest_path.exists())
+            self.assertEqual(
+                str(qwen_payload["asset_manifest_path"]), str(manifest_path.resolve())
+            )
             self.assertEqual(
                 str(canva_payload["asset_manifest_path"]), str(manifest_path.resolve())
             )

@@ -1942,7 +1942,7 @@ def _attach_asset_manifest(
         if not isinstance(payload_raw, dict):
             continue
         payload = cast(dict[object, object], payload_raw)
-        if str(job_block.get("worker", "")) in {"render", "canva"}:
+        if str(job_block.get("worker", "")) in {"render", "canva", "qwen3_tts"}:
             payload["asset_manifest_path"] = str(manifest_path.resolve())
     return manifest_path
 
