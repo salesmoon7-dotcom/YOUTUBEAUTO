@@ -123,6 +123,41 @@ def _build_shorts_render_next_job(
     )
 
 
+def _build_n8n_upload_next_job(
+    job: JobContract, final_output_path: Path
+) -> dict[str, object] | None:
+    callback_url = str(job.payload.get("callback_url", "")).strip()
+    if not callback_url:
+        return None
+    raw_depth = job.payload.get("chain_depth", 0)
+    if isinstance(raw_depth, bool):
+        chain_depth = int(raw_depth)
+    elif isinstance(raw_depth, int):
+        chain_depth = raw_depth
+    elif isinstance(raw_depth, float):
+        chain_depth = int(raw_depth)
+    elif isinstance(raw_depth, str) and raw_depth.strip():
+        chain_depth = int(raw_depth.strip())
+    else:
+        chain_depth = 0
+    chain_depth += 1
+    return build_explicit_job_contract(
+        job_id=f"n8n-{job.job_id}",
+        workload="n8n_upload",
+        checkpoint_key=f"derived:n8n_upload:{job.job_id}",
+        payload={
+            "run_id": str(job.payload.get("run_id", "")).strip(),
+            "row_ref": str(job.payload.get("row_ref", "")).strip(),
+            "callback_url": callback_url,
+            "artifact_path": str(final_output_path.resolve()),
+            "mode": "closeout",
+            "chain_depth": chain_depth,
+        },
+        chain_step=chain_depth,
+        parent_job_id=job.job_id,
+    )
+
+
 def _missing_render_paths(render_spec: dict[str, object]) -> list[str]:
     missing_paths: list[str] = []
 
@@ -736,6 +771,9 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
                     render_folder=render_folder,
                 ),
             ]
+            upload_next_job = _build_n8n_upload_next_job(job, final_output_path)
+            if upload_next_job is not None:
+                next_jobs.append(upload_next_job)
             return finalize_worker_result(
                 workspace,
                 status="ok",
@@ -876,6 +914,9 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
                     render_folder=render_folder,
                 ),
             ]
+            upload_next_job = _build_n8n_upload_next_job(job, final_output_path)
+            if upload_next_job is not None:
+                next_jobs.append(upload_next_job)
             return finalize_worker_result(
                 workspace,
                 status="ok",
@@ -1089,6 +1130,9 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
                 render_folder=render_folder,
             ),
         ]
+        upload_next_job = _build_n8n_upload_next_job(job, final_output_path)
+        if upload_next_job is not None:
+            next_jobs.append(upload_next_job)
 
         return finalize_worker_result(
             workspace,

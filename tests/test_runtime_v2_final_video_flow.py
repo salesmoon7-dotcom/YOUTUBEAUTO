@@ -349,6 +349,50 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
             .endswith("/shorts/shorts_final.mp4")
         )
 
+    def test_render_worker_emits_n8n_upload_when_callback_url_present(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            render_folder, voice_json, render_spec = _write_render_fixture(root)
+            job = JobContract(
+                job_id="render-job-upload",
+                workload="render",
+                payload={
+                    "run_id": "render-run-upload",
+                    "row_ref": "Sheet1!row2",
+                    "chain_depth": 1,
+                    "callback_url": "https://example.test/webhook",
+                    "render_folder_path": str(render_folder.resolve()),
+                    "voice_json_path": str(voice_json.resolve()),
+                    "render_spec_path": str(render_spec.resolve()),
+                },
+            )
+
+            result = run_render_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        next_jobs = [
+            cast(dict[str, object], item)
+            for item in cast(list[object], result.get("next_jobs", []))
+        ]
+        upload_contract = next(
+            item
+            for item in next_jobs
+            if str(cast(dict[str, object], item["job"])["worker"]) == "n8n_upload"
+        )
+        upload_chain = cast(dict[str, object], upload_contract["chain"])
+        upload_job = cast(dict[str, object], upload_contract["job"])
+        upload_payload = cast(dict[str, object], upload_job["payload"])
+        self.assertEqual(str(upload_job["job_id"]), "n8n-render-job-upload")
+        self.assertEqual(cast(int, upload_chain["step"]), 2)
+        self.assertEqual(
+            str(upload_payload["callback_url"]), "https://example.test/webhook"
+        )
+        self.assertEqual(
+            str(upload_payload["artifact_path"]),
+            str((render_folder / "output" / "render_final.mp4").resolve()),
+        )
+
     def test_render_worker_reports_native_only_boundary(
         self,
     ) -> None:
