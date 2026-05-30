@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 from runtime_v2.contracts.job_contract import JobContract
 from runtime_v2.workers.external_process import run_external_process
-from runtime_v2.workers.job_runtime import finalize_worker_result, prepare_workspace, resolve_local_input
+from runtime_v2.workers.job_runtime import (
+    finalize_worker_result,
+    prepare_workspace,
+    resolve_local_input,
+    stage_local_input,
+)
 
 SHORTS_WIDTH = 1080
 SHORTS_HEIGHT = 1920
@@ -12,16 +18,61 @@ SHORTS_FPS = 30
 SHORTS_CRF = 18
 
 
-def run_shorts_render_job(job: JobContract, *, artifact_root: Path) -> dict[str, object]:
+def run_shorts_render_job(
+    job: JobContract, *, artifact_root: Path
+) -> dict[str, object]:
     workspace = prepare_workspace(job, artifact_root)
-    source_path = resolve_local_input(str(job.payload.get("source_video_path", "")).strip())
+    source_path = resolve_local_input(
+        str(job.payload.get("source_video_path", "")).strip()
+    )
+    voice_json_source = resolve_local_input(
+        str(job.payload.get("voice_json_path", "")).strip()
+    )
     output_path_raw = str(job.payload.get("service_artifact_path", "")).strip()
-    if source_path is None or not output_path_raw:
+    if source_path is None or voice_json_source is None or not output_path_raw:
         return finalize_worker_result(
             workspace,
             status="failed",
             stage="validate_input",
             artifacts=[],
+            error_code="missing_shorts_inputs",
+            retryable=False,
+            completion={"state": "failed", "final_output": False},
+        )
+    try:
+        staged_voice_json = stage_local_input(
+            workspace, voice_json_source, target_name="voice.json"
+        )
+        voice_payload = json.loads(staged_voice_json.read_text(encoding="utf-8"))
+    except OSError:
+        return finalize_worker_result(
+            workspace,
+            status="failed",
+            stage="validate_input",
+            artifacts=[],
+            error_code="shorts_input_io_failed",
+            retryable=False,
+            completion={"state": "failed", "final_output": False},
+        )
+    except json.JSONDecodeError:
+        return finalize_worker_result(
+            workspace,
+            status="failed",
+            stage="validate_input",
+            artifacts=[staged_voice_json],
+            error_code="missing_shorts_inputs",
+            retryable=False,
+            completion={"state": "failed", "final_output": False},
+        )
+    voice_texts = (
+        voice_payload.get("voice_texts", []) if isinstance(voice_payload, dict) else []
+    )
+    if not isinstance(voice_texts, list) or not voice_texts:
+        return finalize_worker_result(
+            workspace,
+            status="failed",
+            stage="validate_input",
+            artifacts=[staged_voice_json],
             error_code="missing_shorts_inputs",
             retryable=False,
             completion={"state": "failed", "final_output": False},
@@ -64,7 +115,7 @@ def run_shorts_render_job(job: JobContract, *, artifact_root: Path) -> dict[str,
             workspace,
             status="failed",
             stage="shorts_render",
-            artifacts=[],
+            artifacts=[staged_voice_json],
             error_code="shorts_render_failed",
             retryable=False,
             details={"process": process},
@@ -74,7 +125,15 @@ def run_shorts_render_job(job: JobContract, *, artifact_root: Path) -> dict[str,
         workspace,
         status="ok",
         stage="shorts_render",
-        artifacts=[output_path],
-        details={"service_artifact_path": str(output_path.resolve()), "process": process},
-        completion={"state": "succeeded", "final_output": True, "final_artifact_path": str(output_path.resolve())},
+        artifacts=[staged_voice_json, output_path],
+        details={
+            "voice_json_path": str(staged_voice_json.resolve()),
+            "service_artifact_path": str(output_path.resolve()),
+            "process": process,
+        },
+        completion={
+            "state": "succeeded",
+            "final_output": True,
+            "final_artifact_path": str(output_path.resolve()),
+        },
     )

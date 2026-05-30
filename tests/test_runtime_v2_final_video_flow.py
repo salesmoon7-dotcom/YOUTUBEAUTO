@@ -101,8 +101,16 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
                 payload={
                     "run_id": "shorts-run-1",
                     "source_video_path": str(source_video.resolve()),
+                    "voice_json_path": str((root / "voice.json").resolve()),
                     "service_artifact_path": str(output_path.resolve()),
                 },
+            )
+            (root / "voice.json").write_text(
+                json.dumps(
+                    {"voice_texts": [{"col": "#01", "text": "hello"}]},
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
             )
             commands: list[list[str]] = []
 
@@ -153,6 +161,69 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
                     for part in command
                 )
             )
+
+    def test_shorts_render_worker_fails_closed_without_voice_json(self) -> None:
+        from runtime_v2.workers.shorts_render_worker import run_shorts_render_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            source_video = root / "source.mp4"
+            source_video.write_bytes(b"mp4")
+            output_path = artifact_root / "shorts.mp4"
+            job = JobContract(
+                job_id="shorts-render-job-missing-voice-json",
+                workload="shorts_render",
+                payload={
+                    "run_id": "shorts-run-2",
+                    "source_video_path": str(source_video.resolve()),
+                    "service_artifact_path": str(output_path.resolve()),
+                },
+            )
+
+            result = run_shorts_render_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "missing_shorts_inputs")
+
+    def test_shorts_render_worker_fails_closed_when_voice_json_staging_raises_oserror(
+        self,
+    ) -> None:
+        from runtime_v2.workers.shorts_render_worker import run_shorts_render_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            source_video = root / "source.mp4"
+            voice_json = root / "voice.json"
+            output_path = artifact_root / "shorts.mp4"
+            source_video.write_bytes(b"mp4")
+            voice_json.write_text(
+                json.dumps(
+                    {"voice_texts": [{"col": "#01", "text": "hello"}]},
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            job = JobContract(
+                job_id="shorts-render-job-stage-io-fail",
+                workload="shorts_render",
+                payload={
+                    "run_id": "shorts-run-3",
+                    "source_video_path": str(source_video.resolve()),
+                    "voice_json_path": str(voice_json.resolve()),
+                    "service_artifact_path": str(output_path.resolve()),
+                },
+            )
+
+            with patch(
+                "runtime_v2.workers.shorts_render_worker.stage_local_input",
+                side_effect=OSError("copy failed"),
+            ):
+                result = run_shorts_render_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "shorts_input_io_failed")
 
     def test_render_worker_fails_closed_without_render_inputs(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
