@@ -107,7 +107,11 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
             commands: list[list[str]] = []
 
             def fake_process(
-                command: list[str], *, cwd: Path, extra_env: dict[str, str] | None = None, timeout_sec: int = 3600
+                command: list[str],
+                *,
+                cwd: Path,
+                extra_env: dict[str, str] | None = None,
+                timeout_sec: int = 3600,
             ) -> dict[str, object]:
                 _ = cwd
                 _ = extra_env
@@ -135,8 +139,20 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
 
             self.assertEqual(result["status"], "ok")
             self.assertTrue(output_path.exists())
-            self.assertTrue(any("-filter_complex" in part for command in commands for part in command))
-            self.assertTrue(any("overlay=(W-w)/2:(H-h)/2" in part for command in commands for part in command))
+            self.assertTrue(
+                any(
+                    "-filter_complex" in part
+                    for command in commands
+                    for part in command
+                )
+            )
+            self.assertTrue(
+                any(
+                    "overlay=(W-w)/2:(H-h)/2" in part
+                    for command in commands
+                    for part in command
+                )
+            )
 
     def test_render_worker_fails_closed_without_render_inputs(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -177,6 +193,53 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         self.assertEqual(str(details["render_mode"]), "reused")
         self.assertTrue(
             str(completion["final_artifact_path"]).endswith("render_final.mp4")
+        )
+
+    def test_render_worker_emits_srt_next_job_when_render_succeeds(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            render_folder, voice_json, render_spec = _write_render_fixture(root)
+            job = JobContract(
+                job_id="render-job-srt",
+                workload="render",
+                payload={
+                    "run_id": "render-run-1",
+                    "row_ref": "Sheet1!row1",
+                    "chain_depth": 2,
+                    "render_folder_path": str(render_folder.resolve()),
+                    "voice_json_path": str(voice_json.resolve()),
+                    "render_spec_path": str(render_spec.resolve()),
+                },
+            )
+
+            result = run_render_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        next_jobs = cast(list[object], result.get("next_jobs", []))
+        self.assertEqual(len(next_jobs), 1)
+        next_job_contract = cast(dict[str, object], next_jobs[0])
+        chain = cast(dict[str, object], next_job_contract["chain"])
+        next_job = cast(dict[str, object], next_job_contract["job"])
+        next_payload = cast(dict[str, object], next_job["payload"])
+        self.assertEqual(str(next_job["worker"]), "srt")
+        self.assertEqual(str(next_job["job_id"]), "srt-render-job-srt")
+        self.assertEqual(cast(int, chain["step"]), 3)
+        self.assertEqual(cast(int, next_payload["chain_depth"]), 3)
+        self.assertTrue(
+            str(next_payload["voice_json_path"])
+            .replace("\\", "/")
+            .endswith("/voice.json")
+        )
+        self.assertTrue(
+            str(next_payload["render_spec_path"])
+            .replace("\\", "/")
+            .endswith("/render_spec.json")
+        )
+        self.assertTrue(
+            str(next_payload["service_artifact_path"])
+            .replace("\\", "/")
+            .endswith("/render_final.srt")
         )
 
     def test_render_worker_reports_native_only_boundary(
@@ -411,9 +474,12 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         details = cast(dict[object, object], result["details"])
         completion = cast(dict[object, object], result["completion"])
+        next_jobs = cast(list[object], result.get("next_jobs", []))
         self.assertEqual(str(details["render_mode"]), "timeline_ffmpeg_audio")
         self.assertEqual(str(details["audio_source_path"]), str(audio_path.resolve()))
+        self.assertEqual(str(completion["state"]), "succeeded")
         self.assertTrue(bool(completion["final_output"]))
+        self.assertEqual(len(next_jobs), 1)
 
     def test_render_worker_mixes_optional_bgm_track(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -506,8 +572,16 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         details = cast(dict[object, object], result["details"])
         self.assertEqual(str(details["render_mode"]), "timeline_ffmpeg_audio")
-        self.assertTrue(any("-filter_complex" in command for command in commands for _ in [0]))
-        self.assertTrue(any("amix=inputs=2:duration=first:normalize=0" in part for command in commands for part in command))
+        self.assertTrue(
+            any("-filter_complex" in command for command in commands for _ in [0])
+        )
+        self.assertTrue(
+            any(
+                "amix=inputs=2:duration=first:normalize=0" in part
+                for command in commands
+                for part in command
+            )
+        )
 
     def test_render_worker_concats_multiple_audio_refs_before_mux(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

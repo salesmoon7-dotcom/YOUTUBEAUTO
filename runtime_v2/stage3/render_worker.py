@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import cast
 
 from runtime_v2.config import external_runtime_root
-from runtime_v2.contracts.job_contract import JobContract
+from runtime_v2.contracts.job_contract import build_explicit_job_contract, JobContract
 from runtime_v2.workers.external_process import run_external_process
 from runtime_v2.workers.job_runtime import (
     REPO_ROOT,
@@ -45,6 +45,44 @@ def _load_render_spec_payload(render_spec_path: Path) -> dict[str, object] | Non
         return None
     typed_payload = cast(dict[object, object], raw_payload)
     return {str(key): value for key, value in typed_payload.items()}
+
+
+def _build_srt_next_job(
+    job: JobContract,
+    final_output_path: Path,
+    *,
+    voice_json_path: Path,
+    render_spec_path: Path,
+) -> dict[str, object]:
+    raw_depth = job.payload.get("chain_depth", 0)
+    if isinstance(raw_depth, bool):
+        chain_depth = int(raw_depth)
+    elif isinstance(raw_depth, int):
+        chain_depth = raw_depth
+    elif isinstance(raw_depth, float):
+        chain_depth = int(raw_depth)
+    elif isinstance(raw_depth, str) and raw_depth.strip():
+        chain_depth = int(raw_depth.strip())
+    else:
+        chain_depth = 0
+    chain_depth += 1
+    return build_explicit_job_contract(
+        job_id=f"srt-{job.job_id}",
+        workload="srt",
+        checkpoint_key=f"derived:srt:{job.job_id}",
+        payload={
+            "run_id": str(job.payload.get("run_id", "")).strip(),
+            "row_ref": str(job.payload.get("row_ref", "")).strip(),
+            "voice_json_path": str(voice_json_path.resolve()),
+            "render_spec_path": str(render_spec_path.resolve()),
+            "service_artifact_path": str(
+                final_output_path.with_suffix(".srt").resolve()
+            ),
+            "chain_depth": chain_depth,
+        },
+        chain_step=chain_depth,
+        parent_job_id=job.job_id,
+    )
 
 
 def _missing_render_paths(render_spec: dict[str, object]) -> list[str]:
@@ -423,8 +461,6 @@ def _concat_scene_clips(
     return run_external_process(command, cwd=output_path.parent)
 
 
-
-
 def _resolve_bgm_path(render_spec: dict[str, object]) -> Path | None:
     raw_bgm_path = str(render_spec.get("bgm_path", "")).strip()
     if not raw_bgm_path:
@@ -436,7 +472,12 @@ def _resolve_bgm_path(render_spec: dict[str, object]) -> Path | None:
 
 
 def _mix_render_bgm(
-    video_path: Path, voice_path: Path, bgm_path: Path, output_path: Path, *, bgm_volume: float
+    video_path: Path,
+    voice_path: Path,
+    bgm_path: Path,
+    output_path: Path,
+    *,
+    bgm_volume: float,
 ) -> dict[str, object]:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     command = [
@@ -462,6 +503,8 @@ def _mix_render_bgm(
         str(output_path.resolve()),
     ]
     return run_external_process(command, cwd=output_path.parent)
+
+
 def _mux_render_audio(
     video_path: Path, audio_path: Path, output_path: Path
 ) -> dict[str, object]:
@@ -525,16 +568,22 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
             if raw_render_folder_path
             else None
         )
-        voice_json_path = (
+        source_voice_json_path = (
             resolve_local_input(raw_voice_json_path) if raw_voice_json_path else None
         )
-        if voice_json_path is None:
+        if source_voice_json_path is None:
             voice_json_payload = job.payload.get("voice_json", {})
             if isinstance(voice_json_payload, dict):
-                voice_json_path = write_json_atomic(
+                staged_voice_json = write_json_atomic(
                     workspace / "voice.json",
                     cast(dict[str, object], voice_json_payload),
                 )
+            else:
+                staged_voice_json = None
+        else:
+            staged_voice_json = stage_local_input(
+                workspace, source_voice_json_path, target_name="voice.json"
+            )
     except OSError as exc:
         return finalize_worker_result(
             workspace,
@@ -546,7 +595,7 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
             completion={"state": "failed", "final_output": False},
             details={"exception": str(exc)},
         )
-    if render_folder is None or voice_json_path is None:
+    if render_folder is None or staged_voice_json is None:
         return finalize_worker_result(
             workspace,
             status="failed",
@@ -560,6 +609,7 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
                 "voice_json_path": raw_voice_json_path,
             },
         )
+    voice_json_path = staged_voice_json
 
     render_spec_payload = _load_render_spec_payload(staged_render_spec)
     if render_spec_payload is None:
@@ -567,7 +617,7 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
             workspace,
             status="failed",
             stage="render",
-            artifacts=[staged_render_spec, voice_json_path],
+            artifacts=[staged_render_spec, staged_voice_json],
             error_code="invalid_render_spec",
             retryable=False,
             completion={"state": "failed", "final_output": False},
@@ -580,7 +630,7 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
             workspace,
             status="failed",
             stage="render",
-            artifacts=[staged_render_spec, voice_json_path],
+            artifacts=[staged_render_spec, staged_voice_json],
             error_code=render_context_error,
             retryable=False,
             completion={"state": "failed", "final_output": False},
@@ -593,7 +643,7 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
                 workspace,
                 status="failed",
                 stage="render",
-                artifacts=[staged_render_spec, voice_json_path],
+                artifacts=[staged_render_spec, staged_voice_json],
                 error_code="missing_asset_manifest",
                 retryable=True,
                 completion={"state": "blocked", "final_output": False},
@@ -608,7 +658,7 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
                 workspace,
                 status="failed",
                 stage="render",
-                artifacts=[staged_render_spec, voice_json_path, asset_manifest_path],
+                artifacts=[staged_render_spec, staged_voice_json, asset_manifest_path],
                 error_code=manifest_error,
                 retryable=retryable,
                 completion={"state": completion_state, "final_output": False},
@@ -620,7 +670,7 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
             workspace,
             status="failed",
             stage="render",
-            artifacts=[staged_render_spec, voice_json_path],
+            artifacts=[staged_render_spec, staged_voice_json],
             error_code="render_inputs_not_ready",
             retryable=True,
             completion={"state": "blocked", "final_output": False},
@@ -634,15 +684,24 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
         final_output_path = _render_output_path(render_folder)
         final_output_path.parent.mkdir(parents=True, exist_ok=True)
         if final_output_path.exists() and final_output_path.is_file():
+            next_jobs = [
+                _build_srt_next_job(
+                    job,
+                    final_output_path,
+                    voice_json_path=staged_voice_json,
+                    render_spec_path=staged_render_spec,
+                )
+            ]
             return finalize_worker_result(
                 workspace,
                 status="ok",
                 stage="render",
                 artifacts=[staged_render_spec, voice_json_path, final_output_path],
                 retryable=False,
+                next_jobs=next_jobs,
                 details={
                     "render_folder_path": str(render_folder.resolve()),
-                    "voice_json_path": str(voice_json_path.resolve()),
+                    "voice_json_path": str(staged_voice_json.resolve()),
                     "service_artifact_path": str(final_output_path.resolve()),
                     "render_mode": "reused",
                     "reused": True,
@@ -667,13 +726,13 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
                     workspace,
                     status="failed",
                     stage="render",
-                    artifacts=[staged_render_spec, voice_json_path],
+                    artifacts=[staged_render_spec, staged_voice_json],
                     error_code="render_asset_unsupported",
                     retryable=False,
                     completion={"state": "failed", "final_output": False},
                     details={
                         "render_folder_path": str(render_folder.resolve()),
-                        "voice_json_path": str(voice_json_path.resolve()),
+                        "voice_json_path": str(staged_voice_json.resolve()),
                         "reason_code": str(
                             render_spec_payload.get("reason_code", "ok")
                         ),
@@ -694,20 +753,22 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
             render_spec_payload, artifact_root, run_id=render_run_id
         )
         bgm_path = _resolve_bgm_path(render_spec_payload)
-        bgm_volume = _float_from_object(render_spec_payload.get("bgm_volume", 0.15), 0.15)
+        bgm_volume = _float_from_object(
+            render_spec_payload.get("bgm_volume", 0.15), 0.15
+        )
         audio_source = audio_sources[0] if len(audio_sources) == 1 else None
-        if not audio_sources and _voice_texts_present(voice_json_path):
+        if not audio_sources and _voice_texts_present(staged_voice_json):
             return finalize_worker_result(
                 workspace,
                 status="failed",
                 stage="render",
-                artifacts=[staged_render_spec, voice_json_path],
+                artifacts=[staged_render_spec, staged_voice_json],
                 error_code="render_audio_not_ready",
                 retryable=True,
                 completion={"state": "blocked", "final_output": False},
                 details={
                     "render_folder_path": str(render_folder.resolve()),
-                    "voice_json_path": str(voice_json_path.resolve()),
+                    "voice_json_path": str(staged_voice_json.resolve()),
                     "reason_code": str(render_spec_payload.get("reason_code", "ok")),
                 },
             )
@@ -735,13 +796,13 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
                     workspace,
                     status="failed",
                     stage="render",
-                    artifacts=[staged_render_spec, voice_json_path],
+                    artifacts=[staged_render_spec, staged_voice_json],
                     error_code="ffmpeg_failed",
                     retryable=True,
                     completion={"state": "failed", "final_output": False},
                     details={
                         "render_folder_path": str(render_folder.resolve()),
-                        "voice_json_path": str(voice_json_path.resolve()),
+                        "voice_json_path": str(staged_voice_json.resolve()),
                         "stdout": str(concat_audio_result.get("stdout", "")),
                         "stderr": str(concat_audio_result.get("stderr", "")),
                         "reason_code": str(
@@ -757,15 +818,24 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
         ):
             source_asset = Path(str(timeline_entries[0]["asset_path"]))
             _ = shutil.copy2(source_asset, final_output_path)
+            next_jobs = [
+                _build_srt_next_job(
+                    job,
+                    final_output_path,
+                    voice_json_path=staged_voice_json,
+                    render_spec_path=staged_render_spec,
+                )
+            ]
             return finalize_worker_result(
                 workspace,
                 status="ok",
                 stage="render",
-                artifacts=[staged_render_spec, voice_json_path, final_output_path],
+                artifacts=[staged_render_spec, staged_voice_json, final_output_path],
                 retryable=False,
+                next_jobs=next_jobs,
                 details={
                     "render_folder_path": str(render_folder.resolve()),
-                    "voice_json_path": str(voice_json_path.resolve()),
+                    "voice_json_path": str(staged_voice_json.resolve()),
                     "source_asset_path": str(source_asset.resolve()),
                     "audio_source_path": "",
                     "service_artifact_path": str(final_output_path.resolve()),
@@ -810,13 +880,13 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
                     workspace,
                     status="failed",
                     stage="render",
-                    artifacts=[staged_render_spec, voice_json_path, *scene_clips],
+                    artifacts=[staged_render_spec, staged_voice_json, *scene_clips],
                     error_code="ffmpeg_failed",
                     retryable=True,
                     completion={"state": "failed", "final_output": False},
                     details={
                         "render_folder_path": str(render_folder.resolve()),
-                        "voice_json_path": str(voice_json_path.resolve()),
+                        "voice_json_path": str(staged_voice_json.resolve()),
                         "source_asset_path": str(asset_path.resolve()),
                         "stdout": str(process_result.get("stdout", "")),
                         "stderr": str(process_result.get("stderr", "")),
@@ -853,13 +923,13 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
                     workspace,
                     status="failed",
                     stage="render",
-                    artifacts=[staged_render_spec, voice_json_path, *scene_clips],
+                    artifacts=[staged_render_spec, staged_voice_json, *scene_clips],
                     error_code="ffmpeg_failed",
                     retryable=True,
                     completion={"state": "failed", "final_output": False},
                     details={
                         "render_folder_path": str(render_folder.resolve()),
-                        "voice_json_path": str(voice_json_path.resolve()),
+                        "voice_json_path": str(staged_voice_json.resolve()),
                         "stdout": str(concat_result.get("stdout", "")),
                         "stderr": str(concat_result.get("stderr", "")),
                         "reason_code": str(
@@ -904,7 +974,7 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
                     stage="render",
                     artifacts=[
                         staged_render_spec,
-                        voice_json_path,
+                        staged_voice_json,
                         *scene_clips,
                         silent_output_path,
                     ],
@@ -913,7 +983,7 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
                     completion={"state": "failed", "final_output": False},
                     details={
                         "render_folder_path": str(render_folder.resolve()),
-                        "voice_json_path": str(voice_json_path.resolve()),
+                        "voice_json_path": str(staged_voice_json.resolve()),
                         "audio_source_path": str(audio_source.resolve()),
                         "stdout": str(mux_result.get("stdout", "")),
                         "stderr": str(mux_result.get("stderr", "")),
@@ -942,18 +1012,27 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
                 workspace,
                 status="failed",
                 stage="render",
-                artifacts=[staged_render_spec, voice_json_path, *scene_clips],
+                artifacts=[staged_render_spec, staged_voice_json, *scene_clips],
                 error_code="render_output_missing",
                 retryable=False,
                 completion={"state": "failed", "final_output": False},
                 details={
                     "render_folder_path": str(render_folder.resolve()),
-                    "voice_json_path": str(voice_json_path.resolve()),
+                    "voice_json_path": str(staged_voice_json.resolve()),
                     "source_asset_path": str(source_asset.resolve()),
                     "render_mode": render_mode,
                     "reason_code": str(render_spec_payload.get("reason_code", "ok")),
                 },
             )
+
+        next_jobs = [
+            _build_srt_next_job(
+                job,
+                final_output_path,
+                voice_json_path=staged_voice_json,
+                render_spec_path=staged_render_spec,
+            )
+        ]
 
         return finalize_worker_result(
             workspace,
@@ -961,14 +1040,15 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
             stage="render",
             artifacts=[
                 staged_render_spec,
-                voice_json_path,
+                staged_voice_json,
                 *scene_clips,
                 final_output_path,
             ],
             retryable=False,
+            next_jobs=next_jobs,
             details={
                 "render_folder_path": str(render_folder.resolve()),
-                "voice_json_path": str(voice_json_path.resolve()),
+                "voice_json_path": str(staged_voice_json.resolve()),
                 "source_asset_path": str(source_asset.resolve()),
                 "audio_source_path": ""
                 if audio_source is None
@@ -992,13 +1072,13 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
             workspace,
             status="failed",
             stage="render",
-            artifacts=[staged_render_spec, voice_json_path],
+            artifacts=[staged_render_spec, staged_voice_json],
             error_code="render_io_failed",
             retryable=False,
             completion={"state": "failed", "final_output": False},
             details={
                 "render_folder_path": str(render_folder.resolve()),
-                "voice_json_path": str(voice_json_path.resolve()),
+                "voice_json_path": str(staged_voice_json.resolve()),
                 "reason_code": str(render_spec_payload.get("reason_code", "ok")),
                 "exception": str(exc),
             },
