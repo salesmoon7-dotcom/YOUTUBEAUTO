@@ -85,6 +85,44 @@ def _build_srt_next_job(
     )
 
 
+def _build_shorts_render_next_job(
+    job: JobContract,
+    final_output_path: Path,
+    *,
+    voice_json_path: Path,
+    render_folder: Path,
+) -> dict[str, object]:
+    raw_depth = job.payload.get("chain_depth", 0)
+    if isinstance(raw_depth, bool):
+        chain_depth = int(raw_depth)
+    elif isinstance(raw_depth, int):
+        chain_depth = raw_depth
+    elif isinstance(raw_depth, float):
+        chain_depth = int(raw_depth)
+    elif isinstance(raw_depth, str) and raw_depth.strip():
+        chain_depth = int(raw_depth.strip())
+    else:
+        chain_depth = 0
+    chain_depth += 1
+    return build_explicit_job_contract(
+        job_id=f"shorts-{job.job_id}",
+        workload="shorts_render",
+        checkpoint_key=f"derived:shorts_render:{job.job_id}",
+        payload={
+            "run_id": str(job.payload.get("run_id", "")).strip(),
+            "row_ref": str(job.payload.get("row_ref", "")).strip(),
+            "source_video_path": str(final_output_path.resolve()),
+            "voice_json_path": str(voice_json_path.resolve()),
+            "service_artifact_path": str(
+                (render_folder / "shorts" / "shorts_final.mp4").resolve()
+            ),
+            "chain_depth": chain_depth,
+        },
+        chain_step=chain_depth,
+        parent_job_id=job.job_id,
+    )
+
+
 def _missing_render_paths(render_spec: dict[str, object]) -> list[str]:
     missing_paths: list[str] = []
 
@@ -690,7 +728,13 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
                     final_output_path,
                     voice_json_path=staged_voice_json,
                     render_spec_path=staged_render_spec,
-                )
+                ),
+                _build_shorts_render_next_job(
+                    job,
+                    final_output_path,
+                    voice_json_path=staged_voice_json,
+                    render_folder=render_folder,
+                ),
             ]
             return finalize_worker_result(
                 workspace,
@@ -824,7 +868,13 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
                     final_output_path,
                     voice_json_path=staged_voice_json,
                     render_spec_path=staged_render_spec,
-                )
+                ),
+                _build_shorts_render_next_job(
+                    job,
+                    final_output_path,
+                    voice_json_path=staged_voice_json,
+                    render_folder=render_folder,
+                ),
             ]
             return finalize_worker_result(
                 workspace,
@@ -1031,7 +1081,13 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
                 final_output_path,
                 voice_json_path=staged_voice_json,
                 render_spec_path=staged_render_spec,
-            )
+            ),
+            _build_shorts_render_next_job(
+                job,
+                final_output_path,
+                voice_json_path=staged_voice_json,
+                render_folder=render_folder,
+            ),
         ]
 
         return finalize_worker_result(

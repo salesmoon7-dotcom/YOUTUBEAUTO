@@ -217,8 +217,16 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         next_jobs = cast(list[object], result.get("next_jobs", []))
-        self.assertEqual(len(next_jobs), 1)
-        next_job_contract = cast(dict[str, object], next_jobs[0])
+        self.assertEqual(len(next_jobs), 2)
+        next_job_contracts = [cast(dict[str, object], job) for job in next_jobs]
+        next_job_contract = cast(
+            dict[str, object],
+            next(
+                job
+                for job in next_job_contracts
+                if str(cast(dict[str, object], job["job"])["worker"]) == "srt"
+            ),
+        )
         chain = cast(dict[str, object], next_job_contract["chain"])
         next_job = cast(dict[str, object], next_job_contract["job"])
         next_payload = cast(dict[str, object], next_job["payload"])
@@ -240,6 +248,34 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
             str(next_payload["service_artifact_path"])
             .replace("\\", "/")
             .endswith("/render_final.srt")
+        )
+        shorts_contract = cast(
+            dict[str, object],
+            next(
+                job
+                for job in next_job_contracts
+                if str(cast(dict[str, object], job["job"])["worker"]) == "shorts_render"
+            ),
+        )
+        shorts_chain = cast(dict[str, object], shorts_contract["chain"])
+        shorts_job = cast(dict[str, object], shorts_contract["job"])
+        shorts_payload = cast(dict[str, object], shorts_job["payload"])
+        self.assertEqual(str(shorts_job["job_id"]), "shorts-render-job-srt")
+        self.assertEqual(cast(int, shorts_chain["step"]), 3)
+        self.assertEqual(cast(int, shorts_payload["chain_depth"]), 3)
+        self.assertEqual(
+            str(shorts_payload["source_video_path"]),
+            str((render_folder / "output" / "render_final.mp4").resolve()),
+        )
+        self.assertTrue(
+            str(shorts_payload["voice_json_path"])
+            .replace("\\", "/")
+            .endswith("/voice.json")
+        )
+        self.assertTrue(
+            str(shorts_payload["service_artifact_path"])
+            .replace("\\", "/")
+            .endswith("/shorts/shorts_final.mp4")
         )
 
     def test_render_worker_reports_native_only_boundary(
@@ -479,7 +515,7 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         self.assertEqual(str(details["audio_source_path"]), str(audio_path.resolve()))
         self.assertEqual(str(completion["state"]), "succeeded")
         self.assertTrue(bool(completion["final_output"]))
-        self.assertEqual(len(next_jobs), 1)
+        self.assertEqual(len(next_jobs), 2)
 
     def test_render_worker_mixes_optional_bgm_track(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
