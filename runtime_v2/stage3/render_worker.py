@@ -114,6 +114,7 @@ def _build_shorts_render_next_job(
             "row_index": job.payload.get("row_index", 0),
             "channel": job.payload.get("channel", 0),
             "callback_url": str(job.payload.get("callback_url", "")).strip(),
+            "render_folder_path": str(render_folder.resolve()),
             "source_video_path": str(final_output_path.resolve()),
             "voice_json_path": str(voice_json_path.resolve()),
             "service_artifact_path": str(
