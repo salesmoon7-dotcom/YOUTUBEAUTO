@@ -353,7 +353,10 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
                 payload={
                     "run_id": "render-run-1",
                     "row_ref": "Sheet1!row1",
+                    "row_index": 0,
                     "chain_depth": 2,
+                    "channel": 4,
+                    "callback_url": "https://example.test/webhook",
                     "render_folder_path": str(render_folder.resolve()),
                     "voice_json_path": str(voice_json.resolve()),
                     "render_spec_path": str(render_spec.resolve()),
@@ -364,7 +367,7 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         next_jobs = cast(list[object], result.get("next_jobs", []))
-        self.assertEqual(len(next_jobs), 2)
+        self.assertEqual(len(next_jobs), 3)
         next_job_contracts = [cast(dict[str, object], job) for job in next_jobs]
         next_job_contract = cast(
             dict[str, object],
@@ -410,6 +413,11 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         self.assertEqual(str(shorts_job["job_id"]), "shorts-render-job-srt")
         self.assertEqual(cast(int, shorts_chain["step"]), 3)
         self.assertEqual(cast(int, shorts_payload["chain_depth"]), 3)
+        self.assertEqual(cast(int, shorts_payload["row_index"]), 0)
+        self.assertEqual(cast(int, shorts_payload["channel"]), 4)
+        self.assertEqual(
+            str(shorts_payload["callback_url"]), "https://example.test/webhook"
+        )
         self.assertEqual(
             str(shorts_payload["source_video_path"]),
             str((render_folder / "output" / "render_final.mp4").resolve()),
