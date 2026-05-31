@@ -214,6 +214,8 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
                     "callback_url": "https://example.test/webhook",
                     "artifact_path": str(render_file.resolve()),
                     "row_ref": "Sheet1!row1",
+                    "channel": 4,
+                    "row_index": 1,
                     "mode": "closeout",
                 },
             )
@@ -228,6 +230,8 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         payload = cast(dict[str, object], post_callback.call_args.args[0])
         self.assertEqual(payload["callback_url"], "https://example.test/webhook")
         self.assertEqual(payload["artifact_path"], str(render_file.resolve()))
+        self.assertEqual(cast(int, payload["channel"]), 4)
+        self.assertEqual(cast(int, payload["row_index"]), 1)
 
     def test_n8n_upload_worker_invokes_legacy_mybox_helper_when_upload_mode_present(
         self,
