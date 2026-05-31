@@ -42,6 +42,8 @@ def _build_n8n_upload_next_job(
         payload={
             "run_id": str(job.payload.get("run_id", "")).strip(),
             "row_ref": str(job.payload.get("row_ref", "")).strip(),
+            "channel": job.payload.get("channel", 0),
+            "upload_mode": "video",
             "callback_url": callback_url,
             "artifact_path": str(output_path.resolve()),
             "mode": "shorts",
