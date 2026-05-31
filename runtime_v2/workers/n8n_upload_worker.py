@@ -31,6 +31,17 @@ def run_n8n_upload_job(job: JobContract, *, artifact_root: Path) -> dict[str, ob
             retryable=False,
             completion={"state": "failed", "final_output": False},
         )
+    artifact_file = Path(artifact_path)
+    if not artifact_file.exists() or not artifact_file.is_file():
+        return finalize_worker_result(
+            workspace,
+            status="failed",
+            stage="validate_input",
+            artifacts=[],
+            error_code="missing_artifact_path",
+            retryable=False,
+            completion={"state": "failed", "final_output": False},
+        )
     payload: dict[str, object] = {
         "schema_version": "1.0",
         "execution_env": "remote_n8n",

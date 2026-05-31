@@ -229,6 +229,30 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(payload["callback_url"], "https://example.test/webhook")
         self.assertEqual(payload["artifact_path"], str(render_file.resolve()))
 
+    def test_n8n_upload_worker_fails_closed_when_artifact_file_is_missing(self) -> None:
+        from runtime_v2.workers.n8n_upload_worker import run_n8n_upload_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            missing_file = root / "render_final.mp4"
+            job = JobContract(
+                job_id="n8n-upload-job-missing-artifact",
+                workload="n8n_upload",
+                payload={
+                    "run_id": "upload-run-2",
+                    "callback_url": "https://example.test/webhook",
+                    "artifact_path": str(missing_file.resolve()),
+                    "row_ref": "Sheet1!row1",
+                    "mode": "closeout",
+                },
+            )
+
+            result = run_n8n_upload_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "missing_artifact_path")
+
     def test_voicevox_workload_is_registered(self) -> None:
         from runtime_v2.config import allowed_workloads
 
