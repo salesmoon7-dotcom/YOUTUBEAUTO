@@ -188,6 +188,7 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
                 payload={
                     "run_id": "shorts-run-upload",
                     "row_ref": "Sheet1!row3",
+                    "row_index": 2,
                     "callback_url": "https://example.test/webhook",
                     "channel": 3,
                     "source_video_path": str(source_video.resolve()),
@@ -232,6 +233,7 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         )
         self.assertEqual(cast(int, upload_payload["channel"]), 3)
         self.assertEqual(str(upload_payload["upload_mode"]), "video")
+        self.assertEqual(cast(int, upload_payload["row_index"]), 2)
         self.assertEqual(
             str(upload_payload["artifact_path"]), str(output_path.resolve())
         )
@@ -434,6 +436,7 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
                 payload={
                     "run_id": "render-run-upload",
                     "row_ref": "Sheet1!row2",
+                    "row_index": 1,
                     "chain_depth": 1,
                     "callback_url": "https://example.test/webhook",
                     "channel": 4,
@@ -465,6 +468,7 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         )
         self.assertEqual(cast(int, upload_payload["channel"]), 4)
         self.assertEqual(str(upload_payload["upload_mode"]), "video")
+        self.assertEqual(cast(int, upload_payload["row_index"]), 1)
         self.assertEqual(
             str(upload_payload["artifact_path"]),
             str((render_folder / "output" / "render_final.mp4").resolve()),
