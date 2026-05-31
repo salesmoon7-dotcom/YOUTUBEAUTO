@@ -2169,6 +2169,60 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
             str(next_payload["image_path"]), str(first_frame_path.resolve())
         )
 
+    def test_geminigen_worker_uses_asset_manifest_image_for_rvc_next_job(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = artifact_root / "exports" / "geminigen-scene-02.mp4"
+            image_path = root / "frames" / "manifest-first.png"
+            image_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = image_path.write_bytes(b"png")
+            manifest_path = root / "asset_manifest.json"
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "roles": {"image_primary": str(image_path.resolve())},
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            job = JobContract(
+                job_id="geminigen-job-manifest",
+                workload="geminigen",
+                checkpoint_key="stage2:geminigen:Sheet1!row1:2",
+                payload={
+                    "run_id": "geminigen-run-manifest",
+                    "row_ref": "Sheet1!row1",
+                    "scene_index": 2,
+                    "prompt": "video prompt two",
+                    "model_name": "voice-model-a",
+                    "asset_manifest_path": str(manifest_path.resolve()),
+                    "service_artifact_path": str(output_path),
+                    "adapter_command": [
+                        sys.executable,
+                        "-c",
+                        (
+                            "from pathlib import Path; "
+                            f"p=Path(r'{str(output_path)}'); "
+                            "p.parent.mkdir(parents=True, exist_ok=True); "
+                            "p.write_bytes(b'mp4')"
+                        ),
+                    ],
+                },
+            )
+
+            result = run_geminigen_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        next_jobs = cast(list[object], result["next_jobs"])
+        self.assertEqual(len(next_jobs), 1)
+        next_job = cast(dict[str, object], next_jobs[0])
+        next_job_block = cast(dict[str, object], next_job["job"])
+        next_payload = cast(dict[str, object], next_job_block["payload"])
+        self.assertEqual(str(next_payload["image_path"]), str(image_path.resolve()))
+
     def test_geminigen_worker_fails_closed_when_login_proof_is_missing(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

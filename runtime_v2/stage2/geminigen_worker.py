@@ -109,6 +109,28 @@ def _geminigen_session_proof_failure(
     return None
 
 
+def _resolve_geminigen_image_path(payload: dict[str, object]) -> str:
+    image_path = str(payload.get("first_frame_path", "")).strip()
+    if image_path:
+        return image_path
+    manifest_path_raw = str(payload.get("asset_manifest_path", "")).strip()
+    if not manifest_path_raw:
+        return ""
+    manifest_path = Path(manifest_path_raw)
+    if not manifest_path.exists() or not manifest_path.is_file():
+        return ""
+    try:
+        raw_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(raw_manifest, dict):
+        return ""
+    roles = raw_manifest.get("roles", {})
+    if not isinstance(roles, dict):
+        return ""
+    return str(roles.get("image_primary", "")).strip()
+
+
 def run_geminigen_job(
     job: JobContract, artifact_root: Path, registry_file: Path | None = None
 ) -> dict[str, object]:
@@ -222,7 +244,7 @@ def run_geminigen_job(
         model_name = str(job.payload.get("model_name", "")).strip()
         chain_step = _int_value(job.payload.get("chain_depth", 0), 0) + 1
         if model_name:
-            image_path = str(job.payload.get("first_frame_path", "")).strip()
+            image_path = _resolve_geminigen_image_path(job.payload)
             next_jobs.append(
                 build_explicit_job_contract(
                     job_id=f"rvc-{job.job_id}",
