@@ -32,7 +32,7 @@ def run_n8n_upload_job(job: JobContract, *, artifact_root: Path) -> dict[str, ob
             str(channel_value),
         ]
         if isinstance(row_value, int):
-            command.extend(["--row", str(row_value)])
+            command.extend(["--row", str(row_value), "--row-base", "0"])
         if callback_url:
             command.extend(["--n8n-callback", callback_url])
         process = run_external_process(command=command, cwd=REPO_ROOT)
