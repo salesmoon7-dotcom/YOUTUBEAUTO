@@ -1284,6 +1284,8 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                     payload={
                         "run_id": "chatgpt-run-manifest",
                         "row_ref": "Sheet1!row1",
+                        "channel": 4,
+                        "callback_url": "https://example.test/webhook",
                         "topic_spec": topic_spec,
                     },
                 ),
@@ -1385,6 +1387,10 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
             self.assertTrue(manifest_path.exists())
             self.assertEqual(
                 str(qwen_payload["asset_manifest_path"]), str(manifest_path.resolve())
+            )
+            self.assertEqual(cast(int, render_payload["channel"]), 4)
+            self.assertEqual(
+                str(render_payload["callback_url"]), "https://example.test/webhook"
             )
             self.assertEqual(
                 str(canva_payload["asset_manifest_path"]), str(manifest_path.resolve())

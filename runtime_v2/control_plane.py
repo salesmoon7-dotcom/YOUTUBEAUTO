@@ -1824,12 +1824,18 @@ def _seed_declared_next_jobs(
         excel_path = str(parent_job.payload.get("excel_path", "")).strip()
         sheet_name = str(parent_job.payload.get("sheet_name", "")).strip()
         row_index = _to_int(parent_job.payload.get("row_index", -1))
+        callback_url = str(parent_job.payload.get("callback_url", "")).strip()
+        channel = _to_int(parent_job.payload.get("channel", 0))
         if excel_path:
             next_job.payload["excel_path"] = excel_path
         if sheet_name:
             next_job.payload["sheet_name"] = sheet_name
         if row_index >= 0:
             next_job.payload["row_index"] = row_index
+        if callback_url:
+            next_job.payload["callback_url"] = callback_url
+        if channel > 0:
+            next_job.payload["channel"] = channel
         if not payload_paths_are_local(next_job.payload):
             _ = _append_control_event(
                 {
