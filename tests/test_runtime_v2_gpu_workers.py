@@ -2170,6 +2170,10 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(
             str(next_payload["image_path"]), str(first_frame_path.resolve())
         )
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(
+            str(details["resolved_image_path"]), str(first_frame_path.resolve())
+        )
 
     def test_geminigen_worker_uses_asset_manifest_image_for_rvc_next_job(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -2224,6 +2228,8 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         next_job_block = cast(dict[str, object], next_job["job"])
         next_payload = cast(dict[str, object], next_job_block["payload"])
         self.assertEqual(str(next_payload["image_path"]), str(image_path.resolve()))
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(str(details["resolved_image_path"]), str(image_path.resolve()))
 
     def test_geminigen_worker_fails_closed_when_login_proof_is_missing(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
