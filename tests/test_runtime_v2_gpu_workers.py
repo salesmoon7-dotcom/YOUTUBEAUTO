@@ -229,6 +229,111 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(payload["callback_url"], "https://example.test/webhook")
         self.assertEqual(payload["artifact_path"], str(render_file.resolve()))
 
+    def test_n8n_upload_worker_invokes_legacy_mybox_helper_when_upload_mode_present(
+        self,
+    ) -> None:
+        from runtime_v2.workers.n8n_upload_worker import run_n8n_upload_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            render_file = root / "render_final.mp4"
+            render_file.write_bytes(b"mp4")
+            job = JobContract(
+                job_id="n8n-upload-job-mybox-video",
+                workload="n8n_upload",
+                payload={
+                    "run_id": "upload-run-legacy",
+                    "callback_url": "https://example.test/webhook",
+                    "artifact_path": str(render_file.resolve()),
+                    "upload_mode": "video",
+                    "channel": 4,
+                    "row_index": 2,
+                    "row_ref": "Sheet1!row3",
+                },
+            )
+
+            with (
+                patch(
+                    "runtime_v2.workers.n8n_upload_worker.run_external_process",
+                    return_value={
+                        "command": ["python"],
+                        "cwd": str(root),
+                        "exit_code": 0,
+                        "stdout": "mybox_video: uploaded=1",
+                        "stderr": "",
+                        "timed_out": False,
+                        "timeout_sec": 3600,
+                        "duration_sec": 0.01,
+                    },
+                ) as run_external_process,
+                patch(
+                    "runtime_v2.workers.n8n_upload_worker.post_callback"
+                ) as post_callback,
+            ):
+                result = run_n8n_upload_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        command = cast(list[str], run_external_process.call_args.kwargs["command"])
+        self.assertIn("n8n_mybox_upload.py", str(command[1]))
+        self.assertIn("--mode", command)
+        self.assertIn("video", command)
+        self.assertIn("--channel", command)
+        self.assertIn("4", command)
+        self.assertIn("--row", command)
+        self.assertIn("2", command)
+        self.assertIn("--n8n-callback", command)
+        self.assertIn("https://example.test/webhook", command)
+        post_callback.assert_not_called()
+
+    def test_n8n_upload_worker_allows_legacy_helper_without_callback_or_artifact(
+        self,
+    ) -> None:
+        from runtime_v2.workers.n8n_upload_worker import run_n8n_upload_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            job = JobContract(
+                job_id="n8n-upload-job-mybox-images",
+                workload="n8n_upload",
+                payload={
+                    "run_id": "upload-run-images",
+                    "upload_mode": "images",
+                    "channel": 3,
+                    "row_ref": "Sheet1!row9",
+                },
+            )
+
+            with (
+                patch(
+                    "runtime_v2.workers.n8n_upload_worker.run_external_process",
+                    return_value={
+                        "command": ["python"],
+                        "cwd": str(root),
+                        "exit_code": 0,
+                        "stdout": "mybox_images: uploaded=2",
+                        "stderr": "",
+                        "timed_out": False,
+                        "timeout_sec": 3600,
+                        "duration_sec": 0.01,
+                    },
+                ) as run_external_process,
+                patch(
+                    "runtime_v2.workers.n8n_upload_worker.post_callback"
+                ) as post_callback,
+            ):
+                result = run_n8n_upload_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        command = cast(list[str], run_external_process.call_args.kwargs["command"])
+        self.assertIn("--mode", command)
+        self.assertIn("images", command)
+        self.assertIn("--channel", command)
+        self.assertIn("3", command)
+        self.assertNotIn("--n8n-callback", command)
+        post_callback.assert_not_called()
+
     def test_n8n_upload_worker_fails_closed_when_artifact_file_is_missing(self) -> None:
         from runtime_v2.workers.n8n_upload_worker import run_n8n_upload_job
 
