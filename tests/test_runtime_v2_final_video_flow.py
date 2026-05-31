@@ -243,6 +243,110 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         self.assertIn("--voice-json", command)
         self.assertIn("--result-json", command)
 
+    def test_shorts_render_worker_legacy_folder_mode_does_not_require_source_video_path(
+        self,
+    ) -> None:
+        from runtime_v2.workers.shorts_render_worker import run_shorts_render_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            render_folder = root / "render_run"
+            render_folder.mkdir(parents=True, exist_ok=True)
+            voice_json = root / "voice.json"
+            voice_json.write_text(
+                json.dumps(
+                    {"voice_texts": [{"col": "#01", "text": "hello"}]},
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            output_path = artifact_root / "shorts.mp4"
+            job = JobContract(
+                job_id="shorts-render-job-legacy-no-source",
+                workload="shorts_render",
+                payload={
+                    "run_id": "shorts-run-legacy-2",
+                    "row_ref": "Sheet1!row2",
+                    "render_folder_path": str(render_folder.resolve()),
+                    "voice_json_path": str(voice_json.resolve()),
+                    "service_artifact_path": str(output_path.resolve()),
+                },
+            )
+
+            def fake_process(
+                command: list[str],
+                *,
+                cwd: Path,
+                extra_env: dict[str, str] | None = None,
+                timeout_sec: int = 3600,
+            ) -> dict[str, object]:
+                _ = cwd
+                _ = extra_env
+                _ = timeout_sec
+                result_json = Path(command[command.index("--result-json") + 1])
+                legacy_output = render_folder / "shorts" / "shorts_final.mp4"
+                legacy_output.parent.mkdir(parents=True, exist_ok=True)
+                legacy_output.write_bytes(b"mp4")
+                result_json.write_text(
+                    json.dumps(
+                        {"output_path": str(legacy_output.resolve())}, ensure_ascii=True
+                    ),
+                    encoding="utf-8",
+                )
+                return {
+                    "command": command,
+                    "cwd": str(cwd),
+                    "exit_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "timed_out": False,
+                    "timeout_sec": 3600,
+                    "duration_sec": 0.01,
+                }
+
+            with patch(
+                "runtime_v2.workers.shorts_render_worker.run_external_process",
+                side_effect=fake_process,
+            ):
+                result = run_shorts_render_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+
+    def test_shorts_render_worker_fails_closed_when_render_folder_invalid_and_no_source(
+        self,
+    ) -> None:
+        from runtime_v2.workers.shorts_render_worker import run_shorts_render_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            voice_json = root / "voice.json"
+            voice_json.write_text(
+                json.dumps(
+                    {"voice_texts": [{"col": "#01", "text": "hello"}]},
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            output_path = artifact_root / "shorts.mp4"
+            job = JobContract(
+                job_id="shorts-render-job-invalid-folder",
+                workload="shorts_render",
+                payload={
+                    "run_id": "shorts-run-invalid-folder",
+                    "row_ref": "Sheet1!row4",
+                    "render_folder_path": str((root / "missing_folder").resolve()),
+                    "voice_json_path": str(voice_json.resolve()),
+                    "service_artifact_path": str(output_path.resolve()),
+                },
+            )
+
+            result = run_shorts_render_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "missing_shorts_inputs")
+
     def test_shorts_render_worker_emits_n8n_upload_when_callback_url_present(
         self,
     ) -> None:

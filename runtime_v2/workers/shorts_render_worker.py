@@ -80,6 +80,10 @@ def run_shorts_render_job(
     job: JobContract, *, artifact_root: Path
 ) -> dict[str, object]:
     workspace = prepare_workspace(job, artifact_root)
+    render_folder_raw = str(job.payload.get("render_folder_path", "")).strip()
+    render_folder = (
+        _resolve_local_directory(render_folder_raw) if render_folder_raw else None
+    )
     source_path = resolve_local_input(
         str(job.payload.get("source_video_path", "")).strip()
     )
@@ -87,7 +91,11 @@ def run_shorts_render_job(
         str(job.payload.get("voice_json_path", "")).strip()
     )
     output_path_raw = str(job.payload.get("service_artifact_path", "")).strip()
-    if source_path is None or voice_json_source is None or not output_path_raw:
+    if (
+        voice_json_source is None
+        or not output_path_raw
+        or (render_folder is None and source_path is None)
+    ):
         return finalize_worker_result(
             workspace,
             status="failed",
@@ -142,10 +150,6 @@ def run_shorts_render_job(
     assert staged_voice_json is not None
     output_path = Path(output_path_raw)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    render_folder_raw = str(job.payload.get("render_folder_path", "")).strip()
-    render_folder = (
-        _resolve_local_directory(render_folder_raw) if render_folder_raw else None
-    )
     result_json_path: Path | None = None
     if isinstance(render_folder, Path) and render_folder.is_dir():
         result_json_path = output_path.with_suffix(".json")
@@ -160,6 +164,7 @@ def run_shorts_render_job(
             str(result_json_path.resolve()),
         ]
     else:
+        assert source_path is not None
         filter_complex = (
             f"[0:v]split[original][blur];"
             f"[blur]scale={SHORTS_WIDTH}:{SHORTS_HEIGHT},boxblur=20:20[blurred];"
