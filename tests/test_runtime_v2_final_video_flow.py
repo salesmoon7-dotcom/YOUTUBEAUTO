@@ -100,6 +100,7 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
                 workload="shorts_render",
                 payload={
                     "run_id": "shorts-run-1",
+                    "row_ref": "Sheet1!row1",
                     "source_video_path": str(source_video.resolve()),
                     "voice_json_path": str((root / "voice.json").resolve()),
                     "service_artifact_path": str(output_path.resolve()),
@@ -161,6 +162,76 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
                     for part in command
                 )
             )
+
+    def test_shorts_render_worker_emits_n8n_upload_when_callback_url_present(
+        self,
+    ) -> None:
+        from runtime_v2.workers.shorts_render_worker import run_shorts_render_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            source_video = root / "source.mp4"
+            source_video.write_bytes(b"mp4")
+            voice_json = root / "voice.json"
+            voice_json.write_text(
+                json.dumps(
+                    {"voice_texts": [{"col": "#01", "text": "hello"}]},
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            output_path = artifact_root / "shorts.mp4"
+            job = JobContract(
+                job_id="shorts-render-job-upload",
+                workload="shorts_render",
+                payload={
+                    "run_id": "shorts-run-upload",
+                    "row_ref": "Sheet1!row3",
+                    "callback_url": "https://example.test/webhook",
+                    "source_video_path": str(source_video.resolve()),
+                    "voice_json_path": str(voice_json.resolve()),
+                    "service_artifact_path": str(output_path.resolve()),
+                },
+            )
+
+            with patch(
+                "runtime_v2.workers.shorts_render_worker.run_external_process",
+                return_value={
+                    "command": ["ffmpeg"],
+                    "cwd": str(output_path.parent),
+                    "exit_code": 0,
+                    "stdout": "",
+                    "stderr": "",
+                    "timed_out": False,
+                    "timeout_sec": 3600,
+                    "duration_sec": 0.01,
+                },
+            ):
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"mp4")
+                result = run_shorts_render_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        next_jobs = [
+            cast(dict[str, object], item)
+            for item in cast(list[object], result.get("next_jobs", []))
+        ]
+        self.assertEqual(len(next_jobs), 1)
+        upload_contract = next_jobs[0]
+        upload_chain = cast(dict[str, object], upload_contract["chain"])
+        upload_job = cast(dict[str, object], upload_contract["job"])
+        upload_payload = cast(dict[str, object], upload_job["payload"])
+        self.assertEqual(str(upload_job["worker"]), "n8n_upload")
+        self.assertEqual(str(upload_job["job_id"]), "n8n-shorts-render-job-upload")
+        self.assertEqual(cast(int, upload_chain["step"]), 1)
+        self.assertEqual(cast(int, upload_payload["chain_depth"]), 1)
+        self.assertEqual(
+            str(upload_payload["callback_url"]), "https://example.test/webhook"
+        )
+        self.assertEqual(
+            str(upload_payload["artifact_path"]), str(output_path.resolve())
+        )
 
     def test_shorts_render_worker_fails_closed_without_voice_json(self) -> None:
         from runtime_v2.workers.shorts_render_worker import run_shorts_render_job

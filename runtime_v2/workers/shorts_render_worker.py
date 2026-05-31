@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
-
-from runtime_v2.contracts.job_contract import JobContract
+from runtime_v2.contracts.job_contract import build_explicit_job_contract, JobContract
 from runtime_v2.workers.external_process import run_external_process
 from runtime_v2.workers.job_runtime import (
     finalize_worker_result,
@@ -16,6 +15,41 @@ SHORTS_WIDTH = 1080
 SHORTS_HEIGHT = 1920
 SHORTS_FPS = 30
 SHORTS_CRF = 18
+
+
+def _build_n8n_upload_next_job(
+    job: JobContract, output_path: Path
+) -> dict[str, object] | None:
+    callback_url = str(job.payload.get("callback_url", "")).strip()
+    if not callback_url:
+        return None
+    raw_depth = job.payload.get("chain_depth", 0)
+    if isinstance(raw_depth, bool):
+        chain_depth = int(raw_depth)
+    elif isinstance(raw_depth, int):
+        chain_depth = raw_depth
+    elif isinstance(raw_depth, float):
+        chain_depth = int(raw_depth)
+    elif isinstance(raw_depth, str) and raw_depth.strip():
+        chain_depth = int(raw_depth.strip())
+    else:
+        chain_depth = 0
+    chain_depth += 1
+    return build_explicit_job_contract(
+        job_id=f"n8n-{job.job_id}",
+        workload="n8n_upload",
+        checkpoint_key=f"derived:n8n_upload:{job.job_id}",
+        payload={
+            "run_id": str(job.payload.get("run_id", "")).strip(),
+            "row_ref": str(job.payload.get("row_ref", "")).strip(),
+            "callback_url": callback_url,
+            "artifact_path": str(output_path.resolve()),
+            "mode": "shorts",
+            "chain_depth": chain_depth,
+        },
+        chain_step=chain_depth,
+        parent_job_id=job.job_id,
+    )
 
 
 def run_shorts_render_job(
@@ -39,6 +73,7 @@ def run_shorts_render_job(
             retryable=False,
             completion={"state": "failed", "final_output": False},
         )
+    staged_voice_json: Path | None = None
     try:
         staged_voice_json = stage_local_input(
             workspace, voice_json_source, target_name="voice.json"
@@ -55,11 +90,14 @@ def run_shorts_render_job(
             completion={"state": "failed", "final_output": False},
         )
     except json.JSONDecodeError:
+        decode_artifacts: list[Path] = []
+        if staged_voice_json is not None:
+            decode_artifacts.append(staged_voice_json)
         return finalize_worker_result(
             workspace,
             status="failed",
             stage="validate_input",
-            artifacts=[staged_voice_json],
+            artifacts=decode_artifacts,
             error_code="missing_shorts_inputs",
             retryable=False,
             completion={"state": "failed", "final_output": False},
@@ -77,6 +115,7 @@ def run_shorts_render_job(
             retryable=False,
             completion={"state": "failed", "final_output": False},
         )
+    assert staged_voice_json is not None
     output_path = Path(output_path_raw)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     filter_complex = (
@@ -121,6 +160,10 @@ def run_shorts_render_job(
             details={"process": process},
             completion={"state": "failed", "final_output": False},
         )
+    next_jobs: list[dict[str, object]] = []
+    upload_next_job = _build_n8n_upload_next_job(job, output_path)
+    if upload_next_job is not None:
+        next_jobs.append(upload_next_job)
     return finalize_worker_result(
         workspace,
         status="ok",
@@ -131,8 +174,9 @@ def run_shorts_render_job(
             "service_artifact_path": str(output_path.resolve()),
             "process": process,
         },
+        next_jobs=next_jobs,
         completion={
-            "state": "succeeded",
+            "state": "routed" if next_jobs else "succeeded",
             "final_output": True,
             "final_artifact_path": str(output_path.resolve()),
         },
