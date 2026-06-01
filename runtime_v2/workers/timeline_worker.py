@@ -37,14 +37,16 @@ def run_timeline_job(job: JobContract, *, artifact_root: Path) -> dict[str, obje
     voice_json_path = resolve_local_input(
         str(job.payload.get("voice_json_path", "")).strip()
     )
-    video_dir_path = _resolve_local_directory(
-        str(job.payload.get("video_dir_path", "")).strip()
-    )
-    voice_dir_path = _resolve_local_directory(
-        str(job.payload.get("voice_dir_path", "")).strip()
-    )
+    raw_video_dir = str(job.payload.get("video_dir_path", "")).strip()
+    video_dir_path = _resolve_local_directory(raw_video_dir) if raw_video_dir else None
+    raw_voice_dir = str(job.payload.get("voice_dir_path", "")).strip()
+    voice_dir_path = _resolve_local_directory(raw_voice_dir) if raw_voice_dir else None
     output_path_raw = str(job.payload.get("service_artifact_path", "")).strip()
-    if voice_json_path is None or video_dir_path is None or not output_path_raw:
+    if (
+        voice_json_path is None
+        or (video_dir_path is None and voice_dir_path is None)
+        or not output_path_raw
+    ):
         return finalize_worker_result(
             workspace,
             status="failed",
@@ -61,9 +63,9 @@ def run_timeline_job(job: JobContract, *, artifact_root: Path) -> dict[str, obje
         str(LEGACY_TIMELINE_SCRIPT),
         "--voice-json",
         str(voice_json_path.resolve()),
-        "--video-dir",
-        str(video_dir_path.resolve()),
     ]
+    if isinstance(video_dir_path, Path) and video_dir_path.is_dir():
+        command.extend(["--video-dir", str(video_dir_path.resolve())])
     channel_value = job.payload.get("channel")
     row_index_value = job.payload.get("row_index")
     if isinstance(channel_value, int):
