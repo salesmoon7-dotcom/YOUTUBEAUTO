@@ -1220,6 +1220,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         details = cast(dict[object, object], result["details"])
         self.assertEqual(details["execution_mode"], "native_only")
         self.assertEqual(details["model_name"], "voice-model-a")
+        self.assertEqual(str(details["resolved_image_path"]), str(image_path.resolve()))
 
     def test_qwen3_worker_requires_adapter_command_to_create_fresh_output(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
