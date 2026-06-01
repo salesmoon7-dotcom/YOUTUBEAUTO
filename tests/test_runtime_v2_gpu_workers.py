@@ -1031,6 +1031,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertTrue(bool(completion["final_output"]))
         details = cast(dict[object, object], result["details"])
         self.assertEqual(details["model_name"], "voice-model-a")
+        self.assertEqual(str(details["resolved_image_path"]), str(image_path.resolve()))
 
     def test_qwen3_worker_uses_asset_manifest_image_for_rvc_next_job(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -1075,6 +1076,8 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         next_job = cast(dict[str, object], next_job_contract["job"])
         next_payload = cast(dict[str, object], next_job["payload"])
         self.assertEqual(str(next_payload["image_path"]), str(image_path.resolve()))
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(str(details["resolved_image_path"]), str(image_path.resolve()))
 
     def test_qwen3_worker_native_only_does_not_emit_next_jobs(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

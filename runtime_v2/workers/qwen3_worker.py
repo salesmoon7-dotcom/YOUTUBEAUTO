@@ -264,6 +264,7 @@ def run_qwen3_job(
     project_root.mkdir(parents=True, exist_ok=True)
     reference_audio = _resolve_reference_audio(job, legacy_config)
     output_format = _normalize_output_format(legacy_config)
+    resolved_image_path = _resolve_qwen_image_path(job.payload)
     if reference_audio:
         ref_audio_path = Path(reference_audio)
         if not ref_audio_path.exists() or not ref_audio_path.is_file():
@@ -380,6 +381,7 @@ def run_qwen3_job(
                 "script_text_present": bool(voice_texts),
                 "voice_text_count": len(voice_texts),
                 "image_path": str(job.payload.get("image_path", "")).strip(),
+                "resolved_image_path": resolved_image_path,
                 "model_name": str(job.payload.get("model_name", "")).strip(),
                 "service_artifact_path": str(verified_output.resolve()),
                 "reused": bool(adapter_result.get("reused", False)),
@@ -409,6 +411,7 @@ def run_qwen3_job(
             "script_text_present": bool(voice_texts),
             "voice_text_count": len(voice_texts),
             "image_path": str(job.payload.get("image_path", "")).strip(),
+            "resolved_image_path": resolved_image_path,
             "model_name": str(job.payload.get("model_name", "")).strip(),
             "reference_audio": reference_audio,
             "ref_audio_used": reference_audio,
