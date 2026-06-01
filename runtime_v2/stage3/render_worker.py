@@ -110,6 +110,8 @@ def _build_timeline_next_job(
         payload={
             "run_id": str(job.payload.get("run_id", "")).strip(),
             "row_ref": str(job.payload.get("row_ref", "")).strip(),
+            "row_index": job.payload.get("row_index", 0),
+            "channel": job.payload.get("channel", 0),
             "voice_json_path": str(voice_json_path.resolve()),
             "video_dir_path": str((render_folder / "output").resolve()),
             "voice_dir_path": str((render_folder / "voice").resolve()),

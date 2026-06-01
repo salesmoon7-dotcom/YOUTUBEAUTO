@@ -129,6 +129,8 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
                 workload="timeline",
                 payload={
                     "run_id": "timeline-run-2",
+                    "channel": 4,
+                    "row_index": 1,
                     "voice_json_path": str(voice_json.resolve()),
                     "video_dir_path": str(video_dir.resolve()),
                     "voice_dir_path": str(voice_dir.resolve()),
@@ -153,6 +155,10 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         command = cast(list[str], run_external_process.call_args.args[0])
+        self.assertIn("--channel", command)
+        self.assertIn("4", command)
+        self.assertIn("--row", command)
+        self.assertIn("1", command)
         self.assertIn("--voice-dir", command)
         self.assertIn(str(voice_dir.resolve()), command)
 

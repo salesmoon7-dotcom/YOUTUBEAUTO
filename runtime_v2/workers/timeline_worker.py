@@ -64,6 +64,12 @@ def run_timeline_job(job: JobContract, *, artifact_root: Path) -> dict[str, obje
         "--video-dir",
         str(video_dir_path.resolve()),
     ]
+    channel_value = job.payload.get("channel")
+    row_index_value = job.payload.get("row_index")
+    if isinstance(channel_value, int):
+        command.extend(["--channel", str(channel_value)])
+    if isinstance(row_index_value, int):
+        command.extend(["--row", str(row_index_value)])
     if isinstance(voice_dir_path, Path) and voice_dir_path.is_dir():
         command.extend(["--voice-dir", str(voice_dir_path.resolve())])
     process = run_external_process(command, cwd=workspace)

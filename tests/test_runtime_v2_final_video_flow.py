@@ -567,6 +567,8 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         self.assertEqual(str(timeline_job["job_id"]), "timeline-render-job-srt")
         self.assertEqual(cast(int, timeline_chain["step"]), 3)
         self.assertEqual(cast(int, timeline_payload["chain_depth"]), 3)
+        self.assertEqual(cast(int, timeline_payload["row_index"]), 0)
+        self.assertEqual(cast(int, timeline_payload["channel"]), 4)
         self.assertTrue(
             str(timeline_payload["voice_json_path"])
             .replace("\\", "/")
