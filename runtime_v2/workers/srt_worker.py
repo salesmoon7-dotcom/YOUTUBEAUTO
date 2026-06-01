@@ -46,8 +46,19 @@ def run_srt_job(job: JobContract, *, artifact_root: Path) -> dict[str, object]:
     staged_render_spec = stage_local_input(
         workspace, render_spec_path, target_name="render_spec.json"
     )
-    voice_payload = json.loads(staged_voice_json.read_text(encoding="utf-8"))
-    render_spec = json.loads(staged_render_spec.read_text(encoding="utf-8"))
+    try:
+        voice_payload = json.loads(staged_voice_json.read_text(encoding="utf-8"))
+        render_spec = json.loads(staged_render_spec.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return finalize_worker_result(
+            workspace,
+            status="failed",
+            stage="validate_input",
+            artifacts=[staged_voice_json, staged_render_spec],
+            error_code="missing_srt_inputs",
+            retryable=False,
+            completion={"state": "failed", "final_output": False},
+        )
     voice_texts = voice_payload.get("voice_texts", [])
     timeline = render_spec.get("timeline", [])
     if (
