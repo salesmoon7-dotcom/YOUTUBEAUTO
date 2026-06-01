@@ -421,6 +421,39 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(cast(int, payload["channel"]), 4)
         self.assertEqual(cast(int, payload["row_index"]), 1)
 
+    def test_n8n_upload_worker_keeps_upload_mode_in_direct_callback_payload(
+        self,
+    ) -> None:
+        from runtime_v2.workers.n8n_upload_worker import run_n8n_upload_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            render_file = root / "render_final.mp4"
+            render_file.write_bytes(b"mp4")
+            job = JobContract(
+                job_id="n8n-upload-job-direct-video",
+                workload="n8n_upload",
+                payload={
+                    "run_id": "upload-run-1b",
+                    "callback_url": "https://example.test/webhook",
+                    "artifact_path": str(render_file.resolve()),
+                    "row_ref": "Sheet1!row1",
+                    "upload_mode": "video",
+                    "mode": "closeout",
+                },
+            )
+
+            with patch(
+                "runtime_v2.workers.n8n_upload_worker.post_callback",
+                return_value={"ok": True, "status_code": 200, "attempts": 1},
+            ) as post_callback:
+                result = run_n8n_upload_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        payload = cast(dict[str, object], post_callback.call_args.args[0])
+        self.assertEqual(str(payload["upload_mode"]), "video")
+
     def test_n8n_upload_worker_invokes_legacy_mybox_helper_when_upload_mode_present(
         self,
     ) -> None:

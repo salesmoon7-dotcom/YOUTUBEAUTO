@@ -97,6 +97,7 @@ def run_n8n_upload_job(job: JobContract, *, artifact_root: Path) -> dict[str, ob
         "row_ref": str(job.payload.get("row_ref", "")),
         "channel": job.payload.get("channel", 0),
         "row_index": job.payload.get("row_index", 0),
+        "upload_mode": upload_mode,
         "mode": str(job.payload.get("mode", "closeout")),
         "artifact_path": artifact_path,
         "job_id": job.job_id,
