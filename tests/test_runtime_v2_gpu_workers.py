@@ -99,6 +99,63 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
             self.assertIn("0:12 Body", timeline_text)
             self.assertIn("0:30 Outro", timeline_text)
 
+    def test_timeline_worker_passes_voice_dir_fallback_when_present(self) -> None:
+        from runtime_v2.workers.timeline_worker import run_timeline_job
+
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            voice_json = root / "voice.json"
+            voice_json.write_text(
+                json.dumps(
+                    {
+                        "chapter_plan": [
+                            {"title": "Intro", "start_col": "#01"},
+                            {"title": "Body", "start_col": "#02"},
+                            {"title": "Outro", "start_col": "#03"},
+                        ]
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            video_dir = root / "videos"
+            video_dir.mkdir(parents=True, exist_ok=True)
+            voice_dir = root / "voice"
+            voice_dir.mkdir(parents=True, exist_ok=True)
+            output_path = artifact_root / "youtube_timeline.txt"
+            job = JobContract(
+                job_id="timeline-job-voice-fallback",
+                workload="timeline",
+                payload={
+                    "run_id": "timeline-run-2",
+                    "voice_json_path": str(voice_json.resolve()),
+                    "video_dir_path": str(video_dir.resolve()),
+                    "voice_dir_path": str(voice_dir.resolve()),
+                    "service_artifact_path": str(output_path.resolve()),
+                },
+            )
+
+            with patch(
+                "runtime_v2.workers.timeline_worker.run_external_process",
+                return_value={
+                    "command": ["python"],
+                    "cwd": str(root),
+                    "exit_code": 0,
+                    "stdout": "0:00 Intro\n0:12 Body\n0:30 Outro",
+                    "stderr": "",
+                    "timed_out": False,
+                    "timeout_sec": 3600,
+                    "duration_sec": 0.01,
+                },
+            ) as run_external_process:
+                result = run_timeline_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        command = cast(list[str], run_external_process.call_args.args[0])
+        self.assertIn("--voice-dir", command)
+        self.assertIn(str(voice_dir.resolve()), command)
+
     def test_google_sheets_sync_worker_reads_excel_row_and_posts_payload(self) -> None:
         from runtime_v2.workers.google_sheets_sync_worker import (
             run_google_sheets_sync_job,
