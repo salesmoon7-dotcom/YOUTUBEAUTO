@@ -325,6 +325,7 @@ def run_geminigen_job(
         stage="geminigen",
         artifacts=[request_path, prompt_path],
         details={
+            "resolved_image_path": _resolve_geminigen_image_path(job.payload),
             "provider": str(job.payload.get("provider", "google")),
             "model": str(job.payload.get("model", "veo3")),
             "generation_mode": str(job.payload.get("generation_mode", "create_new")),

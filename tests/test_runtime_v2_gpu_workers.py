@@ -2448,6 +2448,43 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "GEMINIGEN_LOGIN_REQUIRED")
+
+    def test_geminigen_worker_native_only_exposes_resolved_image_path(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            image_path = root / "frames" / "native-first.png"
+            image_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = image_path.write_bytes(b"png")
+            manifest_path = root / "asset_manifest.json"
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "roles": {"image_primary": str(image_path.resolve())},
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            job = JobContract(
+                job_id="geminigen-job-native",
+                workload="geminigen",
+                checkpoint_key="stage2:geminigen:Sheet1!row1:9",
+                payload={
+                    "run_id": "geminigen-run-native",
+                    "row_ref": "Sheet1!row1",
+                    "prompt": "video prompt native",
+                    "asset_manifest_path": str(manifest_path.resolve()),
+                },
+            )
+
+            result = run_geminigen_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "native_geminigen_not_implemented")
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(str(details["resolved_image_path"]), str(image_path.resolve()))
         self.assertEqual(result.get("next_jobs", []), [])
 
     def test_geminigen_worker_relabels_adapter_failure_when_attach_evidence_shows_login(
