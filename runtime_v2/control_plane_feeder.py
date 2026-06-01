@@ -147,6 +147,7 @@ def payload_paths_are_local(payload: dict[str, object]) -> bool:
         "source_video_path",
         "voice_json_path",
         "video_dir_path",
+        "voice_dir_path",
     ):
         raw_value = payload.get(key)
         if isinstance(raw_value, str) and raw_value.strip():

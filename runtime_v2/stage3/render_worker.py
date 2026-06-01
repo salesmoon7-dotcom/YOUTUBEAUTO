@@ -85,6 +85,44 @@ def _build_srt_next_job(
     )
 
 
+def _build_timeline_next_job(
+    job: JobContract,
+    *,
+    voice_json_path: Path,
+    render_folder: Path,
+) -> dict[str, object]:
+    raw_depth = job.payload.get("chain_depth", 0)
+    if isinstance(raw_depth, bool):
+        chain_depth = int(raw_depth)
+    elif isinstance(raw_depth, int):
+        chain_depth = raw_depth
+    elif isinstance(raw_depth, float):
+        chain_depth = int(raw_depth)
+    elif isinstance(raw_depth, str) and raw_depth.strip():
+        chain_depth = int(raw_depth.strip())
+    else:
+        chain_depth = 0
+    chain_depth += 1
+    return build_explicit_job_contract(
+        job_id=f"timeline-{job.job_id}",
+        workload="timeline",
+        checkpoint_key=f"derived:timeline:{job.job_id}",
+        payload={
+            "run_id": str(job.payload.get("run_id", "")).strip(),
+            "row_ref": str(job.payload.get("row_ref", "")).strip(),
+            "voice_json_path": str(voice_json_path.resolve()),
+            "video_dir_path": str((render_folder / "output").resolve()),
+            "voice_dir_path": str((render_folder / "voice").resolve()),
+            "service_artifact_path": str(
+                (render_folder / "output" / "youtube_timeline.txt").resolve()
+            ),
+            "chain_depth": chain_depth,
+        },
+        chain_step=chain_depth,
+        parent_job_id=job.job_id,
+    )
+
+
 def _build_shorts_render_next_job(
     job: JobContract,
     final_output_path: Path,
@@ -765,6 +803,11 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
         final_output_path.parent.mkdir(parents=True, exist_ok=True)
         if final_output_path.exists() and final_output_path.is_file():
             next_jobs = [
+                _build_timeline_next_job(
+                    job,
+                    voice_json_path=staged_voice_json,
+                    render_folder=render_folder,
+                ),
                 _build_srt_next_job(
                     job,
                     final_output_path,
@@ -908,6 +951,11 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
             source_asset = Path(str(timeline_entries[0]["asset_path"]))
             _ = shutil.copy2(source_asset, final_output_path)
             next_jobs = [
+                _build_timeline_next_job(
+                    job,
+                    voice_json_path=staged_voice_json,
+                    render_folder=render_folder,
+                ),
                 _build_srt_next_job(
                     job,
                     final_output_path,
@@ -1124,6 +1172,11 @@ def run_render_job(job: JobContract, artifact_root: Path) -> dict[str, object]:
             )
 
         next_jobs = [
+            _build_timeline_next_job(
+                job,
+                voice_json_path=staged_voice_json,
+                render_folder=render_folder,
+            ),
             _build_srt_next_job(
                 job,
                 final_output_path,

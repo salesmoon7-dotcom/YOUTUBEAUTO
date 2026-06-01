@@ -551,8 +551,35 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         next_jobs = cast(list[object], result.get("next_jobs", []))
-        self.assertEqual(len(next_jobs), 3)
+        self.assertEqual(len(next_jobs), 4)
         next_job_contracts = [cast(dict[str, object], job) for job in next_jobs]
+        timeline_contract = cast(
+            dict[str, object],
+            next(
+                job
+                for job in next_job_contracts
+                if str(cast(dict[str, object], job["job"])["worker"]) == "timeline"
+            ),
+        )
+        timeline_chain = cast(dict[str, object], timeline_contract["chain"])
+        timeline_job = cast(dict[str, object], timeline_contract["job"])
+        timeline_payload = cast(dict[str, object], timeline_job["payload"])
+        self.assertEqual(str(timeline_job["job_id"]), "timeline-render-job-srt")
+        self.assertEqual(cast(int, timeline_chain["step"]), 3)
+        self.assertEqual(cast(int, timeline_payload["chain_depth"]), 3)
+        self.assertTrue(
+            str(timeline_payload["voice_json_path"])
+            .replace("\\", "/")
+            .endswith("/voice.json")
+        )
+        self.assertEqual(
+            str(timeline_payload["video_dir_path"]),
+            str((render_folder / "output").resolve()),
+        )
+        self.assertEqual(
+            str(timeline_payload["voice_dir_path"]),
+            str((render_folder / "voice").resolve()),
+        )
         next_job_contract = cast(
             dict[str, object],
             next(
@@ -906,7 +933,7 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         self.assertEqual(str(details["audio_source_path"]), str(audio_path.resolve()))
         self.assertEqual(str(completion["state"]), "succeeded")
         self.assertTrue(bool(completion["final_output"]))
-        self.assertEqual(len(next_jobs), 2)
+        self.assertEqual(len(next_jobs), 3)
 
     def test_render_worker_mixes_optional_bgm_track(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
