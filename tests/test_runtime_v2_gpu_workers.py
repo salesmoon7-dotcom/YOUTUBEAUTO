@@ -509,6 +509,8 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertIn("2", command)
         self.assertIn("--row-base", command)
         self.assertIn("0", command)
+        self.assertIn("--require-uploaded-min", command)
+        self.assertIn("1", command)
         self.assertIn("--n8n-callback", command)
         self.assertIn("https://example.test/webhook", command)
         post_callback.assert_not_called()
@@ -558,6 +560,8 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertIn("images", command)
         self.assertIn("--channel", command)
         self.assertIn("3", command)
+        self.assertIn("--require-uploaded-min", command)
+        self.assertIn("1", command)
         self.assertNotIn("--n8n-callback", command)
         post_callback.assert_not_called()
 

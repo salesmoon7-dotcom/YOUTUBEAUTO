@@ -30,6 +30,8 @@ def run_n8n_upload_job(job: JobContract, *, artifact_root: Path) -> dict[str, ob
             upload_mode,
             "--channel",
             str(channel_value),
+            "--require-uploaded-min",
+            "1",
         ]
         if isinstance(row_value, int):
             command.extend(["--row", str(row_value), "--row-base", "0"])
