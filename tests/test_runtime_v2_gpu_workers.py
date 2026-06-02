@@ -1688,6 +1688,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertFalse(bool(completion["final_output"]))
         self.assertEqual(details["model_name"], "voice-model-a")
         self.assertEqual(details["source_mode"], "tts-source")
+        self.assertEqual(str(details["resolved_image_path"]), str(image_path.resolve()))
 
     def test_rvc_worker_builds_cli_adapter_when_service_artifact_path_exists(
         self,
@@ -1733,7 +1734,9 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         adapter_extra_env = cast(
             dict[object, object], run_adapter.call_args.kwargs["extra_env"]
         )
+        details = cast(dict[object, object], result["details"])
         self.assertIn("--rvc-adapter-child", adapter_command)
+        self.assertEqual(str(details["resolved_image_path"]), str(image_path.resolve()))
 
     def test_rvc_worker_emits_kenburns_next_job_when_image_present(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -1782,6 +1785,52 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(str(next_payload["audio_path"]), str(output_path.resolve()))
         self.assertEqual(cast(int, next_payload["duration_sec"]), 11)
         self.assertEqual(cast(int, next_payload["chain_depth"]), 2)
+
+    def test_rvc_worker_defaults_kenburns_chain_depth_when_payload_invalid(
+        self,
+    ) -> None:
+        for invalid_depth in ("", "abc"):
+            with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+                root = Path(tmp_dir)
+                artifact_root = root / "artifacts"
+                source_path = root / "source.flac"
+                image_path = root / "image.png"
+                output_path = artifact_root / "converted.wav"
+                _ = source_path.write_bytes(b"flac")
+                _ = image_path.write_bytes(b"png")
+                job = JobContract(
+                    job_id="rvc-job-chain-default",
+                    workload="rvc",
+                    payload={
+                        "source_path": str(source_path.resolve()),
+                        "image_path": str(image_path.resolve()),
+                        "model_name": "voice-model-a",
+                        "chain_depth": invalid_depth,
+                        "service_artifact_path": str(output_path),
+                        "adapter_command": [
+                            sys.executable,
+                            "-c",
+                            (
+                                "from pathlib import Path; "
+                                f"p=Path(r'{str(output_path)}'); "
+                                "p.parent.mkdir(parents=True, exist_ok=True); "
+                                "p.write_bytes(b'wav')"
+                            ),
+                        ],
+                    },
+                )
+
+                result = run_rvc_job(job, artifact_root=artifact_root)
+
+            self.assertEqual(result["status"], "ok")
+            next_jobs = cast(list[object], result.get("next_jobs", []))
+            self.assertEqual(len(next_jobs), 1)
+            next_job_contract = cast(dict[str, object], next_jobs[0])
+            chain = cast(dict[str, object], next_job_contract["chain"])
+            next_job = cast(dict[str, object], next_job_contract["job"])
+            next_payload = cast(dict[str, object], next_job["payload"])
+            self.assertEqual(cast(int, chain["step"]), 1)
+            self.assertEqual(cast(int, next_payload["chain_depth"]), 1)
 
     def test_rvc_worker_keeps_explicit_adapter_command_when_present(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

@@ -64,7 +64,21 @@ def _build_kenburns_next_job(
 ) -> dict[str, object] | None:
     if not image_path.strip():
         return None
-    chain_depth = int(job.payload.get("chain_depth", 0)) + 1
+    raw_depth = job.payload.get("chain_depth", 0)
+    if isinstance(raw_depth, bool):
+        chain_depth = int(raw_depth)
+    elif isinstance(raw_depth, int):
+        chain_depth = raw_depth
+    elif isinstance(raw_depth, float):
+        chain_depth = int(raw_depth)
+    elif isinstance(raw_depth, str) and raw_depth.strip():
+        try:
+            chain_depth = int(raw_depth.strip())
+        except ValueError:
+            chain_depth = 0
+    else:
+        chain_depth = 0
+    chain_depth += 1
     payload: dict[str, object] = {
         "source_path": image_path.strip(),
         "audio_path": str(verified_output.resolve()),
@@ -107,6 +121,7 @@ def run_rvc_job(
         if isinstance(raw_audio, str) and str(raw_audio).strip()
         else None
     )
+    resolved_image_path = str(job.payload.get("image_path", "")).strip()
     source_mode = "gemi-video-source" if audio_source is not None else "tts-source"
     selected_source = audio_source if audio_source is not None else source
     if selected_source is None:
@@ -265,7 +280,8 @@ def run_rvc_job(
             retryable=False,
             details={
                 "model_name": model_name,
-                "image_path": image_path,
+                "image_path": resolved_image_path,
+                "resolved_image_path": resolved_image_path,
                 "audio_path": str(job.payload.get("audio_path", "")).strip(),
                 "duration_sec": job.payload.get("duration_sec", 8),
                 "source_mode": source_mode,
@@ -291,7 +307,8 @@ def run_rvc_job(
         artifacts=[source_copy, request_file],
         details={
             "model_name": model_name,
-            "image_path": str(job.payload.get("image_path", "")).strip(),
+            "image_path": resolved_image_path,
+            "resolved_image_path": resolved_image_path,
             "audio_path": str(job.payload.get("audio_path", "")).strip(),
             "duration_sec": job.payload.get("duration_sec", 8),
             "source_mode": source_mode,
