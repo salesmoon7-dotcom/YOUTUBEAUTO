@@ -515,15 +515,15 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             workspace = Path(tmp_dir)
 
-            video_plan = build_video_plan_from_topic_spec(
-                _topic_spec(topic="Money flow"), workspace
-            )
+            topic_spec = _topic_spec(topic="Money flow")
+            topic_spec["gpt_response_text"] = _gpt_response_text()
+            video_plan = build_video_plan_from_topic_spec(topic_spec, workspace)
 
         self.assertEqual(video_plan["reason_code"], "ok")
         scene_plan = cast(list[dict[str, object]], video_plan["scene_plan"])
         voice_plan = cast(dict[str, object], video_plan["voice_plan"])
         self.assertGreaterEqual(len(scene_plan), 2)
-        self.assertEqual(str(voice_plan["mapping_source"]), "excel_scene")
+        self.assertEqual(str(voice_plan["mapping_source"]), "stage1_parsed")
 
     def test_stage1_result_records_debug_log_and_run_id(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
@@ -1180,16 +1180,19 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                     workspace,
                     debug_log="logs/stage1-reset-warning.jsonl",
                 )
+                result_path = Path(cast(str, result["result_path"]))
+                result_payload = cast(
+                    dict[str, object],
+                    json.loads(result_path.read_text(encoding="utf-8")),
+                )
+                raw_output = cast(
+                    dict[str, object],
+                    json.loads(
+                        (workspace / "raw_output.json").read_text(encoding="utf-8")
+                    ),
+                )
 
         self.assertEqual(result["status"], "ok")
-        result_path = Path(cast(str, result["result_path"]))
-        result_payload = cast(
-            dict[str, object], json.loads(result_path.read_text(encoding="utf-8"))
-        )
-        raw_output = cast(
-            dict[str, object],
-            json.loads((workspace / "raw_output.json").read_text(encoding="utf-8")),
-        )
         gpt_capture = cast(dict[str, object], raw_output["gpt_capture"])
         self.assertEqual(gpt_capture["reset_warning"], "chatgpt_prompt_not_ready")
         self.assertEqual(result_payload["status"], "ok")
@@ -1287,11 +1290,13 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(generate_mock.call_count, 1)
-        self.assertEqual(reset_mock.call_count, 2)
+        self.assertEqual(reset_mock.call_count, 1)
         relaunch_mock.assert_not_called()
         sleep_mock.assert_not_called()
 
-    def test_stage1_runner_fails_when_chatgpt_context_reset_fails(self) -> None:
+    def test_stage1_runner_records_reset_warning_when_chatgpt_context_reset_fails(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             topic_spec = _topic_spec(topic="Money flow")
@@ -1334,11 +1339,20 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                     root / "workspace",
                     debug_log="logs/stage1-run-1.jsonl",
                 )
+                raw_output = cast(
+                    dict[str, object],
+                    json.loads(
+                        (root / "workspace" / "raw_output.json").read_text(
+                            encoding="utf-8"
+                        )
+                    ),
+                )
 
-        self.assertEqual(result["status"], "failed")
-        self.assertEqual(result["error_code"], "CHATGPT_CONTEXT_RESET_FAILED")
+        self.assertEqual(result["status"], "ok")
+        gpt_capture = cast(dict[str, object], raw_output["gpt_capture"])
+        self.assertEqual(gpt_capture["reset_warning"], "chatgpt_context_target_missing")
 
-    def test_stage1_runner_fails_when_pre_submit_chatgpt_context_reset_fails(
+    def test_stage1_runner_keeps_reset_warning_when_pre_submit_chatgpt_context_reset_fails(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -1346,18 +1360,39 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             topic_spec = _topic_spec(topic="Money flow")
             topic_spec["browser_evidence"] = {"service": "chatgpt", "port": 9222}
 
-            with patch(
-                "runtime_v2.stage1.chatgpt_runner.reset_chatgpt_context",
-                side_effect=RuntimeError("chatgpt_context_target_missing"),
+            with (
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.reset_chatgpt_context",
+                    side_effect=RuntimeError("chatgpt_context_target_missing"),
+                ),
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                    return_value={
+                        "status": "ok",
+                        "response_text": _gpt_response_text(),
+                        "submit_info": {"sendClicked": True},
+                        "final_state": {"assistant_block_count": 1},
+                        "timeline": [],
+                    },
+                ),
             ):
                 result = run_stage1_chatgpt_job(
                     topic_spec,
                     root / "workspace",
                     debug_log="logs/stage1-run-1.jsonl",
                 )
+                raw_output = cast(
+                    dict[str, object],
+                    json.loads(
+                        (root / "workspace" / "raw_output.json").read_text(
+                            encoding="utf-8"
+                        )
+                    ),
+                )
 
-        self.assertEqual(result["status"], "failed")
-        self.assertEqual(result["error_code"], "CHATGPT_CONTEXT_RESET_FAILED")
+        self.assertEqual(result["status"], "ok")
+        gpt_capture = cast(dict[str, object], raw_output["gpt_capture"])
+        self.assertEqual(gpt_capture["reset_warning"], "chatgpt_context_target_missing")
 
     def test_stage1_runner_fails_closed_when_live_chatgpt_capture_stays_failed(
         self,
@@ -1453,7 +1488,9 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             capture_meta["final_state_code"], "CHATGPT_BACKEND_UNAVAILABLE"
         )
         self.assertIn("prompt_text", capture_meta)
-        self.assertEqual(str(capture_meta["prompt_text"]), "Money flow")
+        self.assertEqual(
+            str(capture_meta["prompt_text"]), build_live_chatgpt_prompt(topic_spec)
+        )
         self.assertTrue(str(capture_meta["git_sha"]))
         self.assertTrue(str(capture_meta["timestamp_utc"]).endswith("Z"))
         event_names = [str(item["event"]) for item in timeline_lines]
@@ -1464,7 +1501,9 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertIn("read_failed", event_names)
         self.assertEqual(event_names[-1], "final_state")
         self.assertEqual(raw_output["source"], "gpt_capture_only")
-        self.assertEqual(str(raw_output["prompt_text"]), "Money flow")
+        self.assertEqual(
+            str(raw_output["prompt_text"]), build_live_chatgpt_prompt(topic_spec)
+        )
         self.assertEqual(
             cast(dict[str, object], raw_output["gpt_capture"])["status"], "failed"
         )
@@ -1505,9 +1544,21 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             workspace = Path(tmp_dir)
 
-            with patch(
-                "runtime_v2.stage1.chatgpt_runner.build_video_plan",
-                side_effect=ValueError("route_failed"),
+            with (
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                    return_value={
+                        "status": "ok",
+                        "response_text": _gpt_response_text(),
+                        "submit_info": {},
+                        "final_state": {},
+                        "timeline": [],
+                    },
+                ),
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.build_video_plan_from_stage1_parsed_payload",
+                    side_effect=ValueError("route_failed"),
+                ),
             ):
                 result = run_stage1_chatgpt_job(
                     _topic_spec(),
