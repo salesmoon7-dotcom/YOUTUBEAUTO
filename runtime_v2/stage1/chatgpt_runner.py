@@ -600,6 +600,11 @@ def run_stage1_chatgpt_job(
     topic_spec = attach_gpt_response_text_from_browser_evidence(
         topic_spec, browser_evidence, workspace=workspace
     )
+    browser_evidence_obj = topic_spec.get("browser_evidence", {})
+    browser_evidence = cast(
+        dict[str, object],
+        browser_evidence_obj if isinstance(browser_evidence_obj, dict) else {},
+    )
     run_id = str(topic_spec.get("run_id", "")).strip()
     row_ref = str(topic_spec.get("row_ref", "")).strip()
     raw_output_path = workspace / "raw_output.json"

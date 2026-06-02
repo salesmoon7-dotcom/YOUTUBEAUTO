@@ -362,7 +362,8 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                     "runtime_v2.stage1.chatgpt_runner.attach_gpt_response_text_from_browser_evidence",
                     return_value={
                         **_topic_spec(),
-                        "gpt_response_text": "[Title]\n테스트\n\n[Voice]\n1. 테스트입니다.",
+                        "browser_evidence": {"snapshot_path": "dummy.txt"},
+                        "gpt_response_text": _gpt_response_text(),
                     },
                 ),
             ):
