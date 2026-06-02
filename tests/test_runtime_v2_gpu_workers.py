@@ -458,12 +458,15 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self,
     ) -> None:
         from runtime_v2.workers.n8n_upload_worker import run_n8n_upload_job
+        import os
 
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
             render_file = root / "render_final.mp4"
             render_file.write_bytes(b"mp4")
+            old_ts = 1_700_000_000
+            os.utime(render_file, (old_ts, old_ts))
             job = JobContract(
                 job_id="n8n-upload-job-mybox-video",
                 workload="n8n_upload",
@@ -493,10 +496,26 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
                     },
                 ) as run_external_process,
                 patch(
+                    "runtime_v2.workers.n8n_upload_worker._resolve_legacy_topic_folder",
+                    return_value=(root / "download" / "topic-1"),
+                ),
+                patch(
                     "runtime_v2.workers.n8n_upload_worker.post_callback"
                 ) as post_callback,
             ):
+                stale_render = root / "download" / "topic-1" / "render" / "stale.mp4"
+                stale_render.parent.mkdir(parents=True, exist_ok=True)
+                stale_render.write_bytes(b"old")
+                newer_ts = old_ts + 100
+                os.utime(stale_render, (newer_ts, newer_ts))
                 result = run_n8n_upload_job(job, artifact_root=artifact_root)
+                staged_artifact = (
+                    root / "download" / "topic-1" / "render" / render_file.name
+                )
+                self.assertTrue(staged_artifact.exists())
+                self.assertGreaterEqual(
+                    staged_artifact.stat().st_mtime, stale_render.stat().st_mtime
+                )
 
         self.assertEqual(result["status"], "ok")
         command = cast(list[str], run_external_process.call_args.kwargs["command"])

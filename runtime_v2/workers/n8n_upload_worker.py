@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
+import shutil
 import sys
 
 from runtime_v2.contracts.job_contract import JobContract
@@ -13,6 +16,34 @@ from runtime_v2.workers.job_runtime import (
 )
 
 LEGACY_N8N_MYBOX_UPLOAD = Path(r"D:/YOUTUBE_AUTO/scripts/n8n_mybox_upload.py")
+LEGACY_APP_CONFIG = Path(r"D:/YOUTUBE_AUTO/system/config/app_config.json")
+
+
+def _resolve_legacy_topic_folder(channel: int, row_index: int) -> Path | None:
+    try:
+        config = json.loads(LEGACY_APP_CONFIG.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(config, dict):
+        return None
+    channels = config.get("channels", {})
+    paths = config.get("paths", {})
+    if not isinstance(channels, dict) or not isinstance(paths, dict):
+        return None
+    channel_config = channels.get(str(channel), {})
+    if not isinstance(channel_config, dict):
+        return None
+    channel_name = str(channel_config.get("name", "")).strip()
+    download_base = str(paths.get("download_base", "")).strip()
+    if not channel_name or not download_base:
+        return None
+    channel_dir = Path(download_base).expanduser() / channel_name
+    if not channel_dir.exists() or not channel_dir.is_dir():
+        return None
+    topic_folders = sorted([entry for entry in channel_dir.iterdir() if entry.is_dir()])
+    if row_index < 0 or row_index >= len(topic_folders):
+        return None
+    return topic_folders[row_index]
 
 
 def run_n8n_upload_job(job: JobContract, *, artifact_root: Path) -> dict[str, object]:
@@ -23,6 +54,46 @@ def run_n8n_upload_job(job: JobContract, *, artifact_root: Path) -> dict[str, ob
     channel_value = job.payload.get("channel")
     row_value = job.payload.get("row_index")
     if upload_mode in {"images", "video"} and isinstance(channel_value, int):
+        if upload_mode == "video" and artifact_path and isinstance(row_value, int):
+            topic_folder = _resolve_legacy_topic_folder(channel_value, row_value)
+            if topic_folder is None:
+                return finalize_worker_result(
+                    workspace,
+                    status="failed",
+                    stage="validate_input",
+                    artifacts=[],
+                    error_code="missing_artifact_path",
+                    retryable=False,
+                    completion={"state": "failed", "final_output": False},
+                )
+            source_artifact = Path(artifact_path)
+            if not source_artifact.exists() or not source_artifact.is_file():
+                return finalize_worker_result(
+                    workspace,
+                    status="failed",
+                    stage="validate_input",
+                    artifacts=[],
+                    error_code="missing_artifact_path",
+                    retryable=False,
+                    completion={"state": "failed", "final_output": False},
+                )
+            try:
+                target_render_dir = topic_folder / "render"
+                target_render_dir.mkdir(parents=True, exist_ok=True)
+                _ = shutil.copy2(
+                    source_artifact, target_render_dir / source_artifact.name
+                )
+                os.utime(target_render_dir / source_artifact.name, None)
+            except OSError:
+                return finalize_worker_result(
+                    workspace,
+                    status="failed",
+                    stage="validate_input",
+                    artifacts=[],
+                    error_code="missing_artifact_path",
+                    retryable=False,
+                    completion={"state": "failed", "final_output": False},
+                )
         command = [
             sys.executable,
             str(LEGACY_N8N_MYBOX_UPLOAD),
