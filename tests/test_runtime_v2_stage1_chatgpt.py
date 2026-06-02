@@ -16,7 +16,11 @@ from runtime_v2.stage1.chatgpt_runner import (
     build_video_plan_from_topic_spec,
     run_stage1_chatgpt_job,
 )
-from runtime_v2.stage1.chatgpt_backend import CHATGPT_LONGFORM_URL, CHATGPT_LONGFORM_URL_SUBSTRING, reset_chatgpt_context
+from runtime_v2.stage1.chatgpt_backend import (
+    CHATGPT_LONGFORM_URL,
+    CHATGPT_LONGFORM_URL_SUBSTRING,
+    reset_chatgpt_context,
+)
 from runtime_v2.stage1.chatgpt_backend import chatgpt_context_ready
 from runtime_v2.stage1.parsed_payload import build_stage1_parsed_payload_from_topic_spec
 
@@ -162,7 +166,11 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             if method == "Runtime.evaluate":
                 expression = str(params.get("expression", ""))
                 if "New chat" in expression or "새 채팅" in expression:
-                    return {"result": {"value": '{"clicked": true, "selector": "label_match"}'}}
+                    return {
+                        "result": {
+                            "value": '{"clicked": true, "selector": "label_match"}'
+                        }
+                    }
                 return next(runtime_results)
             return {}
 
@@ -231,7 +239,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                 "topic": "국민연금 수령 시기를 앞당기면 손해인가 이득인가",
             }
         )
-    
+
         self.assertIn("국민연금 수령 시기를 앞당기면 손해인가 이득인가", prompt)
         self.assertIn("[Title]", prompt)
         self.assertIn("[Title for Thumb]", prompt)
@@ -246,7 +254,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                 "topic": "  국민연금 수령 시기를 앞당기면 손해인가 이득인가  ",
             }
         )
-    
+
         self.assertIn("국민연금 수령 시기를 앞당기면 손해인가 이득인가", prompt)
         self.assertNotIn("  국민연금 수령 시기를 앞당기면 손해인가 이득인가  ", prompt)
 
@@ -259,7 +267,7 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
                 "status_snapshot": "OK",
             }
         )
-    
+
         self.assertIn("요양 시설 비용 현실과 준비해야 할 금액", prompt)
         self.assertNotIn("status_snapshot", prompt)
 
@@ -269,11 +277,21 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             workspace = root / "workspace"
             workspace.mkdir(parents=True, exist_ok=True)
 
-            result = run_stage1_chatgpt_job(
-                _topic_spec(),
-                workspace,
-                debug_log="logs/stage1-audit-run.jsonl",
-            )
+            with patch(
+                "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                return_value={
+                    "status": "ok",
+                    "response_text": _gpt_response_text(),
+                    "submit_info": {},
+                    "final_state": {},
+                    "timeline": [],
+                },
+            ):
+                result = run_stage1_chatgpt_job(
+                    _topic_spec(),
+                    workspace,
+                    debug_log="logs/stage1-audit-run.jsonl",
+                )
 
             self.assertEqual(result["status"], "ok")
             self.assertTrue(Path(cast(str, result["result_path"])).exists())
@@ -301,17 +319,27 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             workspace = root / "workspace"
             workspace.mkdir(parents=True, exist_ok=True)
 
-            result = run_stage1_chatgpt_job(
-                _topic_spec(),
-                workspace,
-                debug_log="logs/stage1-audit-run.jsonl",
+            with patch(
+                "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                return_value={
+                    "status": "ok",
+                    "response_text": _gpt_response_text(),
+                    "submit_info": {},
+                    "final_state": {},
+                    "timeline": [],
+                },
+            ):
+                result = run_stage1_chatgpt_job(
+                    _topic_spec(),
+                    workspace,
+                    debug_log="logs/stage1-audit-run.jsonl",
+                )
+            result_path = Path(cast(str, result["result_path"]))
+            result_payload = cast(
+                dict[str, object], json.loads(result_path.read_text(encoding="utf-8"))
             )
 
         self.assertEqual(result["status"], "ok")
-        result_path = Path(cast(str, result["result_path"]))
-        result_payload = cast(
-            dict[str, object], json.loads(result_path.read_text(encoding="utf-8"))
-        )
         self.assertGreater(
             len(cast(list[object], result_payload.get("next_jobs", []))), 0
         )
@@ -475,11 +503,21 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             workspace = Path(tmp_dir)
 
-            result = run_stage1_chatgpt_job(
-                _topic_spec(),
-                workspace,
-                debug_log="logs/stage1-run-1.jsonl",
-            )
+            with patch(
+                "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                return_value={
+                    "status": "ok",
+                    "response_text": _gpt_response_text(),
+                    "submit_info": {},
+                    "final_state": {},
+                    "timeline": [],
+                },
+            ):
+                result = run_stage1_chatgpt_job(
+                    _topic_spec(),
+                    workspace,
+                    debug_log="logs/stage1-run-1.jsonl",
+                )
 
             result_path = Path(cast(str, result["result_path"]))
             result_payload = cast(
@@ -510,11 +548,21 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             workspace = Path(tmp_dir)
 
-            result = run_stage1_chatgpt_job(
-                _topic_spec(),
-                workspace,
-                debug_log="logs/stage1-run-1.jsonl",
-            )
+            with patch(
+                "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                return_value={
+                    "status": "ok",
+                    "response_text": _gpt_response_text(),
+                    "submit_info": {},
+                    "final_state": {},
+                    "timeline": [],
+                },
+            ):
+                result = run_stage1_chatgpt_job(
+                    _topic_spec(),
+                    workspace,
+                    debug_log="logs/stage1-run-1.jsonl",
+                )
 
             result_path = Path(cast(str, result["result_path"]))
             result_payload = cast(
@@ -523,10 +571,12 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             details = cast(dict[str, object], result_payload["details"])
             stage1_result = cast(dict[str, object], details["stage1_result"])
             next_jobs = cast(list[object], stage1_result["next_jobs"])
+            top_level_next_jobs = cast(list[object], result_payload["next_jobs"])
             video_plan = cast(dict[str, object], details["video_plan"])
 
         self.assertEqual(result["status"], "ok")
-        self.assertFalse(next_jobs)
+        self.assertEqual(next_jobs, top_level_next_jobs)
+        self.assertGreater(len(next_jobs), 0)
         self.assertEqual(stage1_result["status"], "ok")
         self.assertEqual(stage1_result["row_ref"], "Sheet1!row1")
         self.assertEqual(video_plan["run_id"], "stage1-run-1")

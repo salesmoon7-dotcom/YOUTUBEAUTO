@@ -714,6 +714,6 @@ def run_stage1_chatgpt_job(
             "stage1_handoff": handoff,
             "stage1_reset": stage1_reset,
         },
-        next_jobs=[],
+        next_jobs=next_jobs,
         completion={"state": "planned", "final_output": False},
     )
