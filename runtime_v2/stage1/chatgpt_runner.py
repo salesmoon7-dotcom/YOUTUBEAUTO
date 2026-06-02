@@ -574,6 +574,18 @@ def _stage1_failed(
 def run_stage1_chatgpt_job(
     topic_spec: dict[str, object], workspace: Path, *, debug_log: str
 ) -> dict[str, object]:
+    initial_run_id = str(topic_spec.get("run_id", "")).strip()
+    initial_row_ref = str(topic_spec.get("row_ref", "")).strip()
+    initial_valid, _ = validate_topic_spec(topic_spec)
+    if not initial_valid:
+        return _stage1_failed(
+            workspace,
+            debug_log=debug_log,
+            run_id=initial_run_id,
+            row_ref=initial_row_ref,
+            error_code="invalid_topic_spec",
+            reason_code="invalid_topic_spec",
+        )
     browser_evidence_obj = topic_spec.get("browser_evidence", {})
     browser_evidence = cast(
         dict[str, object],
