@@ -155,6 +155,9 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         runtime_results = iter(
             [
                 {"result": {"value": False}},
+                {"result": {"value": False}},
+                {"result": {"value": False}},
+                {"result": {"value": True}},
                 {"result": {"value": True}},
                 {"result": {"value": True}},
             ]
@@ -376,11 +379,21 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             root = Path(tmp_dir)
             workspace = root / "workspace"
             workspace.mkdir(parents=True, exist_ok=True)
-            result = run_stage1_chatgpt_job(
-                _topic_spec(channel=4),
-                workspace,
-                debug_log="logs/stage1-run-1.jsonl",
-            )
+            with patch(
+                "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                return_value={
+                    "status": "ok",
+                    "response_text": _gpt_response_text(),
+                    "submit_info": {},
+                    "final_state": {},
+                    "timeline": [],
+                },
+            ):
+                result = run_stage1_chatgpt_job(
+                    _topic_spec(channel=4),
+                    workspace,
+                    debug_log="logs/stage1-run-1.jsonl",
+                )
 
         self.assertEqual(result["status"], "ok")
         details = cast(dict[str, object], result["details"])
@@ -393,11 +406,21 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             root = Path(tmp_dir)
             workspace = root / "workspace"
             workspace.mkdir(parents=True, exist_ok=True)
-            result = run_stage1_chatgpt_job(
-                _topic_spec(channel=4),
-                workspace,
-                debug_log="logs/stage1-run-1.jsonl",
-            )
+            with patch(
+                "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                return_value={
+                    "status": "ok",
+                    "response_text": _gpt_response_text(),
+                    "submit_info": {},
+                    "final_state": {},
+                    "timeline": [],
+                },
+            ):
+                result = run_stage1_chatgpt_job(
+                    _topic_spec(channel=4),
+                    workspace,
+                    debug_log="logs/stage1-run-1.jsonl",
+                )
 
         self.assertEqual(result["status"], "ok")
 
@@ -405,7 +428,9 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             workspace = Path(tmp_dir)
 
-            video_plan = build_video_plan_from_topic_spec(_topic_spec(), workspace)
+            topic_spec = _topic_spec()
+            topic_spec["gpt_response_text"] = _gpt_response_text()
+            video_plan = build_video_plan_from_topic_spec(topic_spec, workspace)
             self.assertTrue((workspace / "video_plan.json").exists())
 
         self.assertEqual(video_plan["contract"], "video_plan")
@@ -1502,16 +1527,18 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             workspace = Path(tmp_dir)
             topic_spec = _topic_spec(topic="Scene split topic")
-            topic_spec["scene_prompts"] = [
-                "scene one",
-                "scene two",
-                "scene three",
-            ]
-            topic_spec["voice_groups"] = [
-                {"scene_index": 1, "voice": "narration"},
-                {"scene_index": 2, "voice": "narration"},
-                {"scene_index": 3, "voice": "narration"},
-            ]
+            topic_spec["gpt_response_text"] = """```json
+{
+  "story_outline": ["intro beat", "middle beat", "ending beat"],
+  "scene_prompts": ["scene one", "scene two", "scene three"],
+  "videos": ["video clip one", "video clip two", "video clip three"],
+  "voice_groups": [
+    {"scene_index": 1, "voice": "narration"},
+    {"scene_index": 2, "voice": "narration"},
+    {"scene_index": 3, "voice": "narration"}
+  ]
+}
+```"""
 
             video_plan = build_video_plan_from_topic_spec(topic_spec, workspace)
 
