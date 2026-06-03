@@ -1645,14 +1645,29 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             workspace = Path(tmp_dir)
             topic_spec = _topic_spec()
-            topic_spec["voice_groups"] = ["bad", "shape"]
-
-            result = run_stage1_chatgpt_job(
-                topic_spec, workspace, debug_log="logs/stage1-run-1.jsonl"
-            )
+            with patch(
+                "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                return_value={
+                    "status": "ok",
+                    "response_text": """```json
+{
+  "story_outline": ["intro beat", "ending beat"],
+  "scene_prompts": ["scene one", "scene two"],
+  "videos": ["video clip one", "video clip two"],
+  "voice_groups": ["bad", "shape"]
+}
+```""",
+                    "submit_info": {},
+                    "final_state": {},
+                    "timeline": [],
+                },
+            ):
+                result = run_stage1_chatgpt_job(
+                    topic_spec, workspace, debug_log="logs/stage1-run-1.jsonl"
+                )
 
         self.assertEqual(result["status"], "failed")
-        self.assertEqual(result["error_code"], "artifact_invalid")
+        self.assertEqual(result["error_code"], "invalid_voice_groups")
 
 
 if __name__ == "__main__":
