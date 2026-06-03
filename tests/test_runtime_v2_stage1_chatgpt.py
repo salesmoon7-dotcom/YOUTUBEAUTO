@@ -613,11 +613,21 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             workspace = Path(tmp_dir)
 
-            result = run_stage1_chatgpt_job(
-                _topic_spec(topic="Money flow"),
-                workspace,
-                debug_log="logs/stage1-run-1.jsonl",
-            )
+            with patch(
+                "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                return_value={
+                    "status": "ok",
+                    "response_text": _gpt_response_text(),
+                    "submit_info": {},
+                    "final_state": {},
+                    "timeline": [],
+                },
+            ):
+                result = run_stage1_chatgpt_job(
+                    _topic_spec(topic="Money flow"),
+                    workspace,
+                    debug_log="logs/stage1-run-1.jsonl",
+                )
 
             result_path = Path(cast(str, result["result_path"]))
             result_payload = cast(
@@ -1600,17 +1610,36 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
     def test_voice_plan_records_mapping_source_and_fails_closed_on_mismatch(
         self,
     ) -> None:
-        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             workspace = Path(tmp_dir)
             topic_spec = _topic_spec()
             topic_spec["voice_groups"] = [{"scene_index": 1, "voice": "narration"}]
 
-            result = run_stage1_chatgpt_job(
-                topic_spec, workspace, debug_log="logs/stage1-run-1.jsonl"
-            )
+            with patch(
+                "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                return_value={
+                    "status": "ok",
+                    "response_text": """```json
+{
+  "story_outline": ["intro beat", "ending beat"],
+  "scene_prompts": ["scene one", "scene two"],
+  "videos": ["video clip one", "video clip two"],
+  "voice_groups": [
+    {"scene_index": 1, "voice": "narration"}
+  ]
+}
+```""",
+                    "submit_info": {},
+                    "final_state": {},
+                    "timeline": [],
+                },
+            ):
+                result = run_stage1_chatgpt_job(
+                    topic_spec, workspace, debug_log="logs/stage1-run-1.jsonl"
+                )
 
         self.assertEqual(result["status"], "failed")
-        self.assertEqual(result["error_code"], "artifact_invalid")
+        self.assertEqual(result["error_code"], "scene_voice_count_mismatch")
 
     def test_voice_plan_fails_closed_on_invalid_group_shape(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
