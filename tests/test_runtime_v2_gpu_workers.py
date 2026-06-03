@@ -680,8 +680,10 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
 
             self.assertEqual(result["status"], "ok")
             self.assertTrue(output_path.exists())
+            next_jobs = cast(list[object], result.get("next_jobs", []))
             completion = cast(dict[object, object], result["completion"])
-            self.assertEqual(completion["state"], "routed")
+            self.assertEqual(next_jobs, [])
+            self.assertEqual(completion["state"], "succeeded")
             self.assertTrue(bool(completion["final_output"]))
 
     def test_qwen3_worker_can_consume_voice_texts_directly(self) -> None:
@@ -739,6 +741,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
                     ],
                     "image_path": str(image_path.resolve()),
                     "model_name": "voice-model-a",
+                    "emit_rvc_next_job": True,
                     "service_artifact_path": str(output_path),
                 },
             )
@@ -840,6 +843,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
                     ],
                     "image_path": str(image_path.resolve()),
                     "model_name": "voice-model-a",
+                    "emit_rvc_next_job": True,
                     "service_artifact_path": str(output_path),
                 },
             )
@@ -906,6 +910,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
                     ],
                     "image_path": str(image_path.resolve()),
                     "model_name": "voice-model-a",
+                    "emit_rvc_next_job": True,
                     "service_artifact_path": str(output_path),
                 },
             )
@@ -987,6 +992,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
                     ],
                     "image_path": str(image_path.resolve()),
                     "model_name": "voice-model-a",
+                    "emit_rvc_next_job": True,
                     "service_artifact_path": str(output_path),
                 },
             )
@@ -1067,6 +1073,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
                     ],
                     "image_path": str(image_path.resolve()),
                     "model_name": "voice-model-a",
+                    "emit_rvc_next_job": True,
                     "service_artifact_path": str(output_path),
                 },
             )
@@ -1931,8 +1938,8 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
                 if output_name == "kenburns_silent.mp4":
                     filter_arg = str(command[command.index("-vf") + 1])
                     self.assertIn("zoompan=", filter_arg)
-                    self.assertIn("1.1300", filter_arg)
-                    self.assertIn("0.4000", filter_arg)
+                    self.assertIn("zoom+0.0002708333", filter_arg)
+                    self.assertIn("iw/2-(iw/zoom/2)", filter_arg)
                 _ = (cwd / output_name).write_bytes(b"mp4")
                 return {
                     "command": command,
@@ -2015,9 +2022,9 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
                     filter_arg = str(command[command.index("-vf") + 1])
                     if output_path.name == "scene_a_silent.mp4":
                         self.assertIn("zoompan=", filter_arg)
-                        self.assertIn("0.4000", filter_arg)
+                        self.assertIn("zoom+0.0005416667", filter_arg)
                     if output_path.name == "scene_b_silent.mp4":
-                        self.assertIn("1.1300", filter_arg)
+                        self.assertIn("z='1.1'", filter_arg)
                 _ = output_path.write_bytes(b"mp4")
                 return {
                     "command": command,
@@ -2121,7 +2128,7 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertIn("scene_a_silent.mp4", filter_args)
         self.assertIn("scene_b_silent.mp4", filter_args)
-        self.assertIn("1.1300", filter_args["scene_a_silent.mp4"])
+        self.assertIn("zoom+0.0005416667", filter_args["scene_a_silent.mp4"])
         self.assertIn("z='1.1'", filter_args["scene_b_silent.mp4"])
         self.assertNotEqual(
             filter_args["scene_a_silent.mp4"], filter_args["scene_b_silent.mp4"]
