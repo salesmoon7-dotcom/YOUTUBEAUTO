@@ -504,6 +504,9 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
             render_folder, voice_json, render_spec = _write_render_fixture(root)
+            voice_json.write_text(
+                json.dumps({"voice_texts": []}, ensure_ascii=True), encoding="utf-8"
+            )
             job = JobContract(
                 job_id="render-job-ok",
                 workload="render",
@@ -705,6 +708,9 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
             root = Path(tmp_dir)
             artifact_root = root / "artifacts"
             render_folder, voice_json, render_spec = _write_render_fixture(root)
+            voice_json.write_text(
+                json.dumps({"voice_texts": []}, ensure_ascii=True), encoding="utf-8"
+            )
             job = JobContract(
                 job_id="render-job-invalid-json",
                 workload="render",
