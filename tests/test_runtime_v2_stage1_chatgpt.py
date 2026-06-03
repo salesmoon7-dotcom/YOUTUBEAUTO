@@ -1142,15 +1142,13 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
 
         self.assertEqual(
             called_kwargs["expected_url_substring"],
-            "https://chatgpt.com/g/g-foo/c/bar",
+            CHATGPT_LONGFORM_URL_SUBSTRING,
         )
         self.assertEqual(
             reset_kwargs["expected_url_substring"],
-            "https://chatgpt.com/g/g-foo/c/bar",
+            CHATGPT_LONGFORM_URL_SUBSTRING,
         )
-        self.assertEqual(
-            reset_kwargs["target_url"], "https://chatgpt.com/g/g-foo/c/bar"
-        )
+        self.assertEqual(reset_kwargs["target_url"], CHATGPT_LONGFORM_URL)
 
     def test_stage1_runner_continues_when_reset_context_fails(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
