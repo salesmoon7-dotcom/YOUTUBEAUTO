@@ -394,8 +394,8 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                 result = run_geminigen_job(job, artifact_root)
 
         self.assertEqual(result["status"], "failed")
-        self.assertEqual(result["error_code"], "BROWSER_UNHEALTHY")
-        self.assertTrue(bool(result["retryable"]))
+        self.assertEqual(result["error_code"], "GEMINIGEN_LOGIN_UNPROVEN")
+        self.assertFalse(bool(result["retryable"]))
 
     def test_canva_worker_marks_browser_failures_retryable(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -728,7 +728,9 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
 
             result = run_genspark_job(job, artifact_root)
 
-            workspace = artifact_root / "genspark" / job.job_id
+            workspace = (
+                artifact_root / "genspark" / job.job_id / str(job.payload["run_id"])
+            )
             self.assertEqual(result["status"], "ok")
             self.assertTrue(output_path.exists())
             self.assertTrue((workspace / "request.json").exists())
@@ -839,7 +841,9 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
 
             result = run_seaart_job(job, artifact_root)
 
-            workspace = artifact_root / "seaart" / job.job_id
+            workspace = (
+                artifact_root / "seaart" / job.job_id / str(job.payload["run_id"])
+            )
             self.assertEqual(result["status"], "ok")
             self.assertTrue(output_path.exists())
             self.assertTrue((workspace / "request.json").exists())
@@ -918,7 +922,9 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
 
                 result = runner(job, artifact_root)
 
-                workspace = artifact_root / workload / job.job_id
+                workspace = (
+                    artifact_root / workload / job.job_id / str(job.payload["run_id"])
+                )
                 self.assertEqual(result["status"], "failed")
                 self.assertEqual(
                     result["error_code"], f"native_{workload}_not_implemented"
@@ -1017,6 +1023,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                 / "artifacts"
                 / "genspark"
                 / "genspark-job-1"
+                / "stage2-run-1"
                 / "attach_evidence.json"
             )
             attach_evidence.parent.mkdir(parents=True, exist_ok=True)
@@ -1050,14 +1057,37 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             _ = stdout_path.write_text("", encoding="utf-8")
             _ = stderr_path.write_text("", encoding="utf-8")
 
-            with patch(
-                "runtime_v2.stage2.genspark_worker.run_verified_adapter_command",
-                return_value={
+            def adapter_result(*args, **kwargs):
+                attach_evidence.parent.mkdir(parents=True, exist_ok=True)
+                _ = attach_evidence.write_text(
+                    json.dumps(
+                        {
+                            "status": "ok",
+                            "ref_images_requested": [
+                                "images/ref1.png",
+                                "images/ref2.png",
+                            ],
+                            "ref_images_resolved": [
+                                "D:/YOUTUBEAUTO/images/ref1.png",
+                                "D:/YOUTUBEAUTO/images/ref2.png",
+                            ],
+                            "ref_images_attach_attempted": True,
+                            "ref_upload_error_code": "",
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                return {
                     "ok": True,
                     "stdout_path": stdout_path,
                     "stderr_path": stderr_path,
                     "output_path": output_path,
-                },
+                }
+
+            with patch(
+                "runtime_v2.stage2.genspark_worker.run_verified_adapter_command",
+                side_effect=adapter_result,
             ) as run_adapter:
                 result = run_genspark_job(job, root / "artifacts")
 
@@ -1085,7 +1115,12 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             root = Path(tmp_dir)
             output_path = root / "exports" / "seaart-agent-browser.png"
             attach_evidence = (
-                root / "artifacts" / "seaart" / "seaart-job-1" / "attach_evidence.json"
+                root
+                / "artifacts"
+                / "seaart"
+                / "seaart-job-1"
+                / "stage2-run-1"
+                / "attach_evidence.json"
             )
             attach_evidence.parent.mkdir(parents=True, exist_ok=True)
             _ = attach_evidence.write_text(
@@ -1117,14 +1152,37 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
             _ = stdout_path.write_text("", encoding="utf-8")
             _ = stderr_path.write_text("", encoding="utf-8")
 
-            with patch(
-                "runtime_v2.stage2.seaart_worker.run_verified_adapter_command",
-                return_value={
+            def adapter_result(*args, **kwargs):
+                attach_evidence.parent.mkdir(parents=True, exist_ok=True)
+                _ = attach_evidence.write_text(
+                    json.dumps(
+                        {
+                            "status": "ok",
+                            "ref_images_requested": [
+                                "images/ref1.png",
+                                "images/ref2.png",
+                            ],
+                            "ref_images_resolved": [
+                                "D:/YOUTUBEAUTO/images/ref1.png",
+                                "D:/YOUTUBEAUTO/images/ref2.png",
+                            ],
+                            "ref_images_attach_attempted": True,
+                            "ref_upload_error_code": "",
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                return {
                     "ok": True,
                     "stdout_path": stdout_path,
                     "stderr_path": stderr_path,
                     "output_path": output_path,
-                },
+                }
+
+            with patch(
+                "runtime_v2.stage2.seaart_worker.run_verified_adapter_command",
+                side_effect=adapter_result,
             ) as run_adapter:
                 result = run_seaart_job(job, root / "artifacts")
 
@@ -1449,6 +1507,7 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
                         / "artifacts"
                         / "genspark"
                         / "genspark-job-1"
+                        / "stage2-run-1"
                         / "request.json"
                     ).read_text(encoding="utf-8")
                 ),
