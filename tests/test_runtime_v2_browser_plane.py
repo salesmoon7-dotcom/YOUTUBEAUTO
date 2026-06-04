@@ -1396,6 +1396,11 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                     return_value=external_dir,
                 ),
                 patch("runtime_v2.browser.manager.LEGACY_SESSION_ROOT", legacy_dir),
+                patch.dict(
+                    os.environ,
+                    {"RUNTIME_V2_ALLOW_LEGACY_SESSION_ROOT": "1"},
+                    clear=False,
+                ),
             ):
                 sessions = default_browser_sessions_by_service()
 
@@ -1419,6 +1424,11 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                     return_value=external_dir,
                 ),
                 patch("runtime_v2.browser.manager.LEGACY_SESSION_ROOT", legacy_dir),
+                patch.dict(
+                    os.environ,
+                    {"RUNTIME_V2_ALLOW_LEGACY_SESSION_ROOT": "1"},
+                    clear=False,
+                ),
             ):
                 sessions = default_browser_sessions_by_service()
 

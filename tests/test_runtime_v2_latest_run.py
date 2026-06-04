@@ -169,10 +169,7 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
             self.assertFalse(config.gui_status_file.exists())
             self.assertFalse(config.result_router_file.exists())
             self.assertFalse(config.latest_active_run_file.exists())
-            self.assertTrue(config.latest_completed_run_file.exists())
-            pointer = json.loads(config.latest_completed_run_file.read_text(encoding="utf-8"))
-            self.assertEqual(pointer["run_id"], "excel-sync-run-1")
-            self.assertEqual(pointer["mode"], "excel_sync")
+            self.assertFalse(config.latest_completed_run_file.exists())
             self.assertTrue(cli_gui_path.exists())
             self.assertTrue(cli_result_path.exists())
 
@@ -348,7 +345,9 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
 
         self.assertNotIn("warning_worker_error_code_mismatch", payload)
 
-    def test_excel_sync_runtime_snapshot_writes_latest_completed_pointer_only(self) -> None:
+    def test_excel_sync_runtime_snapshot_writes_latest_completed_pointer_only(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             config = _latest_run_config(root)
@@ -383,7 +382,9 @@ class RuntimeV2LatestRunTests(unittest.TestCase):
             self.assertTrue(config.result_router_file.exists())
             self.assertFalse(config.latest_active_run_file.exists())
             self.assertTrue(config.latest_completed_run_file.exists())
-            pointer = json.loads(config.latest_completed_run_file.read_text(encoding="utf-8"))
+            pointer = json.loads(
+                config.latest_completed_run_file.read_text(encoding="utf-8")
+            )
             self.assertEqual(pointer["run_id"], "excel-sync-run-1")
             self.assertEqual(pointer["mode"], "excel_sync")
 

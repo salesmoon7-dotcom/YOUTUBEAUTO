@@ -271,7 +271,7 @@ class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
                 exit_code = _spawn_detached_probe(args, mode="stage5_row1")
 
         self.assertEqual(exit_code, exit_codes.SUCCESS)
-        command = popen.call_args.args[0]
+        command = popen.call_args_list[0].args[0]
         self.assertIn("--stage5-row1-probe-child", command)
         self.assertIn("--excel-path", command)
         self.assertIn(str(root / "topic.xlsx"), command)

@@ -767,9 +767,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         ]
         self.assertEqual(len(iframe_actions), 1)
         self.assertEqual(str(iframe_actions[0].get("bg_prompt", "")), "scene three")
-        self.assertTrue(
-            str(iframe_actions[0].get("ref_img_path", "")).endswith("ref.png")
-        )
+        self.assertEqual(str(iframe_actions[0].get("ref_img_path", "")), "")
         self.assertFalse(
             any(
                 "filled_background_prompt" in script
@@ -1630,7 +1628,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             ):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
-            self.assertEqual(exit_code, exit_codes.ADAPTER_FAIL)
+            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
             evidence = json.loads(
                 (root / "attach_evidence.json").read_text(encoding="utf-8")
             )
@@ -1684,7 +1682,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             ):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
-            self.assertEqual(exit_code, exit_codes.CLI_USAGE)
+            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
             evidence = json.loads(
                 (root / "attach_evidence.json").read_text(encoding="utf-8")
             )
@@ -1783,7 +1781,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             ):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
-            self.assertEqual(exit_code, exit_codes.ADAPTER_FAIL)
+            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
             evidence = json.loads(
                 (root / "attach_evidence.json").read_text(encoding="utf-8")
             )
@@ -2736,7 +2734,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             ):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
-            self.assertEqual(exit_code, exit_codes.ADAPTER_FAIL)
+            self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
             self.assertEqual(verify_mock.call_count, 1)
             evidence = json.loads(
                 (root / "attach_evidence.json").read_text(encoding="utf-8")
@@ -3364,8 +3362,11 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             if action.get("type") == "eval"
             and "page_count_after" in str(action.get("script", ""))
         )
-        self.assertIn("fallback_clicked_add_page", str(page_count_script["script"]))
-        self.assertIn("fallback_pasted_template", str(page_count_script["script"]))
+        self.assertIn(
+            "window.__runtime_v2_canva_duplicated",
+            str(page_count_script["script"]),
+        )
+        self.assertIn("count = before + 1", str(page_count_script["script"]))
 
     def test_canva_page_count_uses_footer_total_pages(self) -> None:
         script = _canva_page_count_script("page_count_before")
@@ -4171,16 +4172,20 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
         self.assertEqual(exit_code, exit_codes.SUCCESS)
-        bg_select_script = next(
+        self.assertFalse(
+            any(
+                action.get("type") == "eval"
+                and "selected_generated_background" in str(action.get("script", ""))
+                for action in captured_actions
+            )
+        )
+        iframe_actions = [
             action
             for action in captured_actions
-            if action.get("type") == "eval"
-            and "selected_generated_background" in str(action.get("script", ""))
-        )
-        self.assertIn(
-            "__runtime_v2_canva_generated_before", str(bg_select_script["script"])
-        )
-        self.assertIn("selected_generated_background", str(bg_select_script["script"]))
+            if str(action.get("type", "")) == "playwright_canva_background_generate"
+        ]
+        self.assertEqual(len(iframe_actions), 1)
+        self.assertEqual(str(iframe_actions[0].get("ref_img_path", "")), "")
 
     def test_stage2_adapter_child_types_created_canva_page_in_download_panel(
         self,
@@ -4601,6 +4606,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
 
             with (
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli._attach_stage2_ref_images", return_value=None),
                 patch(
                     "runtime_v2.cli.run_agent_browser_verify_job",
                     side_effect=fake_verify,
@@ -4968,6 +4974,9 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             args.service_artifact_path = str(output_path)
             args.expected_url_substring = "genspark.ai"
             args.expected_title_substring = "Genspark"
+            completed = cast(object, type("Completed", (), {})())
+            setattr(completed, "stdout", '{"ok":true}')
+            setattr(completed, "stderr", "")
 
             with (
                 patch(
@@ -4975,9 +4984,19 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                     return_value={"status": "ok"},
                 ),
                 patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli.subprocess.run", return_value=completed),
+                patch("runtime_v2.cli.sleep"),
                 patch(
                     "runtime_v2.cli.write_functional_evidence_bundle",
                     side_effect=RuntimeError("capture failed"),
+                ),
+                patch(
+                    "runtime_v2.cli.collect_browser_debug_state",
+                    return_value={
+                        "selected_target": {
+                            "url": "https://www.genspark.ai/agents?id=result123"
+                        }
+                    },
                 ),
             ):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
@@ -5577,7 +5596,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             def fake_run(*args: object, **kwargs: object):
                 _ = args
                 _ = kwargs
-                voice_dir = workspace / "project" / "voice"
+                voice_dir = workspace / "project_001" / "voice"
                 voice_dir.mkdir(parents=True, exist_ok=True)
                 _ = (voice_dir / "#00.txt").write_text("script", encoding="utf-8")
                 _ = (voice_dir / "#01.flac").write_bytes(b"flac")
@@ -5628,7 +5647,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             def fake_run(*args: object, **kwargs: object):
                 _ = args
                 _ = kwargs
-                voice_dir = workspace / "project" / "voice"
+                voice_dir = workspace / "project_001" / "voice"
                 voice_dir.mkdir(parents=True, exist_ok=True)
                 _ = (voice_dir / "#01.flac").write_bytes(b"flac")
                 completed = cast(object, type("Completed", (), {})())

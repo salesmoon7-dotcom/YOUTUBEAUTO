@@ -483,7 +483,7 @@ def load_runtime_readiness(
             }
         )
 
-    primary_code = "OK" if not blockers else str(blockers[0].get("code", "CLI_USAGE"))
+    primary_code = _primary_readiness_code(blockers)
     return {
         "ready": len(blockers) == 0,
         "code": primary_code,
@@ -515,6 +515,49 @@ def load_runtime_readiness(
             ),
         },
     }
+
+
+def _primary_readiness_code(blockers: list[dict[str, object]]) -> str:
+    if not blockers:
+        return "OK"
+    priority = {
+        "LATEST_RUN_POINTER_MISSING": 0,
+        "LATEST_RUN_POINTER_INVALID": 1,
+        "LATEST_RUN_DRIFT": 2,
+        "BROWSER_REGISTRY_INVALID": 3,
+        "BROWSER_REGISTRY_MISSING": 4,
+        "BROWSER_REGISTRY_DRIFT": 5,
+        "BROWSER_HEALTH_INVALID": 6,
+        "BROWSER_HEALTH_MISSING": 7,
+        "GPT_STATUS_INVALID": 8,
+        "GPT_STATUS_MISSING": 9,
+        "GPU_HEALTH_INVALID": 10,
+        "GPU_HEALTH_MISSING": 11,
+        "WORKER_REGISTRY_INVALID": 12,
+        "WORKER_REGISTRY_MISSING": 13,
+        "PROMOTION_GATE": 14,
+        "GPT_STATUS_STALE": 15,
+        "GPU_HEALTH_STALE": 16,
+        "WORKER_STALL_DETECTED": 17,
+        "GPU_LEASE_BUSY": 18,
+        "GPU_LEASE_RENEW_FAILED": 19,
+        "GPT_FLOOR_FAIL": 20,
+        "BROWSER_BLOCKED": 21,
+        "BROWSER_RESTART_EXHAUSTED": 22,
+        "BROWSER_UNHEALTHY": 23,
+    }
+
+    def _priority_key(blocker: dict[str, object]) -> tuple[int, str]:
+        code = str(blocker.get("code", "CLI_USAGE"))
+        if code.startswith("PROMOTION_GATE_") and code.endswith("_FAIL"):
+            return (priority["PROMOTION_GATE"], code)
+        return (priority.get(code, 1000), code)
+
+    ordered = sorted(
+        blockers,
+        key=_priority_key,
+    )
+    return str(ordered[0].get("code", "CLI_USAGE"))
 
 
 def resolve_snapshot_run_id(

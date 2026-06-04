@@ -190,7 +190,7 @@ class RuntimeV2CliBoundaryEmitTests(unittest.TestCase):
         self.assertEqual(inner_job["worker"], "geminigen")
         self.assertTrue(bool(inner_job["payload"]["use_agent_browser"]))
 
-    def test_emit_boundary_contract_path_builds_canva_job_with_asset_manifest_ref(
+    def test_emit_boundary_contract_path_rejects_canva_worker_without_boundary_job(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -262,12 +262,8 @@ class RuntimeV2CliBoundaryEmitTests(unittest.TestCase):
             ):
                 exit_code = main()
 
-            contract = json.loads(output_path.read_text(encoding="utf-8"))
-
-        self.assertEqual(exit_code, exit_codes.SUCCESS)
-        inner_job = contract["job"]
-        self.assertEqual(inner_job["worker"], "canva")
-        self.assertEqual(inner_job["payload"]["ref_img"], str(image_primary.resolve()))
+        self.assertEqual(exit_code, exit_codes.CLI_USAGE)
+        self.assertFalse(output_path.exists())
 
     def test_emit_boundary_contract_path_rejects_placeholder_scene_prompt(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

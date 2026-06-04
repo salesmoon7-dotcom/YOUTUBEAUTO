@@ -321,6 +321,43 @@ def write_cli_runtime_snapshot(
     )
 
 
+def write_job_contract_runtime_snapshot(
+    config: RuntimeConfig,
+    *,
+    run_id: str,
+    mode: str,
+    status: str,
+    code: str,
+    debug_log: str,
+    gui_payload: dict[str, object],
+    artifacts: list[Path],
+    metadata: dict[str, object],
+) -> None:
+    write_runtime_snapshot(
+        config,
+        run_id=run_id,
+        mode=mode,
+        status=status,
+        code=code,
+        debug_log=debug_log,
+        gui_payload=gui_payload,
+        artifacts=artifacts,
+        metadata=metadata,
+        write_completed=True,
+        update_pointers=False,
+    )
+    update_latest_run_pointers(
+        config,
+        run_id=run_id,
+        mode=mode,
+        status=status,
+        code=code,
+        debug_log=debug_log,
+        write_completed=True,
+        write_active=False,
+    )
+
+
 def write_excel_sync_runtime_snapshot(
     config: RuntimeConfig,
     *,

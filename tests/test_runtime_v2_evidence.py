@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.evidence import (
+    _primary_readiness_code,
     load_latest_result_metadata,
     load_runtime_readiness,
     resolve_snapshot_run_id,
@@ -71,6 +72,18 @@ def _write_ready_gpu_and_worker_state(
 
 
 class RuntimeV2EvidenceTests(unittest.TestCase):
+    def test_primary_readiness_code_prioritizes_promotion_gate_over_stale_gpt(
+        self,
+    ) -> None:
+        code = _primary_readiness_code(
+            [
+                {"code": "GPT_STATUS_STALE"},
+                {"code": "PROMOTION_GATE_C_FAIL"},
+            ]
+        )
+
+        self.assertEqual(code, "PROMOTION_GATE_C_FAIL")
+
     def test_load_latest_result_metadata_uses_runtime_config_default_when_unspecified(
         self,
     ) -> None:

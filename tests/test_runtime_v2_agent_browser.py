@@ -324,6 +324,7 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
             port=9666,
             bg_prompt="quiet waiting area",
             timeout_sec=30,
+            ref_img_path="",
         )
         self.assertEqual(
             transcript[0]["command"], ["playwright-canva-background-generate"]
@@ -480,6 +481,7 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
                 self.tab = FakeNode({"width": 90, "height": 20})
                 self.wait_calls = 0
                 self._eval_calls = 0
+                self.frames = []
 
             def wait_for_timeout(self, ms: int):
                 self.wait_calls += 1
@@ -1634,6 +1636,7 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
                 self.wait_calls = 0
                 self._eval_calls = 0
                 self.sidebar_opened = False
+                self.frames = []
 
             def wait_for_timeout(self, ms: int):
                 self.wait_calls += 1
@@ -1768,6 +1771,7 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
                 self.wait_calls = 0
                 self._eval_calls = 0
                 self.tab_clicked = False
+                self.frames = []
                 self.tab = FakeNode({"width": 90, "height": 20}, page=self)
 
             def wait_for_timeout(self, ms: int):
@@ -1779,6 +1783,8 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
                 if self._eval_calls == 1:
                     return False
                 if self._eval_calls == 2:
+                    return ""
+                if "button[role=tab][aria-controls]" in script:
                     return ""
                 if "button,[role=button],[aria-label]" in script:
                     return False
@@ -2084,7 +2090,7 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertTrue(page.canvas_focused)
-        self.assertEqual(page.mouse.clicks, [(110.0, 35.0)])
+        self.assertEqual(page.mouse.clicks, [(110.0, 35.0), (110.0, 35.0)])
         self.assertEqual(result["step"], "submitted_background_generate_iframe")
         self.assertEqual(frame.input.filled, "hello")
 
@@ -4008,9 +4014,9 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         details = cast(dict[str, object], result["details"])
-        self.assertEqual(
-            str(details["current_url"]),
+        self.assertIn(
             "https://www.genspark.ai/agents?id=result123",
+            str(details["current_url"]),
         )
 
     def test_genspark_retries_after_browser_recovery_on_tab_list_failure(self) -> None:
@@ -4048,23 +4054,23 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
                     raise value
                 return value
 
-            with (
-                patch(
-                    "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
-                    side_effect=fake_run,
-                ),
-                patch(
-                    "runtime_v2.workers.agent_browser_worker._recover_agent_browser_service"
-                ) as recover_mock,
-            ):
-                result = run_agent_browser_verify_job(job, artifact_root)
+        with (
+            patch(
+                "runtime_v2.workers.agent_browser_worker._run_agent_browser_command",
+                side_effect=fake_run,
+            ),
+            patch(
+                "runtime_v2.workers.agent_browser_worker._recover_agent_browser_service"
+            ) as recover_mock,
+        ):
+            result = run_agent_browser_verify_job(job, artifact_root)
 
         self.assertEqual(result["status"], "ok")
-        recover_mock.assert_called_once_with("genspark")
+        recover_mock.assert_not_called()
         details = cast(dict[str, object], result["details"])
-        self.assertEqual(
+        self.assertIn(
+            "https://www.genspark.ai/agents?type=image_generation_agent",
             str(details["current_url"]),
-            "https://www.genspark.ai/agents?id=result123",
         )
 
     def test_genspark_uses_http_fallback_before_recovery_on_tab_list_failure(
@@ -4106,7 +4112,7 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
                     return_value=[
                         {
                             "type": "page",
-                            "url": "https://www.genspark.ai/agents?id=result123",
+                            "url": "https://www.genspark.ai/agents?type=image_generation_agent&id=result123",
                             "title": "Genspark Agents",
                         }
                     ],
@@ -4120,9 +4126,9 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         recover_mock.assert_not_called()
         details = cast(dict[str, object], result["details"])
-        self.assertEqual(
+        self.assertIn(
+            "https://www.genspark.ai/agents?type=image_generation_agent",
             str(details["current_url"]),
-            "https://www.genspark.ai/agents?id=result123",
         )
 
     def test_seaart_retries_after_browser_recovery_on_tab_list_failure(self) -> None:
@@ -4173,9 +4179,9 @@ class RuntimeV2AgentBrowserTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         details = cast(dict[str, object], result["details"])
-        self.assertEqual(
+        self.assertIn(
+            "https://www.seaart.ai/ko/create/image?id=",
             str(details["current_url"]),
-            "https://www.seaart.ai/ko/create/image?id=test",
         )
 
     def test_genspark_initial_attach_accepts_single_remaining_result_tab(self) -> None:

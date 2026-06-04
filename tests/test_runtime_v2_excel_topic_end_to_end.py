@@ -21,6 +21,21 @@ from runtime_v2.stage1.chatgpt_runner import run_stage1_chatgpt_job
 from runtime_v2.stage2.json_builders import build_stage2_jobs
 
 
+_STAGE1_GPT_RESPONSE = (
+    "[Title]\n"
+    "Bridge title\n\n"
+    "[Title for Thumb]\n"
+    "Bridge thumb\n\n"
+    "[Voice]\n"
+    "1. 첫 장면\n"
+    "2. 둘째 장면\n\n"
+    "[#01]\n"
+    "장면 하나\n\n"
+    "[#02]\n"
+    "장면 둘"
+)
+
+
 def _write_excel_fixture(path: Path) -> Path:
     workbook = Workbook()
     sheet = cast(Worksheet, workbook.active)
@@ -101,6 +116,7 @@ class RuntimeV2ExcelTopicEndToEndTests(unittest.TestCase):
                 row_index=0,
             )
             topic_spec = cast(dict[str, object], seeded["topic_spec"])
+            topic_spec["gpt_response_text"] = _STAGE1_GPT_RESPONSE
             workspace = root / "artifacts" / "chatgpt"
             workspace.mkdir(parents=True, exist_ok=True)
             stage1_result = run_stage1_chatgpt_job(
@@ -283,6 +299,7 @@ class RuntimeV2ExcelTopicEndToEndTests(unittest.TestCase):
                 row_index=0,
             )
             topic_spec = cast(dict[str, object], seeded["topic_spec"])
+            topic_spec["gpt_response_text"] = _STAGE1_GPT_RESPONSE
             workspace = root / "artifacts" / "chatgpt"
             workspace.mkdir(parents=True, exist_ok=True)
             stage1_result = run_stage1_chatgpt_job(

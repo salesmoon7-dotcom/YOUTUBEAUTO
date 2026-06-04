@@ -448,7 +448,10 @@ def _default_session_profile_dir(session_name: str) -> str:
     legacy_profile_dir = (LEGACY_SESSION_ROOT / session_name).resolve()
     if external_profile_dir.exists():
         return str(external_profile_dir)
-    if legacy_profile_dir.exists():
+    allow_legacy_root = os.environ.get(
+        "RUNTIME_V2_ALLOW_LEGACY_SESSION_ROOT", ""
+    ).strip()
+    if allow_legacy_root == "1" and legacy_profile_dir.exists():
         return str(legacy_profile_dir)
     return str(external_profile_dir)
 

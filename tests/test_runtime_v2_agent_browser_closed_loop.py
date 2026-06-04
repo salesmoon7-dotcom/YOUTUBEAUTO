@@ -11,7 +11,7 @@ from runtime_v2.control_plane import run_control_loop_once, seed_control_job
 
 
 class RuntimeV2AgentBrowserClosedLoopTests(unittest.TestCase):
-    def test_probe_root_closed_loop_replans_after_browser_failure_then_completes(
+    def test_probe_root_closed_loop_fail_closes_verify_job_when_browser_side_effects_blocked(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
@@ -66,14 +66,14 @@ class RuntimeV2AgentBrowserClosedLoopTests(unittest.TestCase):
                 config.queue_store_file.read_text(encoding="utf-8")
             )
             queued_items = [item for item in queue_payload if isinstance(item, dict)]
-            completed_verify_jobs = [
+            failed_verify_jobs = [
                 item
                 for item in queued_items
                 if str(item.get("workload", "")) == "agent_browser_verify"
-                and str(item.get("status", "")) == "completed"
+                and str(item.get("status", "")) == "failed"
             ]
 
-        self.assertTrue(completed_verify_jobs)
+        self.assertTrue(failed_verify_jobs)
         self.assertTrue(
             any(
                 str(item.get("code", "")) == "BROWSER_BLOCKED"

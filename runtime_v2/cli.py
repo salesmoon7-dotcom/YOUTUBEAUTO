@@ -58,7 +58,7 @@ from runtime_v2.gpt_pool_monitor import tick_gpt_status
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
 from runtime_v2.latest_run import (
     write_cli_runtime_snapshot,
-    write_runtime_snapshot,
+    write_job_contract_runtime_snapshot,
 )
 from runtime_v2.manager import mark_excel_row_running, seed_excel_row
 from runtime_v2.manager import write_failure_summary
@@ -250,6 +250,27 @@ def exit_code_from_readiness(readiness: dict[str, object]) -> int:
     if bool(readiness.get("ready", False)):
         return exit_codes.SUCCESS
     blockers = readiness.get("blockers")
+    readiness_exit_priority = {
+        "GPT_FLOOR_FAIL": exit_codes.GPT_FLOOR_FAIL,
+        "BROWSER_RESTART_EXHAUSTED": exit_codes.BROWSER_BLOCKED,
+        "BROWSER_UNHEALTHY": exit_codes.BROWSER_UNHEALTHY,
+        "BROWSER_BLOCKED": exit_codes.BROWSER_BLOCKED,
+    }
+    if isinstance(blockers, list):
+        typed_blockers = cast(list[object], blockers)
+        for code in readiness_exit_priority:
+            if any(
+                isinstance(blocker_obj, dict)
+                and str(cast(dict[object, object], blocker_obj).get("code", "")) == code
+                for blocker_obj in typed_blockers
+            ):
+                return readiness_exit_priority[code]
+    primary_code = str(readiness.get("code", "CLI_USAGE"))
+    mapped_primary = exit_code_from_status(primary_code)
+    if mapped_primary != exit_codes.CLI_USAGE:
+        return mapped_primary
+    if primary_code and primary_code != "CLI_USAGE":
+        return exit_codes.BROWSER_BLOCKED
     if isinstance(blockers, list):
         typed_blockers = cast(list[object], blockers)
         for blocker_obj in typed_blockers:
@@ -263,10 +284,6 @@ def exit_code_from_readiness(readiness: dict[str, object]) -> int:
             mapped = exit_code_from_status(str(blocker.get("code", "CLI_USAGE")))
             if mapped != exit_codes.CLI_USAGE:
                 return mapped
-    primary_code = str(readiness.get("code", "CLI_USAGE"))
-    mapped_primary = exit_code_from_status(primary_code)
-    if mapped_primary != exit_codes.CLI_USAGE:
-        return mapped_primary
     return exit_codes.BROWSER_BLOCKED
 
 
@@ -1188,7 +1205,7 @@ def main() -> int:
             artifacts=snapshot_artifacts,
         )
         if explicit_job is not None:
-            write_runtime_snapshot(
+            write_job_contract_runtime_snapshot(
                 config,
                 run_id=run_id,
                 mode=mode,
@@ -1219,7 +1236,6 @@ def main() -> int:
                     "debug_log": str(debug_log),
                     "ts": now_ts(),
                 },
-                write_completed=True,
             )
 
     report = {
@@ -2125,13 +2141,20 @@ def _run_stage5_row1_probe(
         if str(result.get("queue_status", "")).strip() == "retry":
             continue
         latest_payload_path = probe_config.result_router_file
+        if not latest_payload_path.exists() and config.result_router_file.exists():
+            latest_payload_path = config.result_router_file
         if latest_payload_path.exists():
             latest_payload = json.loads(latest_payload_path.read_text(encoding="utf-8"))
             if isinstance(latest_payload, dict):
                 metadata_obj = cast(
                     dict[str, object], latest_payload.get("metadata", {})
                 )
-                final_metadata = metadata_obj if isinstance(metadata_obj, dict) else {}
+                candidate_metadata = (
+                    metadata_obj if isinstance(metadata_obj, dict) else {}
+                )
+                candidate_run_id = str(candidate_metadata.get("run_id", "")).strip()
+                if candidate_run_id == run_id:
+                    final_metadata = candidate_metadata
         latest_workload = str(final_metadata.get("workload", "")).strip()
         if (
             bool(final_metadata.get("final_output", False))
