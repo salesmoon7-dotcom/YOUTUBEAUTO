@@ -511,6 +511,27 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
 
             with (
                 patch(
+                    "runtime_v2.browser.supervisor.inspect_browser_plane_owner",
+                    return_value={
+                        "lock_state": "free",
+                        "owned": False,
+                        "metadata_valid": True,
+                        "pid_alive": False,
+                        "lock_age_sec": 0.0,
+                    },
+                ),
+                patch(
+                    "runtime_v2.browser.supervisor.ensure_browser_plane_ownership",
+                    return_value={
+                        "lock_state": "owned",
+                        "owned": True,
+                        "metadata_valid": True,
+                        "pid_alive": True,
+                        "lock_age_sec": 0.0,
+                        "action_result": "ownership_acquired",
+                    },
+                ),
+                patch(
                     "runtime_v2.browser.manager._probe_local_port", return_value=True
                 ),
                 patch(
@@ -556,6 +577,27 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             manager.running = True
             supervisor = BrowserSupervisor(manager)
             with (
+                patch(
+                    "runtime_v2.browser.supervisor.inspect_browser_plane_owner",
+                    return_value={
+                        "lock_state": "free",
+                        "owned": False,
+                        "metadata_valid": True,
+                        "pid_alive": False,
+                        "lock_age_sec": 0.0,
+                    },
+                ),
+                patch(
+                    "runtime_v2.browser.supervisor.ensure_browser_plane_ownership",
+                    return_value={
+                        "lock_state": "owned",
+                        "owned": True,
+                        "metadata_valid": True,
+                        "pid_alive": True,
+                        "lock_age_sec": 0.0,
+                        "action_result": "ownership_acquired",
+                    },
+                ),
                 patch(
                     "runtime_v2.browser.manager._probe_local_port", return_value=True
                 ),
@@ -607,6 +649,27 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
             manager.running = True
             supervisor = BrowserSupervisor(manager)
             with (
+                patch(
+                    "runtime_v2.browser.supervisor.inspect_browser_plane_owner",
+                    return_value={
+                        "lock_state": "free",
+                        "owned": False,
+                        "metadata_valid": True,
+                        "pid_alive": False,
+                        "lock_age_sec": 0.0,
+                    },
+                ),
+                patch(
+                    "runtime_v2.browser.supervisor.ensure_browser_plane_ownership",
+                    return_value={
+                        "lock_state": "owned",
+                        "owned": True,
+                        "metadata_valid": True,
+                        "pid_alive": True,
+                        "lock_age_sec": 0.0,
+                        "action_result": "ownership_acquired",
+                    },
+                ),
                 patch(
                     "runtime_v2.browser.manager._probe_local_port", return_value=True
                 ),
@@ -1540,6 +1603,27 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
                 ]
 
             with (
+                patch(
+                    "runtime_v2.browser.supervisor.inspect_browser_plane_owner",
+                    return_value={
+                        "lock_state": "free",
+                        "owned": False,
+                        "metadata_valid": True,
+                        "pid_alive": False,
+                        "lock_age_sec": 0.0,
+                    },
+                ),
+                patch(
+                    "runtime_v2.browser.supervisor.ensure_browser_plane_ownership",
+                    return_value={
+                        "lock_state": "owned",
+                        "owned": True,
+                        "metadata_valid": True,
+                        "pid_alive": True,
+                        "lock_age_sec": 0.0,
+                        "action_result": "ownership_acquired",
+                    },
+                ),
                 patch(
                     "runtime_v2.browser.manager._probe_local_port", return_value=True
                 ),

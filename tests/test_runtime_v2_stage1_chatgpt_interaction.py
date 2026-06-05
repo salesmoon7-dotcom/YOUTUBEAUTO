@@ -136,7 +136,9 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
     def test_response_text_from_state_prefers_assistant_text_when_legacy_blocks_are_incomplete(
         self,
     ) -> None:
-        assistant_text = "[Voice]" + chr(10) + "1. first line" + chr(10) + "2. second line"
+        assistant_text = (
+            "[Voice]" + chr(10) + "1. first line" + chr(10) + "2. second line"
+        )
         legacy_blocks = [
             {"label": "[Title]", "body": "Example title"},
             {"label": "[Keywords]", "body": "money, pension"},
@@ -408,7 +410,9 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(nav_mock.call_args.kwargs["timeout_sec"], 7.0)
         self.assertEqual(wait_mock.call_args.kwargs["timeout_sec"], 7.0)
 
-    def test_reset_chatgpt_context_waits_for_prompt_ready_before_new_chat_click(self) -> None:
+    def test_reset_chatgpt_context_waits_for_prompt_ready_before_new_chat_click(
+        self,
+    ) -> None:
         target = {
             "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/test",
             "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}",
@@ -436,9 +440,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                 "runtime_v2.stage1.chatgpt_backend._start_new_chat",
                 side_effect=start_side_effect,
             ),
-            mock.patch(
-                "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_method"
-            ),
+            mock.patch("runtime_v2.stage1.chatgpt_backend._run_raw_cdp_method"),
             mock.patch("runtime_v2.stage1.chatgpt_backend.time.sleep"),
         ):
             _ = reset_chatgpt_context(9222)
@@ -466,9 +468,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                 "runtime_v2.stage1.chatgpt_backend._start_new_chat",
                 return_value={"clicked": False},
             ),
-            mock.patch(
-                "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_method"
-            ),
+            mock.patch("runtime_v2.stage1.chatgpt_backend._run_raw_cdp_method"),
             mock.patch("runtime_v2.stage1.chatgpt_backend.time.sleep"),
         ):
             with self.assertRaisesRegex(RuntimeError, "chatgpt_new_chat_unavailable"):
@@ -1358,6 +1358,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                     {
                         "ok": True,
                         "inputSelector": "#prompt-textarea",
+                        "inputSuccess": True,
                         "sendClicked": True,
                     }
                 )
@@ -1375,8 +1376,21 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         with (
             mock.patch.object(
                 backend,
+                "_wait_for_input_ready",
+                return_value={"ready": True},
+            ),
+            mock.patch.object(
+                backend,
                 "_wait_for_send_state",
                 return_value={"ok": True, "sendClicked": True, "submit_evidence": {}},
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._select_page_target",
+                return_value={
+                    "title": CHATGPT_LONGFORM_TITLE_SUBSTRING,
+                    "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}",
+                    "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/test",
+                },
             ),
             mock.patch(
                 "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
@@ -1571,6 +1585,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                     {
                         "ok": True,
                         "inputSelector": "#prompt-textarea",
+                        "inputSuccess": True,
                         "sendClicked": True,
                     }
                 )
@@ -1588,8 +1603,21 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         with (
             mock.patch.object(
                 backend,
+                "_wait_for_input_ready",
+                return_value={"ready": True},
+            ),
+            mock.patch.object(
+                backend,
                 "_wait_for_send_state",
                 return_value={"ok": True, "sendClicked": True, "submit_evidence": {}},
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._select_page_target",
+                return_value={
+                    "title": CHATGPT_LONGFORM_TITLE_SUBSTRING,
+                    "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}",
+                    "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/test",
+                },
             ),
             mock.patch(
                 "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
@@ -1635,6 +1663,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                     {
                         "ok": True,
                         "inputSelector": "#prompt-textarea",
+                        "inputSuccess": True,
                         "sendClicked": True,
                     }
                 )
@@ -1652,8 +1681,21 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         with (
             mock.patch.object(
                 backend,
+                "_wait_for_input_ready",
+                return_value={"ready": True},
+            ),
+            mock.patch.object(
+                backend,
                 "_wait_for_send_state",
                 return_value={"ok": True, "sendClicked": True, "submit_evidence": {}},
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._select_page_target",
+                return_value={
+                    "title": CHATGPT_LONGFORM_TITLE_SUBSTRING,
+                    "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}",
+                    "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/test",
+                },
             ),
             mock.patch(
                 "runtime_v2.stage1.chatgpt_backend._http_cdp_tab_list",
