@@ -104,10 +104,14 @@ def generate_gpt_response_text(
     def write_state_snapshot(state: dict[str, object]) -> None:
         if state_path is None:
             return
+        raw_block_count = state.get("assistant_block_count", 0)
+        assistant_block_count = (
+            raw_block_count if isinstance(raw_block_count, int) else 0
+        )
         payload = {
             "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "assistant_text_len": len(str(state.get("assistant_text", "")).strip()),
-            "assistant_block_count": int(state.get("assistant_block_count", 0) or 0),
+            "assistant_block_count": assistant_block_count,
             "has_stop": bool(state.get("has_stop", False)),
             "has_send_button": bool(state.get("has_send_button", False)),
             "thinking_stopped": bool(state.get("thinking_stopped", False)),
@@ -202,24 +206,9 @@ def generate_gpt_response_text(
         allow_submit_probe = _should_probe_after_ambiguous_submit(
             submit_info, submit_evidence
         )
-        if submit_classification != "sent" and not allow_submit_probe:
-            failed = _interaction_failure(
-                failure_stage="submit",
-                error_code="CHATGPT_BACKEND_UNAVAILABLE",
-                backend_error=str(
-                    submit_evidence.get("classification_reason", "submit_ambiguous")
-                ),
-                submit_info=submit_info,
-                final_state=probe(port),
-            )
-            emit(
-                "final_state",
-                attempt=attempt,
-                final_state="failed",
-                final_state_code=str(failed.get("error_code", "failed")),
-            )
-            failed["timeline"] = timeline
-            return failed
+        ambiguous_submit_probe_only = (
+            submit_classification != "sent" and not allow_submit_probe
+        )
         for fallback in _backend_fallbacks(submit_info):
             emit(
                 "fallback_transition",
@@ -326,10 +315,7 @@ def generate_gpt_response_text(
                 bool(response_text)
                 and saw_streaming
                 and ((not has_stop) or structured_stage1_content)
-                and (
-                    not (has_stop and has_send_button)
-                    or structured_stage1_content
-                )
+                and (not (has_stop and has_send_button) or structured_stage1_content)
             )
             if response_ready:
                 if response_text == last_text:
@@ -340,12 +326,16 @@ def generate_gpt_response_text(
                 last_text = response_text
                 idle_elapsed = time.time() - last_activity_ts
                 terminal_stage1_blocks = _has_terminal_stage1_blocks(legacy_blocks)
-                if terminal_stage1_blocks or (stable_count >= 1 and idle_elapsed >= completion_idle_sec):
+                if terminal_stage1_blocks or (
+                    stable_count >= 1 and idle_elapsed >= completion_idle_sec
+                ):
                     emit(
                         "response_stable",
                         attempt=attempt,
                         backend="chatgpt_backend",
-                        final_state_code="ok_terminal_blocks" if terminal_stage1_blocks else "ok",
+                        final_state_code="ok_terminal_blocks"
+                        if terminal_stage1_blocks
+                        else "ok",
                     )
                     result: dict[str, object] = {
                         "status": "ok",
@@ -358,7 +348,9 @@ def generate_gpt_response_text(
                         "final_state",
                         attempt=attempt,
                         final_state="success",
-                        final_state_code="ok_terminal_blocks" if terminal_stage1_blocks else "ok",
+                        final_state_code="ok_terminal_blocks"
+                        if terminal_stage1_blocks
+                        else "ok",
                     )
                     result["timeline"] = timeline
                     return result
@@ -423,6 +415,26 @@ def generate_gpt_response_text(
                 and not text
                 and time.time() - started >= response_start_timeout_sec
             ):
+                if ambiguous_submit_probe_only:
+                    failed = _interaction_failure(
+                        failure_stage="submit",
+                        error_code="CHATGPT_BACKEND_UNAVAILABLE",
+                        backend_error=str(
+                            submit_evidence.get(
+                                "classification_reason", "submit_ambiguous"
+                            )
+                        ),
+                        submit_info=submit_info,
+                        final_state=cast(dict[str, object], state),
+                    )
+                    emit(
+                        "final_state",
+                        attempt=attempt,
+                        final_state="failed",
+                        final_state_code=str(failed.get("error_code", "failed")),
+                    )
+                    failed["timeline"] = timeline
+                    return failed
                 if not response_not_started_emitted:
                     emit(
                         "response_not_started",
@@ -583,6 +595,7 @@ def _response_text_from_state(text: str, legacy_blocks: object) -> str:
             return ""
     return normalized
 
+
 def _has_terminal_stage1_blocks(legacy_blocks: object) -> bool:
     if not isinstance(legacy_blocks, list):
         return False
@@ -591,7 +604,9 @@ def _has_terminal_stage1_blocks(legacy_blocks: object) -> bool:
         for item in legacy_blocks
         if isinstance(item, dict)
     }
-    has_scene = any(label.startswith("[#") or label.startswith("[scene") for label in labels)
+    has_scene = any(
+        label.startswith("[#") or label.startswith("[scene") for label in labels
+    )
     has_voice = any(label.startswith("[voice") for label in labels)
     has_terminal = any(
         label.startswith("[shorts voice") or label.startswith("[shorts clip mapping")
@@ -607,11 +622,7 @@ def _has_structured_stage1_content(response_text: str, legacy_blocks: object) ->
                 continue
             label = str(item.get("label", "")).strip()
             normalized_label = label.lower()
-            if (
-                label.startswith("[#")
-                or normalized_label.startswith("[scene")
-                or normalized_label.startswith("[voice")
-            ):
+            if label.startswith("[#") or normalized_label.startswith("[scene"):
                 return True
     text = response_text.strip()
     if not text:

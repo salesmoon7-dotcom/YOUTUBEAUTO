@@ -56,7 +56,12 @@ def _start_new_chat(websocket_url: str, *, timeout_sec: float) -> dict[str, obje
             if isinstance(decoded, dict)
             else {"clicked": False}
         )
-    return cast(dict[str, object], value) if isinstance(value, dict) else {"clicked": False}
+    return (
+        cast(dict[str, object], value)
+        if isinstance(value, dict)
+        else {"clicked": False}
+    )
+
 
 _SEND_ACK_TIMEOUT_SEC = 5.0
 _SEND_ACK_POLL_SEC = 0.2
@@ -141,8 +146,18 @@ class AgentBrowserCdpBackend:
                     "inputSelector": "",
                     "submit_evidence": submit_evidence,
                 }
-            if bool(parsed.get("ok", False)) and not bool(
-                parsed.get("inputSuccess", False)
+            raw_submit_evidence = parsed.get("submitEvidence", {})
+            submit_transition_observed = False
+            if isinstance(raw_submit_evidence, dict):
+                typed_submit_evidence = cast(dict[str, object], raw_submit_evidence)
+                submit_transition_observed = bool(
+                    typed_submit_evidence.get("in_flight_observed", False)
+                    or typed_submit_evidence.get("terminal_success_observed", False)
+                )
+            if (
+                bool(parsed.get("ok", False))
+                and not bool(parsed.get("inputSuccess", False))
+                and not submit_transition_observed
             ):
                 parsed["ok"] = False
                 parsed["error"] = "NO_INPUT"
@@ -1197,7 +1212,7 @@ def _submit_evidence_record(
             submit_evidence.get("terminal_success_observed", False)
         )
         classification = (
-            "sent" if in_flight_observed and terminal_success_observed else "ambiguous"
+            "sent" if in_flight_observed or terminal_success_observed else "ambiguous"
         )
         classification_reason = (
             "submit_confirmed" if classification == "sent" else "submit_ui_unconfirmed"

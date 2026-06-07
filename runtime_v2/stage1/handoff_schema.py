@@ -122,6 +122,9 @@ def _voice_texts_from_voice_groups(
 def _voice_texts_from_voice_lines(
     payload: dict[str, object],
 ) -> list[dict[str, object]]:
+    if _voice_groups_have_original_voices(payload):
+        return _voice_texts_from_voice_groups(payload)
+
     voice_lines = payload.get("voice_lines", [])
     if isinstance(voice_lines, list):
         normalized: list[dict[str, object]] = []
@@ -139,3 +142,19 @@ def _voice_texts_from_voice_lines(
         if normalized:
             return normalized
     return _voice_texts_from_voice_groups(payload)
+
+
+def _voice_groups_have_original_voices(payload: dict[str, object]) -> bool:
+    voice_groups = payload.get("voice_groups", [])
+    if not isinstance(voice_groups, list):
+        return False
+    for entry in cast(list[object], voice_groups):
+        if not isinstance(entry, dict):
+            continue
+        typed_entry = cast(dict[str, object], entry)
+        raw_original_voices = typed_entry.get("original_voices", [])
+        if not isinstance(raw_original_voices, list):
+            continue
+        if any(isinstance(item, int) and item > 0 for item in cast(list[object], raw_original_voices)):
+            return True
+    return False

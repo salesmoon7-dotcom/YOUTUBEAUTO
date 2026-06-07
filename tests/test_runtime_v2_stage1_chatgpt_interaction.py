@@ -488,7 +488,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             ),
             mock.patch(
                 "runtime_v2.stage1.chatgpt_backend._wait_for_chatgpt_prompt_ready",
-                side_effect=[RuntimeError("not_ready"), None],
+                side_effect=[RuntimeError("not_ready"), None, None],
             ) as wait_mock,
             mock.patch(
                 "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_method"
@@ -499,7 +499,10 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             ),
             mock.patch(
                 "runtime_v2.stage1.chatgpt_backend.time.time",
-                side_effect=[100.0, 107.0, 108.0, 108.0, 108.0],
+                side_effect=itertools.chain(
+                    [100.0, 107.0, 108.0, 108.0, 108.0, 109.0],
+                    itertools.repeat(109.0),
+                ),
             ),
             mock.patch("runtime_v2.stage1.chatgpt_backend.time.sleep"),
         ):
@@ -510,7 +513,9 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(nav_mock.call_args_list[0].args[1], "Page.navigate")
         self.assertEqual(nav_mock.call_args_list[1].args[1], "Page.reload")
         self.assertEqual(nav_mock.call_args_list[1].args[2], {"ignoreCache": True})
+        self.assertEqual(nav_mock.call_args_list[1].kwargs["timeout_sec"], 3.0)
         self.assertEqual(wait_mock.call_args_list[1].kwargs["timeout_sec"], 2.0)
+        self.assertEqual(wait_mock.call_args_list[2].kwargs["timeout_sec"], 1.0)
 
     def test_wait_for_send_state_rechecks_prompt_when_send_missing(self) -> None:
         backend = AgentBrowserCdpBackend(
@@ -1518,7 +1523,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             result = backend.submit_prompt("hello")
 
         submit_evidence = cast(dict[str, object], result["submit_evidence"])
-        self.assertEqual(submit_evidence["classification"], "ambiguous")
+        self.assertEqual(submit_evidence["classification"], "sent")
         self.assertFalse(bool(submit_evidence["retry_safe_decision"]))
         self.assertEqual(submit_evidence["attempt_key"], "attempt-1")
         self.assertTrue(bool(submit_evidence["in_flight_observed"]))
@@ -1535,6 +1540,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                 {
                     "ok": True,
                     "inputSelector": "#prompt-textarea",
+                    "inputSuccess": True,
                     "sendClicked": False,
                     "submitEvidence": {
                         "pre": {
@@ -1565,7 +1571,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
         self.assertTrue(bool(result["ok"]))
         submit_evidence = cast(dict[str, object], result["submit_evidence"])
-        self.assertEqual(submit_evidence["classification"], "ambiguous")
+        self.assertEqual(submit_evidence["classification"], "sent")
         self.assertTrue(bool(submit_evidence["in_flight_observed"]))
         self.assertFalse(bool(submit_evidence["retry_safe_decision"]))
 
@@ -2266,6 +2272,11 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                     "ok": True,
                     "inputSelector": "#prompt-textarea",
                     "sendClicked": True,
+                    "submit_evidence": {
+                        "classification": "sent",
+                        "classification_reason": "send_button_clicked",
+                        "retry_safe_decision": False,
+                    },
                 }
 
             def read_response_state(self) -> dict[str, object]:
@@ -2291,7 +2302,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
             mock.patch(
                 "runtime_v2.stage1.chatgpt_interaction.time.time",
                 side_effect=itertools.chain(
-                    [0.0, 0.0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 1.1],
+                    [0.0, 0.0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.07, 0.08, 0.09, 1.1],
                     itertools.repeat(1.1),
                 ),
             ),
@@ -2311,7 +2322,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         timeline = cast(list[dict[str, object]], result["timeline"])
         event_names = [str(item["event"]) for item in timeline]
         self.assertEqual(event_names[0], "submit_start")
-        self.assertIn("submit_ambiguous", event_names)
+        self.assertIn("submit_ok", event_names)
         self.assertIn("streaming_seen", event_names)
         self.assertIn("response_stable", event_names)
         self.assertEqual(event_names[-1], "final_state")
@@ -2347,7 +2358,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
 
-    def test_generate_gpt_response_text_finishes_after_idle_with_stop_only(
+    def test_generate_gpt_response_text_does_not_finish_after_idle_with_stop_only(
         self,
     ) -> None:
         class FakeBackend(ChatGPTBackend):
@@ -2388,12 +2399,12 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                 backend=FakeBackend(),
             )
 
-        self.assertEqual(result["status"], "ok")
-        self.assertEqual(result["response_text"], "final json")
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
         timeline = cast(list[dict[str, object]], result["timeline"])
         event_names = [str(item["event"]) for item in timeline]
         self.assertIn("streaming_seen", event_names)
-        self.assertIn("response_stable", event_names)
+        self.assertNotIn("response_stable", event_names)
 
     def test_generate_gpt_response_text_writes_live_timeline_and_state_files(
         self,
@@ -3145,7 +3156,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                         "assistant_text": "",
                     }
                 return {
-                    "has_stop": True,
+                    "has_stop": False,
                     "has_send_button": True,
                     "assistant_block_count": 1,
                     "assistant_text": "final json",
