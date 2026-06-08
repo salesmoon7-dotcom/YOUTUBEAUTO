@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 import json
 import tempfile
 import threading
@@ -2372,9 +2373,46 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
                     "duration_sec": 0.01,
                 }
 
-            with patch(
-                "runtime_v2.workers.kenburns_worker.run_external_process",
-                side_effect=fake_process,
+            def run_worker_without_lease_thread(
+                store: object,
+                lease_key: str,
+                lease: object,
+                *,
+                owner: str,
+                workload: str,
+                config: RuntimeConfig,
+                worker_runner: Callable[[], dict[str, object]],
+            ) -> tuple[dict[str, object], object]:
+                _ = store, lease_key, owner, workload, config
+                return worker_runner(), lease
+
+            def run_worker_without_registry_thread(
+                job: JobContract,
+                handler: Callable[[JobContract], dict[str, object]],
+                *,
+                registry_file: Path,
+                run_id: str,
+                heartbeat_interval_sec: float | None,
+                renew_interval_sec: float,
+                events_file: Path | None = None,
+            ) -> dict[str, object]:
+                _ = registry_file, run_id, heartbeat_interval_sec, renew_interval_sec
+                _ = events_file
+                return handler(job)
+
+            with (
+                patch(
+                    "runtime_v2.workers.kenburns_worker.run_external_process",
+                    side_effect=fake_process,
+                ),
+                patch(
+                    "runtime_v2.supervisor._run_worker_with_lease_heartbeat",
+                    side_effect=run_worker_without_lease_thread,
+                ),
+                patch(
+                    "runtime_v2.control_plane._run_worker_with_registry_heartbeat",
+                    side_effect=run_worker_without_registry_thread,
+                ),
             ):
                 result = run_control_loop_once(
                     owner="runtime_v2",
