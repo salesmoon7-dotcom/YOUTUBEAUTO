@@ -5467,8 +5467,9 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                     agent_browser_services=["canva"],
                 )
 
-        self.assertEqual(report["code"], "OK")
-        self.assertTrue(bool(report["probe_success"]))
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["code"], "CANVA_PRODUCT_BACKGROUND_NO_PROMPT_INPUT")
+        self.assertFalse(bool(report["probe_success"]))
         fourth = cast(list[dict[str, object]], report["results"])[3]
         self.assertEqual(fourth["service"], "canva")
         self.assertEqual(fourth["status"], "failed")
@@ -5546,7 +5547,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                     agent_browser_services=["genspark"],
                 )
 
-        self.assertEqual(report["code"], "OK")
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["code"], "genspark_adapter_failed")
         first = cast(list[dict[str, object]], report["results"])[0]
         self.assertTrue(bool(first["attach_attempt_failed"]))
         self.assertTrue(bool(first["fallback_used"]))
@@ -5557,7 +5559,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             ["genspark", "seaart", "geminigen", "canva"],
         )
         self.assertEqual(cast(list[object], report["live_ready_services"]), [])
-        self.assertTrue(bool(report["probe_success"]))
+        self.assertFalse(bool(report["probe_success"]))
         render_spec = cast(dict[str, object], report["render_spec"])
         asset_refs = cast(list[object], render_spec["asset_refs"])
         self.assertEqual(len(asset_refs), 3)

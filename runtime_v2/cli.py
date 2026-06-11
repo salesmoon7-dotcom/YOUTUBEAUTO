@@ -1917,7 +1917,7 @@ def _run_stage2_row1_probe(
             result = runner(fallback_contract, config.artifact_root)
             fallback_used = True
         reported_result = result
-        if fallback_used and service in {"geminigen", "canva"}:
+        if fallback_used:
             reported_result = dict(cast(dict[str, object], initial_result))
             reported_result["status"] = "failed"
             if service == "geminigen":
@@ -1941,9 +1941,13 @@ def _run_stage2_row1_probe(
         )
         if str(reported_result.get("status", "")) != "ok":
             excluded_asset_paths.add(str(payload.get("service_artifact_path", "")))
-        if service == "geminigen" and fallback_used and overall_ok:
+        if fallback_used and overall_ok:
             overall_ok = False
-            failure_code = _geminigen_probe_failure_code(attach_failure_code)
+            failure_code = (
+                _geminigen_probe_failure_code(attach_failure_code)
+                if service == "geminigen"
+                else attach_failure_code or "BROWSER_BLOCKED"
+            )
         elif str(result.get("status", "")) != "ok" and overall_ok:
             overall_ok = False
             failure_code = str(result.get("error_code", "BROWSER_BLOCKED"))
