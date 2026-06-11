@@ -33,7 +33,7 @@
 | `geminigen` live login/session proof | claim tested state only with current visible evidence | hidden legacy `repair_session` replay, reboot-safe browser recover, bounded page-context fetch fallback, and failed-asset render pruning remained in place, and fresh logged-in proof `D:\YOUTUBEAUTO_RUNTIME\probe\geminigen-login-proof-20260519-a\probe_result.json` now closes as `OK` with live GeminiGen output | `CORRECTED` | active migration range may now treat GeminiGen as evidence-backed |
 | `qwen3_tts -> rvc` timing | later-stage only after required upstream artifacts are ready | worker-side qwen3->rvc emission is explicit opt-in only | `CORRECTED` | immediate emission is no longer default |
 | `rvc` output naming | legacy FLAC export should stay canonical when configured | canonical next-job path now preserves `.flac` for legacy FLAC mode | `CORRECTED` | downstream `.wav` remains compatibility lookup only |
-| fallback policy | remove workaround branches once legacy contract is re-pinned | several emergency fallbacks were removed, but some defensive logic remains documented | `OPEN` | follow-up removal table still required |
+| fallback policy | remove workaround branches once legacy contract is re-pinned | the removal table is now present, harmful fallback classes are marked removed/do-not-add, and stage2 probe placeholder fallback success is fail-closed by `22d1a54` | `CORRECTED` | keep the removal table as the active guard against reintroducing fallback OK paths |
 
 ## What This Table Means Now
 
