@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python 3.13, `runtime_v2`, `control_plane`, `supervisor`, browser plane, JSON evidence snapshots, `pytest`, `py_compile`, Oracle review, project verify skills
 
+**Status Update:** Tasks 1-3 are COMPLETE in current code at `a5ec948cb3d70d1298fec3b454f2c0464801e140`. Non-Canva residual drift is closed by existing code and targeted hidden test evidence. Canva remains OPEN but intentionally excluded because it is user-excluded/credit-blocked. Next required action is documentation sync only; no code change is currently actionable.
+
 **Skill / Review Bundle:**
 - 계획 작성/실행 기준: vendor + `superpowers/executing-plans`
 - 구현/수정 검토: Oracle first, Oracle verification
@@ -21,6 +23,8 @@
 ---
 
 ### Task 1: Event Single Writer Restoration
+
+**Status:** COMPLETE - verified by targeted hidden test evidence referenced in this plan status update.
 
 **Files:**
 - Modify: `runtime_v2/supervisor.py`
@@ -77,6 +81,8 @@ Ask Oracle to confirm:
 
 ### Task 2: Failure Contract Unification
 
+**Status:** COMPLETE - verified by targeted hidden test evidence referenced in this plan status update.
+
 **Files:**
 - Modify: `runtime_v2/supervisor.py`
 - Modify: `runtime_v2/control_plane.py`
@@ -130,6 +136,8 @@ Ask Oracle to confirm:
 ---
 
 ### Task 3: `_run_worker()` Dispatch Simplification
+
+**Status:** COMPLETE - verified by targeted hidden test evidence referenced in this plan status update.
 
 **Files:**
 - Modify: `runtime_v2/control_plane.py`
