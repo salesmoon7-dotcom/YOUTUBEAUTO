@@ -470,8 +470,8 @@ def _browser_session_defaults() -> list[tuple[str, str, int, str]]:
         ),
         "seaart": (
             "image",
-            9444,
-            _default_session_profile_dir("seaart-primary"),
+            9225,
+            str(Path("C:/chrome_seaart").resolve()),
         ),
         "geminigen": (
             "llm",

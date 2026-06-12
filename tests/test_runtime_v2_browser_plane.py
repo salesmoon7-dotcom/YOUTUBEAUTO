@@ -46,6 +46,17 @@ class RuntimeV2BrowserPlaneTests(unittest.TestCase):
         self.assertEqual(inventory["geminigen"]["browser"], "uc")
         self.assertEqual(inventory["genspark"]["browser"], "edge")
 
+    def test_checked_in_seaart_session_matches_legacy_chrome_contract(self) -> None:
+        with self._temp_dir() as tmp_dir:
+            missing_config = Path(tmp_dir) / "missing-app-config.json"
+            env = {"RUNTIME_V2_APP_CONFIG": str(missing_config.resolve())}
+            with patch.dict(os.environ, env, clear=False):
+                session = default_browser_sessions_by_service()["seaart"]
+
+        self.assertEqual(session.browser_family, "chrome")
+        self.assertEqual(session.port, 9225)
+        self.assertEqual(session.profile_dir, str(Path("C:/chrome_seaart").resolve()))
+
     def test_service_start_urls_follow_runtime_defaults(self) -> None:
         self.assertEqual(
             _start_url_for_service("chatgpt"),
