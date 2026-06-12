@@ -38,20 +38,21 @@ Anything less is not a closed retest result.
 
 ## Result
 
-Current closeout retest result for `Sheet1!row15` is:
+Current closeout retest result for `Sheet1!row15` is reclassified by user correction:
 
-- `status`: `closed`
-- `reading`: `successful retest`
-- `why`: the latest fresh detached evidence `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260524-a\probe_result.json` satisfies the closeout artifact contract with `probe_success=true`, `code=OK`, `readiness.ready=true`, and final artifact `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260524-a\artifacts\chatgpt\chatgpt-sheet1-15\a0840661-17a0-44bf-afb7-b68657bd1ece\assets\output\render_final.mp4`.
+- `status`: `E2E_UNVERIFIED`
+- `reading`: probe/process artifact only, not accepted Excel-driven E2E completion
+- `why`: the existing `probe_result.json` and final artifact path may describe a detached probe/process result, but they must not be used as proof that the user-visible Excel row -> GPT -> image services -> GeminiGen -> local voice/TTS/RVC -> render pipeline actually ran to completion.
 
 ## Interpretation Rules
 
 - `probe_result.json code=OK` is only probe/process success, not row15 closeout success.
 - generic row evidence is not semantic target-row evidence.
 - partial downstream artifacts without `probe_result.json` + terminal success/failure artifact do not count as closeout.
-- standalone `Canva` hold evidence must not be back-projected into a row15 failure claim when the current row15 contract already closed successfully.
+- standalone `Canva` hold evidence must not be back-projected into the broader Excel-driven E2E status.
 
 ## Next Allowed Meaning
 
-- This result does **not** by itself clear the separately deferred `Canva` account-credit hold for thumbnail-only/background-generation boundary work.
-- The next allowed meaning is: keep `Sheet1!row15` semantic closeout marked successful, and treat any further `Canva` work as an isolated deferred boundary rather than evidence that row15 remains open.
+- This result does **not** prove user-visible Excel-driven E2E execution completion.
+- The next allowed meaning is: the current E2E target remains `OPEN / UNVERIFIED`; any future completion claim must be backed by an accepted end-to-end run from Excel input through final render artifact.
+- `Canva` remains a separate external credit-hold boundary and must not be reopened without credit/session availability changing.

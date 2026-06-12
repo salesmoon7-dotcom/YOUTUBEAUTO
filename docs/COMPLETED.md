@@ -3,6 +3,12 @@
 - 이 문서는 completed index입니다. 긴 구현 서술과 probe path detail은 plan/SOP를 canonical source로 두고, 여기에는 1줄 완료 기록과 대표 링크만 유지합니다.
 - interruption/search 규칙의 정본은 `docs/sop/SOP_runtime_v2_development_guardrails.md`와 `docs/sop/SOP_chat_interruption_repo_triage.md`입니다.
 
+## Correction Notice
+
+- 사용자 교정 기준으로, 아래 과거 probe/doc alignment 기록은 Excel row -> GPT -> image services -> GeminiGen -> local voice/TTS/RVC -> render로 이어지는 사용자-visible E2E 실행 완료 증거가 아닙니다.
+- `stage2`, `row15`, `GeminiGen OK`, worker/probe `OK` 기록은 문서/프로브/컴포넌트 정리 기록으로만 취급하며, 프로그램 완성 또는 전체 체인 실행 완료로 주장하지 않습니다.
+- 현재 E2E 개발 상태는 `docs/TODO.md`의 active target 문구를 따릅니다.
+
 - `docs/plans/2026-04-23-legacy-runtime-coverage-map.md`, `D:\YOUTUBEAUTO_RUNTIME\probe\stage2-noncanva-20260521-a\probe_result.json` - repo-root/stage2 follow-up 정리 완료; stale `stage2_contracts` expectation 문구를 제거했고, longform에서는 `canva`를 default scene rotation에서 분리해 non-Canva 핵심 생성 경로를 detached boundary 기준 `genspark/seaart/geminigen = OK`로 다시 고정했습니다.
 - `docs/plans/2026-04-01-runtime-v2-closeout-retest-result.md`, `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260524-a\probe_result.json`, `D:\YOUTUBEAUTO_RUNTIME\probe\canva-boundary-20260524-e\runtime\latest_completed_run.json` - latest closeout/runtime snapshot alignment 정리 완료; semantic row success closeout과 isolated `Canva` credit-hold snapshot 정렬까지 닫았습니다.
 - `docs/plans/2026-04-23-legacy-runtime-coverage-map.md`, `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260520-j\`, `D:\YOUTUBEAUTO_RUNTIME\probe\canva-boundary-20260520-e\` - historical Canva/row15 convergence batch들 정리 완료; 20260519~20260520 구간의 iframe/OOPIF 진단, top-DOM retry, ref-manifest wiring, frame-committed upload diagnostics, genspark recovery repin을 통해 `NO_PROMPT_INPUT`, `IFRAME_UNAVAILABLE`, `CREDIT_EXHAUSTED`, `genspark / BROWSER_UNHEALTHY` 사이의 수렴 과정을 기록했습니다.

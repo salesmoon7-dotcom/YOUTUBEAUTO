@@ -82,6 +82,14 @@ A lot of recent reasoning focused on `chatgpt / qwen / genspark / canva`, but th
 
 ## Correction To Use Going Forward
 
+### Actual Program Target
+
+The program being developed is an Excel-driven end-to-end automation pipeline:
+
+`Excel row -> GPT text/plan -> image generation services -> GeminiGen video -> local voice/TTS/RVC -> render/final artifact`
+
+Completion claims must be made against this whole target. Component source, probe, or documentation evidence is not enough to claim the user-visible program is complete.
+
 When we say legacy program analysis, the minimum inventory should include:
 - ChatGPT
 - Qwen3 TTS
