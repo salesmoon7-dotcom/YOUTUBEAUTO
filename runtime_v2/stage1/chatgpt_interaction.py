@@ -314,6 +314,7 @@ def generate_gpt_response_text(
             response_ready = (
                 bool(response_text)
                 and saw_streaming
+                and (has_send_button or structured_stage1_content)
                 and ((not has_stop) or structured_stage1_content)
                 and (not (has_stop and has_send_button) or structured_stage1_content)
             )

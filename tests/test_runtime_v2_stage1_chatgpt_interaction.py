@@ -410,6 +410,64 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(nav_mock.call_args.kwargs["timeout_sec"], 7.0)
         self.assertEqual(wait_mock.call_args.kwargs["timeout_sec"], 7.0)
 
+    def test_eval_runner_uses_resolved_timeout_budget(self) -> None:
+        runner_timeouts: list[int] = []
+
+        def fake_runner(_command: list[str], timeout_sec: int) -> str:
+            runner_timeouts.append(timeout_sec)
+            return json.dumps({"ok": True}, ensure_ascii=True)
+
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["#composer-submit-button"],
+            stop_selectors=["button[data-testid='stop-button']"],
+            response_selectors=["div[data-message-author-role='assistant']"],
+            command_runner=fake_runner,
+            raw_cdp_timeout_resolver=lambda _default: 7.0,
+        )
+
+        with mock.patch.object(backend, "_ensure_chatgpt_target_selected"):
+            result = backend._run_eval_with_retry("return JSON.stringify({ok:true})")
+
+        self.assertEqual(json.loads(result)["ok"], True)
+        self.assertEqual(runner_timeouts, [7])
+
+    def test_eval_path_uses_resolved_timeout_budget_for_tab_runners(self) -> None:
+        runner_timeouts: list[int] = []
+
+        def fake_runner(command: list[str], timeout_sec: int) -> str:
+            runner_timeouts.append(timeout_sec)
+            if command[-2:] == ["tab", "list"]:
+                return (
+                    f"[2] {CHATGPT_LONGFORM_TITLE_SUBSTRING} - "
+                    f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}/c/test"
+                )
+            return json.dumps({"ok": True}, ensure_ascii=True)
+
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["#composer-submit-button"],
+            stop_selectors=["button[data-testid='stop-button']"],
+            response_selectors=["div[data-message-author-role='assistant']"],
+            command_runner=fake_runner,
+            raw_cdp_timeout_resolver=lambda _default: 7.0,
+        )
+
+        with mock.patch(
+            "runtime_v2.stage1.chatgpt_backend._select_page_target",
+            return_value={
+                "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/test",
+                "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}/c/test",
+                "title": CHATGPT_LONGFORM_TITLE_SUBSTRING,
+            },
+        ):
+            result = backend._run_eval_with_retry("return JSON.stringify({ok:true})")
+
+        self.assertEqual(json.loads(result)["ok"], True)
+        self.assertEqual(runner_timeouts, [7, 7, 7])
+
     def test_reset_chatgpt_context_waits_for_prompt_ready_before_new_chat_click(
         self,
     ) -> None:
@@ -2326,6 +2384,71 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertIn("streaming_seen", event_names)
         self.assertIn("response_stable", event_names)
         self.assertEqual(event_names[-1], "final_state")
+
+    def test_generate_gpt_response_text_does_not_accept_partial_unstructured_text(
+        self,
+    ) -> None:
+        class FakeBackend(ChatGPTBackend):
+            def __init__(self) -> None:
+                self.read_calls = 0
+
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                return {
+                    "ok": True,
+                    "inputSelector": "#prompt-textarea",
+                    "sendClicked": True,
+                    "submit_evidence": {
+                        "classification": "sent",
+                        "classification_reason": "send_button_clicked",
+                        "retry_safe_decision": False,
+                    },
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                self.read_calls += 1
+                if self.read_calls == 1:
+                    return {
+                        "has_stop": True,
+                        "has_send_button": False,
+                        "assistant_block_count": 1,
+                        "assistant_text": "日本の制度・",
+                        "legacy_blocks": [],
+                    }
+                return {
+                    "has_stop": False,
+                    "has_send_button": False,
+                    "assistant_block_count": 1,
+                    "assistant_text": "日本の制度・",
+                    "legacy_blocks": [],
+                }
+
+        with (
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_interaction.time.sleep", return_value=None
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_interaction.time.time",
+                side_effect=itertools.chain(
+                    [0.0, 0.0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 1.1],
+                    itertools.repeat(1.1),
+                ),
+            ),
+        ):
+            result = generate_gpt_response_text(
+                prompt="test prompt",
+                port=9222,
+                timeout_sec=1,
+                poll_interval_sec=0.01,
+                completion_idle_sec=0.01,
+                response_start_timeout_sec=0.02,
+                backend=FakeBackend(),
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
+        timeline = cast(list[dict[str, object]], result["timeline"])
+        event_names = [str(item["event"]) for item in timeline]
+        self.assertNotIn("response_stable", event_names)
 
     def test_generate_gpt_response_text_does_not_finish_without_streaming_transition(
         self,

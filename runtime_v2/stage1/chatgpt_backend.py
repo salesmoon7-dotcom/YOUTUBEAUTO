@@ -95,7 +95,7 @@ class AgentBrowserCdpBackend:
         self._expected_url_substring = expected_url_substring
         self._expected_title_substring = expected_title_substring
         self._runner = _default_runner if command_runner is None else command_runner
-        self._raw_cdp_timeout = (
+        self._raw_cdp_timeout: Callable[[float], float] = (
             (lambda default: default)
             if raw_cdp_timeout_resolver is None
             else raw_cdp_timeout_resolver
@@ -485,7 +485,7 @@ class AgentBrowserCdpBackend:
                         "eval",
                         script,
                     ],
-                    60,
+                    int(self._raw_cdp_timeout(60.0)),
                 )
             except RuntimeError as exc:
                 last_error = exc
@@ -520,7 +520,7 @@ class AgentBrowserCdpBackend:
                 "tab",
                 str(target_index),
             ],
-            15,
+            int(self._raw_cdp_timeout(15.0)),
         )
 
     def _ensure_custom_gpt_page(self) -> None:
@@ -560,7 +560,7 @@ class AgentBrowserCdpBackend:
         try:
             output = self._runner(
                 ["agent-browser", "--cdp", str(self._port), "tab", "list"],
-                15,
+                int(self._raw_cdp_timeout(15.0)),
             )
             parsed = parse_tab_list_output(output)
             best = select_best_tab(
