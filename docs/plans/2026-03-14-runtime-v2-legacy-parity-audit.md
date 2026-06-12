@@ -78,7 +78,7 @@ Checklist:
 
 | Item | Legacy evidence | Runtime_v2 evidence | Status | Notes |
 |---|---|---|---|---|
-| Browser family / port | Selenium Chrome + `seaart_chrome` debug port | browser plane + `seaart` worker adapter path | UNKNOWN-EVIDENCE | exact family/profile launch needs direct parity confirmation |
+| Browser family / port | Selenium Chrome + `seaart_chrome` debug port | browser plane fallback resolves `seaart` to Chrome, port `9225`, profile `C:/chrome_seaart`; commit `0f844423373fa9140b4ef1aefa38b457785692bd`; focused test `test_checked_in_seaart_session_matches_legacy_chrome_contract` green | SOURCE-CONTRACT-MATCHED | source/test-level parity only; live browser relaunch was not exercised in chat |
 | Prompt input target | `textarea.el-textarea__inner` | runtime_v2 SeaArt worker + browser adapter path | MATCHED | selector intent aligned |
 | Generate button | `#generate-btn` in legacy | runtime_v2 SeaArt adapter path | MATCHED | selector intent aligned |
 | Ref-image upload order | legacy upload ordering is explicit | runtime_v2 ref-image-first parity already implemented | MATCHED | contract intentionally aligned |
