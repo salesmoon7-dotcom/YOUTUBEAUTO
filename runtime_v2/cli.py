@@ -3415,6 +3415,7 @@ def _attach_stage2_ref_images(
 def _attach_genspark_ref_images_via_filechooser(
     *, port: int, file_paths: list[str]
 ) -> None:
+    from playwright.sync_api import Error as PlaywrightError
     from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
     from playwright.sync_api import sync_playwright
 
@@ -3433,14 +3434,58 @@ def _attach_genspark_ref_images_via_filechooser(
             if page is None:
                 raise RuntimeError("NO_UPLOAD_TARGET")
             page.bring_to_front()
-            try:
-                with page.expect_file_chooser(timeout=5000) as chooser_info:
-                    page.locator("button.upload-button").first.click()
-                    page.get_by_text("로컬 파일 찾기", exact=False).first.click()
-            except (PlaywrightTimeoutError, RuntimeError) as exc:
-                raise RuntimeError("NO_FILE_INPUT") from exc
-            chooser = chooser_info.value
-            chooser.set_files([str(Path(path).resolve()) for path in file_paths])
+            textarea = page.locator("textarea.j-search-input").first
+            for index, file_path in enumerate(file_paths):
+                input_id = f"runtime-v2-genspark-file-input-{index}"
+                resolved_file = str(Path(file_path).resolve())
+                try:
+                    page.evaluate(
+                        """
+                        (inputId) => {
+                            document.querySelectorAll('input[id^="runtime-v2-genspark-file-input-"]').forEach((el) => el.remove());
+                            const input = document.createElement('input');
+                            input.type = 'file';
+                            input.style.display = 'none';
+                            input.id = inputId;
+                            document.body.appendChild(input);
+                        }
+                        """,
+                        input_id,
+                    )
+                    page.locator(f"#{input_id}").set_input_files(resolved_file)
+                    result = str(
+                        textarea.evaluate(
+                            """
+                            (target, inputId) => {
+                                const input = document.getElementById(inputId);
+                                if (!(input instanceof HTMLInputElement)) return 'no_input';
+                                const file = input.files && input.files[0];
+                                if (!file) return 'no_file';
+                                const dataTransfer = new DataTransfer();
+                                dataTransfer.items.add(file);
+                                for (const type of ['dragenter', 'dragover', 'drop']) {
+                                    target.dispatchEvent(new DragEvent(type, {
+                                        bubbles: true,
+                                        cancelable: true,
+                                        dataTransfer,
+                                    }));
+                                }
+                                input.remove();
+                                return 'success';
+                            }
+                            """,
+                            input_id,
+                        )
+                    )
+                except (
+                    AttributeError,
+                    RuntimeError,
+                    PlaywrightError,
+                    PlaywrightTimeoutError,
+                ) as exc:
+                    raise RuntimeError("NO_FILE_INPUT") from exc
+                if result != "success":
+                    raise RuntimeError("NO_FILE_INPUT")
         finally:
             browser.close()
 

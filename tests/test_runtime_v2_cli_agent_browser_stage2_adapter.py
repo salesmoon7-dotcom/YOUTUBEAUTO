@@ -1794,57 +1794,68 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
     def test_attach_genspark_ref_images_supports_image_generation_agent_page(
         self,
     ) -> None:
-        class _Chooser:
-            def __init__(self) -> None:
-                self.files: list[str] = []
-
-            def set_files(self, files: list[str]) -> None:
-                self.files = files
-
-        class _ChooserContext:
-            def __init__(self, chooser: _Chooser) -> None:
-                self.value = chooser
-
-            def __enter__(self) -> "_ChooserContext":
-                return self
-
-            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
-                _ = (exc_type, exc, tb)
-                return False
-
         class _Locator:
+            selector: str
+            page: "_Page"
+
+            def __init__(self, selector: str, page: "_Page") -> None:
+                self.selector = selector
+                self.page = page
+
             @property
             def first(self) -> "_Locator":
                 return self
 
             def click(self) -> None:
-                return None
+                raise AssertionError("filechooser path should not be used")
+
+            def set_input_files(self, files: str | list[str]) -> None:
+                if isinstance(files, str):
+                    resolved_files = [files]
+                else:
+                    resolved_files = files
+                self.page.input_files_by_selector[self.selector] = list(resolved_files)
+
+            def evaluate(self, script: str, arg: object = None) -> str:
+                self.page.evaluate_calls.append((self.selector, script, arg))
+                return "success"
 
         class _Page:
-            def __init__(self, chooser: _Chooser) -> None:
+            url: str
+            evaluate_calls: list[tuple[str, str, object]]
+            input_files_by_selector: dict[str, list[str]]
+
+            def __init__(self) -> None:
                 self.url = "https://www.genspark.ai/agents?type=image_generation_agent"
-                self._chooser = chooser
+                self.evaluate_calls: list[tuple[str, str, object]] = []
+                self.input_files_by_selector: dict[str, list[str]] = {}
 
             def bring_to_front(self) -> None:
                 return None
 
-            def expect_file_chooser(self, timeout: int = 5000) -> _ChooserContext:
+            def expect_file_chooser(self, timeout: int = 5000) -> object:
                 _ = timeout
-                return _ChooserContext(self._chooser)
+                raise AssertionError("filechooser path should not be used")
 
             def locator(self, selector: str) -> _Locator:
-                _ = selector
-                return _Locator()
+                return _Locator(selector, self)
 
             def get_by_text(self, text: str, exact: bool = False) -> _Locator:
                 _ = (text, exact)
-                return _Locator()
+                raise AssertionError("filechooser path should not be used")
+
+            def evaluate(self, script: str, arg: object = None) -> None:
+                self.evaluate_calls.append(("page", script, arg))
 
         class _Context:
+            pages: list[_Page]
+
             def __init__(self, page: _Page) -> None:
                 self.pages = [page]
 
         class _Browser:
+            contexts: list[_Context]
+
             def __init__(self, context: _Context) -> None:
                 self.contexts = [context]
 
@@ -1852,6 +1863,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 return None
 
         class _Chromium:
+            _browser: _Browser
+
             def __init__(self, browser: _Browser) -> None:
                 self._browser = browser
 
@@ -1860,10 +1873,14 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 return self._browser
 
         class _Playwright:
+            chromium: _Chromium
+
             def __init__(self, chromium: _Chromium) -> None:
                 self.chromium = chromium
 
         class _PlaywrightContext:
+            _playwright: _Playwright
+
             def __init__(self, playwright: _Playwright) -> None:
                 self._playwright = playwright
 
@@ -1874,8 +1891,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 _ = (exc_type, exc, tb)
                 return False
 
-        chooser = _Chooser()
-        page = _Page(chooser)
+        page = _Page()
         browser = _Browser(_Context(page))
         playwright_context = _PlaywrightContext(_Playwright(_Chromium(browser)))
 
@@ -1888,11 +1904,153 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             )
 
         self.assertEqual(
-            chooser.files,
-            [
-                str(Path(r"D:\tmp\ref1.png").resolve()),
-                str(Path(r"D:\tmp\ref2.png").resolve()),
-            ],
+            page.input_files_by_selector,
+            {
+                "#runtime-v2-genspark-file-input-0": [
+                    str(Path(r"D:\tmp\ref1.png").resolve())
+                ],
+                "#runtime-v2-genspark-file-input-1": [
+                    str(Path(r"D:\tmp\ref2.png").resolve())
+                ],
+            },
+        )
+        self.assertTrue(
+            any("DataTransfer" in script for _, script, _ in page.evaluate_calls)
+        )
+
+    def test_genspark_ref_attach_uses_legacy_drag_drop_textarea_without_filechooser(
+        self,
+    ) -> None:
+        class _Locator:
+            selector: str
+            page: "_Page"
+            files: list[str]
+
+            def __init__(self, selector: str, page: "_Page") -> None:
+                self.selector = selector
+                self.page = page
+                self.files: list[str] = []
+
+            @property
+            def first(self) -> "_Locator":
+                return self
+
+            def click(self) -> None:
+                raise AssertionError("filechooser path should not be used")
+
+            def set_input_files(self, files: str | list[str]) -> None:
+                if isinstance(files, str):
+                    self.files = [files]
+                else:
+                    self.files = files
+                self.page.input_files_by_selector[self.selector] = list(self.files)
+
+            def evaluate(self, script: str, arg: object = None) -> str:
+                self.page.evaluate_calls.append((self.selector, script, arg))
+                return "success"
+
+        class _Page:
+            url: str
+            locator_selectors: list[str]
+            evaluate_calls: list[tuple[str, str, object]]
+            input_files_by_selector: dict[str, list[str]]
+
+            def __init__(self) -> None:
+                self.url = "https://www.genspark.ai/agents?type=image_generation_agent"
+                self.locator_selectors: list[str] = []
+                self.evaluate_calls: list[tuple[str, str, object]] = []
+                self.input_files_by_selector: dict[str, list[str]] = {}
+
+            def bring_to_front(self) -> None:
+                return None
+
+            def expect_file_chooser(self, timeout: int = 5000) -> object:
+                _ = timeout
+                raise AssertionError("filechooser path should not be used")
+
+            def locator(self, selector: str) -> _Locator:
+                self.locator_selectors.append(selector)
+                return _Locator(selector, self)
+
+            def evaluate(self, script: str, arg: object = None) -> None:
+                self.evaluate_calls.append(("page", script, arg))
+
+        class _Context:
+            pages: list[_Page]
+
+            def __init__(self, page: _Page) -> None:
+                self.pages = [page]
+
+        class _Browser:
+            contexts: list[_Context]
+
+            def __init__(self, context: _Context) -> None:
+                self.contexts = [context]
+
+            def close(self) -> None:
+                return None
+
+        class _Chromium:
+            _browser: _Browser
+
+            def __init__(self, browser: _Browser) -> None:
+                self._browser = browser
+
+            def connect_over_cdp(self, endpoint: str) -> _Browser:
+                _ = endpoint
+                return self._browser
+
+        class _Playwright:
+            chromium: _Chromium
+
+            def __init__(self, chromium: _Chromium) -> None:
+                self.chromium = chromium
+
+        class _PlaywrightContext:
+            _playwright: _Playwright
+
+            def __init__(self, playwright: _Playwright) -> None:
+                self._playwright = playwright
+
+            def __enter__(self) -> _Playwright:
+                return self._playwright
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+                _ = (exc_type, exc, tb)
+                return False
+
+        page = _Page()
+        browser = _Browser(_Context(page))
+        playwright_context = _PlaywrightContext(_Playwright(_Chromium(browser)))
+
+        with patch(
+            "playwright.sync_api.sync_playwright", return_value=playwright_context
+        ):
+            _attach_genspark_ref_images_via_filechooser(
+                port=9333,
+                file_paths=[r"D:\tmp\ref1.png", r"D:\tmp\ref2.png"],
+            )
+
+        self.assertNotIn("button.upload-button", page.locator_selectors)
+        self.assertIn("textarea.j-search-input", page.locator_selectors)
+        self.assertTrue(
+            any(
+                "DataTransfer" in script
+                and "dragenter" in script
+                and "drop" in script
+                for _, script, _ in page.evaluate_calls
+            )
+        )
+        self.assertEqual(
+            page.input_files_by_selector,
+            {
+                "#runtime-v2-genspark-file-input-0": [
+                    str(Path(r"D:\tmp\ref1.png").resolve())
+                ],
+                "#runtime-v2-genspark-file-input-1": [
+                    str(Path(r"D:\tmp\ref2.png").resolve())
+                ],
+            },
         )
 
     def test_attach_genspark_ref_images_skips_when_upload_ui_missing(self) -> None:
@@ -1931,6 +2089,73 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                         return None
 
                 return _Locator()
+
+        class _Context:
+            def __init__(self) -> None:
+                self.pages = [_Page()]
+
+        class _Browser:
+            def __init__(self) -> None:
+                self.contexts = [_Context()]
+
+            def close(self) -> None:
+                return None
+
+        class _Chromium:
+            def connect_over_cdp(self, endpoint: str) -> _Browser:
+                _ = endpoint
+                return _Browser()
+
+        class _Playwright:
+            chromium = _Chromium()
+
+        class _PlaywrightContext:
+            def __enter__(self) -> _Playwright:
+                return _Playwright()
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+                _ = (exc_type, exc, tb)
+                return False
+
+        with patch(
+            "playwright.sync_api.sync_playwright", return_value=_PlaywrightContext()
+        ):
+            with self.assertRaisesRegex(RuntimeError, "NO_FILE_INPUT"):
+                _attach_genspark_ref_images_via_filechooser(
+                    port=9333,
+                    file_paths=[r"D:\tmp\ref1.png"],
+                )
+
+    def test_attach_genspark_ref_images_maps_playwright_upload_error_to_no_file_input(
+        self,
+    ) -> None:
+        from playwright.sync_api import Error as PlaywrightError
+
+        class _Locator:
+            @property
+            def first(self) -> "_Locator":
+                return self
+
+            def set_input_files(self, files: str | list[str]) -> None:
+                _ = files
+                raise PlaywrightError("textarea upload failed")
+
+            def evaluate(self, script: str, arg: object = None) -> str:
+                _ = (script, arg)
+                return "success"
+
+        class _Page:
+            url = "https://www.genspark.ai/agents?type=image_generation_agent"
+
+            def bring_to_front(self) -> None:
+                return None
+
+            def locator(self, selector: str) -> _Locator:
+                _ = selector
+                return _Locator()
+
+            def evaluate(self, script: str, arg: object = None) -> None:
+                _ = (script, arg)
 
         class _Context:
             def __init__(self) -> None:
