@@ -283,7 +283,7 @@ If the next action is a broad rerun while any earlier gate is unresolved, the se
 - confirm exact legacy target page semantics
 - confirm actual legacy ref attach method (user correction: drag-and-drop path must be rechecked and pinned)
 - confirm exact result-tab/result-card capture contract
-- current workspace note: fail-close is enforced, but service-specific attach restoration is still incomplete
+- current workspace note: Genspark ref attach is now `SOURCE-CONTRACT-MATCHED` at source/test level by commit `2f3cea44b7fd34b1f12036efadf7a7f7c988209a`; live browser closeout evidence was not exercised in chat, so do not overclaim it as live service closeout proof
 
 ### SeaArt
 - confirm legacy prompt input target and generate sequence
@@ -292,7 +292,7 @@ If the next action is a broad rerun while any earlier gate is unresolved, the se
 ### GeminiGen
 - confirm legacy login/session contract before claiming tested state
 - confirm browser-step equivalence before any pass claim
-- current workspace note: explicit `First Image` / `Last Image` upload actions are now generated in the browser adapter path, but live login/session proof is still required before final pass claims
+- current workspace note: explicit `First Image` / `Last Image` upload actions are generated in the browser adapter path, and fresh logged-in proof `D:\YOUTUBEAUTO_RUNTIME\probe\geminigen-login-proof-20260519-a\probe_result.json` now closes as `OK` with live GeminiGen output; GeminiGen no longer remains an active login/session proof blocker for the current migration range
 
 ### Acceptance criteria
 - each browser service has a pinned legacy interaction checklist before another long closeout rerun
@@ -375,36 +375,30 @@ Clarifications:
 - gate A failure during minimum-unit verification must not be interpreted as proof that semantic-row closeout was meaningfully exercised.
 - if one subprogram cannot produce a first truthful artifact in the documented time slice, stop and debug that service only.
 
-### Phase 5B. Canva-only follow-up boundary
+### Phase 5B. Canva isolated hold boundary
 
 Current boundary conclusion:
-- `canva` is no longer blocked primarily by upload/download button mismatches.
-- the remaining dominant blocker is `template semantics`, currently observed as `clone_ok=false` even when other helper steps proceed.
+- `canva` is not the active next batch.
+- Newer canonical evidence pins the standalone Canva boundary at `CANVA_PRODUCT_BACKGROUND_CREDIT_EXHAUSTED`.
+- This is an external account-credit/session hold, not an instruction to continue clone/layout/browser work now.
+- This hold must not be back-projected into the already successful `Sheet1!row15` semantic closeout.
 
-Therefore the next batch is narrowed to one question only:
-- can the runtime reliably duplicate/select the intended Canva thumbnail page before editing/export?
+Rules while Canva remains on hold:
+- no Canva implementation batch
+- no Canva browser relaunch/recovery batch
+- no semantic-row rerun to rediscover Canva
+- no claim that Canva Product Background is solved
+- resume Canva only after credits are replenished or a credit-capable account/session is provided
 
-Rules for the next batch:
-- no semantic-row rerun
-- no multi-service rerun
-- no new browser-plane work unless Canva evidence directly proves the browser plane regressed again
-- stop once `clone_ok` is either proven true with a truthful thumbnail artifact or replaced by a more precise single blocker
-
-### Phase 5C. Canva content-layout-only batch
+### Phase 5C. Current next-action constraint
 
 Current boundary conclusion:
-- latest real-source Canva runs already pass upload/text/download helper stages.
-- the remaining issue is not tool flow but `content layout / visual composition` quality of the exported thumbnail.
+- The active non-Canva migration range and semantic target-row closeout are closed by newer canonical docs.
+- The only remaining top-level hold in this closeout context is isolated Canva credit exhaustion.
+- Therefore there is no Canva-only follow-up batch to execute in the current workspace.
 
-Therefore the next batch is narrowed again:
-- treat Canva as a single `content-layout-only` task.
-- do not reopen browser-plane, upload, page-picker, or semantic-row scope unless new evidence directly proves regression.
-
-Success criteria for the batch:
-- exported `THUMB.png` must visibly reflect the intended title/topic composition, not just a placeholder-style background.
-
-Failure criteria for the batch:
-- if the export is still placeholder-like, record the remaining blocker as a layout/composition contract, not as generic Canva execution failure.
+Allowed current action:
+- documentation sync only, preserving evidence-grade separation and Canva hold status.
 
 ### Time limits and stop conditions
 

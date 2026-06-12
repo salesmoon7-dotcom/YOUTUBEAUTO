@@ -168,7 +168,7 @@ Current direct findings:
 | Area | Legacy expectation | Current runtime_v2 state | Status |
 |---|---|---|---|
 | Genspark prompt text | Original prompt only | extra browser-side prompt strengthening existed and was removed now | `CORRECTED` |
-| Genspark ref attach | Drag-and-drop / actual UI-specific attach path must work before generation | runtime_v2 still does not have a pinned service-specific attach implementation; current default is fail-closed on attach failure | `CONFIRMED` |
+| Genspark ref attach | Drag-and-drop / actual UI-specific attach path must work before generation | source path now targets `textarea.j-search-input`, creates hidden `runtime-v2-genspark-file-input-N` inputs, calls `set_input_files`, dispatches `DataTransfer` `dragenter`/`dragover`/`drop`, avoids filechooser/`button.upload-button`, and fail-closes upload/Playwright errors as `NO_FILE_INPUT`; covered by commit `2f3cea44b7fd34b1f12036efadf7a7f7c988209a`; source/test-level parity only, not live browser closeout proof | `SOURCE-CONTRACT-MATCHED` |
 | GeminiGen first/last frame attach | slot-based image-reference upload before generation | current workspace adds explicit `First Image` / `Last Image` upload actions in the browser adapter path | `CORRECTED` |
 | 11-category assignment table | `genspark`: 인물/식품/글자/도표/도표-슬라이드, `seaart`: 개념/장소/사물/손/생활/풍경 | current code matches this mapping table | `CONFIRMED` |
 | Ref job execution behavior | assignment table should be honored consistently in actual runs | runtime_v2 closeout/debug runs still drifted into wrong practical routing/attach behavior despite correct mapping table | `CONFIRMED` |
@@ -225,7 +225,7 @@ Current workspace status:
 
 ### Current attach batch evidence
 - `geminigen` attach path now emits explicit `upload` actions for `First Image` and `Last Image` using the same `first_frame_path`.
-- `genspark` attach path remains fail-closed until a pinned service-specific attach contract is implemented.
+- `genspark` attach path is now `SOURCE-CONTRACT-MATCHED` at source/test level by commit `2f3cea44b7fd34b1f12036efadf7a7f7c988209a`; keep evidence-grade separation because this is not live browser closeout proof.
 
 ### C7. Evidence-grade confusion that must be removed from reports
 - `probe_result.json code=OK` is not the same as generation success
