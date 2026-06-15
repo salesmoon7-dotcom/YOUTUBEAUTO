@@ -366,6 +366,28 @@ def run_control_loop_once(
                 "row_ref": row_ref,
                 "failure_summary_path": str(runtime_config.failure_summary_file),
             }
+        if _has_active_backlog_for_run(jobs, run_id):
+            _ = append_debug_event(
+                debug_log_path(runtime_config.debug_log_root, run_id),
+                event="control_loop_backoff_wait",
+                payload={
+                    "run_id": run_id,
+                    "queue_status": "backoff_wait",
+                },
+            )
+            _write_closeout_state(
+                runtime_config,
+                run_id=run_id,
+                status="running",
+                reason="backoff_wait",
+                attempt=1,
+            )
+            return {
+                "status": "waiting",
+                "code": "BACKOFF_WAIT",
+                "queue_status": "backoff_wait",
+                "run_id": run_id,
+            }
         gui_payload = _build_control_gui_status(
             run_id=run_id,
             stage="idle",
@@ -1091,6 +1113,18 @@ def _next_runnable_job(jobs: list[JobContract], now: float) -> JobContract | Non
     return None
 
 
+def _has_active_backlog_for_run(jobs: list[JobContract], run_id: str) -> bool:
+    expected_run_id = run_id.strip()
+    if not expected_run_id:
+        return False
+    for entry in jobs:
+        if entry.status not in {"queued", "retry", "running"}:
+            continue
+        if str(entry.payload.get("run_id", "")).strip() == expected_run_id:
+            return True
+    return False
+
+
 def _fail_closed_blocked_rows(
     queue_store: QueueStore,
     jobs: list[JobContract],
@@ -1665,12 +1699,15 @@ def _seed_declared_next_jobs(
 ) -> list[JobContract]:
     queue_store = QueueStore(queue_file)
     typed_next_jobs = _next_jobs_entries(worker_result)
-    next_job_limit = MAX_NEXT_JOBS
+    next_job_limit = (
+        MAX_STAGE1_DECLARED_NEXT_JOBS
+        if parent_job.workload == "chatgpt"
+        else MAX_NEXT_JOBS
+    )
     if not typed_next_jobs and parent_job.workload == "chatgpt":
         typed_next_jobs = _declared_stage1_next_jobs(
             worker_result, parent_job, artifact_root
         )
-        next_job_limit = MAX_STAGE1_DECLARED_NEXT_JOBS
     _ = _attach_asset_manifest(
         typed_next_jobs,
         run_id=str(parent_job.payload.get("run_id", "")).strip(),

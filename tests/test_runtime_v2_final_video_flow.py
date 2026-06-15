@@ -41,6 +41,10 @@ def _read_status_row(path: Path) -> dict[str, object]:
         workbook.close()
 
 
+def _final_video_config(root: Path) -> RuntimeConfig:
+    return RuntimeConfig.from_root(root / "runtime_state")
+
+
 def _write_render_fixture(
     root: Path, *, final_name: str = "render_final.mp4"
 ) -> tuple[Path, Path, Path]:
@@ -1535,7 +1539,7 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             excel_path = _write_excel_fixture(root / "topic.xlsx", status="Voice OK")
-            config = RuntimeConfig(result_router_file=root / "evidence" / "result.json")
+            config = _final_video_config(root)
             final_video = root / "final_video.mp4"
             final_video.write_bytes(b"mp4")
 
@@ -1577,7 +1581,7 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             excel_path = _write_excel_fixture(root / "topic.xlsx", status="Video OK")
-            config = RuntimeConfig(result_router_file=root / "evidence" / "result.json")
+            config = _final_video_config(root)
 
             updated = sync_final_video_result(
                 config=config,
@@ -1603,7 +1607,7 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             excel_path = _write_excel_fixture(root / "topic.xlsx", status="Video OK")
-            config = RuntimeConfig(result_router_file=root / "evidence" / "result.json")
+            config = _final_video_config(root)
 
             updated = sync_final_video_result(
                 config=config,
@@ -1628,7 +1632,7 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             excel_path = _write_excel_fixture(root / "topic.xlsx", status="Voice OK")
-            config = RuntimeConfig(result_router_file=root / "evidence" / "result.json")
+            config = _final_video_config(root)
             final_video = root / "final_video.mp4"
             final_video.write_bytes(b"mp4")
 
@@ -1660,7 +1664,7 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
             excel_path = _write_excel_fixture(root / "topic.xlsx", status="Done")
-            config = RuntimeConfig(result_router_file=root / "evidence" / "result.json")
+            config = _final_video_config(root)
             final_video = root / "final_video.mp4"
             final_video.write_bytes(b"mp4")
 
@@ -1691,6 +1695,59 @@ class RuntimeV2FinalVideoFlowTests(unittest.TestCase):
         self.assertTrue(updated)
         self.assertEqual(status_row["status"], "Done")
         self.assertTrue(bool(latest_result["metadata"]["excel_synced"]))
+
+    def test_final_video_sync_rejects_mixed_latest_snapshot_paths(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            excel_path = _write_excel_fixture(root / "topic.xlsx", status="Voice OK")
+            shared_root = root / "shared_runtime_state"
+            config = RuntimeConfig(
+                result_router_file=root / "ephemeral" / "evidence" / "result.json",
+                gui_status_file=shared_root / "health" / "gui_status.json",
+                latest_completed_run_file=shared_root / "latest_completed_run.json",
+                latest_active_run_file=shared_root / "latest_active_run.json",
+                control_plane_events_file=shared_root
+                / "evidence"
+                / "control_plane_events.jsonl",
+            )
+            _ = config.latest_completed_run_file.parent.mkdir(
+                parents=True, exist_ok=True
+            )
+            sentinel_pointer: dict[str, object] = {
+                "schema_version": "1.0",
+                "runtime": "runtime_v2",
+                "run_id": "sentinel-run",
+                "result_path": str((shared_root / "evidence" / "result.json").resolve()),
+            }
+            _ = config.latest_completed_run_file.write_text(
+                json.dumps(sentinel_pointer, ensure_ascii=True), encoding="utf-8"
+            )
+
+            with self.assertRaisesRegex(ValueError, "mixed_runtime_snapshot_paths"):
+                _ = sync_final_video_result(
+                    config=config,
+                    excel_path=excel_path,
+                    sheet_name="Sheet1",
+                    row_index=0,
+                    worker_result={
+                        "completion": {"state": "completed", "final_output": False},
+                        "details": {"reason_code": "ok"},
+                    },
+                    run_id="mixed-final-run",
+                    artifact_root=root,
+                    debug_log=str((root / "logs" / "mixed-final-run.jsonl").resolve()),
+                )
+
+            latest_pointer = cast(
+                dict[str, object],
+                json.loads(
+                    config.latest_completed_run_file.read_text(encoding="utf-8")
+                ),
+            )
+            status_row = _read_status_row(excel_path)
+
+        self.assertEqual(latest_pointer, sentinel_pointer)
+        self.assertEqual(status_row["status"], "Voice OK")
 
     def test_render_spec_is_merged_only_by_manager(self) -> None:
         with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:

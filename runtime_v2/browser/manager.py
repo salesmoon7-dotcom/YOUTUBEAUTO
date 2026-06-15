@@ -897,7 +897,7 @@ def open_browser_for_login(
 
 
 def _reclaim_foreign_debug_port(session: BrowserSession) -> bool:
-    if session.service != "chatgpt":
+    if session.service not in {"chatgpt", "genspark"}:
         return False
     expected = expected_url_substring_for_service(session.service).strip().lower()
     tabs = _list_debug_tabs(session)
@@ -1022,7 +1022,7 @@ class BrowserManager:
         launched = _launch_debug_browser(session)
         if (
             not launched
-            and service == "chatgpt"
+            and service in {"chatgpt", "genspark"}
             and session.blocked_reason == "port_open_foreign_tabs"
             and _reclaim_foreign_debug_port(session)
         ):

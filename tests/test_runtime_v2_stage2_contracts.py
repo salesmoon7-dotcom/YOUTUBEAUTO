@@ -503,6 +503,42 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
         ]
         self.assertEqual(len(gemi_timeline), 2)
 
+    def test_same_run_video_plan_routes_required_image_and_geminigen_jobs(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            video_plan = _video_plan(tmp_dir)
+            video_plan["run_id"] = "stage1-row15-run"
+            video_plan["row_ref"] = "Sheet1!row15"
+            video_plan["scene_plan"] = [
+                {"scene_index": 1, "prompt": "scene one"},
+                {"scene_index": 2, "prompt": "scene two"},
+            ]
+            video_plan["videos"] = ["video prompt one"]
+            video_plan["stage1_handoff"] = {
+                "contract": {
+                    "version": "stage1_handoff.v1.0",
+                    "run_id": "stage1-row15-run",
+                    "row_ref": "Sheet1!row15",
+                    "title": "Money title",
+                    "videos": ["video prompt one"],
+                }
+            }
+
+            jobs, _ = build_stage2_jobs(video_plan)
+
+        typed_jobs = [cast(dict[str, object], item["job"]) for item in jobs]
+        workloads = [str(job["worker"]) for job in typed_jobs]
+        self.assertIn("genspark", workloads)
+        self.assertIn("seaart", workloads)
+        self.assertIn("geminigen", workloads)
+        for job in typed_jobs:
+            payload = cast(dict[str, object], job["payload"])
+            self.assertEqual(payload["run_id"], "stage1-row15-run")
+            self.assertEqual(payload["row_ref"], "Sheet1!row15")
+            if str(job["worker"]) in {"genspark", "seaart", "geminigen"}:
+                self.assertIn("stage1_handoff", payload)
+
     def test_stage2_jobs_create_kenburns_bundle_contract_for_image_scenes(self) -> None:
         video_plan = _video_plan("D:/YOUTUBEAUTO")
 

@@ -17,7 +17,10 @@ from runtime_v2.excel.state_store import (
     update_excel_status,
 )
 from runtime_v2.gui_adapter import build_gui_status_payload
-from runtime_v2.latest_run import write_excel_sync_runtime_snapshot
+from runtime_v2.latest_run import (
+    validate_excel_sync_runtime_snapshot_paths,
+    write_excel_sync_runtime_snapshot,
+)
 from runtime_v2.result_router import attach_failure_summary
 from runtime_v2.workers.job_runtime import write_json_atomic
 
@@ -238,6 +241,7 @@ def sync_final_video_result(
     artifact_root: Path,
     debug_log: str,
 ) -> bool:
+    validate_excel_sync_runtime_snapshot_paths(config)
     completion_raw = worker_result.get("completion", {})
     completion = completion_raw if isinstance(completion_raw, dict) else {}
     completion_state = str(completion.get("state", "")).strip()

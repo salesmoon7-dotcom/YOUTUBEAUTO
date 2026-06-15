@@ -19,6 +19,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from runtime_v2 import exit_codes
 from runtime_v2.cli import (
+    _run_control_probe_until_terminal,
     _run_stage5_row1_probe,
     _run_stage5b_5row_probe,
     exit_code_from_status,
@@ -564,6 +565,7 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
 
     def test_exit_code_mapping_includes_callback_fail(self) -> None:
         self.assertEqual(exit_code_from_status("OK"), exit_codes.SUCCESS)
+        self.assertEqual(exit_code_from_status("BACKOFF_WAIT"), exit_codes.SUCCESS)
         self.assertEqual(exit_code_from_status("GPU_LEASE_BUSY"), exit_codes.LEASE_BUSY)
         self.assertEqual(
             exit_code_from_status("BROWSER_BLOCKED"), exit_codes.BROWSER_BLOCKED
@@ -572,6 +574,27 @@ class RuntimeV2Phase2Tests(unittest.TestCase):
             exit_code_from_status("CALLBACK_FAIL"), exit_codes.CALLBACK_FAIL
         )
         self.assertEqual(exit_code_from_status("UNKNOWN"), exit_codes.CLI_USAGE)
+
+    def test_control_probe_stops_on_backoff_wait(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            config = _runtime_config(Path(tmp_dir))
+            with patch(
+                "runtime_v2.cli.run_control_loop_once",
+                return_value={
+                    "status": "waiting",
+                    "code": "BACKOFF_WAIT",
+                    "queue_status": "backoff_wait",
+                },
+            ) as run_once:
+                result = _run_control_probe_until_terminal(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="backoff-wait-run",
+                    max_passes=3,
+                )
+
+        self.assertEqual(result["code"], "BACKOFF_WAIT")
+        self.assertEqual(run_once.call_count, 1)
 
     def test_n8n_payload_preserves_required_schema(self) -> None:
         payload = build_n8n_webhook_response(

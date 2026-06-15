@@ -228,6 +228,7 @@ def exit_code_from_status(code: str) -> int:
         "SEEDED_JOB": exit_codes.SUCCESS,
         "NO_WORK": exit_codes.SUCCESS,
         "CONTROL_BUSY": exit_codes.SUCCESS,
+        "BACKOFF_WAIT": exit_codes.SUCCESS,
         "GPU_LEASE_BUSY": exit_codes.LEASE_BUSY,
         "BROWSER_UNHEALTHY": exit_codes.BROWSER_UNHEALTHY,
         "BROWSER_BLOCKED": exit_codes.BROWSER_BLOCKED,
@@ -1302,6 +1303,7 @@ def _run_control_probe_until_terminal(
         result_code = _result_code(last_result)
         if result_code in {
             "NO_JOB",
+            "BACKOFF_WAIT",
             "BROWSER_UNHEALTHY",
             "GPT_FLOOR_FAIL",
             "GPU_LEASE_BUSY",
@@ -2588,6 +2590,8 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
         ]
     elif prompt and service == "seaart":
+        seaart_prompt_selector = "textarea.el-textarea__inner:not(#easyGenerateInput):visible"
+        seaart_prompt_base_selector = "textarea.el-textarea__inner:not(#easyGenerateInput)"
         pre_actions = [
             {
                 "type": "eval",
@@ -2595,17 +2599,19 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
             {
                 "type": "wait",
-                "target": "textarea.el-textarea__inner",
+                "target": seaart_prompt_selector,
             },
         ]
         actions = [
             {
                 "type": "wait",
-                "target": "textarea.el-textarea__inner",
+                "target": seaart_prompt_selector,
             },
             {
                 "type": "eval",
-                "script": "(() => { const textarea = document.querySelector('textarea.el-textarea__inner'); if (!textarea) return JSON.stringify({ok:false,error:\"NO_INPUT\"}); textarea.focus(); textarea.value=''; textarea.dispatchEvent(new Event('input',{bubbles:true})); textarea.value="
+                "script": "(() => { const candidates = Array.from(document.querySelectorAll('"
+                + seaart_prompt_base_selector
+                + "')); const textarea = candidates.find(item => { if (!(item instanceof HTMLTextAreaElement)) return false; const style = getComputedStyle(item); const rect = item.getBoundingClientRect(); return item.getClientRects().length > 0 && rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'; }); if (!textarea) return JSON.stringify({ok:false,error:\"NO_VISIBLE_INPUT\",candidates:candidates.length}); textarea.focus(); textarea.value=''; textarea.dispatchEvent(new Event('input',{bubbles:true})); textarea.value="
                 + json.dumps(prompt, ensure_ascii=True)
                 + "; textarea.dispatchEvent(new Event('input',{bubbles:true})); return JSON.stringify({ok:true, step:'prompt_filled'}); })()",
             },
@@ -2914,6 +2920,46 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             )
             return exit_codes.BROWSER_UNHEALTHY
         if not stage2_attach_verify_succeeded(pre_result):
+            pre_details_raw = pre_result.get("details", {})
+            pre_details = (
+                cast(dict[str, object], pre_details_raw)
+                if isinstance(pre_details_raw, dict)
+                else {}
+            )
+            pre_current_url = str(pre_details.get("current_url", ""))
+            pre_error_text = " ".join(
+                str(pre_details.get(key, ""))
+                for key in ("error", "exception", "failure_reason")
+            )
+            if (
+                service == "seaart"
+                and "/create/image" in pre_current_url
+                and "textarea.el-textarea__inner:not(#easyGenerateInput):visible"
+                in pre_error_text
+                and "Timeout" in pre_error_text
+            ):
+                seaart_visible_input_result: dict[str, object] = {
+                    "status": "failed",
+                    "stage": "seaart_adapter",
+                    "error_code": "SEAART_VISIBLE_INPUT_TIMEOUT",
+                    "details": pre_details,
+                }
+                _ = write_stage2_attach_evidence(
+                    workspace=workspace,
+                    service=service,
+                    port=args.port,
+                    result=seaart_visible_input_result,
+                    probe_debug_only=True,
+                    recovery_attempted=False,
+                    placeholder_artifact=False,
+                    ref_images_requested=ref_images_requested,
+                    ref_images_resolved=ref_images_resolved,
+                    extra_details={
+                        "selector": "textarea.el-textarea__inner:not(#easyGenerateInput):visible",
+                        "source_error_code": str(pre_result.get("error_code", "")),
+                    },
+                )
+                return exit_codes.ADAPTER_FAIL
             write_stage2_attach_evidence(
                 workspace=workspace,
                 service=service,
@@ -4033,6 +4079,7 @@ def _write_probe_result(probe_root: Path, payload: dict[str, object]) -> Path:
         "checked_at": round(time(), 3),
         **_json_safe_mapping(payload),
     }
+    payload_json = json.dumps(payload_with_contract, ensure_ascii=True)
     with tempfile.NamedTemporaryFile(
         "w",
         encoding="utf-8",
@@ -4041,20 +4088,27 @@ def _write_probe_result(probe_root: Path, payload: dict[str, object]) -> Path:
         suffix=".tmp",
         delete=False,
     ) as handle:
-        _ = handle.write(json.dumps(payload_with_contract, ensure_ascii=True))
+        _ = handle.write(payload_json)
         temp_path = Path(handle.name)
     last_error: PermissionError | None = None
+    replaced = False
     for delay in (0.05, 0.1, 0.2, None):
         try:
             _ = temp_path.replace(output_file)
+            replaced = True
             break
         except PermissionError as exc:
             last_error = exc
             if getattr(exc, "winerror", None) != 5 or delay is None:
-                raise
+                break
             sleep(delay)
-    if last_error is not None and not output_file.exists():
-        raise last_error
+    if replaced:
+        return output_file
+    if last_error is not None:
+        if getattr(last_error, "winerror", None) != 5:
+            raise last_error
+        output_file.write_text(payload_json, encoding="utf-8")
+        temp_path.unlink(missing_ok=True)
     return output_file
 
 
@@ -4067,6 +4121,7 @@ def _write_probe_progress(probe_root: Path, payload: dict[str, object]) -> Path:
         "checked_at": round(time(), 3),
         **_json_safe_mapping(payload),
     }
+    payload_json = json.dumps(payload_with_contract, ensure_ascii=True)
     with tempfile.NamedTemporaryFile(
         "w",
         encoding="utf-8",
@@ -4075,20 +4130,27 @@ def _write_probe_progress(probe_root: Path, payload: dict[str, object]) -> Path:
         suffix=".tmp",
         delete=False,
     ) as handle:
-        _ = handle.write(json.dumps(payload_with_contract, ensure_ascii=True))
+        _ = handle.write(payload_json)
         temp_path = Path(handle.name)
     last_error: PermissionError | None = None
+    replaced = False
     for delay in (0.05, 0.1, 0.2, None):
         try:
             _ = temp_path.replace(output_file)
+            replaced = True
             break
         except PermissionError as exc:
             last_error = exc
             if getattr(exc, "winerror", None) != 5 or delay is None:
-                raise
+                break
             sleep(delay)
-    if last_error is not None and not output_file.exists():
-        raise last_error
+    if replaced:
+        return output_file
+    if last_error is not None:
+        if getattr(last_error, "winerror", None) != 5:
+            raise last_error
+        output_file.write_text(payload_json, encoding="utf-8")
+        temp_path.unlink(missing_ok=True)
     return output_file
 
 

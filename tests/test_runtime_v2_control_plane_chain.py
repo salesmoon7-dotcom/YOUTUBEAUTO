@@ -1512,6 +1512,64 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertTrue(routed_jobs)
         self.assertEqual(len(render_jobs), 1)
 
+    def test_seed_declared_next_jobs_allows_stage1_explicit_fanout(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            parent_job = JobContract(
+                job_id="chatgpt-row15",
+                workload="chatgpt",
+                checkpoint_key="topic_spec:Sheet1!row15:hash-1",
+                payload={
+                    "run_id": "stage1-explicit-fanout-run",
+                    "row_ref": "Sheet1!row15",
+                },
+            )
+            next_jobs = [
+                build_explicit_job_contract(
+                    job_id=f"genspark-stage1-explicit-{index:02d}",
+                    workload="genspark",
+                    checkpoint_key=f"declared:genspark:{index:02d}",
+                    payload={
+                        "run_id": "stage1-explicit-fanout-run",
+                        "row_ref": "Sheet1!row15",
+                        "prompt": f"scene {index}",
+                        "chain_depth": 1,
+                    },
+                    chain_step=1,
+                    parent_job_id="chatgpt-row15",
+                )
+                for index in range(25)
+            ]
+            worker_result: dict[str, object] = {
+                "status": "ok",
+                "stage": "chatgpt",
+                "error_code": "",
+                "retryable": False,
+                "next_jobs": next_jobs,
+                "completion": {"state": "planned", "final_output": False},
+            }
+
+            seeded = _seed_declared_next_jobs(
+                config.queue_store_file,
+                [parent_job],
+                worker_result,
+                parent_job,
+                config.control_plane_events_file,
+                run_id="stage1-explicit-fanout-run",
+                artifact_root=config.artifact_root,
+            )
+            events = (
+                config.control_plane_events_file.read_text(encoding="utf-8")
+                if config.control_plane_events_file.exists()
+                else ""
+            )
+
+        self.assertEqual(len(seeded), 25)
+        self.assertNotIn("too_many_next_jobs", events)
+
     def test_runtime_config_from_root_keeps_latest_pointers_inside_temp_root(
         self,
     ) -> None:
@@ -2097,6 +2155,105 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         )
         qwen_payload = cast(dict[object, object], qwen_job["payload"])
         self.assertEqual(str(qwen_payload["model_name"]), "voice-model-a")
+
+    def test_stage1_probe_mode_emits_single_qwen_truthful_artifact_job(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            artifact_root = root / "runtime" / "probe" / "artifacts"
+            artifact_root.mkdir(parents=True, exist_ok=True)
+            parent_job = JobContract(
+                job_id="chatgpt-row15-proof",
+                workload="chatgpt",
+                checkpoint_key="topic_spec:Sheet1!row15:stage1-row15-run",
+                payload={
+                    "run_id": "stage1-row15-run",
+                    "row_ref": "Sheet1!row15",
+                    "excel_path": str(root / "topic.xlsx"),
+                    "sheet_name": "Sheet1",
+                    "row_index": 14,
+                },
+            )
+            asset_root = artifact_root / "chatgpt" / parent_job.job_id
+            asset_root.mkdir(parents=True, exist_ok=True)
+            video_plan = build_video_plan(
+                run_id="stage1-row15-run",
+                row_ref="Sheet1!row15",
+                topic="요양 시설 비용 현실과 준비해야 할 금액",
+                story_outline=["scene one", "scene two", "scene three"],
+                scene_plan=[
+                    {"scene_index": 1, "prompt": "scene one"},
+                    {"scene_index": 2, "prompt": "scene two"},
+                    {"scene_index": 3, "prompt": "scene three"},
+                ],
+                asset_plan={
+                    "asset_root": str(asset_root.resolve()),
+                    "common_asset_folder": str(asset_root.resolve()),
+                },
+                voice_plan={
+                    "mapping_source": "stage1_parsed",
+                    "scene_count": 3,
+                    "groups": [],
+                },
+                reason_code="ok",
+                evidence={"source": "test"},
+            )
+            worker_result: dict[str, object] = {
+                "status": "ok",
+                "stage": "chatgpt",
+                "error_code": "",
+                "retryable": False,
+                "details": {
+                    "video_plan": video_plan,
+                    "stage1_handoff": {
+                        "contract": {
+                            "run_id": "stage1-row15-run",
+                            "row_ref": "Sheet1!row15",
+                            "topic": "요양 시설 비용 현실과 준비해야 할 금액",
+                            "voice_texts": [
+                                {
+                                    "col": "#01",
+                                    "text": "line one",
+                                    "original_voices": [1],
+                                },
+                                {
+                                    "col": "#02",
+                                    "text": "line two",
+                                    "original_voices": [2],
+                                },
+                                {
+                                    "col": "#03",
+                                    "text": "line three",
+                                    "original_voices": [3],
+                                },
+                            ],
+                        }
+                    },
+                },
+            }
+
+            seeded = _seed_declared_next_jobs(
+                config.queue_store_file,
+                [parent_job],
+                worker_result,
+                parent_job,
+                config.control_plane_events_file,
+                run_id="stage1-row15-run",
+                artifact_root=artifact_root,
+            )
+            qwen_job = next(
+                item
+                for item in seeded
+                if str(item.workload) == "qwen3_tts"
+            )
+            qwen_payload = qwen_job.payload
+            voice_texts = cast(list[object], qwen_payload["voice_texts"])
+
+        self.assertEqual(qwen_job.workload, "qwen3_tts")
+        self.assertEqual(qwen_payload["run_id"], "stage1-row15-run")
+        self.assertEqual(qwen_payload["row_ref"], "Sheet1!row15")
+        self.assertEqual(len(voice_texts), 1)
+        self.assertEqual(cast(dict[str, object], voice_texts[0])["col"], "#01")
 
     def test_control_plane_syncs_excel_done_after_render_final_output(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:

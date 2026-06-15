@@ -696,6 +696,106 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertEqual(raw_output["response_text"], "")
         generate_mock.assert_called_once()
 
+    def test_stage1_live_capture_partial_text_does_not_emit_structured_artifacts(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            workspace = Path(tmp_dir)
+            topic_spec = _topic_spec(topic="Money flow")
+            topic_spec["run_id"] = "stage1-row15-run"
+            topic_spec["row_ref"] = "Sheet1!row15"
+            topic_spec["browser_evidence"] = {"service": "chatgpt", "port": 9222}
+
+            with patch(
+                "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                return_value={
+                    "status": "failed",
+                    "error_code": "CHATGPT_RESPONSE_TIMEOUT",
+                    "failure_stage": "read",
+                    "details": {},
+                    "response_text": "[Title]\n介護施設の費用、",
+                    "submit_info": {"sendClicked": True},
+                    "final_state": {
+                        "has_stop": False,
+                        "has_send_button": False,
+                        "assistant_text": "[Title]\n介護施設の費用、",
+                        "assistant_block_count": 2,
+                        "legacy_blocks": [],
+                    },
+                    "timeline": [
+                        {"seq": 1, "event": "submit_start", "attempt": 1},
+                        {"seq": 2, "event": "submit_ok", "attempt": 1},
+                    ],
+                },
+            ):
+                result = run_stage1_chatgpt_job(
+                    topic_spec,
+                    workspace,
+                    debug_log="logs/stage1-row15-run.jsonl",
+                )
+
+            raw_output_exists = (workspace / "raw_output.json").exists()
+            parsed_payload_exists = (workspace / "parsed_payload.json").exists()
+            handoff_exists = (workspace / "stage1_handoff.json").exists()
+            video_plan_exists = (workspace / "video_plan.json").exists()
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_RESPONSE_TIMEOUT")
+        self.assertTrue(raw_output_exists)
+        self.assertFalse(parsed_payload_exists)
+        self.assertFalse(handoff_exists)
+        self.assertFalse(video_plan_exists)
+
+    def test_stage1_current_row_generates_same_run_artifact_bundle(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            workspace = Path(tmp_dir)
+            topic_spec = _topic_spec(topic="요양 시설 비용 현실과 준비해야 할 금액")
+            topic_spec["run_id"] = "stage1-row15-run"
+            topic_spec["row_ref"] = "Sheet1!row15"
+            topic_spec["gpt_response_text"] = _gpt_response_text()
+
+            result = run_stage1_chatgpt_job(
+                topic_spec,
+                workspace,
+                debug_log="logs/stage1-row15-run.jsonl",
+            )
+
+            raw_output_path = workspace / "raw_output.json"
+            parsed_payload_path = workspace / "parsed_payload.json"
+            handoff_path = workspace / "stage1_handoff.json"
+            video_plan_path = workspace / "video_plan.json"
+            parsed_payload = cast(
+                dict[str, object],
+                json.loads(parsed_payload_path.read_text(encoding="utf-8")),
+            )
+            handoff = cast(
+                dict[str, object],
+                json.loads(handoff_path.read_text(encoding="utf-8")),
+            )
+            video_plan = cast(
+                dict[str, object],
+                json.loads(video_plan_path.read_text(encoding="utf-8")),
+            )
+            raw_output_exists = raw_output_path.exists()
+            parsed_payload_exists = parsed_payload_path.exists()
+            handoff_exists = handoff_path.exists()
+            video_plan_exists = video_plan_path.exists()
+
+        self.assertEqual(result["status"], "ok")
+        self.assertTrue(raw_output_exists)
+        self.assertTrue(parsed_payload_exists)
+        self.assertTrue(handoff_exists)
+        self.assertTrue(video_plan_exists)
+        self.assertEqual(parsed_payload["run_id"], "stage1-row15-run")
+        self.assertEqual(parsed_payload["row_ref"], "Sheet1!row15")
+        self.assertEqual(video_plan["run_id"], "stage1-row15-run")
+        self.assertEqual(video_plan["row_ref"], "Sheet1!row15")
+        self.assertIn("stage1_handoff", video_plan)
+        self.assertEqual(
+            cast(dict[str, object], handoff["contract"])["run_id"],
+            "stage1-row15-run",
+        )
+
     def test_stage1_runner_attempts_live_capture_without_explicit_browser_evidence(
         self,
     ) -> None:

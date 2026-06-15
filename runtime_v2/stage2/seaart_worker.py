@@ -28,6 +28,15 @@ _RETRYABLE_BROWSER_ERROR_CODES = {
 }
 
 
+def _seaart_adapter_error_code(
+    adapter_result: dict[str, object], attach_evidence_payload: dict[str, object]
+) -> str:
+    attach_error_code = str(attach_evidence_payload.get("error_code", "")).strip()
+    if attach_error_code:
+        return attach_error_code
+    return str(adapter_result.get("error_code", "seaart_adapter_failed"))
+
+
 def _normalized_service_artifact_path(job: JobContract, artifact_root: Path) -> str:
     raw_path = str(job.payload.get("service_artifact_path", "")).strip()
     if not raw_path:
@@ -82,6 +91,9 @@ def run_seaart_job(
     if isinstance(adapter_command_raw, list) and adapter_command_raw:
         adapter_command_items = cast(list[object], adapter_command_raw)
         adapter_command = [str(item) for item in adapter_command_items]
+        stale_attach_evidence = attach_evidence_path(workspace)
+        if stale_attach_evidence.exists():
+            stale_attach_evidence.unlink()
         adapter_result = run_verified_adapter_command(
             workspace,
             approved_root=artifact_root,
@@ -95,8 +107,8 @@ def run_seaart_job(
         attach_evidence = attach_evidence_path(workspace)
         attach_evidence_payload = load_stage2_attach_evidence(workspace)
         if not bool(adapter_result.get("ok", False)):
-            adapter_error_code = str(
-                adapter_result.get("error_code", "seaart_adapter_failed")
+            adapter_error_code = _seaart_adapter_error_code(
+                adapter_result, attach_evidence_payload
             )
             return finalize_worker_result(
                 workspace,

@@ -370,6 +370,7 @@ def write_excel_sync_runtime_snapshot(
     metadata: dict[str, object],
     artifact_root: Path,
 ) -> None:
+    validate_excel_sync_runtime_snapshot_paths(config)
     write_runtime_snapshot(
         config,
         run_id=run_id,
@@ -394,6 +395,42 @@ def write_excel_sync_runtime_snapshot(
         write_completed=True,
         write_active=False,
     )
+
+
+def validate_excel_sync_runtime_snapshot_paths(config: RuntimeConfig) -> None:
+    expected_root = _snapshot_state_root(config.latest_completed_run_file)
+    result_root = _snapshot_state_root(config.result_router_file)
+    gui_root = _snapshot_state_root(config.gui_status_file)
+    events_root = _snapshot_state_root(config.control_plane_events_file)
+    active_root = _snapshot_state_root(config.latest_active_run_file)
+    roots = {
+        "latest_completed_run_file": expected_root,
+        "latest_active_run_file": active_root,
+        "result_router_file": result_root,
+        "gui_status_file": gui_root,
+        "control_plane_events_file": events_root,
+    }
+    mismatched = {
+        name: str(root)
+        for name, root in roots.items()
+        if root != expected_root
+    }
+    if mismatched:
+        message = (
+            f"mixed_runtime_snapshot_paths: latest_completed_run_file={expected_root}; "
+            f"mismatched={mismatched}"
+        )
+        raise ValueError(
+            message
+        )
+
+
+def _snapshot_state_root(path: Path) -> Path:
+    resolved = path.resolve()
+    parent_name = resolved.parent.name.lower()
+    if parent_name in {"evidence", "health"}:
+        return resolved.parent.parent
+    return resolved.parent
 
 
 def load_joined_latest_run(

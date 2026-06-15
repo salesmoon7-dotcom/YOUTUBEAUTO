@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import queue
+import threading
 import time
 import urllib.request
 from datetime import datetime, timezone
@@ -146,7 +148,9 @@ def generate_gpt_response_text(
     for attempt in (1, 2):
         emit("submit_start", attempt=attempt, backend="chatgpt_backend")
         try:
-            submit_info = interaction_backend.submit_prompt(prompt)
+            submit_info = _submit_prompt_with_deadline(
+                interaction_backend, prompt, deadline_ts=deadline_ts
+            )
         except RuntimeError as exc:
             error_code, retry_safe, extra_details = _decode_submit_failure(str(exc))
             submit_evidence = extra_details.get("submit_evidence")
@@ -477,6 +481,36 @@ def generate_gpt_response_text(
             "backend_fallback": "raw_cdp_http",
         },
     }
+
+
+def _submit_prompt_with_deadline(
+    backend: ChatGPTBackend, prompt: str, *, deadline_ts: float
+) -> dict[str, object]:
+    timeout_sec = max(0.05, deadline_ts - time.time())
+    result_queue: queue.Queue[tuple[str, object]] = queue.Queue(maxsize=1)
+
+    def run_submit() -> None:
+        try:
+            result_queue.put(("ok", backend.submit_prompt(prompt)))
+        except RuntimeError as exc:
+            result_queue.put(("runtime_error", exc))
+        except Exception as exc:
+            result_queue.put(("error", exc))
+
+    thread = threading.Thread(target=run_submit, daemon=True)
+    thread.start()
+    thread.join(timeout_sec)
+    if thread.is_alive():
+        raise RuntimeError("CHATGPT_SUBMIT_TIMEOUT")
+    try:
+        status, payload = result_queue.get_nowait()
+    except queue.Empty as exc:
+        raise RuntimeError("CHATGPT_SUBMIT_TIMEOUT") from exc
+    if status == "ok" and isinstance(payload, dict):
+        return cast(dict[str, object], payload)
+    if isinstance(payload, RuntimeError):
+        raise payload
+    raise RuntimeError(str(payload))
 
 
 def _interaction_failure(

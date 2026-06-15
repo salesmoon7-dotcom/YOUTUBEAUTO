@@ -417,6 +417,35 @@ class AgentBrowserCdpBackend:
             "SEND_DISABLED" if bool(last_state.get("send_found", False)) else "NO_SEND"
         )
         no_send_evidence = _normalized_no_send_evidence(last_state)
+        if error == "NO_SEND":
+            try:
+                click_result = _decode_backend_json(
+                    self._run_eval_with_retry(_click_send_script(payload))
+                )
+            except RuntimeError:
+                click_result = {}
+            if bool(click_result.get("ok", False)) and str(
+                click_result.get("sendTestId", "")
+            ) == "enter-key":
+                submit_evidence = {
+                    "attempt_key": "attempt-1",
+                    "classification": "sent",
+                    "classification_reason": "enter_fallback_after_send_missing",
+                    "retry_safe_decision": False,
+                    "pre": last_state,
+                    "post": click_result,
+                    "in_flight_observed": False,
+                    "terminal_success_observed": False,
+                    "state_transition": False,
+                }
+                return {
+                    "ok": True,
+                    "sendClicked": True,
+                    "sendTestId": str(click_result.get("sendTestId", "")),
+                    "sendAriaLabel": str(click_result.get("sendAriaLabel", "")),
+                    "no_send_evidence": no_send_evidence,
+                    "submit_evidence": submit_evidence,
+                }
         submit_evidence = _submit_evidence_record(
             error=error,
             parsed=last_state,
@@ -795,14 +824,18 @@ def _click_send_script(payload: str) -> str:
         f"const config = {payload};"
         "const selectors = config.inputSelectors || [];"
         "const sendSelectors = config.sendSelectors || [];"
+        "const stopSelectors = config.stopSelectors || [];"
         "let input = null;"
         "for (const selector of selectors) { try { const candidate = document.querySelector(selector); if (!candidate) continue; const visible = !!candidate && !!candidate.isConnected && (((candidate.getClientRects && candidate.getClientRects().length > 0)) || candidate.offsetParent !== null); if (visible) { input = candidate; break; } } catch (_) {} }"
         "if (!input) { const chatInput = document.querySelector('[data-testid=\"chat-input\"]'); if (chatInput) { const editor = chatInput.querySelector('.ProseMirror, [contenteditable=\"true\"]'); const visible = !!editor && !!editor.isConnected && (((editor.getClientRects && editor.getClientRects().length > 0)) || editor.offsetParent !== null); if (visible) input = editor; } }"
         "if (!input) { const proseMirrors = Array.from(document.querySelectorAll('.ProseMirror')).filter((el) => el && el.isConnected && (((el.getClientRects && el.getClientRects().length > 0)) || el.offsetParent !== null) && !el.closest('[data-message-author-role=\"assistant\"]')); if (proseMirrors.length) input = proseMirrors[0]; }"
         "if (!input) return JSON.stringify({ok:false,error:'NO_SEND_INPUT'});"
         "if (typeof input.focus === 'function') input.focus();"
-        "for (const selector of sendSelectors) { try { const send = document.querySelector(selector); if (!send) continue; const visible = !!send && !!send.isConnected && (((send.getClientRects && send.getClientRects().length > 0)) || send.offsetParent !== null); const disabled = !!send.disabled || (send.getAttribute && send.getAttribute('aria-disabled') === 'true'); if (!visible || disabled) continue; if (typeof send.focus === 'function') send.focus(); if (typeof send.click === 'function') send.click(); return JSON.stringify({ok:true,sendClicked:true,sendTestId:(send.getAttribute ? (send.getAttribute('data-testid') || 'send-button') : 'send-button'),sendAriaLabel:(send.getAttribute ? (send.getAttribute('aria-label') || '') : '')}); } catch (_) {} }"
         "['keydown','keypress','keyup'].forEach(type => input.dispatchEvent(new KeyboardEvent(type,{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true,cancelable:true})));"
+        "const textAfterEnter = String(input.innerText || input.textContent || input.value || '').trim();"
+        "const hasStop = stopSelectors.some(selector => { const el = document.querySelector(selector); return !!(el && el.offsetParent !== null); });"
+        "if (!textAfterEnter || textAfterEnter.length < 5 || hasStop) return JSON.stringify({ok:true,sendClicked:true,sendTestId:'enter-key',sendAriaLabel:'Enter'});"
+        "for (const selector of sendSelectors) { try { const send = document.querySelector(selector); if (!send) continue; const visible = !!send && !!send.isConnected && (((send.getClientRects && send.getClientRects().length > 0)) || send.offsetParent !== null); const disabled = !!send.disabled || (send.getAttribute && send.getAttribute('aria-disabled') === 'true'); if (!visible || disabled) continue; if (typeof send.focus === 'function') send.focus(); if (typeof send.click === 'function') send.click(); return JSON.stringify({ok:true,sendClicked:true,sendTestId:(send.getAttribute ? (send.getAttribute('data-testid') || 'send-button') : 'send-button'),sendAriaLabel:(send.getAttribute ? (send.getAttribute('aria-label') || '') : '')}); } catch (_) {} }"
         "return JSON.stringify({ok:true,sendClicked:true,sendTestId:'enter-key',sendAriaLabel:'Enter'});"
         "})()"
     )

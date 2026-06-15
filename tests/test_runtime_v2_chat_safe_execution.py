@@ -763,6 +763,64 @@ class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
         self.assertEqual(output_path, probe_root / "probe_progress.json")
         self.assertEqual(call_count["count"], 3)
 
+    def test_write_probe_progress_falls_back_after_winerror_5_retry_exhausted(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            probe_root = Path(tmp_dir) / "probe"
+
+            def always_locked_replace(self: Path, target: Path) -> Path:
+                if self.suffix == ".tmp":
+                    error = PermissionError("locked")
+                    error.winerror = 5
+                    raise error
+                raise AssertionError("unexpected replace target")
+
+            with (
+                patch("runtime_v2.cli.sleep", return_value=None),
+                patch.object(Path, "replace", new=always_locked_replace),
+            ):
+                output_path = _write_probe_progress(
+                    probe_root,
+                    {"status": "running", "code": "PROBE_RUNNING", "ticks": 1},
+                )
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(output_path, probe_root / "probe_progress.json")
+        self.assertEqual(payload["schema_version"], "1.0")
+        self.assertEqual(payload["runtime"], "runtime_v2")
+        self.assertEqual(payload["status"], "running")
+        self.assertEqual(payload["code"], "PROBE_RUNNING")
+
+    def test_write_probe_result_falls_back_after_winerror_5_retry_exhausted(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            probe_root = Path(tmp_dir) / "probe"
+
+            def always_locked_replace(self: Path, target: Path) -> Path:
+                if self.suffix == ".tmp":
+                    error = PermissionError("locked")
+                    error.winerror = 5
+                    raise error
+                raise AssertionError("unexpected replace target")
+
+            with (
+                patch("runtime_v2.cli.sleep", return_value=None),
+                patch.object(Path, "replace", new=always_locked_replace),
+            ):
+                output_path = _write_probe_result(
+                    probe_root,
+                    {"status": "failed", "code": "BATCH_TIMEOUT"},
+                )
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(output_path, probe_root / "probe_result.json")
+        self.assertEqual(payload["schema_version"], "1.0")
+        self.assertEqual(payload["runtime"], "runtime_v2")
+        self.assertEqual(payload["status"], "failed")
+        self.assertEqual(payload["code"], "BATCH_TIMEOUT")
+
     def test_finalize_probe_result_from_progress_writes_fail_closed_artifact(
         self,
     ) -> None:

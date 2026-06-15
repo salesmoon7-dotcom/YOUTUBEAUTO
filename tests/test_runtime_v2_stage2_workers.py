@@ -343,6 +343,97 @@ class RuntimeV2Stage2WorkerTests(unittest.TestCase):
         self.assertEqual(result["error_code"], "BROWSER_BLOCKED")
         self.assertTrue(bool(result["retryable"]))
 
+    def test_seaart_worker_uses_attach_evidence_error_code_over_generic_adapter_exit(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = root / "exports" / "scene-01.png"
+            job = _stage2_job("seaart")
+            job.payload["use_agent_browser"] = True
+            job.payload["service_artifact_path"] = str(output_path)
+            workspace = (
+                artifact_root / "seaart" / job.job_id / str(job.payload["run_id"])
+            )
+            workspace.mkdir(parents=True, exist_ok=True)
+
+            def _fake_adapter(*args: object, **kwargs: object) -> dict[str, object]:
+                del args, kwargs
+                attach_evidence = attach_evidence_path(workspace)
+                written_chars = attach_evidence.write_text(
+                    json.dumps(
+                        {
+                            "status": "failed",
+                            "stage": "seaart_adapter",
+                            "error_code": "SEAART_VISIBLE_INPUT_TIMEOUT",
+                        },
+                        ensure_ascii=True,
+                    ),
+                    encoding="utf-8",
+                )
+                self.assertGreater(written_chars, 0)
+                return {
+                    "ok": False,
+                    "error_code": "ADAPTER_NONZERO_EXIT",
+                    "stdout_path": root / "stdout.log",
+                    "stderr_path": root / "stderr.log",
+                    "details": {},
+                }
+
+            with patch(
+                "runtime_v2.stage2.seaart_worker.run_verified_adapter_command",
+                side_effect=_fake_adapter,
+            ):
+                result = run_seaart_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "SEAART_VISIBLE_INPUT_TIMEOUT")
+        self.assertFalse(bool(result["retryable"]))
+
+    def test_seaart_worker_clears_stale_attach_evidence_before_adapter_run(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = root / "exports" / "scene-01.png"
+            job = _stage2_job("seaart")
+            job.payload["use_agent_browser"] = True
+            job.payload["service_artifact_path"] = str(output_path)
+            workspace = (
+                artifact_root / "seaart" / job.job_id / str(job.payload["run_id"])
+            )
+            workspace.mkdir(parents=True, exist_ok=True)
+            stale_attach = attach_evidence_path(workspace)
+            stale_attach.write_text(
+                json.dumps(
+                    {
+                        "status": "failed",
+                        "stage": "seaart_adapter",
+                        "error_code": "SEAART_VISIBLE_INPUT_TIMEOUT",
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+
+            with patch(
+                "runtime_v2.stage2.seaart_worker.run_verified_adapter_command",
+                return_value={
+                    "ok": False,
+                    "error_code": "ADAPTER_NONZERO_EXIT",
+                    "stdout_path": root / "stdout.log",
+                    "stderr_path": root / "stderr.log",
+                    "details": {},
+                },
+            ):
+                result = run_seaart_job(job, artifact_root)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "ADAPTER_NONZERO_EXIT")
+        self.assertFalse(stale_attach.exists())
+
     def test_seaart_worker_rebases_service_artifact_path_into_artifact_root(
         self,
     ) -> None:

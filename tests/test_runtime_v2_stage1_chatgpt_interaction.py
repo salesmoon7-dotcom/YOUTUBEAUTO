@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import itertools
+import time as real_time
 import subprocess
 import tempfile
 import unittest
@@ -640,6 +641,66 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertTrue(bool(result["ok"]))
         self.assertGreaterEqual(ensure_mock.call_count, 1)
         self.assertGreaterEqual(wait_mock.call_count, 1)
+
+    def test_wait_for_send_state_uses_enter_fallback_when_send_remains_missing(
+        self,
+    ) -> None:
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["#composer-submit-button"],
+            stop_selectors=["button[data-testid='stop-button']"],
+            response_selectors=["div[data-message-author-role='assistant']"],
+        )
+        missing_send_state = {
+            "send_found": False,
+            "send_enabled": False,
+            "send_disabled": False,
+            "in_flight_marker": False,
+        }
+        eval_payloads = [
+            *[json.dumps(missing_send_state, ensure_ascii=True) for _ in range(20)],
+            json.dumps(
+                {
+                    "ok": True,
+                    "sendClicked": True,
+                    "sendTestId": "enter-key",
+                    "sendAriaLabel": "Enter",
+                },
+                ensure_ascii=True,
+            ),
+        ]
+
+        with (
+            mock.patch.object(
+                backend,
+                "_run_eval_with_retry",
+                side_effect=eval_payloads,
+            ),
+            mock.patch.object(backend, "_ensure_chatgpt_target_selected"),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._wait_for_chatgpt_prompt_ready"
+            ),
+            mock.patch.object(
+                backend,
+                "_current_selected_tab",
+                return_value={
+                    "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/test"
+                },
+            ),
+            mock.patch("runtime_v2.stage1.chatgpt_backend.time.sleep"),
+        ):
+            result = backend._wait_for_send_state("payload")
+
+        self.assertTrue(bool(result["ok"]))
+        self.assertTrue(bool(result["sendClicked"]))
+        self.assertEqual(result["sendTestId"], "enter-key")
+        submit_evidence = cast(dict[str, object], result["submit_evidence"])
+        self.assertEqual(submit_evidence["classification"], "sent")
+        self.assertEqual(
+            submit_evidence["classification_reason"],
+            "enter_fallback_after_send_missing",
+        )
 
     def test_submit_prompt_retries_when_input_did_not_stick(self) -> None:
         eval_payloads = [
@@ -1528,7 +1589,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertTrue(bool(submit_evidence["in_flight_observed"]))
         self.assertTrue(bool(submit_evidence["terminal_success_observed"]))
 
-    def test_click_send_script_prefers_visible_send_button_before_enter_fallback(
+    def test_click_send_script_prefers_enter_before_button_fallback(
         self,
     ) -> None:
         payload = json.dumps(
@@ -1547,6 +1608,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertIn("send.getAttribute('data-testid') || 'send-button'", script)
         self.assertIn("key:'Enter'", script)
         self.assertIn("sendTestId:'enter-key'", script)
+        self.assertLess(script.index("key:'Enter'"), script.index("send.click()"))
 
     def test_submit_evidence_is_ambiguous_without_terminal_success_signal(self) -> None:
         backend = AgentBrowserCdpBackend(
@@ -2291,6 +2353,11 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                     "ok": True,
                     "sendClicked": True,
                     "inputSelector": "#prompt-textarea",
+                    "submit_evidence": {
+                        "classification": "sent",
+                        "classification_reason": "send_button_clicked",
+                        "retry_safe_decision": False,
+                    },
                 }
 
             def read_response_state(self) -> dict[str, object]:
@@ -2303,6 +2370,7 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
                     }
                 return {
                     "has_stop": False,
+                    "has_send_button": True,
                     "assistant_text": "final json",
                     "assistant_block_count": 1,
                 }
@@ -2319,6 +2387,39 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["response_text"], "final json")
+
+    def test_generate_gpt_response_text_fail_closes_stuck_submit(self) -> None:
+        class HangingBackend(ChatGPTBackend):
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                _ = prompt
+                real_time.sleep(1.0)
+                return {"ok": True, "sendClicked": True}
+
+            def read_response_state(self) -> dict[str, object]:
+                raise AssertionError("read_response_state must not run after submit timeout")
+
+        started = real_time.monotonic()
+        result = generate_gpt_response_text(
+            prompt="test prompt",
+            port=9222,
+            timeout_sec=0,
+            poll_interval_sec=0.01,
+            completion_idle_sec=0.01,
+            response_start_timeout_sec=0.01,
+            backend=HangingBackend(),
+            session_probe=lambda port: {"port": port, "status": "probe"},
+        )
+        elapsed = real_time.monotonic() - started
+
+        self.assertLess(elapsed, 0.75)
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "CHATGPT_BACKEND_UNAVAILABLE")
+        self.assertEqual(result["failure_stage"], "submit")
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(details["backend_error"], "CHATGPT_SUBMIT_TIMEOUT")
+        timeline = cast(list[dict[str, object]], result["timeline"])
+        event_names = [str(item["event"]) for item in timeline]
+        self.assertEqual(event_names, ["submit_start", "submit_failed", "final_state"])
 
     def test_generate_gpt_response_text_submits_and_waits_for_stable_text(self) -> None:
         class FakeBackend(ChatGPTBackend):

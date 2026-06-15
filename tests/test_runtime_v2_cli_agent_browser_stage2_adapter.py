@@ -2543,7 +2543,147 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         )
         self.assertEqual(
             captured_pre_actions[1],
-            {"type": "wait", "target": "textarea.el-textarea__inner"},
+            {
+                "type": "wait",
+                "target": "textarea.el-textarea__inner:not(#easyGenerateInput):visible",
+            },
+        )
+
+    def test_stage2_adapter_child_seaart_prompt_targets_visible_textarea(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "seaart-scene-01.png"
+            request_payload = {"payload": {"prompt": "seaart prompt"}}
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "seaart"
+            args.port = 9444
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "seaart.ai"
+            args.expected_title_substring = "SeaArt"
+            captured_pre_actions: list[dict[str, object]] = []
+            captured_actions: list[dict[str, object]] = []
+            call_count = 0
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                nonlocal call_count
+                _ = artifact_root
+                payload = cast(dict[str, object], job.payload)
+                actions = cast(list[dict[str, object]], payload.get("actions", []))
+                call_count += 1
+                if call_count == 1:
+                    captured_pre_actions.extend(actions)
+                    return {"status": "ok"}
+                captured_actions.extend(actions)
+                return {"status": "ok"}
+
+            def fake_bundle(**kwargs: object) -> dict[str, object]:
+                target = Path(str(kwargs["service_artifact_path"]))
+                target.parent.mkdir(parents=True, exist_ok=True)
+                _ = target.write_bytes(b"png")
+                return {"service": "seaart", "sha256": "ok"}
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    side_effect=fake_bundle,
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        self.assertEqual(call_count, 2)
+        visible_selector = "textarea.el-textarea__inner:not(#easyGenerateInput):visible"
+        base_selector = "textarea.el-textarea__inner:not(#easyGenerateInput)"
+        self.assertEqual(
+            captured_pre_actions[1], {"type": "wait", "target": visible_selector}
+        )
+        self.assertEqual(captured_actions[0], {"type": "wait", "target": visible_selector})
+        fill_script = str(captured_actions[1].get("script", ""))
+        self.assertIn("querySelectorAll('" + base_selector + "')", fill_script)
+        self.assertIn("getClientRects", fill_script)
+        self.assertIn("getComputedStyle", fill_script)
+        self.assertIn("NO_VISIBLE_INPUT", fill_script)
+        self.assertNotIn(visible_selector, fill_script)
+        self.assertNotIn(
+            "querySelector('textarea.el-textarea__inner')",
+            fill_script,
+        )
+
+    def test_stage2_adapter_child_seaart_visible_input_timeout_fails_closed_without_browser_restart(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "seaart-scene-01.png"
+            request_payload = {"payload": {"prompt": "seaart prompt"}}
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "seaart"
+            args.port = 9444
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "seaart.ai"
+            args.expected_title_substring = "SeaArt"
+            call_count = 0
+            timeout_error = (
+                "page.waitForSelector: Timeout 10000ms exceeded. "
+                "waiting for locator('textarea.el-textarea__inner:not(#easyGenerateInput):visible') to be visible"
+            )
+
+            def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
+                nonlocal call_count
+                _ = (job, artifact_root)
+                call_count += 1
+                return {
+                    "status": "failed",
+                    "stage": "agent_browser_verify",
+                    "error_code": "AGENT_BROWSER_COMMAND_FAILED",
+                    "details": {
+                        "current_url": "https://www.seaart.ai/ko/create/image?id=model",
+                        "current_title": "AI image generator",
+                        "transcript_path": str(root / "agent_browser_transcript.json"),
+                        "error": timeout_error,
+                    },
+                }
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    side_effect=fake_verify,
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+            attach_evidence = cast(
+                dict[str, object],
+                json.loads(
+                    (root / "attach_evidence.json").read_text(encoding="utf-8")
+                ),
+            )
+
+        self.assertEqual(exit_code, exit_codes.ADAPTER_FAIL)
+        self.assertEqual(call_count, 1)
+        self.assertEqual(
+            attach_evidence["error_code"], "SEAART_VISIBLE_INPUT_TIMEOUT"
+        )
+        self.assertEqual(attach_evidence["current_title"], "AI image generator")
+        self.assertIn("/create/image", str(attach_evidence["current_url"]))
+        evidence_details = attach_evidence.get("details", {})
+        self.assertIn(
+            "textarea.el-textarea__inner:not(#easyGenerateInput):visible",
+            json.dumps(evidence_details, ensure_ascii=True),
         )
 
     def test_attach_canva_ref_images_opens_upload_tab_and_uses_file_input(self) -> None:
