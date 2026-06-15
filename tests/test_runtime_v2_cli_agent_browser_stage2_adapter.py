@@ -2545,7 +2545,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             captured_pre_actions[1],
             {
                 "type": "wait",
-                "target": "textarea.el-textarea__inner:not(#easyGenerateInput):visible",
+                "target": "textarea#easyGenerateInput.el-textarea__inner:visible",
             },
         )
 
@@ -2602,8 +2602,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
 
         self.assertEqual(exit_code, exit_codes.SUCCESS)
         self.assertEqual(call_count, 2)
-        visible_selector = "textarea.el-textarea__inner:not(#easyGenerateInput):visible"
-        base_selector = "textarea.el-textarea__inner:not(#easyGenerateInput)"
+        visible_selector = "textarea#easyGenerateInput.el-textarea__inner:visible"
+        base_selector = "textarea#easyGenerateInput.el-textarea__inner"
         self.assertEqual(
             captured_pre_actions[1], {"type": "wait", "target": visible_selector}
         )
@@ -2614,6 +2614,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertIn("getComputedStyle", fill_script)
         self.assertIn("NO_VISIBLE_INPUT", fill_script)
         self.assertNotIn(visible_selector, fill_script)
+        self.assertNotIn(":not(#easyGenerateInput)", fill_script)
         self.assertNotIn(
             "querySelector('textarea.el-textarea__inner')",
             fill_script,
@@ -2638,7 +2639,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             call_count = 0
             timeout_error = (
                 "page.waitForSelector: Timeout 10000ms exceeded. "
-                "waiting for locator('textarea.el-textarea__inner:not(#easyGenerateInput):visible') to be visible"
+                "waiting for locator('textarea#easyGenerateInput.el-textarea__inner:visible') to be visible"
             )
 
             def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
@@ -2682,7 +2683,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertIn("/create/image", str(attach_evidence["current_url"]))
         evidence_details = attach_evidence.get("details", {})
         self.assertIn(
-            "textarea.el-textarea__inner:not(#easyGenerateInput):visible",
+            "textarea#easyGenerateInput.el-textarea__inner:visible",
             json.dumps(evidence_details, ensure_ascii=True),
         )
 
