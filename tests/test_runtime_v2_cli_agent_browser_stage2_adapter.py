@@ -2545,7 +2545,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             captured_pre_actions[1],
             {
                 "type": "wait",
-                "target": "textarea#easyGenerateInput.el-textarea__inner:visible",
+                "target": "textarea.prompt-input.image-upload-prompt-input:visible",
             },
         )
 
@@ -2602,8 +2602,8 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
 
         self.assertEqual(exit_code, exit_codes.SUCCESS)
         self.assertEqual(call_count, 2)
-        visible_selector = "textarea#easyGenerateInput.el-textarea__inner:visible"
-        base_selector = "textarea#easyGenerateInput.el-textarea__inner"
+        visible_selector = "textarea.prompt-input.image-upload-prompt-input:visible"
+        base_selector = "textarea.prompt-input.image-upload-prompt-input"
         self.assertEqual(
             captured_pre_actions[1], {"type": "wait", "target": visible_selector}
         )
@@ -2614,7 +2614,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertIn("getComputedStyle", fill_script)
         self.assertIn("NO_VISIBLE_INPUT", fill_script)
         self.assertNotIn(visible_selector, fill_script)
-        self.assertNotIn(":not(#easyGenerateInput)", fill_script)
+        self.assertNotIn("#easyGenerateInput", fill_script)
         self.assertNotIn(
             "querySelector('textarea.el-textarea__inner')",
             fill_script,
@@ -2639,7 +2639,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
             call_count = 0
             timeout_error = (
                 "page.waitForSelector: Timeout 10000ms exceeded. "
-                "waiting for locator('textarea#easyGenerateInput.el-textarea__inner:visible') to be visible"
+                "waiting for locator('textarea.prompt-input.image-upload-prompt-input:visible') to be visible"
             )
 
             def fake_verify(job: JobContract, artifact_root: Path) -> dict[str, object]:
@@ -2683,7 +2683,7 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         self.assertIn("/create/image", str(attach_evidence["current_url"]))
         evidence_details = attach_evidence.get("details", {})
         self.assertIn(
-            "textarea#easyGenerateInput.el-textarea__inner:visible",
+            "textarea.prompt-input.image-upload-prompt-input:visible",
             json.dumps(evidence_details, ensure_ascii=True),
         )
 

@@ -2590,8 +2590,8 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             },
         ]
     elif prompt and service == "seaart":
-        seaart_prompt_selector = "textarea#easyGenerateInput.el-textarea__inner:visible"
-        seaart_prompt_base_selector = "textarea#easyGenerateInput.el-textarea__inner"
+        seaart_prompt_selector = "textarea.prompt-input.image-upload-prompt-input:visible"
+        seaart_prompt_base_selector = "textarea.prompt-input.image-upload-prompt-input"
         pre_actions = [
             {
                 "type": "eval",
@@ -2934,7 +2934,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
             if (
                 service == "seaart"
                 and "/create/image" in pre_current_url
-                and "textarea#easyGenerateInput.el-textarea__inner:visible"
+                and "textarea.prompt-input.image-upload-prompt-input:visible"
                 in pre_error_text
                 and "Timeout" in pre_error_text
             ):
@@ -2955,7 +2955,7 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                     ref_images_requested=ref_images_requested,
                     ref_images_resolved=ref_images_resolved,
                     extra_details={
-                        "selector": "textarea#easyGenerateInput.el-textarea__inner:visible",
+                        "selector": "textarea.prompt-input.image-upload-prompt-input:visible",
                         "source_error_code": str(pre_result.get("error_code", "")),
                     },
                 )
