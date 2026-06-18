@@ -308,7 +308,7 @@ Do not commit generated probe artifacts. Commit code fixes and plan/status docs 
 
 - Evidence root: `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-seaart-propagation-20260615`.
 - Same-run id: `4346121b-74ce-4ec5-94bb-c6e1530d8b87`.
-- Status remains `E2E_UNVERIFIED`; this is not final E2E completion evidence.
+- Historical status for this 2026-06-15 run was `E2E_UNVERIFIED`; this was not final E2E completion evidence.
 - Boundary reached: `chatgpt` completed, `genspark` `ref-1` completed, then `seaart` `ref-2` failed.
 - Terminal blocker: `SEAART_VISIBLE_INPUT_TIMEOUT` at worker stage `seaart_adapter`.
 - Contract alignment verified:
