@@ -18,7 +18,7 @@
 
 | Subprogram | Class | Current contract evidence |
 |---|---|---|
-| `chatgpt` | `pass-through` | `runtime_v2/stage1/chatgpt_runner.py` `build_live_chatgpt_prompt()` forwards only the single-line topic text on the current runtime_v2 path. |
+| `chatgpt` | `structural-transform` | `runtime_v2/stage1/chatgpt_runner.py` `build_live_chatgpt_prompt()` places the row topic into the canonical Stage1 JSON contract prompt and requires `story_outline`, `scene_prompts`, and `voice_groups`. |
 | `genspark` | `pass-through` | `runtime_v2/stage2/request_builders.py` `build_image_prompt_file()` writes `payload.prompt` directly into `native_prompt.json`; `runtime_v2/cli.py` fills the browser input from the same prompt value without extra semantic text. |
 | `seaart` | `pass-through` | same `build_image_prompt_file()` path as `genspark`; no service-specific semantic strengthening layer is added before adapter execution. |
 | `geminigen` | `structural-transform` | `runtime_v2/stage2/request_builders.py` `build_geminigen_prompt_file()` places `payload.prompt` into `video_tasks[].prompt` and carries `first_frame_path` as a separate contract field. |
@@ -28,11 +28,11 @@
 
 - `genspark` and `seaart` must stay `pass-through` unless legacy evidence proves a minimal confirmation step is required.
 - `geminigen` and `canva` may remain `structural-transform` because the transform is explicit in contract fields, not hidden free-text injection.
-- `chatgpt` stays `pass-through` at the browser input boundary and sends only the single-line topic text.
+- `chatgpt` stays limited to the canonical Stage1 structural transform: the row topic is the only semantic input, and the runtime requires named JSON contract fields instead of legacy free-form blocks.
 - historical `genspark` semantic injection existed in older runtime drift, but it is not part of the current default path.
 
 ## Guardrails
 
 - No browser-side semantic strengthening may be added to `genspark` or `seaart` outside explicit legacy evidence.
 - Any future transform for `geminigen` or `canva` must be represented as named fields in request artifacts, not hidden prompt concatenation.
-- If `chatgpt` prompt semantics change, both this table and the Stage 1 prompt contract must be updated together.
+- If `chatgpt` prompt semantics change again, both this table and the Stage 1 prompt contract must be updated together.
