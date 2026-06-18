@@ -62,7 +62,8 @@ Title: 머니 제목
 Title for Thumb: 머니 썸네일 제목
 Description: 머니 설명
 Keywords: 머니, 연금, 생활비
-Voice: 차분한 여성 내레이션
+Voice: 1. 첫 번째 장면 내레이션
+2. 두 번째 장면 내레이션
 BGM: serious piano
 #01: 십세부터 오십세까지 설명
 #02: 육십세부터 구십세까지 설명
@@ -244,12 +245,22 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         )
 
         self.assertIn("국민연금 수령 시기를 앞당기면 손해인가 이득인가", prompt)
-        self.assertIn("[Title]", prompt)
-        self.assertIn("[Title for Thumb]", prompt)
-        self.assertIn("[Description]", prompt)
-        self.assertIn("[Keywords]", prompt)
-        self.assertIn("[Voice]", prompt)
-        self.assertIn("[#01]", prompt)
+        self.assertIn("Return only one fenced JSON object", prompt)
+        self.assertIn('"story_outline"', prompt)
+        self.assertIn('"scene_prompts"', prompt)
+        self.assertIn('"voice_groups"', prompt)
+        self.assertIn('"scene_index"', prompt)
+
+    def test_build_live_chatgpt_prompt_does_not_request_legacy_blocks(self) -> None:
+        prompt = build_live_chatgpt_prompt(
+            {
+                "topic": "요양 시설 비용 현실과 준비해야 할 금액",
+            }
+        )
+
+        self.assertNotIn("[Voice]", prompt)
+        self.assertNotIn("[#01]", prompt)
+        self.assertNotIn("Use numbered voice lines", prompt)
 
     def test_build_live_chatgpt_prompt_strips_topic_whitespace(self) -> None:
         prompt = build_live_chatgpt_prompt(
@@ -1122,8 +1133,8 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         self.assertIn("Money flow", called_prompt)
-        self.assertIn("[Voice]", called_prompt)
-        self.assertIn("[#01]", called_prompt)
+        self.assertIn("Return only one fenced JSON object", called_prompt)
+        self.assertIn('"voice_groups"', called_prompt)
         self.assertEqual(raw_output["prompt_text"], called_prompt)
         self.assertEqual(gpt_capture["prompt_text"], called_prompt)
         self.assertTrue(capture_started_exists)
