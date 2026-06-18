@@ -159,7 +159,10 @@ def _load_qwen3_result_payload(workspace: Path) -> dict[str, object]:
 def _resolve_qwen_image_path(payload: dict[str, object]) -> str:
     image_path = str(payload.get("image_path", "")).strip()
     if image_path:
-        return image_path
+        resolved_image_path = Path(image_path).resolve()
+        if resolved_image_path.exists() and resolved_image_path.is_file():
+            return str(resolved_image_path)
+        return ""
     manifest_path_raw = str(payload.get("asset_manifest_path", "")).strip()
     if not manifest_path_raw:
         return ""
@@ -175,7 +178,13 @@ def _resolve_qwen_image_path(payload: dict[str, object]) -> str:
     roles = raw_manifest.get("roles", {})
     if not isinstance(roles, dict):
         return ""
-    return str(roles.get("image_primary", "")).strip()
+    image_primary = str(roles.get("image_primary", "")).strip()
+    if not image_primary:
+        return ""
+    resolved_image_path = Path(image_primary).resolve()
+    if resolved_image_path.exists() and resolved_image_path.is_file():
+        return str(resolved_image_path)
+    return ""
 
 
 def _qwen3_adapter_error_code(

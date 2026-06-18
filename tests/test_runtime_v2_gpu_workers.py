@@ -1330,6 +1330,87 @@ class RuntimeV2GpuWorkerTests(unittest.TestCase):
         details = cast(dict[str, object], result["details"])
         self.assertEqual(str(details["resolved_image_path"]), str(image_path.resolve()))
 
+    def test_qwen3_worker_ignores_missing_asset_manifest_image_for_rvc_next_job(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = artifact_root / "speech.flac"
+            missing_image_path = root / "images" / "ref-1-missing.png"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = output_path.write_bytes(b"stale")
+            manifest_path = root / "asset_manifest.json"
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "roles": {"image_primary": str(missing_image_path.resolve())},
+                    },
+                    ensure_ascii=True,
+                ),
+                encoding="utf-8",
+            )
+            job = JobContract(
+                job_id="qwen-job-missing-manifest-image",
+                workload="qwen3_tts",
+                payload={
+                    "script_text": "hello world",
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "emit_rvc_next_job": True,
+                    "asset_manifest_path": str(manifest_path.resolve()),
+                    "adapter_command": [sys.executable, "-c", "pass"],
+                },
+            )
+
+            result = run_qwen3_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        next_jobs = cast(list[object], result.get("next_jobs", []))
+        self.assertEqual(len(next_jobs), 1)
+        next_job_contract = cast(dict[str, object], next_jobs[0])
+        next_job = cast(dict[str, object], next_job_contract["job"])
+        next_payload = cast(dict[str, object], next_job["payload"])
+        self.assertNotIn("image_path", next_payload)
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(str(details["resolved_image_path"]), "")
+
+    def test_qwen3_worker_ignores_missing_explicit_image_for_rvc_next_job(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            output_path = artifact_root / "speech.flac"
+            missing_image_path = root / "images" / "explicit-missing.png"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = output_path.write_bytes(b"stale")
+            job = JobContract(
+                job_id="qwen-job-missing-explicit-image",
+                workload="qwen3_tts",
+                payload={
+                    "script_text": "hello world",
+                    "image_path": str(missing_image_path.resolve()),
+                    "model_name": "voice-model-a",
+                    "service_artifact_path": str(output_path),
+                    "emit_rvc_next_job": True,
+                    "adapter_command": [sys.executable, "-c", "pass"],
+                },
+            )
+
+            result = run_qwen3_job(job, artifact_root=artifact_root)
+
+        self.assertEqual(result["status"], "ok")
+        next_jobs = cast(list[object], result.get("next_jobs", []))
+        self.assertEqual(len(next_jobs), 1)
+        next_job_contract = cast(dict[str, object], next_jobs[0])
+        next_job = cast(dict[str, object], next_job_contract["job"])
+        next_payload = cast(dict[str, object], next_job["payload"])
+        self.assertNotIn("image_path", next_payload)
+        details = cast(dict[str, object], result["details"])
+        self.assertEqual(str(details["resolved_image_path"]), "")
+
     def test_qwen3_worker_native_only_does_not_emit_next_jobs(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
