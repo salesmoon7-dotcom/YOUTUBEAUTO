@@ -12,11 +12,11 @@
 
 ## Current Truth
 
-- Accepted status is `E2E_UNVERIFIED`.
-- Historical `OK`, browser health, login proof, component tests, and detached probe artifacts are not accepted user-visible E2E completion evidence.
+- Accepted status is `E2E_VERIFIED` for run_id `4be627f1-9738-487c-af52-efbcc53eed42`.
+- Historical `OK`, browser health, login proof, component tests, and detached probe artifacts are not accepted user-visible E2E completion evidence; the accepted evidence is the same-run row15 terminal closeout recorded below.
 - Active semantic target is `Sheet1!row15`, CLI `--row-index 14`.
 - Canva remains excluded/held unless credit/session availability changes.
-- The earliest unproven boundary is Stage1 GPT output for the current Excel row.
+- The latest accepted boundary chain reached terminal render output for the current Excel row.
 
 ## Completion Evidence Required
 
@@ -36,6 +36,13 @@ One accepted run must leave a single `run_id` chain with:
    - and either `render_final.mp4` or `failure_summary.json`.
 
 Do not claim completion unless all required success artifacts exist for the same accepted `run_id`.
+
+Accepted evidence as of 2026-06-18:
+
+- Probe root: `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-post-qwen-image-readiness-quoted-20260618-193028`.
+- Same-run id: `4be627f1-9738-487c-af52-efbcc53eed42`.
+- `probe_result.json`: `status=ok`, `code=OK`, `exit_code=0`, `probe_success=true`.
+- Terminal artifact: `artifacts\chatgpt\chatgpt-sheet1-15\4be627f1-9738-487c-af52-efbcc53eed42\assets\output\render_final.mp4` exists.
 
 ---
 
