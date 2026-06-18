@@ -48,7 +48,8 @@ Description
 Keywords
 머니, 연금, 생활비
 Voice
-차분한 여성 내레이션
+1. 첫 번째 장면 내레이션
+2. 두 번째 장면 내레이션
 BGM
 serious piano
 #01
@@ -78,7 +79,8 @@ Title: 머니 제목
 Title for Thumb: 머니 썸네일 제목
 Description: 머니 설명
 Keywords: 머니, 연금, 생활비
-Voice: 차분한 여성 내레이션
+Voice: 1. 첫 번째 장면 내레이션
+2. 두 번째 장면 내레이션
 BGM: serious piano
 #01: 십세부터 오십세까지 설명
 #02: 육십세부터 구십세까지 설명
@@ -110,6 +112,8 @@ Title: 머니 제목
 Title for Thumb: 머니 썸네일 제목
 Description: 머니 설명
 Keywords: 머니, 연금, 생활비
+Voice: 1. 첫 번째 장면 내레이션
+2. 두 번째 장면 내레이션
 BGM: serious piano
 #01: 십세부터 오십세까지 설명
 #02: 육십세부터 구십세까지 설명
@@ -321,6 +325,35 @@ Voice: 1. 첫 장면 설명\n2. 두 번째 장면 설명
                 {"scene_index": 3, "voice": "세 번째 보이스", "original_voices": [3]},
             ],
         )
+
+    def test_parser_rejects_single_unnumbered_voice_blob_for_multiple_scenes(
+        self,
+    ) -> None:
+        topic_spec: dict[str, object] = {
+            "topic": "Money flow",
+            "row_ref": "Sheet1!row1",
+            "run_id": "run-1",
+        }
+        response_text = """
+[Voice]
+첫 번째 문장입니다.
+두 번째 문장입니다.
+세 번째 문장입니다.
+
+[#01]
+첫 번째 장면입니다.
+
+[#02]
+두 번째 장면입니다.
+
+[#03]
+세 번째 장면입니다.
+"""
+
+        parsed, errors = parse_gpt_response_text(topic_spec, response_text)
+
+        self.assertIsNone(parsed)
+        self.assertEqual(errors, ["invalid_voice_groups"])
 
 
 if __name__ == "__main__":

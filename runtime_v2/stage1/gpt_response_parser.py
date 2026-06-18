@@ -120,15 +120,7 @@ def _parse_block_response(
             for index in range(len(scene_prompts))
         ]
     else:
-        voice_text = "\n".join(voice_lines or labels.get("voice", []))
-        voice_groups = [
-            {
-                "scene_index": index + 1,
-                "voice": voice_text or "narration",
-                "original_voices": [index + 1],
-            }
-            for index in range(len(scene_prompts))
-        ]
+        voice_groups = []
     return {
         "title": _join_label(labels, "title") or topic,
         "title_for_thumb": _join_label(labels, "title for thumb")

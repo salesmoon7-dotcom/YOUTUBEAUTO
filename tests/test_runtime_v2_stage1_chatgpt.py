@@ -1344,6 +1344,58 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertEqual(generate_mock.call_count, 1)
         self.assertEqual(result_payload["error_code"], "missing_scene_prompts")
 
+    def test_stage1_runner_fails_closed_on_ambiguous_voice_scene_mapping(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            workspace = root / "workspace"
+            workspace.mkdir(parents=True, exist_ok=True)
+            topic_spec = _topic_spec(topic="Money flow")
+            topic_spec["browser_evidence"] = {"service": "chatgpt", "port": 9222}
+            response_text = """
+[Voice]
+첫 번째 문장입니다.
+두 번째 문장입니다.
+
+[#01]
+첫 번째 장면입니다.
+
+[#02]
+두 번째 장면입니다.
+"""
+
+            with (
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                    return_value={
+                        "status": "ok",
+                        "response_text": response_text,
+                        "submit_info": {},
+                        "final_state": {"assistant_block_count": 1},
+                        "timeline": [],
+                    },
+                ) as generate_mock,
+                patch(
+                    "runtime_v2.stage1.chatgpt_runner.reset_chatgpt_context",
+                    return_value={"status": "ok", "port": 9222},
+                ),
+            ):
+                result = run_stage1_chatgpt_job(
+                    topic_spec,
+                    workspace,
+                    debug_log="logs/stage1-ambiguous-voice.jsonl",
+                )
+
+            result_path = Path(cast(str, result["result_path"]))
+            result_payload = cast(
+                dict[str, object], json.loads(result_path.read_text(encoding="utf-8"))
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(generate_mock.call_count, 1)
+        self.assertEqual(result_payload["error_code"], "invalid_voice_groups")
+
     def test_stage1_runner_retries_live_chatgpt_after_relaunch(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
