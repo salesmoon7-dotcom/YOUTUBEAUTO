@@ -1177,6 +1177,105 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertTrue(bool(qwen_payload["emit_rvc_next_job"]))
         self.assertEqual(len(render_jobs), 1)
 
+    def test_stage1_declared_next_jobs_keeps_qwen_when_stage2_jobs_exist(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            asset_root = config.artifact_root / "chatgpt" / "chatgpt-sheet1-15"
+            asset_root.mkdir(parents=True, exist_ok=True)
+            parent_job = JobContract(
+                job_id="chatgpt-sheet1-15",
+                workload="chatgpt",
+                checkpoint_key="topic_spec:Sheet1!row15:hash-15",
+                payload={
+                    "run_id": "stage1-existing-next-jobs-run",
+                    "row_ref": "Sheet1!row15",
+                    "chain_depth": 0,
+                },
+            )
+            video_plan = build_video_plan(
+                run_id="stage1-existing-next-jobs-run",
+                row_ref="Sheet1!row15",
+                topic="Bridge topic",
+                story_outline=["Scene 1"],
+                scene_plan=[{"scene_index": 1, "prompt": "scene one"}],
+                asset_plan={
+                    "asset_root": str(asset_root.resolve()),
+                    "common_asset_folder": str(asset_root.resolve()),
+                },
+                voice_plan={
+                    "mapping_source": "stage1_parsed",
+                    "scene_count": 1,
+                    "groups": [],
+                },
+                reason_code="ok",
+                evidence={"source": "test"},
+            )
+            stage2_job = build_explicit_job_contract(
+                job_id="render-stage1-existing-next-jobs-run",
+                workload="render",
+                checkpoint_key="stage2:render:Sheet1!row15",
+                payload={
+                    "run_id": "stage1-existing-next-jobs-run",
+                    "row_ref": "Sheet1!row15",
+                    "render_folder_path": str(asset_root.resolve()),
+                    "service_artifact_path": str(
+                        (asset_root / "render_final.mp4").resolve()
+                    ),
+                },
+                chain_step=1,
+                parent_job_id=parent_job.job_id,
+            )
+            worker_result = {
+                "status": "ok",
+                "stage": "chatgpt",
+                "error_code": "",
+                "retryable": False,
+                "details": {
+                    "video_plan": video_plan,
+                    "stage1_handoff": {
+                        "contract": {
+                            "run_id": "stage1-existing-next-jobs-run",
+                            "row_ref": "Sheet1!row15",
+                            "topic": "Bridge topic",
+                            "voice_texts": [
+                                {
+                                    "col": "#01",
+                                    "text": "Voice 1",
+                                    "original_voices": [1],
+                                }
+                            ],
+                        }
+                    },
+                },
+                "next_jobs": [stage2_job],
+                "completion": {"state": "planned", "final_output": False},
+            }
+            jobs: list[JobContract] = []
+
+            seeded = _seed_declared_next_jobs(
+                config.queue_store_file,
+                jobs,
+                cast(dict[str, object], worker_result),
+                parent_job,
+                config.control_plane_events_file,
+                run_id="control-run-stage1-existing-next-jobs",
+                artifact_root=config.artifact_root,
+            )
+            qwen_jobs = [job for job in seeded if job.workload == "qwen3_tts"]
+
+        self.assertEqual(len(qwen_jobs), 1)
+        qwen_payload = qwen_jobs[0].payload
+        self.assertEqual(str(qwen_payload.get("row_ref", "")), "Sheet1!row15")
+        self.assertTrue(
+            str(qwen_payload.get("service_artifact_path", ""))
+            .replace("\\", "/")
+            .endswith("/qwen3_tts/qwen3-stage1-existing-next-jobs-run/speech.flac")
+        )
+        self.assertTrue(bool(qwen_payload.get("emit_rvc_next_job", False)))
+
     def test_control_plane_merges_chatgpt_video_plan_to_excel_main_path(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)

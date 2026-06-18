@@ -1708,6 +1708,17 @@ def _seed_declared_next_jobs(
         typed_next_jobs = _declared_stage1_next_jobs(
             worker_result, parent_job, artifact_root
         )
+    elif parent_job.workload == "chatgpt":
+        has_qwen_job = any(
+            _declared_entry_workload(entry) == "qwen3_tts" for entry in typed_next_jobs
+        )
+        qwen_job = _declared_stage1_qwen_job(
+            _mapping_from_obj(worker_result.get("details", {})) or {},
+            parent_job,
+            artifact_root,
+        )
+        if qwen_job is not None and not has_qwen_job:
+            typed_next_jobs.append(cast(object, qwen_job))
     _ = _attach_asset_manifest(
         typed_next_jobs,
         run_id=str(parent_job.payload.get("run_id", "")).strip(),
@@ -2123,6 +2134,16 @@ def _declared_stage1_next_jobs(
     if qwen_job is not None:
         typed_jobs.append(cast(object, qwen_job))
     return typed_jobs
+
+
+def _declared_entry_workload(entry: object) -> str:
+    typed_entry = _mapping_from_obj(entry)
+    if typed_entry is None:
+        return ""
+    job_block = _mapping_from_obj(typed_entry.get("job", {}))
+    if job_block is None:
+        return ""
+    return str(job_block.get("worker", "")).strip()
 
 
 def _declared_stage1_qwen_job(
