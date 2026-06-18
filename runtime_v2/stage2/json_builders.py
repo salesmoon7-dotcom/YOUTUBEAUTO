@@ -219,6 +219,43 @@ def _build_voice_json(scene_plan: list[object]) -> dict[str, object]:
     return {"voice_texts": voice_texts}
 
 
+def _stage1_voice_json(
+    stage1_contract: dict[str, object] | None,
+) -> dict[str, object] | None:
+    if stage1_contract is None:
+        return None
+    raw_voice_texts = stage1_contract.get("voice_texts", [])
+    if not isinstance(raw_voice_texts, list):
+        return None
+    voice_texts: list[dict[str, object]] = []
+    for raw_entry in cast(list[object], raw_voice_texts):
+        if not isinstance(raw_entry, dict):
+            continue
+        entry = cast(dict[object, object], raw_entry)
+        col = str(entry.get("col", "")).strip()
+        text = str(entry.get("text", "")).strip()
+        if not col or not text:
+            continue
+        voice_texts.append(
+            {
+                "col": col,
+                "text": text,
+                "original_voices": entry.get("original_voices", []),
+            }
+        )
+    if not voice_texts:
+        return None
+    return {"voice_texts": voice_texts}
+
+
+def _render_voice_json(
+    stage1_contract: dict[str, object] | None, scene_plan: list[object]
+) -> dict[str, object]:
+    if stage1_contract is None:
+        return _build_voice_json(scene_plan)
+    return _stage1_voice_json(stage1_contract) or {"voice_texts": []}
+
+
 def _stage1_contract(video_plan: dict[str, object]) -> dict[str, object] | None:
     handoff = video_plan.get("stage1_handoff")
     if not isinstance(handoff, dict):
@@ -673,7 +710,7 @@ def build_stage2_jobs(
         "render_folder_path": str(asset_root.resolve()),
         "voice_json_path": str(voice_json_path),
         "render_spec": render_spec,
-        "voice_json": _build_voice_json(typed_scene_plan),
+        "voice_json": _render_voice_json(stage1_contract, typed_scene_plan),
         "promotion_gate": _promotion_gate_for_workload("render"),
     }
     if isinstance(stage1_handoff, dict):

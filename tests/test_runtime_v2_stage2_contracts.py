@@ -503,6 +503,72 @@ class RuntimeV2Stage2ContractTests(unittest.TestCase):
         ]
         self.assertEqual(len(gemi_timeline), 2)
 
+    def test_render_payload_uses_stage1_voice_texts_not_scene_prompts(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            video_plan = _video_plan(tmp_dir)
+            video_plan["scene_plan"] = [
+                {"scene_index": 1, "prompt": "visual prompt one"},
+                {"scene_index": 2, "prompt": "visual prompt two"},
+            ]
+            video_plan["stage1_handoff"] = {
+                "contract": {
+                    "version": "stage1_handoff.v1.0",
+                    "run_id": "stage2-run-1",
+                    "row_ref": "Sheet1!row1",
+                    "voice_texts": [
+                        {
+                            "col": "#01",
+                            "text": "narration line one",
+                            "original_voices": [1],
+                        },
+                        {
+                            "col": "#02",
+                            "text": "narration line two",
+                            "original_voices": [2],
+                        },
+                    ],
+                }
+            }
+
+            jobs, _ = build_stage2_jobs(video_plan)
+
+        render_job = cast(dict[str, object], jobs[-1]["job"])
+        render_payload = cast(dict[str, object], render_job["payload"])
+        voice_json = cast(dict[str, object], render_payload["voice_json"])
+        voice_texts = cast(list[object], voice_json["voice_texts"])
+        first_voice = cast(dict[str, object], voice_texts[0])
+
+        self.assertEqual(len(voice_texts), 2)
+        self.assertEqual(str(first_voice["text"]), "narration line one")
+        self.assertNotEqual(str(first_voice["text"]), "visual prompt one")
+
+    def test_render_payload_does_not_fallback_to_scene_prompts_when_stage1_voice_texts_invalid(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            video_plan = _video_plan(tmp_dir)
+            video_plan["scene_plan"] = [
+                {"scene_index": 1, "prompt": "visual prompt one"},
+                {"scene_index": 2, "prompt": "visual prompt two"},
+            ]
+            video_plan["stage1_handoff"] = {
+                "contract": {
+                    "version": "stage1_handoff.v1.0",
+                    "run_id": "stage2-run-1",
+                    "row_ref": "Sheet1!row1",
+                    "voice_texts": [],
+                }
+            }
+
+            jobs, _ = build_stage2_jobs(video_plan)
+
+        render_job = cast(dict[str, object], jobs[-1]["job"])
+        render_payload = cast(dict[str, object], render_job["payload"])
+        voice_json = cast(dict[str, object], render_payload["voice_json"])
+        voice_texts = cast(list[object], voice_json["voice_texts"])
+
+        self.assertEqual(voice_texts, [])
+
     def test_same_run_video_plan_routes_required_image_and_geminigen_jobs(
         self,
     ) -> None:
