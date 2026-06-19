@@ -998,6 +998,60 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
         )
         self.assertTrue(any("KeyboardEvent" in script for script in scripts))
 
+    def test_geminigen_stage2_adapter_child_waits_for_delayed_truthful_artifact(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            output_path = root / "exports" / "scene-01.mp4"
+            request_payload = {"payload": {"prompt": "scene one"}}
+            (root / "request.json").write_text(
+                json.dumps(request_payload, ensure_ascii=True), encoding="utf-8"
+            )
+            args = CliArgs()
+            args.service = "geminigen"
+            args.port = 9444
+            args.service_artifact_path = str(output_path)
+            args.expected_url_substring = "geminigen.ai"
+            args.expected_title_substring = "Grok"
+            capture_attempts = 0
+
+            def fake_bundle(**kwargs: object) -> dict[str, object]:
+                nonlocal capture_attempts
+                capture_attempts += 1
+                target = Path(str(kwargs["service_artifact_path"]))
+                if capture_attempts == 2:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    _ = target.write_bytes(b"mp4")
+                return {"service": "geminigen", "sha256": "ok"}
+
+            with (
+                patch("runtime_v2.cli.Path.cwd", return_value=root),
+                patch("runtime_v2.cli.sleep"),
+                patch(
+                    "runtime_v2.cli.run_agent_browser_verify_job",
+                    return_value={
+                        "status": "ok",
+                        "details": {
+                            "current_url": "https://geminigen.ai/app/video-gen/veo",
+                            "current_title": "Free Veo 3.1 AI Video Generator",
+                            "transcript_path": str(root / "transcript.json"),
+                        },
+                    },
+                ),
+                patch(
+                    "runtime_v2.cli.write_functional_evidence_bundle",
+                    side_effect=fake_bundle,
+                ),
+            ):
+                exit_code = _run_agent_browser_stage2_adapter_child(args)
+
+            artifact_exists = output_path.exists()
+
+        self.assertEqual(exit_code, exit_codes.SUCCESS)
+        self.assertEqual(capture_attempts, 2)
+        self.assertTrue(artifact_exists)
+
     def test_stage2_adapter_child_sends_legacy_yes_confirmation_when_questions_appear(
         self,
     ) -> None:

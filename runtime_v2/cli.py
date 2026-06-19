@@ -3272,6 +3272,22 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                     service_artifact_path=target_path,
                     image_url_override=ready_image_url,
                 )
+            elif service == "geminigen":
+                for _attempt in range(12):
+                    _ = write_functional_evidence_bundle(
+                        workspace=workspace,
+                        service=service,
+                        port=args.port,
+                        expected_url_substring=capture_url,
+                        service_artifact_path=target_path,
+                    )
+                    if (
+                        target_path.exists()
+                        and target_path.is_file()
+                        and target_path.stat().st_size > 0
+                    ):
+                        break
+                    sleep(10)
             else:
                 _ = write_functional_evidence_bundle(
                     workspace=workspace,
