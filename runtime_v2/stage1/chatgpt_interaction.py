@@ -14,6 +14,10 @@ from runtime_v2.stage1.chatgpt_backend import (
     CHATGPT_LONGFORM_URL_SUBSTRING,
     ChatGPTBackend,
 )
+from runtime_v2.stage1.gpt_plan_parser import (
+    extract_stage1_gpt_plan_json,
+    parse_stage1_gpt_plan,
+)
 
 CHATGPT_INPUT_SELECTORS = [
     "#prompt-textarea",
@@ -662,6 +666,13 @@ def _has_structured_stage1_content(response_text: str, legacy_blocks: object) ->
     text = response_text.strip()
     if not text:
         return False
+    valid_stage1_json = True
+    try:
+        _ = parse_stage1_gpt_plan(extract_stage1_gpt_plan_json(text))
+    except (json.JSONDecodeError, ValueError):
+        valid_stage1_json = False
+    if valid_stage1_json:
+        return True
     return any(
         marker in text
         for marker in (

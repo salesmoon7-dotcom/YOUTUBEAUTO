@@ -3397,6 +3397,82 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["response_text"], "final json")
 
+    def test_generate_gpt_response_text_accepts_stage1_json_without_send_button(
+        self,
+    ) -> None:
+        stage1_json = """JSON
+{
+  "story_outline": ["opening"],
+  "scene_prompts": ["scene prompt"],
+  "voice_groups": [
+    {"scene_index": 1, "voice": "voice line"}
+  ]
+}
+"""
+
+        class FakeBackend(ChatGPTBackend):
+            def __init__(self) -> None:
+                self.read_calls = 0
+
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                return {
+                    "ok": True,
+                    "inputSelector": "#prompt-textarea",
+                    "sendClicked": True,
+                    "submit_evidence": {
+                        "classification": "sent",
+                        "classification_reason": "send_button_clicked",
+                        "retry_safe_decision": False,
+                    },
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                self.read_calls += 1
+                if self.read_calls == 1:
+                    return {
+                        "has_stop": True,
+                        "has_send_button": False,
+                        "assistant_block_count": 1,
+                        "assistant_text": "JSON\n{",
+                        "legacy_blocks": [],
+                    }
+                return {
+                    "has_stop": False,
+                    "has_send_button": False,
+                    "assistant_block_count": 1,
+                    "assistant_text": stage1_json,
+                    "legacy_blocks": [],
+                }
+
+        with (
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_interaction.time.sleep", return_value=None
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_interaction.time.time",
+                side_effect=itertools.chain(
+                    [0.0, 0.0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.07, 0.08, 0.09, 1.1],
+                    itertools.repeat(1.1),
+                ),
+            ),
+        ):
+            result = generate_gpt_response_text(
+                prompt="test prompt",
+                port=9222,
+                timeout_sec=1,
+                poll_interval_sec=0.01,
+                completion_idle_sec=0.01,
+                response_start_timeout_sec=0.02,
+                backend=FakeBackend(),
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["response_text"], stage1_json.strip())
+        timeline = cast(list[dict[str, object]], result["timeline"])
+        event_names = [str(item["event"]) for item in timeline]
+        self.assertIn("streaming_seen", event_names)
+        self.assertIn("response_stable", event_names)
+
 
 if __name__ == "__main__":
     _ = unittest.main()
