@@ -5,6 +5,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from runtime_v2.config import RuntimeConfig
 from runtime_v2.contracts.job_contract import JobContract
@@ -126,3 +127,62 @@ class RuntimeV2ControlPlaneCloseoutStateTests(unittest.TestCase):
         self.assertEqual(closeout_state["reason"], "backoff_wait")
         self.assertNotEqual(closeout_state["status"], "completed")
         self.assertNotEqual(closeout_state["reason"], "NO_JOB")
+
+    def test_current_terminal_failure_writes_failed_closeout_state(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig.from_root(root)
+            config.control_plane_events_file.parent.mkdir(parents=True, exist_ok=True)
+            config.control_plane_events_file.write_text("", encoding="utf-8")
+            run_id = "restart-exhausted-run"
+            queue_store = QueueStore(config.queue_store_file)
+            queue_store.save(
+                [
+                    JobContract(
+                        job_id="geminigen-restart-exhausted-run-5",
+                        workload="geminigen",
+                        checkpoint_key="derived:geminigen:restart-exhausted-run:5",
+                        payload={
+                            "run_id": run_id,
+                            "row_ref": "Sheet1!row15",
+                            "promotion_gate": "B",
+                        },
+                    )
+                ]
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={
+                    "status": "failed",
+                    "code": "BROWSER_RESTART_EXHAUSTED",
+                    "worker_result": {
+                        "status": "failed",
+                        "stage": "runtime_preflight",
+                        "error_code": "BROWSER_RESTART_EXHAUSTED",
+                        "retryable": False,
+                        "details": {
+                            "blocked_reason": "restart_budget_exhausted"
+                        },
+                        "completion": {
+                            "state": "failed",
+                            "final_output": False,
+                        },
+                    },
+                },
+            ):
+                result = run_control_loop_once(
+                    owner="test-owner",
+                    config=config,
+                    run_id=run_id,
+                    allow_runtime_side_effects=False,
+                )
+            closeout_state = json.loads(
+                config.closeout_state_file.read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["code"], "BROWSER_RESTART_EXHAUSTED")
+        self.assertEqual(closeout_state["run_id"], run_id)
+        self.assertEqual(closeout_state["status"], "failed")
+        self.assertEqual(closeout_state["reason"], "BROWSER_RESTART_EXHAUSTED")

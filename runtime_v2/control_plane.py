@@ -915,6 +915,18 @@ def run_control_loop_once(
         events_file,
         run_id=run_id,
     )
+    if result_status == "failed" and job.status == "failed":
+        closeout_reason = runtime_error_code
+        if closeout_reason in {"", "OK"}:
+            closeout_reason = canonical_worker_error_code or "FAILED"
+        closeout_run_id = str(job.payload.get("run_id", run_id)).strip() or run_id
+        _write_closeout_state(
+            runtime_config,
+            run_id=closeout_run_id,
+            status="failed",
+            reason=closeout_reason,
+            attempt=max(1, job.attempts),
+        )
     return {
         "status": result_status,
         "code": "OK" if success else runtime_error_code,
