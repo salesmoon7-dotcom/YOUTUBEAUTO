@@ -35,24 +35,27 @@ Anything less is not a closed retest result.
 | `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260520-h-port-poll.jsonl` | during that earlier rerun, Genspark port `9333` kept serving `/json/version` and tabs continuously, and its top tab moved from compose to result (`agents?id=...`) mid-run | does not prove Genspark can never regress again, but it does show that row15 could advance without the browser port disappearing |
 | `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row1-target-16-18` partial voice outputs only | some downstream files were emitted during a hidden rerun | does not count as closeout because `probe_result.json`, `qwen3_result.json`, `failure_summary.json`, and final render evidence were missing |
 | `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260524-a\probe_result.json` + `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260524-a\artifacts\chatgpt\chatgpt-sheet1-15\a0840661-17a0-44bf-afb7-b68657bd1ece\assets\output\render_final.mp4` | latest fresh detached semantic-row rerun left a closed success artifact with `status=ok`, `code=OK`, `probe_success=true`, `readiness.ready=true`, and a concrete final render | does not prove that the separately deferred `Canva` account-credit hold is solved for standalone thumbnail/background-generation work |
+| `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-post-closeout-state-fix-20260620-173718\probe_result.json` + `evidence\result.json` + `evidence\closeout_state.json` | accepted same-run `Sheet1!row15` final closeout for run `8e8a0813-5113-4c1c-ba8b-9e7a16d1ff89`: Stage1 artifacts, downstream service artifacts, render final output, and closeout state are aligned | does not prove all rows, Excel sync-back, standalone Canva/Product Background, or broad browser reliability |
 
 ## Result
 
-Current closeout retest result for `Sheet1!row15` is reclassified by user correction:
+Current closeout retest result for `Sheet1!row15` is reclassified by the accepted post-fix detached run:
 
-- `status`: `E2E_UNVERIFIED`
-- `reading`: probe/process artifact only, not accepted Excel-driven E2E completion
-- `why`: the existing `probe_result.json` and final artifact path may describe a detached probe/process result, but they must not be used as proof that the user-visible Excel row -> GPT -> image services -> GeminiGen -> local voice/TTS/RVC -> render pipeline actually ran to completion.
+- `status`: `ACCEPTED_ROW15_ONLY_FINAL_CLOSEOUT`
+- `reading`: accepted only for same-run detached run `8e8a0813-5113-4c1c-ba8b-9e7a16d1ff89` at `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-post-closeout-state-fix-20260620-173718`
+- `why`: the accepted run has `Sheet1!row15` seed evidence, Stage1 GPT artifacts, same-run downstream artifacts for `qwen3_tts`, `rvc`, `kenburns`, `genspark`, `seaart`, `geminigen`, terminal `render_final.mp4`, and `closeout_state.status=completed` aligned to the same `run_id`.
 
 ## Interpretation Rules
 
-- `probe_result.json code=OK` is only probe/process success, not row15 closeout success.
+- `probe_result.json code=OK` is only accepted as row15 closeout success when it is paired with same-run terminal render or failure artifact and aligned closeout state.
 - generic row evidence is not semantic target-row evidence.
 - partial downstream artifacts without `probe_result.json` + terminal success/failure artifact do not count as closeout.
 - standalone `Canva` hold evidence must not be back-projected into the broader Excel-driven E2E status.
+- Browser popup/modal/iframe handling remains code-and-test evidence unless a specific same-run browser evidence artifact proves that boundary.
+- Excel sync-back remains unproven for the accepted run because `excel_sync_updated=false` and `stage1_excel_merged=false`.
 
 ## Next Allowed Meaning
 
-- This result does **not** prove user-visible Excel-driven E2E execution completion.
-- The next allowed meaning is: the current E2E target remains `OPEN / UNVERIFIED`; any future completion claim must be backed by an accepted end-to-end run from Excel input through final render artifact.
+- This result proves only the accepted `Sheet1!row15` final closeout boundary for run `8e8a0813-5113-4c1c-ba8b-9e7a16d1ff89`.
+- The next allowed meaning is not broader than `ACCEPTED_ROW15_ONLY_FINAL_CLOSEOUT`; any all-row, Excel sync-back, standalone Canva, or broad browser reliability claim requires separate accepted evidence.
 - `Canva` remains a separate external credit-hold boundary and must not be reopened without credit/session availability changing.
