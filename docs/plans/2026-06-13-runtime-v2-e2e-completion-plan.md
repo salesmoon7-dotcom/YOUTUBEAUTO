@@ -6,6 +6,8 @@
 
 **Architecture:** Work from the earliest unproven boundary forward: `prompt -> attach -> routing -> order -> closeout`. Each boundary must produce a same-`run_id` artifact or a fail-closed artifact before the next boundary is allowed to move.
 
+**Purpose Gate:** This plan now optimizes for the original redevelopment purpose: prove the current program can run with one fresh `run_id`, or stop at the first failed boundary with a truthful machine-readable reason. Historical artifacts, component tests, browser health, and source parity are supporting evidence only; they are not enough to prove the current program is running.
+
 **Tech Stack:** Python 3.13, pytest, runtime_v2 control plane, agent-browser CDP adapters, Excel row seeding, local GPU/voice workers, FFmpeg render worker.
 
 ---
@@ -18,25 +20,42 @@
 - Active semantic target is `Sheet1!row15`, CLI `--row-index 14`.
 - Canva remains excluded/held unless credit/session availability changes.
 - For `Sheet1!row15`, the previously unproven Stage1-through-render boundary is superseded by the accepted post-fix detached run above; future rows or external blockers require their own same-`run_id` evidence.
+- Next development-purpose proof must be a fresh run, not reinterpretation of older artifacts. It must end as `CURRENT_RUN_ACCEPTED` or `CURRENT_RUN_BLOCKED`.
+
+## Development Purpose Alignment
+
+`runtime_v2` exists to fix the legacy failure mode where execution state, failure meaning, and evidence were split across scripts, logs, browser state, and manual interpretation. The plan is purpose-aligned only if it preserves these invariants:
+
+1. one row maps to one active `run_id`;
+2. one boundary owns the current success/failure decision;
+3. one terminal artifact set proves the outcome;
+4. missing or ambiguous evidence stops the run instead of being converted to success;
+5. downstream work starts only after the previous boundary has decisive evidence.
+
+Supporting design note: `docs/plans/2026-06-21-runtime-v2-purpose-closeout-design.md`.
 
 ## Completion Evidence Required
 
 One accepted run must leave a single `run_id` chain with:
 
 1. Excel seed evidence for `Sheet1!row15`.
-2. Stage1 GPT artifacts:
+2. GPT browser attach/capture evidence for the same row and run.
+3. Stage1 GPT artifacts:
    - `raw_output.json`
    - `parsed_payload.json`
    - `stage1_handoff.json`
    - `video_plan.json`
-3. First truthful local voice artifact from `qwen3_tts` and RVC output when its source prerequisites are present.
-4. First truthful image artifacts from `genspark` and `seaart`.
-5. First truthful GeminiGen video artifact.
-6. Terminal closeout evidence:
+4. Stage2 routing evidence proving the next jobs were queued for the same `run_id`.
+5. First truthful local voice artifact from `qwen3_tts` and RVC output when its source prerequisites are present.
+6. First truthful image artifacts from `genspark` and `seaart`.
+7. First truthful GeminiGen video artifact.
+8. First truthful `kenburns` artifact when render depends on it.
+9. Terminal closeout evidence:
    - `probe_result.json`
    - and either `render_final.mp4` or `failure_summary.json`.
 
 Do not claim completion unless all required success artifacts exist for the same accepted `run_id`.
+If any boundary fails, write the blocker as `CURRENT_RUN_BLOCKED` and do not continue downstream.
 
 Rejected evidence as of 2026-06-18:
 
@@ -266,9 +285,13 @@ Run a short readiness check using the existing CLI command documented in the act
 
 Expected: a readiness artifact, not a completion claim.
 
+Record whether the readiness evidence proves current attachability only, current login only, or neither. Do not treat readiness as service generation.
+
 **Step 2: Run Stage1-only or first-boundary detached proof**
 
 Use a detached/log-producing execution path. Do not run a broad semantic-row closeout as the first diagnostic.
+
+The first detached proof must create a new probe root and a new `run_id`. Reusing old run evidence is not allowed for this task.
 
 Expected if successful:
 
@@ -283,18 +306,23 @@ Expected if failed:
 - fail-closed `probe_result.json` or worker `result.json`
 - exact `error_code`
 - no downstream success claim
+- classification as `CURRENT_RUN_BLOCKED`
 
 **Step 3: Advance one boundary only after decisive artifact**
 
 Order:
 
-1. `chatgpt`
-2. `qwen3_tts`
-3. `genspark`
-4. `seaart`
-5. `geminigen`
-6. `rvc`
-7. `render`
+1. Excel seed
+2. `chatgpt` browser attach/capture
+3. Stage1 artifacts
+4. Stage2 routing queue
+5. `qwen3_tts`
+6. `genspark`
+7. `seaart`
+8. `geminigen`
+9. `rvc`
+10. `kenburns`
+11. `render`
 
 Canva stays excluded/held unless credit/session availability changes.
 
@@ -332,6 +360,8 @@ Do not commit generated probe artifacts. Commit code fixes and plan/status docs 
 
 Confirm all prior boundary proofs exist for the same intended path or have been repaired with TDD.
 
+Also confirm the run is being started to answer the development-purpose question: "Can the current program run now, or where does it truthfully stop?"
+
 **Step 2: Start exactly one detached closeout run**
 
 Use the documented detached CLI form:
@@ -351,12 +381,16 @@ Check only:
 
 Do not relaunch browser/recovery in chat.
 
+Do not summarize success from log motion alone. The monitor must join the active `run_id` across the current boundary artifact and the latest terminal snapshot.
+
 **Step 4: Accept only terminal contract**
 
 Completion requires:
 
 - `probe_result.json`
 - and `render_final.mp4` for success, or `failure_summary.json` for fail-closed blocker classification.
+
+Accepted success status is `CURRENT_RUN_ACCEPTED`. Accepted blocker status is `CURRENT_RUN_BLOCKED`.
 
 **Step 5: Verification before completion**
 
@@ -388,3 +422,5 @@ Push after `git status`, `git diff`, and focused verification are clean for inte
 - Say `blocked` when a boundary produces fail-closed evidence.
 - Never convert `probe_success=true`, browser health, login proof, or component tests into whole-program completion.
 - After accepted final evidence satisfies this document for `Sheet1!row15`, use `E2E_UNVERIFIED` only for historical/pre-fix evidence or future rows that have not produced their own same-`run_id` final closeout.
+- Say `developed for purpose` only when a fresh current run is classified as `CURRENT_RUN_ACCEPTED`, or when a fresh current run is classified as `CURRENT_RUN_BLOCKED` with an exact first failing boundary and error code.
+- Do not answer user concern about live execution with historical artifacts alone. If no fresh run was started, say that no current execution proof exists.
