@@ -927,6 +927,14 @@ def run_control_loop_once(
             reason=closeout_reason,
             attempt=max(1, job.attempts),
         )
+    if success and row_closeout_active and completion_state in {"completed", "succeeded"}:
+        _write_closeout_state(
+            runtime_config,
+            run_id=snapshot_run_id,
+            status="completed",
+            reason="OK",
+            attempt=max(1, job.attempts),
+        )
     return {
         "status": result_status,
         "code": "OK" if success else runtime_error_code,

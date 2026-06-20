@@ -186,3 +186,67 @@ class RuntimeV2ControlPlaneCloseoutStateTests(unittest.TestCase):
         self.assertEqual(closeout_state["run_id"], run_id)
         self.assertEqual(closeout_state["status"], "failed")
         self.assertEqual(closeout_state["reason"], "BROWSER_RESTART_EXHAUSTED")
+
+    def test_terminal_render_success_writes_completed_closeout_state(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = RuntimeConfig.from_root(root)
+            config.control_plane_events_file.parent.mkdir(parents=True, exist_ok=True)
+            config.control_plane_events_file.write_text("", encoding="utf-8")
+            run_id = "render-success-run"
+            final_output_path = root / "artifacts" / "output" / "render_final.mp4"
+            final_output_path.parent.mkdir(parents=True, exist_ok=True)
+            final_output_path.write_bytes(b"mp4")
+            queue_store = QueueStore(config.queue_store_file)
+            queue_store.save(
+                [
+                    JobContract(
+                        job_id="render-render-success-run",
+                        workload="render",
+                        checkpoint_key="derived:render:render-success-run",
+                        payload={
+                            "run_id": run_id,
+                            "row_ref": "Sheet1!row15",
+                        },
+                    )
+                ]
+            )
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value={
+                    "status": "ok",
+                    "code": "OK",
+                    "worker_result": {
+                        "status": "ok",
+                        "stage": "render",
+                        "error_code": "",
+                        "retryable": False,
+                        "details": {
+                            "service_artifact_path": str(final_output_path),
+                        },
+                        "completion": {
+                            "state": "succeeded",
+                            "final_output": True,
+                            "final_artifact": "render_final.mp4",
+                            "final_artifact_path": str(final_output_path),
+                        },
+                    },
+                },
+            ):
+                result = run_control_loop_once(
+                    owner="test-owner",
+                    config=config,
+                    run_id=run_id,
+                    allow_runtime_side_effects=False,
+                )
+            closeout_state = json.loads(
+                config.closeout_state_file.read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["code"], "OK")
+        self.assertEqual(closeout_state["run_id"], run_id)
+        self.assertEqual(closeout_state["status"], "completed")
+        self.assertEqual(closeout_state["reason"], "OK")
+        self.assertIsNotNone(closeout_state["finished_at"])
