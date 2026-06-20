@@ -387,4 +387,4 @@ Push after `git status`, `git diff`, and focused verification are clean for inte
 - Say `complete` only when the final semantic-row closeout produces the terminal success artifact for the same accepted `run_id`.
 - Say `blocked` when a boundary produces fail-closed evidence.
 - Never convert `probe_success=true`, browser health, login proof, or component tests into whole-program completion.
-- Preserve the phrase `E2E_UNVERIFIED` until final evidence satisfies this document.
+- After accepted final evidence satisfies this document for `Sheet1!row15`, use `E2E_UNVERIFIED` only for historical/pre-fix evidence or future rows that have not produced their own same-`run_id` final closeout.
