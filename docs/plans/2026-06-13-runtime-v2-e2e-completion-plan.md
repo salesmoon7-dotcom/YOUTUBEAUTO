@@ -12,11 +12,12 @@
 
 ## Current Truth
 
-- Accepted status is `E2E_UNVERIFIED`.
-- Historical `OK`, browser health, login proof, component tests, detached probe artifacts, and downstream render artifacts are not accepted user-visible E2E completion evidence when Stage1 GPT output fails the parser contract.
+- Superseding status as of 2026-06-20: `Sheet1!row15` Stage5 final closeout is verified only for accepted post-fix detached run `8e8a0813-5113-4c1c-ba8b-9e7a16d1ff89` at `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-post-closeout-state-fix-20260620-173718`. This does not mean all rows are complete and does not clear Canva or other external blockers.
+- Historical pre-fix status was `E2E_UNVERIFIED` until the accepted post-fix detached run above satisfied the same-`run_id` terminal closeout contract for `Sheet1!row15`.
+- Historical `OK`, browser health, login proof, component tests, detached probe artifacts, and downstream render artifacts remain rejected as user-visible E2E completion evidence when Stage1 GPT output fails the parser contract.
 - Active semantic target is `Sheet1!row15`, CLI `--row-index 14`.
 - Canva remains excluded/held unless credit/session availability changes.
-- The earliest unproven boundary is Stage1 GPT output for the current Excel row.
+- For `Sheet1!row15`, the previously unproven Stage1-through-render boundary is superseded by the accepted post-fix detached run above; future rows or external blockers require their own same-`run_id` evidence.
 
 ## Completion Evidence Required
 
