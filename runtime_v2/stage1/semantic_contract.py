@@ -44,9 +44,6 @@ def validate_stage1_semantic_contract(payload: dict[str, object]) -> list[str]:
     errors: list[str] = []
     if not _voice_groups_cover_scenes(voice_groups, len(scene_prompts)):
         errors.append("invalid_voice_groups")
-    videos = payload.get("videos", [])
-    if isinstance(videos, list) and videos and len(videos) != len(scene_prompts):
-        errors.append("video_scene_link_missing")
     return errors
 
 

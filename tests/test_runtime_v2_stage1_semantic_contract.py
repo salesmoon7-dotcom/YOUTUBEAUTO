@@ -6,7 +6,9 @@ from runtime_v2.stage1.parsed_payload import validate_stage1_parsed_payload
 
 
 class RuntimeV2Stage1SemanticContractTests(unittest.TestCase):
-    def test_rejects_unmapped_video_prompts_when_scene_contract_is_smaller(self) -> None:
+    def test_accepts_legacy_video_lane_when_video_count_differs_from_scene_prompts(
+        self,
+    ) -> None:
         payload: dict[str, object] = {
             "version": "stage1.v1",
             "run_id": "semantic-run-1",
@@ -29,7 +31,8 @@ class RuntimeV2Stage1SemanticContractTests(unittest.TestCase):
 
         errors = validate_stage1_parsed_payload(payload)
 
-        self.assertIn("video_scene_link_missing", errors)
+        self.assertNotIn("video_scene_link_missing", errors)
+        self.assertEqual(errors, [])
 
     def test_rejects_duplicate_voice_scene_indexes(self) -> None:
         payload: dict[str, object] = {
