@@ -5,6 +5,7 @@ from typing import cast
 
 from runtime_v2.stage1.gpt_response_parser import parse_gpt_response_text
 from runtime_v2.stage1.handoff_schema import normalize_stage1_handoff_contract
+from runtime_v2.stage1.semantic_contract import validate_stage1_parsed_payload
 
 
 def build_stage1_raw_output_artifact(
@@ -202,38 +203,6 @@ def parse_stage1_output(raw_output: str) -> tuple[dict[str, object] | None, list
     if errors:
         return None, errors
     return typed, []
-
-
-def validate_stage1_parsed_payload(payload: dict[str, object]) -> list[str]:
-    required = [
-        "version",
-        "run_id",
-        "row_ref",
-        "topic",
-        "title",
-        "title_for_thumb",
-        "description",
-        "keywords",
-        "bgm",
-        "scene_prompts",
-        "voice_groups",
-        "reason_code",
-    ]
-    missing = [key for key in required if key not in payload]
-    if missing:
-        return [f"missing_{key}" for key in missing]
-    if str(payload.get("version", "")).strip() != "stage1.v1":
-        return ["invalid_stage1_version"]
-    scene_prompts = payload.get("scene_prompts")
-    if not isinstance(scene_prompts, list) or not scene_prompts:
-        return ["invalid_scene_prompts"]
-    keywords = payload.get("keywords")
-    if not isinstance(keywords, list) or not keywords:
-        return ["invalid_keywords"]
-    voice_groups = payload.get("voice_groups")
-    if not isinstance(voice_groups, list) or not voice_groups:
-        return ["invalid_voice_groups"]
-    return []
 
 
 def build_stage1_handoff(
