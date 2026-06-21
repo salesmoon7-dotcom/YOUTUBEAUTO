@@ -14,13 +14,13 @@
 
 ## Current Truth
 
-- Superseding status as of 2026-06-20: `Sheet1!row15` Stage5 final closeout is verified only for accepted post-fix detached run `8e8a0813-5113-4c1c-ba8b-9e7a16d1ff89` at `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-post-closeout-state-fix-20260620-173718`. This does not mean all rows are complete and does not clear Canva or other external blockers.
+- Superseding status as of 2026-06-21: `Sheet1!row15` Stage5 final closeout is verified as fresh `CURRENT_RUN_ACCEPTED` for detached run `b311b5b3-c358-4f31-acc7-6209ed4ddea0` at `D:\YOUTUBEAUTO_RUNTIME\probe\current-run-row15-quoted-20260621-114016`. This does not mean all rows are complete and does not clear Canva or other external blockers.
 - Historical pre-fix status was `E2E_UNVERIFIED` until the accepted post-fix detached run above satisfied the same-`run_id` terminal closeout contract for `Sheet1!row15`.
 - Historical `OK`, browser health, login proof, component tests, detached probe artifacts, and downstream render artifacts remain rejected as user-visible E2E completion evidence when Stage1 GPT output fails the parser contract.
 - Active semantic target is `Sheet1!row15`, CLI `--row-index 14`.
 - Canva remains excluded/held unless credit/session availability changes.
-- For `Sheet1!row15`, the previously unproven Stage1-through-render boundary is superseded by the accepted post-fix detached run above; future rows or external blockers require their own same-`run_id` evidence.
-- Next development-purpose proof must be a fresh run, not reinterpretation of older artifacts. It must end as `CURRENT_RUN_ACCEPTED` or `CURRENT_RUN_BLOCKED`.
+- For `Sheet1!row15`, the previously unproven Stage1-through-render boundary is superseded by the accepted fresh current detached run above; future rows or external blockers require their own same-`run_id` evidence.
+- The latest development-purpose proof ended as `CURRENT_RUN_ACCEPTED`; any next development-purpose proof must again be a fresh run, not reinterpretation of older artifacts, and must end as `CURRENT_RUN_ACCEPTED` or `CURRENT_RUN_BLOCKED`.
 
 ## Development Purpose Alignment
 
