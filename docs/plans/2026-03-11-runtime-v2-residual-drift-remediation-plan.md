@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.13, `runtime_v2`, `control_plane`, `supervisor`, browser plane, JSON evidence snapshots, `pytest`, `py_compile`, Oracle review, project verify skills
 
-**Status Update:** Tasks 1-3 are COMPLETE in current code at `a5ec948cb3d70d1298fec3b454f2c0464801e140`. Non-Canva residual drift is closed by existing code and targeted hidden test evidence. Canva remains OPEN but intentionally excluded because it is user-excluded/credit-blocked. Next required action is documentation sync only; no code change is currently actionable.
+**Status Update:** Tasks 1-3 are COMPLETE in current code at `a5ec948cb3d70d1298fec3b454f2c0464801e140`. Non-Canva residual drift is closed by existing code and targeted hidden test evidence. Row15 proof documentation sync is satisfied by the current canonical docs and pushed commits `ec174f1` and `7c52e93`. Canva remains OPEN but intentionally excluded because it is user-excluded/credit-blocked; no code change is currently actionable.
 
 **Skill / Review Bundle:**
 - 계획 작성/실행 기준: vendor + `superpowers/executing-plans`
