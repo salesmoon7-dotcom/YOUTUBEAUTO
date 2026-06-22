@@ -14,7 +14,7 @@
 
 ## Current Truth
 
-- Superseding status as of 2026-06-21: `Sheet1!row15` Stage5 final closeout is verified as fresh `CURRENT_RUN_ACCEPTED` for detached run `b311b5b3-c358-4f31-acc7-6209ed4ddea0` at `D:\YOUTUBEAUTO_RUNTIME\probe\current-run-row15-quoted-20260621-114016`. This does not mean all rows are complete and does not clear Canva or other external blockers.
+- Superseding status as of 2026-06-22: `Sheet1!row15` Stage5 final closeout is verified as fresh `CURRENT_RUN_ACCEPTED` for detached run `8c2f4b5b-4d4d-4695-9ba7-eb021736928f` at `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-legacy-video-lane-ulw-20260622-043726`. `probe_result.json` is `status=ok`, `code=OK`, `exit_code=0`, `probe_success=true`, `ticks=30`; `evidence\result.json` is aligned to `worker_stage=render`, `worker_error_code=OK`, `attempts=0`, `backoff_sec=0.0`, `completion_state=succeeded`, `final_output=true`, and `final_artifact=render_final.mp4` with `size=2108944`, `sha256=FA13FD7BD7F1EE5A483C03C3EEC5CC838FCDABFA711D413F2C6662E3E1825EB5`. This does not mean all rows are complete and does not clear Canva or other external blockers.
 - Historical pre-fix status was `E2E_UNVERIFIED` until the accepted post-fix detached run above satisfied the same-`run_id` terminal closeout contract for `Sheet1!row15`.
 - Historical `OK`, browser health, login proof, component tests, detached probe artifacts, and downstream render artifacts remain rejected as user-visible E2E completion evidence when Stage1 GPT output fails the parser contract.
 - Active semantic target is `Sheet1!row15`, CLI `--row-index 14`.

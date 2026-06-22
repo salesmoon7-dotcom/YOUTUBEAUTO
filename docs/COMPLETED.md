@@ -7,9 +7,9 @@
 
 - 사용자 교정 기준으로, 아래 과거 probe/doc alignment 기록은 Excel row -> GPT -> image services -> GeminiGen -> local voice/TTS/RVC -> render로 이어지는 사용자-visible E2E 실행 완료 증거가 아닙니다.
 - `stage2`, `row15`, `GeminiGen OK`, worker/probe `OK` 기록은 문서/프로브/컴포넌트 정리 기록으로만 취급하며, 프로그램 완성 또는 전체 체인 실행 완료로 주장하지 않습니다.
-- 현재 E2E 개발 상태는 `docs/TODO.md`의 active target 문구를 따르며, `Sheet1!row15` final closeout은 fresh `CURRENT_RUN_ACCEPTED` run `b311b5b3-c358-4f31-acc7-6209ed4ddea0` 기준으로만 검증 완료 상태입니다.
+- 현재 E2E 개발 상태는 `docs/TODO.md`의 active target 문구를 따르며, `Sheet1!row15` final closeout은 fresh `CURRENT_RUN_ACCEPTED` run `8c2f4b5b-4d4d-4695-9ba7-eb021736928f` 기준으로만 검증 완료 상태입니다.
 
-- `docs/plans/2026-06-13-runtime-v2-e2e-completion-plan.md`, `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-post-qwen-image-readiness-quoted-20260618-193028\artifacts\chatgpt\chatgpt-sheet1-15\4be627f1-9738-487c-af52-efbcc53eed42\raw_output.json` - 기존 `Sheet1!row15` render closeout 완료 기록은 Stage1 재검증 결과 `invalid_voice_groups`로 거부되었습니다. 이 항목은 완료 증거가 아니라 false-complete 정정 기록이며, accepted final closeout 상태는 `docs/TODO.md`의 `run_id=b311b5b3-c358-4f31-acc7-6209ed4ddea0` 항목을 따릅니다.
+- `docs/plans/2026-06-13-runtime-v2-e2e-completion-plan.md`, `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-post-qwen-image-readiness-quoted-20260618-193028\artifacts\chatgpt\chatgpt-sheet1-15\4be627f1-9738-487c-af52-efbcc53eed42\raw_output.json` - 기존 `Sheet1!row15` render closeout 완료 기록은 Stage1 재검증 결과 `invalid_voice_groups`로 거부되었습니다. 이 항목은 완료 증거가 아니라 false-complete 정정 기록이며, accepted final closeout 상태는 `docs/TODO.md`의 `run_id=8c2f4b5b-4d4d-4695-9ba7-eb021736928f` 항목을 따릅니다.
 
 - `docs/plans/2026-04-23-legacy-runtime-coverage-map.md`, `D:\YOUTUBEAUTO_RUNTIME\probe\stage2-noncanva-20260521-a\probe_result.json` - repo-root/stage2 follow-up 정리 완료; stale `stage2_contracts` expectation 문구를 제거했고, longform에서는 `canva`를 default scene rotation에서 분리해 non-Canva 핵심 생성 경로를 detached boundary 기준 `genspark/seaart/geminigen = OK`로 다시 고정했습니다.
 - `docs/plans/2026-04-01-runtime-v2-closeout-retest-result.md`, `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260524-a\probe_result.json`, `D:\YOUTUBEAUTO_RUNTIME\probe\canva-boundary-20260524-e\runtime\latest_completed_run.json` - latest closeout/runtime snapshot alignment 정리 완료; semantic row success closeout과 isolated `Canva` credit-hold snapshot 정렬까지 닫았습니다.
