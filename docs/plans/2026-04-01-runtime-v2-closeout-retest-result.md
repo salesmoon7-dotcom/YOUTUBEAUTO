@@ -37,14 +37,15 @@ Anything less is not a closed retest result.
 | `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260524-a\probe_result.json` + `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-20260524-a\artifacts\chatgpt\chatgpt-sheet1-15\a0840661-17a0-44bf-afb7-b68657bd1ece\assets\output\render_final.mp4` | latest fresh detached semantic-row rerun left a closed success artifact with `status=ok`, `code=OK`, `probe_success=true`, `readiness.ready=true`, and a concrete final render | does not prove that the separately deferred `Canva` account-credit hold is solved for standalone thumbnail/background-generation work |
 | `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-post-closeout-state-fix-20260620-173718\probe_result.json` + `evidence\result.json` + `evidence\closeout_state.json` | accepted same-run `Sheet1!row15` final closeout for run `8e8a0813-5113-4c1c-ba8b-9e7a16d1ff89`: Stage1 artifacts, downstream service artifacts, render final output, and closeout state are aligned | does not prove all rows, Excel sync-back, standalone Canva/Product Background, or broad browser reliability |
 | `D:\YOUTUBEAUTO_RUNTIME\probe\current-run-row15-quoted-20260621-114016\probe_result.json` + `evidence\result.json` + `evidence\closeout_state.json` | fresh `CURRENT_RUN_ACCEPTED` same-run `Sheet1!row15` final closeout for run `b311b5b3-c358-4f31-acc7-6209ed4ddea0`: Stage1 artifacts, downstream service artifacts, render final output, and closeout state are aligned | does not prove all rows, Excel sync-back, standalone Canva/Product Background, or broad browser reliability |
+| `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-legacy-video-lane-ulw-20260622-043726\probe_result.json` + `evidence\result.json` + `assets\output\render_final.mp4` | latest fresh `CURRENT_RUN_ACCEPTED` same-run `Sheet1!row15` final closeout for run `8c2f4b5b-4d4d-4695-9ba7-eb021736928f`: `probe_result.json` is `status=ok`, `code=OK`, `exit_code=0`, `probe_success=true`, `ticks=30`; render metadata is `worker_stage=render`, `worker_error_code=OK`, `attempts=0`, `backoff_sec=0.0`, `completion_state=succeeded`, `final_output=true`, `final_artifact=render_final.mp4`, `size=2108944`, `sha256=FA13FD7BD7F1EE5A483C03C3EEC5CC838FCDABFA711D413F2C6662E3E1825EB5` | does not prove all rows, Excel sync-back, standalone Canva/Product Background, or broad browser reliability |
 
 ## Result
 
 Current closeout retest result for `Sheet1!row15` is reclassified by the accepted fresh detached run:
 
 - `status`: `CURRENT_RUN_ACCEPTED`
-- `reading`: accepted only for same-run detached run `b311b5b3-c358-4f31-acc7-6209ed4ddea0` at `D:\YOUTUBEAUTO_RUNTIME\probe\current-run-row15-quoted-20260621-114016`
-- `why`: the accepted run has `Sheet1!row15` seed evidence, Stage1 GPT artifacts, same-run downstream artifacts for `qwen3_tts`, `rvc`, `kenburns`, `genspark`, `seaart`, `geminigen`, terminal `render_final.mp4`, and `closeout_state.status=completed` aligned to the same `run_id`.
+- `reading`: accepted only for same-run detached run `8c2f4b5b-4d4d-4695-9ba7-eb021736928f` at `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-legacy-video-lane-ulw-20260622-043726`
+- `why`: the accepted run has `Sheet1!row15` seed evidence, Stage1 GPT artifacts, same-run downstream artifacts for `qwen3_tts`, `rvc`, `kenburns`, `genspark`, `seaart`, `geminigen`, terminal `render_final.mp4`, and render metadata aligned to the same `run_id` with `worker_error_code=OK`, `attempts=0`, and `backoff_sec=0.0`.
 
 ## Interpretation Rules
 
@@ -57,6 +58,6 @@ Current closeout retest result for `Sheet1!row15` is reclassified by the accepte
 
 ## Next Allowed Meaning
 
-- This result proves only the accepted `Sheet1!row15` final closeout boundary for run `b311b5b3-c358-4f31-acc7-6209ed4ddea0`.
+- This result proves only the accepted `Sheet1!row15` final closeout boundary for run `8c2f4b5b-4d4d-4695-9ba7-eb021736928f`.
 - The next allowed meaning is not broader than `CURRENT_RUN_ACCEPTED` for `Sheet1!row15`; any all-row, Excel sync-back, standalone Canva, or broad browser reliability claim requires separate accepted evidence.
 - `Canva` remains a separate external credit-hold boundary and must not be reopened without credit/session availability changing.
