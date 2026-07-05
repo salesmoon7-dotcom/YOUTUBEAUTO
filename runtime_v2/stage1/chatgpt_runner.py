@@ -130,25 +130,7 @@ def build_video_plan_from_topic_spec(
 
 def build_live_chatgpt_prompt(topic_spec: dict[str, object]) -> str:
     topic = str(topic_spec.get("topic", "")).strip()
-    return (
-        "Use the topic below and reply in the exact runtime_v2 stage1 JSON format.\n"
-        "Return only one fenced JSON object and no other text.\n"
-        "The JSON object must contain story_outline, scene_prompts, and voice_groups.\n"
-        "scene_prompts and voice_groups must have the same length.\n"
-        "Each voice_groups item must contain scene_index and voice.\n\n"
-        f"Topic: {topic}\n\n"
-        "```json\n"
-        "{\n"
-        '  "story_outline": ["<opening beat>", "<middle beat>", "<ending beat>"],\n'
-        '  "scene_prompts": ["<scene prompt 1>", "<scene prompt 2>", "<scene prompt 3>"],\n'
-        '  "voice_groups": [\n'
-        '    {"scene_index": 1, "voice": "<voice line 1>"},\n'
-        '    {"scene_index": 2, "voice": "<voice line 2>"},\n'
-        '    {"scene_index": 3, "voice": "<voice line 3>"}\n'
-        "  ]\n"
-        "}\n"
-        "```\n"
-    )
+    return topic
 
 
 def attach_gpt_response_text_from_browser_evidence(

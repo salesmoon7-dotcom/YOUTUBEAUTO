@@ -237,19 +237,20 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         open_browser.assert_not_called()
         popen.assert_called_once()
 
-    def test_build_live_chatgpt_prompt_requests_structured_stage1_fields(self) -> None:
+    def test_build_live_chatgpt_prompt_uses_legacy_topic_only_text(self) -> None:
         prompt = build_live_chatgpt_prompt(
             {
                 "topic": "국민연금 수령 시기를 앞당기면 손해인가 이득인가",
             }
         )
 
-        self.assertIn("국민연금 수령 시기를 앞당기면 손해인가 이득인가", prompt)
-        self.assertIn("Return only one fenced JSON object", prompt)
-        self.assertIn('"story_outline"', prompt)
-        self.assertIn('"scene_prompts"', prompt)
-        self.assertIn('"voice_groups"', prompt)
-        self.assertIn('"scene_index"', prompt)
+        self.assertEqual(prompt, "국민연금 수령 시기를 앞당기면 손해인가 이득인가")
+        self.assertNotIn("Return only one fenced JSON object", prompt)
+        self.assertNotIn("runtime_v2 stage1 JSON format", prompt)
+        self.assertNotIn('"story_outline"', prompt)
+        self.assertNotIn('"scene_prompts"', prompt)
+        self.assertNotIn('"voice_groups"', prompt)
+        self.assertNotIn("```json", prompt)
 
     def test_build_live_chatgpt_prompt_does_not_request_legacy_blocks(self) -> None:
         prompt = build_live_chatgpt_prompt(
@@ -258,9 +259,11 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             }
         )
 
+        self.assertEqual(prompt, "요양 시설 비용 현실과 준비해야 할 금액")
         self.assertNotIn("[Voice]", prompt)
         self.assertNotIn("[#01]", prompt)
         self.assertNotIn("Use numbered voice lines", prompt)
+        self.assertNotIn("Return only one fenced JSON object", prompt)
 
     def test_build_live_chatgpt_prompt_strips_topic_whitespace(self) -> None:
         prompt = build_live_chatgpt_prompt(
@@ -1132,9 +1135,9 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
             parsed_payload = cast(dict[str, object], handoff["contract"])
 
         self.assertEqual(result["status"], "ok")
-        self.assertIn("Money flow", called_prompt)
-        self.assertIn("Return only one fenced JSON object", called_prompt)
-        self.assertIn('"voice_groups"', called_prompt)
+        self.assertEqual(called_prompt, "Money flow")
+        self.assertNotIn("Return only one fenced JSON object", called_prompt)
+        self.assertNotIn('"voice_groups"', called_prompt)
         self.assertEqual(raw_output["prompt_text"], called_prompt)
         self.assertEqual(gpt_capture["prompt_text"], called_prompt)
         self.assertTrue(capture_started_exists)
