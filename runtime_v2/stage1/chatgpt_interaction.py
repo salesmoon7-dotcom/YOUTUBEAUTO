@@ -319,10 +319,19 @@ def generate_gpt_response_text(
             structured_stage1_content = _has_structured_stage1_content(
                 response_text, legacy_blocks
             )
+            stable_idle_unstructured_response = (
+                _has_complete_unstructured_response(response_text)
+                and not has_stop
+                and not has_send_button
+            )
             response_ready = (
                 bool(response_text)
                 and saw_streaming
-                and (has_send_button or structured_stage1_content)
+                and (
+                    has_send_button
+                    or structured_stage1_content
+                    or stable_idle_unstructured_response
+                )
                 and ((not has_stop) or structured_stage1_content)
                 and (not (has_stop and has_send_button) or structured_stage1_content)
             )
@@ -633,6 +642,13 @@ def _response_text_from_state(text: str, legacy_blocks: object) -> str:
         if body.lower() in status_only or body in {"지금 응답 받기", "다시 시도"}:
             return ""
     return normalized
+
+
+def _has_complete_unstructured_response(response_text: str) -> bool:
+    text = response_text.strip()
+    if len(text) < 200:
+        return False
+    return text[-1] in {".", "!", "?", "。", "！", "？", "다", "요"}
 
 
 def _has_terminal_stage1_blocks(legacy_blocks: object) -> bool:

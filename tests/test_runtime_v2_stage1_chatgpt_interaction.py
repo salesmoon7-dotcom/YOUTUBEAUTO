@@ -2486,6 +2486,86 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertIn("response_stable", event_names)
         self.assertEqual(event_names[-1], "final_state")
 
+    def test_generate_gpt_response_text_accepts_stable_idle_unstructured_response_after_streaming(
+        self,
+    ) -> None:
+        complete_response = (
+            "요양 시설 비용은 시설 유형과 돌봄 수준에 따라 크게 달라집니다. "
+            "공공형 시설은 월 80만 원에서 150만 원 정도로 시작하고, 일반 요양원은 "
+            "월 150만 원에서 300만 원 수준이 많습니다. 프리미엄 시설은 의료 지원과 "
+            "개인실 여부에 따라 500만 원 이상이 될 수 있으므로, 가족은 장기요양보험 "
+            "적용 범위와 비급여 항목을 나누어 준비해야 합니다. "
+            "특히 간병비, 식비, 상급 병실료, 재활 프로그램 비용은 별도 청구될 수 "
+            "있기 때문에 월 지출 상한선을 먼저 정하고 최소 3년치 현금 흐름을 "
+            "계산해 두는 것이 현실적인 준비 방법입니다."
+        )
+
+        class FakeBackend(ChatGPTBackend):
+            def __init__(self) -> None:
+                self.read_calls = 0
+
+            def submit_prompt(self, prompt: str) -> dict[str, object]:
+                return {
+                    "ok": True,
+                    "inputSelector": "#prompt-textarea",
+                    "sendClicked": True,
+                    "submit_evidence": {
+                        "classification": "sent",
+                        "classification_reason": "send_button_clicked",
+                        "retry_safe_decision": False,
+                    },
+                }
+
+            def read_response_state(self) -> dict[str, object]:
+                self.read_calls += 1
+                if self.read_calls == 1:
+                    return {
+                        "has_stop": True,
+                        "has_send_button": False,
+                        "assistant_block_count": 1,
+                        "assistant_text": complete_response,
+                        "legacy_blocks": [],
+                        "thinking_stopped": False,
+                    }
+                return {
+                    "has_stop": False,
+                    "has_send_button": False,
+                    "assistant_block_count": 1,
+                    "assistant_text": complete_response,
+                    "legacy_blocks": [],
+                    "thinking_stopped": False,
+                }
+
+        with (
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_interaction.time.sleep", return_value=None
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_interaction.time.time",
+                side_effect=itertools.chain(
+                    [0.0, 0.0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 1.1],
+                    itertools.repeat(1.1),
+                ),
+            ),
+        ):
+            result = generate_gpt_response_text(
+                prompt="test prompt",
+                port=9222,
+                timeout_sec=1,
+                poll_interval_sec=0.01,
+                completion_idle_sec=0.01,
+                response_start_timeout_sec=0.02,
+                backend=FakeBackend(),
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["response_text"], complete_response)
+        timeline = cast(list[dict[str, object]], result["timeline"])
+        event_names = [str(item["event"]) for item in timeline]
+        self.assertIn("streaming_seen", event_names)
+        self.assertIn("response_stable", event_names)
+        self.assertEqual(event_names[-1], "final_state")
+
     def test_generate_gpt_response_text_does_not_accept_partial_unstructured_text(
         self,
     ) -> None:
