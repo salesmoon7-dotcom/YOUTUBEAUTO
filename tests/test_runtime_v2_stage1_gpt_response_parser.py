@@ -290,6 +290,74 @@ Voice: 1. 첫 장면 설명\n2. 두 번째 장면 설명
             ],
         )
 
+    def test_parser_normalizes_sparse_legacy_scene_labels_to_dense_voice_groups(
+        self,
+    ) -> None:
+        topic_spec: dict[str, object] = {
+            "topic": "Care facility costs",
+            "row_ref": "Sheet1!row15",
+            "run_id": "run-1",
+        }
+        voice_lines = "\n".join(
+            f"{index}. voice line {index}" for index in range(1, 35)
+        )
+        response_text = f"""
+[Voice]
+{voice_lines}
+
+[Video1] - Intro Character (Voice 1-12)
+video prompt one
+
+[#01 intro Character] - Voice 1(1)
+scene prompt one
+
+[#13 body Chart] - Voice 13-14(2)
+scene prompt two
+
+[#25 body Text] - Voice 25-26(2)
+scene prompt three
+
+[#33 end Character] - Voice 33-34(2)
+scene prompt four
+"""
+
+        parsed, errors = parse_gpt_response_text(topic_spec, response_text)
+
+        self.assertEqual(errors, [])
+        self.assertIsNotNone(parsed)
+        typed = cast(dict[str, object], parsed)
+        self.assertEqual(
+            typed["scene_prompts"],
+            [
+                "scene prompt one",
+                "scene prompt two",
+                "scene prompt three",
+                "scene prompt four",
+            ],
+        )
+        self.assertEqual(typed["videos"], ["video prompt one"])
+        self.assertEqual(
+            typed["voice_groups"],
+            [
+                {"scene_index": 1, "voice": "voice line 1", "original_voices": [1]},
+                {
+                    "scene_index": 2,
+                    "voice": "voice line 13\nvoice line 14",
+                    "original_voices": [13, 14],
+                },
+                {
+                    "scene_index": 3,
+                    "voice": "voice line 25\nvoice line 26",
+                    "original_voices": [25, 26],
+                },
+                {
+                    "scene_index": 4,
+                    "voice": "voice line 33\nvoice line 34",
+                    "original_voices": [33, 34],
+                },
+            ],
+        )
+
     def test_parser_uses_voice_only_numbered_lines_as_scene_fallback(
         self,
     ) -> None:

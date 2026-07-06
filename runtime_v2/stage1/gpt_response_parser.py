@@ -209,7 +209,7 @@ def _voice_groups_from_label_ranges(
     if not ordered_scene_indexes or not voice_lines:
         return []
     voice_groups: list[dict[str, object]] = []
-    for scene_index in ordered_scene_indexes:
+    for dense_scene_index, scene_index in enumerate(ordered_scene_indexes, start=1):
         voice_range = label_voice_ranges.get(f"#{scene_index:02d}")
         if voice_range is None:
             voice_range = label_voice_ranges.get(f"#{scene_index}")
@@ -223,7 +223,7 @@ def _voice_groups_from_label_ranges(
             return []
         voice_groups.append(
             {
-                "scene_index": scene_index,
+                "scene_index": dense_scene_index,
                 "voice": "\n".join(selected),
                 "original_voices": list(range(start, end + 1)),
             }
