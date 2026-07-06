@@ -23,6 +23,7 @@ from runtime_v2.gpu.lease import (
 )
 from runtime_v2.gui_adapter import build_gui_status_payload, write_gui_status
 from runtime_v2.latest_run import ensure_bootstrap_runtime_snapshot
+from runtime_v2.worker_registry import write_worker_registry
 
 
 def ensure_runtime_bootstrap(
@@ -64,6 +65,8 @@ def ensure_runtime_bootstrap(
             ),
             config.gpt_status_file,
         )
+    if not config.worker_registry_file.exists():
+        _ = write_worker_registry(config.worker_registry_file, {})
     bootstrap_debug_log = str(config.debug_log_root / f"{run_id}.jsonl")
     if (
         _read_json(config.result_router_file) is None

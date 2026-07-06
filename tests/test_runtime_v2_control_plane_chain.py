@@ -967,6 +967,24 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         self.assertEqual(str(result["queue_status"]), "idle")
         self.assertEqual(str(qwen_registry["state"]), "idle")
 
+    def test_control_plane_idle_creates_empty_worker_registry(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+
+            result = run_control_loop_once(
+                owner="runtime_v2",
+                config=config,
+                run_id="control-run-empty-worker-registry",
+            )
+            worker_registry = json.loads(
+                config.worker_registry_file.read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(result["status"], "idle")
+        self.assertEqual(result["code"], "NO_JOB")
+        self.assertEqual(worker_registry, {})
+
     def test_queue_store_load_fail_closes_on_corrupted_queue_file(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             queue_file = Path(tmp_dir) / "job_queue.json"
