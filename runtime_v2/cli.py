@@ -2052,7 +2052,6 @@ def _run_stage5_row1_probe(
         blocked_backoff_sec=config.blocked_backoff_sec,
         allow_mock_chain=config.allow_mock_chain,
         lease_file=config.lease_file,
-        gui_status_file=config.gui_status_file,
         browser_health_file=config.browser_health_file,
         browser_registry_file=config.browser_registry_file,
         gpt_status_file=config.gpt_status_file,

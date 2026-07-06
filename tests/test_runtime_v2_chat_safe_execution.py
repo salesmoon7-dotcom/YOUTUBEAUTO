@@ -924,6 +924,23 @@ class RuntimeV2ChatSafeExecutionTests(unittest.TestCase):
                 self.assertEqual(
                     config.queue_store_file, probe_root / "state" / "job_queue.json"
                 )
+                self.assertEqual(
+                    config.gui_status_file, probe_root / "health" / "gui_status.json"
+                )
+                self.assertEqual(
+                    config.latest_completed_run_file,
+                    probe_root / "latest_completed_run.json",
+                )
+                self.assertEqual(
+                    config.latest_active_run_file, probe_root / "latest_active_run.json"
+                )
+                self.assertEqual(
+                    config.result_router_file, probe_root / "evidence" / "result.json"
+                )
+                self.assertEqual(
+                    config.control_plane_events_file,
+                    probe_root / "evidence" / "control_plane_events.jsonl",
+                )
                 return {"status": "failed", "code": "BROWSER_UNHEALTHY"}
 
             with patch(
