@@ -173,6 +173,9 @@ class AgentBrowserCdpBackend:
         if not bool(parsed.get("ok", False)):
             error = str(parsed.get("error", "chatgpt_submit_failed"))
             no_send_evidence = _normalized_no_send_evidence(parsed)
+            fallback_retry_safe = _submit_fallback_retry_safe(error, no_send_evidence)
+            if fallback_retry_safe:
+                no_send_evidence["retry_safe"] = True
             submit_evidence = _submit_evidence_record(
                 error=error,
                 parsed=parsed,
@@ -180,9 +183,7 @@ class AgentBrowserCdpBackend:
             )
             if preflight_status:
                 submit_evidence["preflight_status"] = preflight_status
-            if error in {"NO_SEND", "SEND_DISABLED"} and bool(
-                no_send_evidence.get("retry_safe", False)
-            ):
+            if fallback_retry_safe:
                 raw_target = _select_page_target(
                     self._port, self._expected_url_substring
                 )
@@ -1227,6 +1228,32 @@ def _normalized_no_send_evidence(parsed: dict[str, object]) -> dict[str, object]
     return normalized
 
 
+def _has_concrete_send_control_evidence(
+    no_send_evidence: dict[str, object],
+) -> bool:
+    return any(
+        bool(no_send_evidence.get(key, False))
+        for key in (
+            "send_found",
+            "send_disabled",
+            "visible",
+            "is_connected",
+            "in_flight_marker",
+            "state_transition",
+        )
+    )
+
+
+def _submit_fallback_retry_safe(
+    error: str, no_send_evidence: dict[str, object]
+) -> bool:
+    if error not in {"NO_SEND", "SEND_DISABLED"}:
+        return False
+    if bool(no_send_evidence.get("retry_safe", False)):
+        return True
+    return not _has_concrete_send_control_evidence(no_send_evidence)
+
+
 def _submit_evidence_record(
     *,
     error: str,
@@ -1262,7 +1289,9 @@ def _submit_evidence_record(
             "in_flight_observed": in_flight_observed,
             "terminal_success_observed": terminal_success_observed,
         }
-    if error == "NO_SEND" and bool(no_send_evidence.get("retry_safe", False)):
+    if error in {"NO_SEND", "SEND_DISABLED"} and bool(
+        no_send_evidence.get("retry_safe", False)
+    ):
         return {
             "attempt_key": "attempt-1",
             "classification": "not_sent",

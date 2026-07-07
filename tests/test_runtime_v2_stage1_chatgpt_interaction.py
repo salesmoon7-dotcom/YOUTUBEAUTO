@@ -2343,6 +2343,57 @@ class RuntimeV2Stage1ChatgptInteractionTests(unittest.TestCase):
         self.assertFalse(bool(submit_evidence["retry_safe_decision"]))
         self.assertEqual(submit_evidence["attempt_key"], "attempt-1")
 
+    def test_agent_browser_backend_falls_back_when_send_disabled_has_no_concrete_evidence(
+        self,
+    ) -> None:
+        def fake_runner(command: list[str], timeout_sec: int) -> str:
+            if command[-2:] == ["tab", "2"]:
+                return "ok"
+            if command[-2] == "eval":
+                return json.dumps({"ok": False, "error": "SEND_DISABLED"})
+            return "ok"
+
+        backend = AgentBrowserCdpBackend(
+            port=9222,
+            input_selectors=["#prompt-textarea"],
+            send_selectors=["button[data-testid='send-button']"],
+            stop_selectors=["button[data-testid='stop-button']"],
+            response_selectors=["[data-message-author-role='assistant']"],
+            command_runner=fake_runner,
+        )
+
+        with (
+            mock.patch.object(
+                backend,
+                "_wait_for_input_ready",
+                return_value={"ready": True},
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._select_page_target",
+                return_value={
+                    "webSocketDebuggerUrl": "ws://127.0.0.1/devtools/page/abc",
+                    "url": f"https://{CHATGPT_LONGFORM_URL_SUBSTRING}",
+                },
+            ),
+            mock.patch(
+                "runtime_v2.stage1.chatgpt_backend._run_raw_cdp_eval",
+                return_value=json.dumps(
+                    json.dumps(
+                        {
+                            "ok": True,
+                            "inputSelector": "#prompt-textarea",
+                            "sendClicked": True,
+                        }
+                    )
+                ),
+            ) as raw_eval,
+        ):
+            result = backend.submit_prompt("hello")
+
+        self.assertTrue(bool(result["ok"]))
+        raw_eval.assert_called_once()
+        self.assertIn("submit_raw_cdp_fallback", result["backend_fallbacks"])
+
     def test_generate_gpt_response_text_accepts_backend_interface(self) -> None:
         class FakeBackend(ChatGPTBackend):
             def __init__(self) -> None:
