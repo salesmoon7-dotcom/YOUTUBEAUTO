@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import call
 from typing import cast
 from unittest.mock import patch, mock_open
 
@@ -5451,11 +5452,15 @@ class RuntimeV2CliAgentBrowserStage2AdapterTests(unittest.TestCase):
                 patch(
                     "runtime_v2.cli.write_functional_evidence_bundle",
                     return_value={"service": "geminigen", "sha256": "ok"},
-                ),
+                ) as evidence_mock,
+                patch("runtime_v2.cli.sleep") as sleep_mock,
             ):
                 exit_code = _run_agent_browser_stage2_adapter_child(args)
 
             self.assertEqual(exit_code, exit_codes.BROWSER_UNHEALTHY)
+            self.assertEqual(evidence_mock.call_count, 12)
+            self.assertEqual(sleep_mock.call_count, 12)
+            sleep_mock.assert_has_calls([call(10)] * 12)
             evidence = json.loads(
                 (root / "attach_evidence.json").read_text(encoding="utf-8")
             )

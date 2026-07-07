@@ -3273,13 +3273,17 @@ def _run_agent_browser_stage2_adapter_child(args: CliArgs) -> int:
                 )
             elif service == "geminigen":
                 for _attempt in range(12):
-                    _ = write_functional_evidence_bundle(
-                        workspace=workspace,
-                        service=service,
-                        port=args.port,
-                        expected_url_substring=capture_url,
-                        service_artifact_path=target_path,
-                    )
+                    try:
+                        _ = write_functional_evidence_bundle(
+                            workspace=workspace,
+                            service=service,
+                            port=args.port,
+                            expected_url_substring=capture_url,
+                            service_artifact_path=target_path,
+                        )
+                    except RuntimeError as exc:
+                        if str(exc) != "GEMINIGEN_VIDEO_URL_NOT_FOUND":
+                            raise
                     if (
                         target_path.exists()
                         and target_path.is_file()
