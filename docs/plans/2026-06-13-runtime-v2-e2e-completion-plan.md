@@ -361,6 +361,19 @@ Do not commit generated probe artifacts. Commit code fixes and plan/status docs 
   - post-run DOM: `Generation failed` and `This is an error from Google's side...`; no `video` element and no mp4 artifact.
 - Oracle classified the code fix as PASS and the live boundary as external service generation failure. Do not broaden retry/fallback logic or run a broad Stage5 rerun from this evidence alone.
 
+**Evidence note: 2026-07-08 fresh row15 Stage1 blocker after GeminiGen polling proof**
+
+- Evidence root: `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-post-geminigen-polling-proof-quoted-20260708-065155`.
+- Same-run id: `7e33fe44-e5c0-4f54-9750-3e4ae4092f76`.
+- Boundary reached: Excel seed and ChatGPT browser send/capture completed for `Sheet1!row15` with topic-only input.
+- Terminal blocker: `invalid_voice_groups` at worker stage `chatgpt`, with `completion.state=blocked`, `final_output=false`, `next_jobs_count=0`, and `routed_count=0`.
+- Contract alignment verified:
+  - `probe_result.json`: `status=failed`, `code=invalid_voice_groups`, `exit_code=2`, `probe_success=false`.
+  - `evidence\result.json`: `worker_error_code=invalid_voice_groups`, `attempts=1`, `backoff_sec=0.0`, `row_ref=Sheet1!row15`, `excel_sync_updated=false`, `stage1_excel_merged=false`.
+  - worker `result.json`: `stage1_result.status=error`, `reason_code=invalid_voice_groups`, `parsed_payload_path=`, `handoff_path=`, `video_plan_path=`, `next_jobs=[]`.
+  - `raw_output.json`: `gpt_capture.status=ok`, `sendClicked=true`, `capture_meta.final_state_code=ok`, but the assistant text is a single unnumbered `[Voice]` prose blob with `legacy_blocks=[]` and no accepted Stage1 JSON or `[#NN]` scene blocks.
+- Oracle classified the fresh run as `CURRENT_RUN_BLOCKED / Stage1 Custom GPT output-contract blocker`. Keep the parser fail-closed and do not run downstream boundaries while this blocker remains.
+
 ---
 
 ## Task 6: Final Semantic-Row Closeout
