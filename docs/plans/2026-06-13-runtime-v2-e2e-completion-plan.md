@@ -348,6 +348,19 @@ Do not commit generated probe artifacts. Commit code fixes and plan/status docs 
   - `attach_evidence.json`: `current_url` is the SeaArt `/ko/create/image` page, `details.selector=textarea.el-textarea__inner:not(#easyGenerateInput):visible`, `details.source_error_code=AGENT_BROWSER_COMMAND_FAILED`, `recovery_attempted=false`.
 - Oracle classified the next action as `EVIDENCE_ONLY`: do not broaden SeaArt selectors or add fallback paths without a DOM snapshot proving a concrete alternate prompt input contract.
 
+**Evidence note: 2026-07-08 GeminiGen polling fix boundary proof**
+
+- Evidence root: `D:\YOUTUBEAUTO_RUNTIME\probe\geminigen-boundary-text-post-polling-fix-direct-20260708-063755`.
+- Same-run id: `geminigen-boundary-text-post-polling-fix-direct-20260708-063755`.
+- Boundary reached: GeminiGen agent-browser attach/action completed on `https://geminigen.ai/app/video-gen/veo`; transcript recorded prompt fill and Generate click.
+- Terminal blocker: `BROWSER_UNHEALTHY` at worker stage `geminigen_adapter`, with `final_output=false` and `placeholder_artifact=true`.
+- Contract alignment verified:
+  - `geminigen.out.log`: `run_started` at `1783460275.654`, `run_finished` at `1783460407.644`, proving the previous ~9.8 second early exit was replaced by the intended polling window.
+  - worker `result.json`: `details.approved_root` is the proof root `artifacts` directory and `service_artifact_path` is under that root.
+  - `attach_evidence.json`: `status=ok`, GeminiGen URL/title correct, `placeholder_artifact=true`.
+  - post-run DOM: `Generation failed` and `This is an error from Google's side...`; no `video` element and no mp4 artifact.
+- Oracle classified the code fix as PASS and the live boundary as external service generation failure. Do not broaden retry/fallback logic or run a broad Stage5 rerun from this evidence alone.
+
 ---
 
 ## Task 6: Final Semantic-Row Closeout
