@@ -21,6 +21,7 @@
 - Canva remains excluded/held unless credit/session availability changes.
 - For `Sheet1!row15`, the previously unproven Stage1-through-render boundary is superseded by the accepted fresh current detached run above; future rows or external blockers require their own same-`run_id` evidence.
 - The latest development-purpose proof ended as `CURRENT_RUN_ACCEPTED`; any next development-purpose proof must again be a fresh run, not reinterpretation of older artifacts, and must end as `CURRENT_RUN_ACCEPTED` or `CURRENT_RUN_BLOCKED`.
+- Later development-purpose proof `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-post-browser-recovery-proof-20260708-231538` (`run_id=37bd5336-aa85-4217-927d-90a1cf2477de`) is `CURRENT_RUN_BLOCKED` at `geminigen_adapter / BROWSER_UNHEALTHY`: Stage1 recovered for the topic-only route and the run advanced through qwen3_tts/rvc/Genspark/SeaArt, but terminal evidence is `probe_status=failed`, `probe_code=BROWSER_UNHEALTHY`, `probe_exit_code=20`, failed job `geminigen-37bd5336-aa85-4217-927d-90a1cf2477de-32`, `attempts=4`, `final_output=false`. This does not supersede the accepted 2026-06-22 closeout; it records the first truthful blocker for the latest live development-purpose proof.
 
 ## Development Purpose Alignment
 
