@@ -375,6 +375,20 @@ Do not commit generated probe artifacts. Commit code fixes and plan/status docs 
   - `raw_output.json`: `gpt_capture.status=ok`, `sendClicked=true`, `capture_meta.final_state_code=ok`, but the assistant text is a single unnumbered `[Voice]` prose blob with `legacy_blocks=[]` and no accepted Stage1 JSON or `[#NN]` scene blocks.
 - Oracle classified the fresh run as `CURRENT_RUN_BLOCKED / Stage1 Custom GPT output-contract blocker`. Keep the parser fail-closed and do not run downstream boundaries while this blocker remains.
 
+**Evidence note: 2026-07-08 post-browser-recovery row15 GeminiGen blocker**
+
+- Evidence root: `D:\YOUTUBEAUTO_RUNTIME\probe\stage5-row15-post-browser-recovery-proof-20260708-231538`.
+- Same-run id: `37bd5336-aa85-4217-927d-90a1cf2477de`.
+- Boundary reached: topic-only Stage1 recovered and the same run advanced through qwen3_tts, rvc, Genspark, and SeaArt before stopping at GeminiGen.
+- Terminal blocker: `BROWSER_UNHEALTHY` at worker stage `geminigen_adapter`, with failed job `geminigen-37bd5336-aa85-4217-927d-90a1cf2477de-32`, `attempts=4`, `backoff_sec=0.0`, `final_output=false`, and no final artifact.
+- Contract alignment verified:
+  - `probe_result.json`: `status=failed`, `code=BROWSER_UNHEALTHY`, `exit_code=20`, `probe_success=false`.
+  - `evidence\result.json`: `worker_error_code=BROWSER_UNHEALTHY`, `worker_stage=geminigen_adapter`, `completion_state=failed`, `final_output=false`, `row_ref=Sheet1!row15`.
+  - worker `result.json`: `details.returncode=20`, `timed_out=false`, target `#32_GEMI.mp4`, `before_signature=null`.
+  - `attach_evidence.json`: `status=ok`, URL `https://geminigen.ai/app/video-gen/veo`, title `Free Veo 3.1 AI Video Generator – Text to Video with AI`, `placeholder_artifact=true`, `recovery_attempted=false`.
+  - single read-only post-failure DOM snapshot from the existing GeminiGen CDP session showed `Generation failed`, `This is an error from Google's side...`, no `video` elements, no download/API-file links, and `Please verify you're human` present.
+- Oracle classified this as `CURRENT_RUN_BLOCKED` with no deterministic runtime_v2 code defect proven. Do not change `BROWSER_UNHEALTHY` semantics, broaden retry/fallback logic, or run a broad Stage5 rerun from this evidence alone.
+
 ---
 
 ## Task 6: Final Semantic-Row Closeout
