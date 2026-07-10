@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import cast
 
 from runtime_v2.stage1.gpt_response_parser import parse_gpt_response_text
@@ -62,6 +63,72 @@ def build_stage1_parsed_payload_from_topic_spec(
             topic_spec, enriched_result
         )
     raise ValueError("missing_gpt_response_text")
+
+
+def build_stage1_parsed_payload_from_topic_spec_videos(
+    topic_spec: dict[str, object],
+) -> dict[str, object] | None:
+    videos = [
+        str(item).strip()
+        for item in cast(list[object], topic_spec.get("videos", []))
+        if str(item).strip()
+    ]
+    if not videos:
+        return None
+    if not str(topic_spec.get("bgm", "")).strip():
+        return None
+    if not str(topic_spec.get("ref_img_1", "")).strip():
+        return None
+    if not str(topic_spec.get("ref_img_2", "")).strip():
+        return None
+    voice_lines = [_speaking_text_from_video_prompt(video) for video in videos]
+    if any(not voice for voice in voice_lines):
+        return None
+    parsed_result: dict[str, object] = {
+        "title": str(topic_spec.get("topic", "")).strip(),
+        "title_for_thumb": str(topic_spec.get("topic", "")).strip(),
+        "description": f"{str(topic_spec.get('topic', '')).strip()} 요약 콘텐츠".strip(),
+        "keywords": _topic_keywords(str(topic_spec.get("topic", "")).strip()),
+        "bgm": str(topic_spec.get("bgm", "")).strip(),
+        "ref_img_1": str(topic_spec.get("ref_img_1", "")).strip(),
+        "ref_img_2": str(topic_spec.get("ref_img_2", "")).strip(),
+        "scene_prompts": videos,
+        "voice_groups": [
+            {
+                "scene_index": index,
+                "voice": voice,
+                "original_voices": [index],
+            }
+            for index, voice in enumerate(voice_lines, start=1)
+        ],
+        "voice_mapping_source": "topic_spec_videos",
+        "story_outline": videos,
+        "videos": videos,
+        "parse_mode": "topic_spec_video_repair",
+        "parse_warnings": ["invalid_gpt_voice_groups_repaired_from_topic_spec_videos"],
+    }
+    return _build_stage1_parsed_payload_from_parsed_result(topic_spec, parsed_result)
+
+
+def _speaking_text_from_video_prompt(video_prompt: str) -> str:
+    quoted_match = re.search(
+        r"speaking\s*:\s*[\"“](.*?)[\"”]", video_prompt, flags=re.IGNORECASE | re.DOTALL
+    )
+    if quoted_match is not None:
+        return quoted_match.group(1).strip()
+    plain_match = re.search(
+        r"speaking\s*:\s*(.+?)(?:\s+with\s+lip\s+sync|\s*,\s*NO\s+text|$)",
+        video_prompt,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if plain_match is None:
+        return ""
+    return plain_match.group(1).strip().strip('"“”')
+
+
+def _topic_keywords(topic: str) -> list[str]:
+    keywords = [part.strip() for part in topic.replace(",", " ").split() if part.strip()]
+    return keywords[:5] or ["topic"]
 
 
 def _build_stage1_parsed_payload_from_parsed_result(

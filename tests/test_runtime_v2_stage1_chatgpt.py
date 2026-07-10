@@ -1835,6 +1835,65 @@ class RuntimeV2Stage1ChatgptTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error_code"], "invalid_voice_groups")
 
+    def test_stage1_repair_builds_voice_groups_from_topic_spec_videos_when_gpt_returns_unnumbered_voice_only(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir="D:\\YOUTUBEAUTO") as tmp_dir:
+            workspace = Path(tmp_dir)
+            topic_spec = _topic_spec(topic="Care facility costs")
+            topic_spec["bgm"] = "steady corporate bed"
+            topic_spec["ref_img_1"] = "presenter reference"
+            topic_spec["ref_img_2"] = "background reference"
+            topic_spec["videos"] = [
+                'Warm presenter shot, speaking: "施設費用は早めに確認しましょう。" with lip sync, NO text',
+                'Clean comparison slide, speaking: "月額費用と初期費用を分けて考えます。" with lip sync, NO text',
+            ]
+
+            with patch(
+                "runtime_v2.stage1.chatgpt_runner.generate_gpt_response_text",
+                return_value={
+                    "status": "ok",
+                    "response_text": """
+[Voice]
+
+施設費用は早めに確認しましょう。
+
+月額費用と初期費用を分けて考えます。
+""",
+                    "submit_info": {},
+                    "final_state": {},
+                    "timeline": [],
+                },
+            ):
+                result = run_stage1_chatgpt_job(
+                    topic_spec, workspace, debug_log="logs/stage1-run-1.jsonl"
+                )
+
+            details = cast(dict[str, object], result["details"])
+            parsed_payload = cast(dict[str, object], details["video_plan"])[
+                "parsed_payload"
+            ]
+            typed_payload = cast(dict[str, object], parsed_payload)
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(typed_payload["voice_mapping_source"], "topic_spec_videos")
+        self.assertEqual(typed_payload["scene_prompts"], topic_spec["videos"])
+        self.assertEqual(
+            typed_payload["voice_groups"],
+            [
+                {
+                    "scene_index": 1,
+                    "voice": "施設費用は早めに確認しましょう。",
+                    "original_voices": [1],
+                },
+                {
+                    "scene_index": 2,
+                    "voice": "月額費用と初期費用を分けて考えます。",
+                    "original_voices": [2],
+                },
+            ],
+        )
+
 
 if __name__ == "__main__":
     _ = unittest.main()

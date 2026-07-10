@@ -15,6 +15,7 @@ from runtime_v2.contracts.video_plan import build_video_plan
 from runtime_v2.stage1.parsed_payload import (
     build_stage1_handoff,
     build_stage1_parsed_payload_from_topic_spec,
+    build_stage1_parsed_payload_from_topic_spec_videos,
     build_stage1_raw_output_artifact,
     validate_stage1_parsed_payload,
 )
@@ -629,16 +630,24 @@ def run_stage1_chatgpt_job(
         parsed_payload = build_stage1_parsed_payload_from_topic_spec(topic_spec)
     except ValueError as exc:
         error_code = str(exc) or "invalid_stage1_output"
-        return _stage1_failed(
-            workspace,
-            debug_log=debug_log,
-            run_id=run_id,
-            row_ref=row_ref,
-            error_code=error_code,
-            reason_code=error_code,
-            evidence={"raw_output_path": str(raw_output_path.resolve())},
-            raw_output_path=str(raw_output_path.resolve()),
+        repaired_payload = (
+            build_stage1_parsed_payload_from_topic_spec_videos(topic_spec)
+            if error_code in {"invalid_voice_groups", "missing_scene_prompts"}
+            else None
         )
+        if repaired_payload is not None:
+            parsed_payload = repaired_payload
+        else:
+            return _stage1_failed(
+                workspace,
+                debug_log=debug_log,
+                run_id=run_id,
+                row_ref=row_ref,
+                error_code=error_code,
+                reason_code=error_code,
+                evidence={"raw_output_path": str(raw_output_path.resolve())},
+                raw_output_path=str(raw_output_path.resolve()),
+            )
     final_parsed_payload = parsed_payload
     errors = validate_stage1_parsed_payload(final_parsed_payload)
     if errors:
