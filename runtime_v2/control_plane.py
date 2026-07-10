@@ -68,6 +68,7 @@ from runtime_v2.workers.agent_browser_worker import (
 from runtime_v2.workers.dev_implement_worker import run_dev_implement_job
 from runtime_v2.workers.dev_plan_worker import run_dev_plan_job
 from runtime_v2.workers.dev_replan_worker import run_dev_replan_job
+from runtime_v2.workers.external_process import run_external_process
 from runtime_v2.workers.kenburns_worker import run_kenburns_job
 from runtime_v2.workers.qwen3_worker import run_qwen3_job
 from runtime_v2.workers.voicevox_worker import run_voicevox_job
@@ -133,6 +134,17 @@ def _row_closeout_context(
         job.workload == "render"
         and completion is not None
         and bool(completion.get("final_output", False))
+    ):
+        row_run_id = str(job.payload.get("run_id", "")).strip()
+        if row_run_id:
+            return row_run_id, True
+    if (
+        job.workload == "geminigen"
+        and completion is not None
+        and bool(completion.get("final_output", False))
+        and str(completion.get("final_video_source", "")).strip()
+        == "local_deterministic_render"
+        and str(completion.get("primary_provider_status", "")).strip() == "failed"
     ):
         row_run_id = str(job.payload.get("run_id", "")).strip()
         if row_run_id:
@@ -555,10 +567,30 @@ def run_control_loop_once(
     next_jobs_entries = _next_jobs_entries(worker_contract)
     next_jobs_count = len(next_jobs_entries)
     completion = _mapping_from_obj(worker_contract.get("completion", {}))
+    local_fulfillment = _geminigen_local_deterministic_fulfillment(
+        job,
+        worker_contract,
+        artifact_root=artifact_root,
+    )
+    local_fulfillment_metadata: dict[str, object] = {}
+    primary_failure_fulfilled = local_fulfillment is not None
+    if local_fulfillment is not None:
+        local_fulfillment_metadata = local_fulfillment
+        completion = _mapping_from_obj(local_fulfillment.get("completion", {}))
+        worker_contract["completion"] = completion or {}
+        worker_contract["artifacts"] = [
+            str(local_fulfillment["local_render_output_path"])
+        ]
+        details = _mapping_from_obj(worker_contract.get("details", {})) or {}
+        for key, value in local_fulfillment.items():
+            if key != "completion":
+                details[key] = value
+        worker_contract["details"] = details
+        worker_artifacts = _worker_artifact_paths(worker_contract)
     accepted_count, invalid_count = archived_contract_counts(runtime_config.input_root)
     seeded_downstream: list[JobContract] = []
     stage1_excel_merged = False
-    success = result.get("status") == "ok" and worker_ok
+    success = (result.get("status") == "ok" and worker_ok) or primary_failure_fulfilled
     if result.get("status") == "ok" and worker_ok:
         if job.workload == "chatgpt":
             details = _mapping_from_obj(worker_contract.get("details", {}))
@@ -673,7 +705,9 @@ def run_control_loop_once(
     if can_transition(job.status, next_status):
         previous_status = job.status
         job.status = next_status
-        job.attempts += 0 if success or blocked_failure else 1
+        job.attempts += (
+            1 if primary_failure_fulfilled else 0 if success or blocked_failure else 1
+        )
         if next_status == "retry":
             next_attempt_at = round(
                 now + _to_float(recovery.get("backoff_sec", 0), 0.0), 3
@@ -829,6 +863,7 @@ def run_control_loop_once(
             "ts": round(time(), 3),
         },
     )
+    snapshot_metadata.update(local_fulfillment_metadata)
     normalized_snapshot_metadata = normalize_runtime_snapshot_metadata(
         snapshot_metadata,
         run_id=snapshot_run_id,
@@ -2248,6 +2283,137 @@ def _job_from_declared_next_entry(entry: dict[str, object]) -> JobContract | Non
         entry, source_hint=f"declared:{entry.get('job', {})}"
     )
     return parsed_job
+
+
+def _geminigen_local_deterministic_fulfillment(
+    job: JobContract,
+    worker_result: dict[str, object],
+    *,
+    artifact_root: Path,
+) -> dict[str, object] | None:
+    if job.workload != "geminigen":
+        return None
+    stage = str(worker_result.get("stage", "")).strip()
+    error_code = normalize_error_code(str(worker_result.get("error_code", "")).strip())
+    completion = _mapping_from_obj(worker_result.get("completion", {})) or {}
+    if (
+        stage != "geminigen_adapter"
+        or error_code != "BROWSER_UNHEALTHY"
+        or bool(completion.get("final_output", False))
+    ):
+        return None
+    details = _mapping_from_obj(worker_result.get("details", {})) or {}
+    primary_target = _primary_geminigen_target(job, details)
+    if primary_target is None or primary_target.exists():
+        return None
+    run_id = str(job.payload.get("run_id", "")).strip()
+    if not run_id:
+        return None
+    input_images = _existing_local_render_input_images(
+        job.payload, artifact_root=artifact_root, run_id=run_id
+    )
+    if not input_images:
+        return None
+    output_path = artifact_root / "render" / f"local-deterministic-{run_id}" / "render_final.mp4"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    render_result = _render_local_deterministic_video(input_images[0], output_path)
+    render_exit_code = _to_int(render_result.get("exit_code", 1))
+    if (
+        render_exit_code != 0
+        or not output_path.exists()
+        or output_path.stat().st_size <= 0
+    ):
+        return None
+    return {
+        "final_video_source": "local_deterministic_render",
+        "fallback_trigger": "BROWSER_UNHEALTHY",
+        "primary_provider": "GeminiGen",
+        "primary_provider_status": "failed",
+        "primary_failure_code": error_code,
+        "primary_failure_stage": stage,
+        "primary_failure_returncode": _to_int(details.get("returncode", 0)),
+        "primary_target": str(primary_target.resolve()),
+        "primary_artifact_exists": False,
+        "local_render_input_images": [str(path.resolve()) for path in input_images],
+        "local_render_output_path": str(output_path.resolve()),
+        "local_render_stdout": str(render_result.get("stdout", "")),
+        "local_render_stderr": str(render_result.get("stderr", "")),
+        "completion": {
+            "state": "succeeded",
+            "final_output": True,
+            "final_artifact": output_path.name,
+            "final_artifact_path": str(output_path.resolve()),
+            "final_video_source": "local_deterministic_render",
+            "primary_provider_status": "failed",
+        },
+    }
+
+
+def _primary_geminigen_target(
+    job: JobContract, details: dict[str, object]
+) -> Path | None:
+    for key in ("resolved_output_path", "service_artifact_path", "target_path"):
+        raw_value = details.get(key, "")
+        if isinstance(raw_value, str) and raw_value.strip():
+            return Path(raw_value)
+    payload_target = job.payload.get("service_artifact_path", "")
+    if isinstance(payload_target, str) and payload_target.strip():
+        return Path(payload_target)
+    return None
+
+
+def _existing_local_render_input_images(
+    payload: dict[str, object], *, artifact_root: Path, run_id: str
+) -> list[Path]:
+    raw_images = payload.get("local_render_input_images", [])
+    resolved_artifact_root = artifact_root.resolve()
+    if raw_images == []:
+        raw_asset_root = payload.get("asset_root", "")
+        if isinstance(raw_asset_root, str) and raw_asset_root.strip():
+            image_root = Path(raw_asset_root).resolve() / "images"
+            raw_images = [str(path) for path in sorted(image_root.glob("*.png"))]
+    if not isinstance(raw_images, list) or not run_id:
+        return []
+    image_paths: list[Path] = []
+    for raw_image in raw_images:
+        if not isinstance(raw_image, str) or not raw_image.strip():
+            continue
+        image_path = Path(raw_image).resolve()
+        if not image_path.exists() or not image_path.is_file():
+            return []
+        if resolved_artifact_root not in image_path.parents:
+            return []
+        if run_id not in image_path.parts:
+            return []
+        image_paths.append(image_path)
+    return image_paths
+
+
+def _render_local_deterministic_video(
+    source_image: Path, output_path: Path
+) -> dict[str, object]:
+    return run_external_process(
+        [
+            "ffmpeg",
+            "-y",
+            "-loop",
+            "1",
+            "-i",
+            str(source_image.resolve()),
+            "-t",
+            "1",
+            "-vf",
+            "scale=1280:720:force_original_aspect_ratio=decrease,"
+            "pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+            "-r",
+            "24",
+            "-movflags",
+            "+faststart",
+            str(output_path.resolve()),
+        ],
+        cwd=output_path.parent,
+        timeout_sec=60,
+    )
 
 
 def _worker_result_contract(worker_result: dict[str, object]) -> dict[str, object]:

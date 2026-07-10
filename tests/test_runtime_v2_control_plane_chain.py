@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import json
+import subprocess
 import tempfile
 import threading
 import time
@@ -33,6 +34,35 @@ def _runtime_config(root: Path) -> RuntimeConfig:
 
 
 class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
+    def _write_tiny_png(self, path: Path) -> None:
+        path.write_bytes(
+            bytes.fromhex(
+                "89504e470d0a1a0a0000000d494844520000000100000001"
+                "0802000000907753de0000000c4944415408d763f8ffff3f"
+                "0005fe02fea73581f20000000049454e44ae426082"
+            )
+        )
+
+    def _ffprobe_video_ok(self, path: Path) -> bool:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=codec_type",
+                "-of",
+                "csv=p=0",
+                str(path),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0 and result.stdout.strip() == "video"
+
     def test_run_worker_dispatches_timeline_workload(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
             root = Path(tmp_dir)
@@ -2524,6 +2554,476 @@ class RuntimeV2ControlPlaneChainTests(unittest.TestCase):
         pointer = cast(dict[object, object], latest_join["pointer"])
         self.assertEqual(str(pointer["run_id"]), "gate-d-run-1")
         self.assertFalse(bool(latest_join["out_of_sync"]))
+
+    def test_control_plane_fulfills_geminigen_browser_unhealthy_with_local_deterministic_render(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            image_one = root / "artifacts" / "seaart" / "row15-run" / "scene-01.png"
+            image_two = root / "artifacts" / "genspark" / "row15-run" / "scene-02.png"
+            primary_target = (
+                root
+                / "artifacts"
+                / "geminigen"
+                / "geminigen-row15-run-19"
+                / "assets"
+                / "video"
+                / "#19_GEMI.mp4"
+            )
+            image_one.parent.mkdir(parents=True, exist_ok=True)
+            image_two.parent.mkdir(parents=True, exist_ok=True)
+            primary_target.parent.mkdir(parents=True, exist_ok=True)
+            self._write_tiny_png(image_one)
+            self._write_tiny_png(image_two)
+            seed_control_job(
+                JobContract(
+                    job_id="geminigen-row15-run-19",
+                    workload="geminigen",
+                    attempts=3,
+                    checkpoint_key="geminigen:Sheet1!row15:row15-run",
+                    payload={
+                        "run_id": "row15-run",
+                        "row_ref": "Sheet1!row15",
+                        "service_artifact_path": str(primary_target.resolve()),
+                        "local_render_input_images": [
+                            str(image_one.resolve()),
+                            str(image_two.resolve()),
+                        ],
+                    },
+                ),
+                config=config,
+            )
+
+            runtime_result = {
+                "status": "failed",
+                "code": "BROWSER_UNHEALTHY",
+                "worker_result": {
+                    "status": "failed",
+                    "stage": "geminigen_adapter",
+                    "error_code": "BROWSER_UNHEALTHY",
+                    "retryable": False,
+                    "next_jobs": [],
+                    "details": {
+                        "returncode": 20,
+                        "resolved_output_path": str(primary_target.resolve()),
+                    },
+                    "completion": {"state": "failed", "final_output": False},
+                },
+            }
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value=runtime_result,
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-row15",
+                )
+
+            latest_result = cast(
+                dict[str, object],
+                json.loads(config.result_router_file.read_text(encoding="utf-8")),
+            )
+            latest_metadata = cast(dict[str, object], latest_result["metadata"])
+            local_render_output = Path(str(latest_metadata["local_render_output_path"]))
+            local_render_output_exists = local_render_output.exists()
+            local_render_output_is_video = self._ffprobe_video_ok(local_render_output)
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(str(latest_metadata["run_id"]), "row15-run")
+        self.assertEqual(str(latest_metadata["row_ref"]), "Sheet1!row15")
+        self.assertEqual(str(latest_metadata["primary_provider"]), "GeminiGen")
+        self.assertEqual(str(latest_metadata["primary_provider_status"]), "failed")
+        self.assertEqual(str(latest_metadata["primary_failure_code"]), "BROWSER_UNHEALTHY")
+        self.assertEqual(
+            str(latest_metadata["primary_failure_stage"]), "geminigen_adapter"
+        )
+        self.assertEqual(int(cast(int, latest_metadata["primary_failure_returncode"])), 20)
+        self.assertEqual(str(latest_metadata["primary_target"]), str(primary_target.resolve()))
+        self.assertFalse(bool(latest_metadata["primary_artifact_exists"]))
+        self.assertEqual(
+            str(latest_metadata["final_video_source"]), "local_deterministic_render"
+        )
+        self.assertEqual(str(latest_metadata["fallback_trigger"]), "BROWSER_UNHEALTHY")
+        self.assertEqual(
+            cast(list[object], latest_metadata["local_render_input_images"]),
+            [str(image_one.resolve()), str(image_two.resolve())],
+        )
+        self.assertTrue(local_render_output_exists)
+        self.assertTrue(local_render_output_is_video)
+        self.assertTrue(bool(latest_metadata["final_output"]))
+        self.assertEqual(str(latest_metadata["worker_error_code"]), "BROWSER_UNHEALTHY")
+        self.assertEqual(int(cast(int, latest_metadata["attempts"])), 4)
+
+    def test_control_plane_fulfills_geminigen_browser_unhealthy_from_asset_root_images(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            asset_root = root / "artifacts" / "chatgpt" / "chatgpt-sheet1-15" / "row15-run" / "assets"
+            image_one = asset_root / "images" / "genspark-row15-run-17.png"
+            primary_target = asset_root / "video" / "#19_GEMI.mp4"
+            image_one.parent.mkdir(parents=True, exist_ok=True)
+            primary_target.parent.mkdir(parents=True, exist_ok=True)
+            self._write_tiny_png(image_one)
+            seed_control_job(
+                JobContract(
+                    job_id="geminigen-row15-run-19",
+                    workload="geminigen",
+                    attempts=3,
+                    checkpoint_key="geminigen:Sheet1!row15:19",
+                    payload={
+                        "run_id": "row15-run",
+                        "row_ref": "Sheet1!row15",
+                        "asset_root": str(asset_root.resolve()),
+                        "service_artifact_path": str(primary_target.resolve()),
+                    },
+                ),
+                config=config,
+            )
+            runtime_result = {
+                "status": "failed",
+                "code": "BROWSER_UNHEALTHY",
+                "worker_result": {
+                    "status": "failed",
+                    "stage": "geminigen_adapter",
+                    "error_code": "BROWSER_UNHEALTHY",
+                    "retryable": True,
+                    "next_jobs": [],
+                    "details": {
+                        "returncode": 20,
+                        "resolved_output_path": str(primary_target.resolve()),
+                    },
+                    "completion": {"state": "failed", "final_output": False},
+                },
+            }
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value=runtime_result,
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-row15",
+                )
+
+            latest_result = cast(
+                dict[str, object],
+                json.loads(config.result_router_file.read_text(encoding="utf-8")),
+            )
+            latest_metadata = cast(dict[str, object], latest_result["metadata"])
+            local_render_output = Path(str(latest_metadata["local_render_output_path"]))
+            local_render_output_exists = local_render_output.exists()
+            local_render_output_is_video = self._ffprobe_video_ok(local_render_output)
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(str(latest_metadata["run_id"]), "row15-run")
+        self.assertEqual(str(latest_metadata["primary_failure_code"]), "BROWSER_UNHEALTHY")
+        self.assertEqual(
+            str(latest_metadata["final_video_source"]), "local_deterministic_render"
+        )
+        self.assertEqual(
+            cast(list[object], latest_metadata["local_render_input_images"]),
+            [str(image_one.resolve())],
+        )
+        self.assertTrue(local_render_output_exists)
+        self.assertTrue(local_render_output_is_video)
+        self.assertTrue(bool(latest_metadata["final_output"]))
+
+    def test_control_plane_rejects_local_render_images_from_other_run(self) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            stale_image = root / "artifacts" / "seaart" / "old-run" / "scene-01.png"
+            primary_target = (
+                root
+                / "artifacts"
+                / "geminigen"
+                / "geminigen-row15-run-19"
+                / "assets"
+                / "video"
+                / "#19_GEMI.mp4"
+            )
+            stale_image.parent.mkdir(parents=True, exist_ok=True)
+            primary_target.parent.mkdir(parents=True, exist_ok=True)
+            self._write_tiny_png(stale_image)
+            seed_control_job(
+                JobContract(
+                    job_id="geminigen-row15-run-19",
+                    workload="geminigen",
+                    attempts=3,
+                    checkpoint_key="geminigen:Sheet1!row15:row15-run",
+                    payload={
+                        "run_id": "row15-run",
+                        "row_ref": "Sheet1!row15",
+                        "service_artifact_path": str(primary_target.resolve()),
+                        "local_render_input_images": [str(stale_image.resolve())],
+                    },
+                ),
+                config=config,
+            )
+            runtime_result = {
+                "status": "failed",
+                "code": "BROWSER_UNHEALTHY",
+                "worker_result": {
+                    "status": "failed",
+                    "stage": "geminigen_adapter",
+                    "error_code": "BROWSER_UNHEALTHY",
+                    "retryable": False,
+                    "next_jobs": [],
+                    "details": {
+                        "returncode": 20,
+                        "resolved_output_path": str(primary_target.resolve()),
+                    },
+                    "completion": {"state": "failed", "final_output": False},
+                },
+            }
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value=runtime_result,
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-row15",
+                )
+
+            latest_result = cast(
+                dict[str, object],
+                json.loads(config.result_router_file.read_text(encoding="utf-8")),
+            )
+            latest_metadata = cast(dict[str, object], latest_result["metadata"])
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(str(latest_metadata["run_id"]), "control-run-row15")
+        self.assertEqual(str(latest_metadata["worker_error_code"]), "BROWSER_UNHEALTHY")
+        self.assertNotIn("local_render_output_path", latest_metadata)
+        self.assertFalse(bool(latest_metadata["final_output"]))
+
+    def test_control_plane_rejects_local_render_image_filename_substring_match(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            stale_image = root / "artifacts" / "seaart" / "old-run" / "row15-run-scene.png"
+            primary_target = (
+                root
+                / "artifacts"
+                / "geminigen"
+                / "geminigen-row15-run-19"
+                / "assets"
+                / "video"
+                / "#19_GEMI.mp4"
+            )
+            stale_image.parent.mkdir(parents=True, exist_ok=True)
+            primary_target.parent.mkdir(parents=True, exist_ok=True)
+            self._write_tiny_png(stale_image)
+            seed_control_job(
+                JobContract(
+                    job_id="geminigen-row15-run-19",
+                    workload="geminigen",
+                    attempts=3,
+                    checkpoint_key="geminigen:Sheet1!row15:row15-run",
+                    payload={
+                        "run_id": "row15-run",
+                        "row_ref": "Sheet1!row15",
+                        "service_artifact_path": str(primary_target.resolve()),
+                        "local_render_input_images": [str(stale_image.resolve())],
+                    },
+                ),
+                config=config,
+            )
+            runtime_result = {
+                "status": "failed",
+                "code": "BROWSER_UNHEALTHY",
+                "worker_result": {
+                    "status": "failed",
+                    "stage": "geminigen_adapter",
+                    "error_code": "BROWSER_UNHEALTHY",
+                    "retryable": False,
+                    "next_jobs": [],
+                    "details": {
+                        "returncode": 20,
+                        "resolved_output_path": str(primary_target.resolve()),
+                    },
+                    "completion": {"state": "failed", "final_output": False},
+                },
+            }
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value=runtime_result,
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-row15",
+                )
+
+            latest_result = cast(
+                dict[str, object],
+                json.loads(config.result_router_file.read_text(encoding="utf-8")),
+            )
+            latest_metadata = cast(dict[str, object], latest_result["metadata"])
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(str(latest_metadata["run_id"]), "control-run-row15")
+        self.assertNotIn("local_render_output_path", latest_metadata)
+        self.assertFalse(bool(latest_metadata["final_output"]))
+
+    def test_control_plane_rejects_local_render_when_ffmpeg_fails_after_output_file(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            image_one = root / "artifacts" / "seaart" / "row15-run" / "scene-01.png"
+            primary_target = (
+                root
+                / "artifacts"
+                / "geminigen"
+                / "geminigen-row15-run-19"
+                / "assets"
+                / "video"
+                / "#19_GEMI.mp4"
+            )
+            image_one.parent.mkdir(parents=True, exist_ok=True)
+            primary_target.parent.mkdir(parents=True, exist_ok=True)
+            self._write_tiny_png(image_one)
+            seed_control_job(
+                JobContract(
+                    job_id="geminigen-row15-run-19",
+                    workload="geminigen",
+                    attempts=3,
+                    checkpoint_key="geminigen:Sheet1!row15:row15-run",
+                    payload={
+                        "run_id": "row15-run",
+                        "row_ref": "Sheet1!row15",
+                        "service_artifact_path": str(primary_target.resolve()),
+                        "local_render_input_images": [str(image_one.resolve())],
+                    },
+                ),
+                config=config,
+            )
+            runtime_result = {
+                "status": "failed",
+                "code": "BROWSER_UNHEALTHY",
+                "worker_result": {
+                    "status": "failed",
+                    "stage": "geminigen_adapter",
+                    "error_code": "BROWSER_UNHEALTHY",
+                    "retryable": False,
+                    "next_jobs": [],
+                    "details": {
+                        "returncode": 20,
+                        "resolved_output_path": str(primary_target.resolve()),
+                    },
+                    "completion": {"state": "failed", "final_output": False},
+                },
+            }
+
+            def fake_ffmpeg(command: list[str], **_kwargs: object) -> dict[str, object]:
+                Path(command[-1]).write_bytes(b"not a valid completed render")
+                return {"exit_code": 1, "stdout": "", "stderr": "failed"}
+
+            with (
+                patch("runtime_v2.control_plane.run_gated", return_value=runtime_result),
+                patch("runtime_v2.control_plane.run_external_process", side_effect=fake_ffmpeg),
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-row15",
+                )
+
+            latest_result = cast(
+                dict[str, object],
+                json.loads(config.result_router_file.read_text(encoding="utf-8")),
+            )
+            latest_metadata = cast(dict[str, object], latest_result["metadata"])
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(str(latest_metadata["run_id"]), "control-run-row15")
+        self.assertNotIn("local_render_output_path", latest_metadata)
+        self.assertFalse(bool(latest_metadata["final_output"]))
+
+    def test_control_plane_does_not_close_out_arbitrary_geminigen_final_output(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            config = _runtime_config(root)
+            primary_target = (
+                root
+                / "artifacts"
+                / "geminigen"
+                / "geminigen-row15-run-19"
+                / "assets"
+                / "video"
+                / "#19_GEMI.mp4"
+            )
+            primary_target.parent.mkdir(parents=True, exist_ok=True)
+            seed_control_job(
+                JobContract(
+                    job_id="geminigen-row15-run-19",
+                    workload="geminigen",
+                    attempts=3,
+                    checkpoint_key="geminigen:Sheet1!row15:row15-run",
+                    payload={
+                        "run_id": "row15-run",
+                        "row_ref": "Sheet1!row15",
+                        "service_artifact_path": str(primary_target.resolve()),
+                    },
+                ),
+                config=config,
+            )
+            runtime_result = {
+                "status": "failed",
+                "code": "BROWSER_UNHEALTHY",
+                "worker_result": {
+                    "status": "failed",
+                    "stage": "geminigen_adapter",
+                    "error_code": "BROWSER_UNHEALTHY",
+                    "retryable": False,
+                    "next_jobs": [],
+                    "details": {
+                        "returncode": 20,
+                        "resolved_output_path": str(primary_target.resolve()),
+                    },
+                    "completion": {"state": "failed", "final_output": True},
+                },
+            }
+
+            with patch(
+                "runtime_v2.control_plane.run_gated",
+                return_value=runtime_result,
+            ):
+                result = run_control_loop_once(
+                    owner="runtime_v2",
+                    config=config,
+                    run_id="control-run-row15",
+                )
+
+            latest_result = cast(
+                dict[str, object],
+                json.loads(config.result_router_file.read_text(encoding="utf-8")),
+            )
+            latest_metadata = cast(dict[str, object], latest_result["metadata"])
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(str(latest_metadata["run_id"]), "control-run-row15")
+        self.assertEqual(str(latest_metadata["worker_error_code"]), "BROWSER_UNHEALTHY")
+        self.assertNotEqual(
+            str(latest_metadata.get("final_video_source", "")),
+            "local_deterministic_render",
+        )
 
     def test_stage1_video_plan_routing_does_not_emit_kenburns_jobs(self) -> None:
         with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
