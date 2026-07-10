@@ -42,6 +42,7 @@ def write_result_router(
         "metadata": metadata_payload,
     }
     payload = _ensure_checked_at(payload)
+    payload_text = json.dumps(payload, ensure_ascii=True)
     output_file.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
         "w",
@@ -51,7 +52,7 @@ def write_result_router(
         suffix=".tmp",
         delete=False,
     ) as handle:
-        _ = handle.write(json.dumps(payload, ensure_ascii=True))
+        _ = handle.write(payload_text)
         temp_path = Path(handle.name)
     last_error: PermissionError | None = None
     for delay in (*_RESULT_ROUTER_REPLACE_RETRY_DELAYS, None):
@@ -61,6 +62,10 @@ def write_result_router(
         except PermissionError as exc:
             last_error = exc
             if getattr(exc, "winerror", None) != 5 or delay is None:
+                if getattr(exc, "winerror", None) == 5 and delay is None:
+                    output_file.write_text(payload_text, encoding="utf-8")
+                    temp_path.unlink(missing_ok=True)
+                    break
                 raise
             sleep(delay)
     if last_error is not None and not output_file.exists():

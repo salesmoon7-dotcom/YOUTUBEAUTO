@@ -100,6 +100,34 @@ class RuntimeV2ResultRouterTests(unittest.TestCase):
         self.assertEqual(written, output_file)
         self.assertIn('"path":', contents)
 
+    def test_write_result_router_falls_back_after_exhausted_winerror_5(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(dir=r"D:\YOUTUBEAUTO") as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_root = root / "artifacts"
+            artifact_root.mkdir(parents=True, exist_ok=True)
+            artifact_path = artifact_root / "sample.json"
+            artifact_path.write_text('{"ok": true}', encoding="utf-8")
+            output_file = root / "result.json"
+
+            def always_locked_replace(self: Path, target: Path) -> Path:
+                if self.suffix == ".tmp" and target == output_file:
+                    error = PermissionError("locked")
+                    error.winerror = 5
+                    raise error
+                return Path.replace(self, target)
+
+            with patch("runtime_v2.result_router.Path.replace", new=always_locked_replace):
+                written = write_result_router(
+                    [artifact_path], artifact_root, output_file
+                )
+                payload = json.loads(output_file.read_text(encoding="utf-8"))
+
+        self.assertEqual(written, output_file)
+        self.assertEqual(payload["runtime"], "runtime_v2")
+        self.assertEqual(len(list(root.glob("result.*.tmp"))), 0)
+
 
 if __name__ == "__main__":
     _ = unittest.main()
